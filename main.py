@@ -64,7 +64,16 @@ async def engineer_erasure_hook(req: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     payload = await req.json()
-    initials = payload.get("initials", "").strip().upper()
+    
+    # Try multiple field name variations
+    initials = (
+        payload.get("initials") or
+        payload.get("engineerInitials") or
+        payload.get("engineer_initials") or
+        payload.get("Engineer Initals") or
+        payload.get("engineerInitals") or
+        ""
+    ).strip().upper()
     
     print(f"Received engineer erasure: initials={initials}, payload={payload}")
 
