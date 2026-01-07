@@ -1,0 +1,104 @@
+(async function () {
+  // Load config
+  const cfg = await fetch('config.json').then(r => r.json());
+
+  // Apply theme variables dynamically
+  const root = document.documentElement;
+  root.style.setProperty('--bg', cfg.theme.bg);
+  root.style.setProperty('--text', cfg.theme.text);
+  root.style.setProperty('--muted', cfg.theme.muted);
+  root.style.setProperty('--ring-primary', cfg.theme.ringPrimary);
+  root.style.setProperty('--ring-secondary', cfg.theme.ringSecondary);
+
+  // Targets
+  document.getElementById('bookedTarget').textContent = cfg.targets.bookedIn;
+  document.getElementById('erasedTarget').textContent = cfg.targets.erased;
+  document.getElementById('qaTarget').textContent = cfg.targets.qa;
+
+  // Charts
+  const bookedChart = donut('chartBooked');
+  const erasedChart = donut('chartErased');
+  const qaChart     = donut('chartQa');
+
+  // State
+  let lastUpdated = 0;
+
+  // Refresh function - fetch local metrics
+  async function refresh() {
+    try {
+      const res = await fetch("/metrics/today");
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+
+      // Update big numbers
+      const bookedVal = data.bookedIn || 0;
+      const erasedVal = data.erased || 0;
+      const qaVal = data.qa || 0;
+
+      document.getElementById('bookedValue').textContent = bookedVal;
+      document.getElementById('erasedValue').textContent = erasedVal;
+      document.getElementById('qaValue').textContent = qaVal;
+
+      // Update donuts (value vs remaining to target)
+      updateDonut(bookedChart, bookedVal, cfg.targets.bookedIn);
+      updateDonut(erasedChart, erasedVal, cfg.targets.erased);
+      updateDonut(qaChart, qaVal, cfg.targets.qa);
+
+      // Meta
+      lastUpdated = Date.now();
+      document.getElementById('last-updated').textContent =
+        'Last updated: ' + new Date(lastUpdated).toLocaleTimeString();
+      document.getElementById('stale-indicator').classList.add('hidden');
+    } catch (err) {
+      console.error('Refresh error:', err);
+      document.getElementById('stale-indicator').classList.remove('hidden');
+    }
+  }
+
+  // Kick off refresh loop
+  refresh();
+  setInterval(refresh, cfg.refreshSeconds * 1000);
+
+  function updateDonut(chart, value, target) {
+    const remaining = Math.max(target - value, 0);
+    chart.data.datasets[0].data = [value, remaining];
+    chart.update();
+  }
+
+  // Chart factory: ring look and feel
+  function donut(canvasId) {
+    const ctx = document.getElementById(canvasId);
+    const primary = getComputedStyle(document.documentElement)
+      .getPropertyValue('--ring-primary').trim();
+    const secondary = getComputedStyle(document.documentElement)
+      .getPropertyValue('--ring-secondary').trim();
+
+    return new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Value', 'Remaining'],
+        datasets: [{
+          data: [0, 0],
+          backgroundColor: [secondary, primary],
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        cutout: '65%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: true,
+            callbacks: {
+              label: function(ctx) {
+                return ctx.label + ': ' + ctx.raw;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+})();

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GSIT Warehouse Stats</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div class="brand">
+        <img src="assets/logo_gsit.png" alt="GSIT" class="logo" />
+        <h1>Warehouse Live Stats</h1>
+      </div>
+      <div class="meta">
+        <span id="last-updated">Last updated: —</span>
+        <span id="stale-indicator" class="stale hidden">Stale</span>
+      </div>
+    </header>
+
+    <main class="grid">
+      <!-- Donut cards -->
+      <section class="card">
+        <h2>Items Booked In</h2>
+        <canvas id="chartBooked"></canvas>
+        <div class="big-number" id="bookedValue">0</div>
+        <div class="target">Target: <span id="bookedTarget">XX</span></div>
+      </section>
+
+      <section class="card">
+        <h2>Erased</h2>
+        <canvas id="chartErased"></canvas>
+        <div class="big-number" id="erasedValue">0</div>
+        <div class="target">Target: <span id="erasedTarget">XX</span></div>
+      </section>
+
+      <section class="card">
+        <h2>QA’d</h2>
+        <canvas id="chartQa"></canvas>
+        <div class="big-number" id="qaValue">0</div>
+        <div class="target">Target: <span id="qaTarget">XX</span></div>
+      </section>
+
+      <!-- Top 3 lists -->
+      <section class="list-card">
+        <h3>Top 3 IA</h3>
+        <ol id="topIA" class="top-list"></ol>
+      </section>
+      <section class="list-card">
+        <h3>Top 3 DE</h3>
+        <ol id="topDE" class="top-list"></ol>
+      </section>
+      <section class="list-card">
+        <h3>Top 3 QA</h3>
+        <ol id="topQA" class="top-list"></ol>
+      </section>
+    </main>
+  </div>
+
+  <!-- Chart.js -->
+  <script src="vendor/chart.umd.js"></script>
+  <script src="app.js"></script>
+</body>
+

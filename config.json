@@ -1,0 +1,33 @@
+{
+  "refreshSeconds": 30,
+  "theme": {
+    "bg": "#0a2a4a",
+    "ringPrimary": "#8cf04a",
+    "ringSecondary": "#ff1ea3",
+    "text": "#ffffff",
+    "muted": "#b8c2cc"
+  },
+  "targets": {
+    "bookedIn": 150,
+    "erased": 200,
+    "qa": 180
+  },
+  "auth": {
+    "type": "bearer",
+    "token": "REPLACE_ME",
+    "headerName": "Authorization"
+  },
+  "endpoints": {
+    "bookedInCount": "https://api.yourdomain/ops/booked-in/today",
+    "erasedCount":   "http://92.71.152.26/mc#reportcustomErased%20Stats",
+    "qaCount":       "https://api.yourdomain/ops/qa/today",
+    "topIA":         "https://api.yourdomain/ops/top/ia?t=today&limit=3",
+    "topDE":         "https://api.yourdomain/ops/top/de?t=today&limit=3",
+    "topQA":         "https://api.yourdomain/ops/top/qa?t=today&limit=3"
+  },
+  "mappings": {
+    "countField": "count",
+    "topNameField": "name",
+    "topValueField": "value"
+  }
+}
