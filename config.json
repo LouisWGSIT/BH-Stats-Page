@@ -2,8 +2,8 @@
   "refreshSeconds": 30,
   "theme": {
     "bg": "#0a2a4a",
-    "ringPrimary": "#8cf04a",
-    "ringSecondary": "#ff1ea3",
+    "ringPrimary": "#ff1ea3",
+    "ringSecondary": "#8cf04a",
     "text": "#ffffff",
     "muted": "#b8c2cc"
   },
