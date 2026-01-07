@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from typing import Any, Dict
+import database as db
 
 app = FastAPI(title="Warehouse Stats Service")
 
@@ -17,11 +18,6 @@ app.add_middleware(
 )
 
 WEBHOOK_API_KEY = os.getenv("WEBHOOK_API_KEY", "6LVepDbZkbMwA66Gpl9bWherzT5wKfOl")
-
-# simple store
-stats_today = {"bookedIn": 0, "erased": 0, "qa": 0}
-seen_ids = set()
-engineer_stats = {}  # Track engineer initials and erasure counts
 
 @app.post("/hooks/erasure")
 async def erasure_hook(req: Request):
@@ -37,26 +33,33 @@ async def erasure_hook(req: Request):
     print(f"Received webhook: event={event}, jobId={job_id}, payload={payload}")
 
     # Only deduplicate if we have a real jobId (not "unknown")
-    if job_id != "unknown" and job_id in seen_ids:
+    if job_id != "unknown" and db.is_job_seen(job_id):
         return JSONResponse({"status": "ignored", "reason": "duplicate"})
 
     if event in ["success", "connected"]:  # Accept both success and connected
-        stats_today["erased"] += 1
+        db.increment_stat("erased", 1)
         # Only track if we have a real ID
         if job_id != "unknown":
-            seen_ids.add(job_id)
-        return {"status": "ok", "count": stats_today["erased"]}
+            db.mark_job_seen(job_id)
+        stats = db.get_daily_stats()
+        return {"status": "ok", "count": stats["erased"]}
     elif event == "failure":
         return {"status": "ok"}
     else:
         # Still accept it and increment counter
-        stats_today["erased"] += 1
-        seen_ids.add(job_id)
-        return {"status": "ok", "event_accepted": event}
+        db.increment_stat("erased", 1)
+        if job_id != "unknown":
+            db.mark_job_seen(job_id)
+        stats = db.get_daily_stats()
+        return {"status": "ok", "event_accepted": event, "count": stats["erased"]}
 
 @app.get("/metrics/today")
 async def get_metrics():
-    return stats_today
+    return db.get_daily_stats()
+
+@app.get("/metrics/yesterday")
+async def get_yesterday_metrics():
+    return db.get_daily_stats(db.get_yesterday_str())
 
 def _extract_initials_from_obj(obj: Any):
     # Try common explicit keys first
@@ -121,16 +124,17 @@ async def engineer_erasure_hook(req: Request):
         return JSONResponse({"status": "error", "reason": "missing initials"}, status_code=400)
 
     # Increment count for this engineer
-    engineer_stats[initials] = engineer_stats.get(initials, 0) + 1
+    db.increment_engineer_count(initials, 1)
+    engineers = db.get_top_engineers(limit=10)
+    engineer_count = next((e["count"] for e in engineers if e["initials"] == initials), 0)
 
-    return {"status": "ok", "engineer": initials, "count": engineer_stats[initials]}
+    return {"status": "ok", "engineer": initials, "count": engineer_count}
 
 @app.get("/metrics/top-engineers")
 async def get_top_engineers():
     # Return top 3 engineers by erasure count
-    sorted_engineers = sorted(engineer_stats.items(), key=lambda x: x[1], reverse=True)
-    top_3 = sorted_engineers[:3]
-    return {"engineers": [{"initials": eng[0], "count": eng[1]} for eng in top_3]}
+    engineers = db.get_top_engineers(limit=3)
+    return {"engineers": engineers}
 
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")
