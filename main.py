@@ -34,12 +34,15 @@ async def erasure_hook(req: Request):
     # Always accept and log for debugging
     print(f"Received webhook: event={event}, jobId={job_id}, payload={payload}")
 
-    if job_id in seen_ids:
+    # Only deduplicate if we have a real jobId (not "unknown")
+    if job_id != "unknown" and job_id in seen_ids:
         return JSONResponse({"status": "ignored", "reason": "duplicate"})
 
     if event in ["success", "connected"]:  # Accept both success and connected
         stats_today["erased"] += 1
-        seen_ids.add(job_id)
+        # Only track if we have a real ID
+        if job_id != "unknown":
+            seen_ids.add(job_id)
         return {"status": "ok", "count": stats_today["erased"]}
     elif event == "failure":
         return {"status": "ok"}
