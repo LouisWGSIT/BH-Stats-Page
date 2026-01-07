@@ -20,6 +20,7 @@ WEBHOOK_API_KEY = os.getenv("WEBHOOK_API_KEY", "6LVepDbZkbMwA66Gpl9bWherzT5wKfOl
 # simple store
 stats_today = {"bookedIn": 0, "erased": 0, "qa": 0}
 seen_ids = set()
+engineer_stats = {}  # Track engineer initials and erasure counts
 
 @app.post("/hooks/erasure")
 async def erasure_hook(req: Request):
@@ -55,6 +56,32 @@ async def erasure_hook(req: Request):
 @app.get("/metrics/today")
 async def get_metrics():
     return stats_today
+
+@app.post("/hooks/engineer-erasure")
+async def engineer_erasure_hook(req: Request):
+    hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
+    if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    payload = await req.json()
+    initials = payload.get("initials", "").strip().upper()
+    
+    print(f"Received engineer erasure: initials={initials}, payload={payload}")
+
+    if not initials or initials == "":
+        return JSONResponse({"status": "error", "reason": "missing initials"}, status_code=400)
+
+    # Increment count for this engineer
+    engineer_stats[initials] = engineer_stats.get(initials, 0) + 1
+    
+    return {"status": "ok", "engineer": initials, "count": engineer_stats[initials]}
+
+@app.get("/metrics/top-engineers")
+async def get_top_engineers():
+    # Return top 3 engineers by erasure count
+    sorted_engineers = sorted(engineer_stats.items(), key=lambda x: x[1], reverse=True)
+    top_3 = sorted_engineers[:3]
+    return {"engineers": [{"initials": eng[0], "count": eng[1]} for eng in top_3]}
 
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")

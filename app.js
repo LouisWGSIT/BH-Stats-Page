@@ -59,6 +59,32 @@
   refresh();
   setInterval(refresh, cfg.refreshSeconds * 1000);
 
+  // Refresh top engineers
+  async function refreshEngineers() {
+    try {
+      const res = await fetch("/metrics/top-engineers");
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      
+      const topDEList = document.getElementById('topDE');
+      topDEList.innerHTML = '';
+      
+      if (data.engineers && data.engineers.length > 0) {
+        data.engineers.forEach((eng, idx) => {
+          const li = document.createElement('li');
+          li.innerHTML = `<span>${eng.initials}</span><span class="value">${eng.count}</span>`;
+          topDEList.appendChild(li);
+        });
+      }
+    } catch (err) {
+      console.error('Engineer refresh error:', err);
+    }
+  }
+
+  // Kick off engineer refresh loop
+  refreshEngineers();
+  setInterval(refreshEngineers, cfg.refreshSeconds * 1000);
+
   function updateDonut(chart, value, target) {
     const remaining = Math.max(target - value, 0);
     chart.data.datasets[0].data = [value, remaining];
