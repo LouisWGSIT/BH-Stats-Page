@@ -70,9 +70,11 @@
       topDEList.innerHTML = '';
       
       if (data.engineers && data.engineers.length > 0) {
-        data.engineers.forEach((eng, idx) => {
+        data.engineers.forEach((eng) => {
+          const name = (eng.initials || '').toString().trim();
+          if (!name) return; // skip empty names to avoid blank row
           const li = document.createElement('li');
-          li.innerHTML = `<span>${eng.initials}</span><span class="value">${eng.count}</span>`;
+          li.innerHTML = `<span>${name}</span><span class="value">${eng.count}</span>`;
           topDEList.appendChild(li);
         });
       }
@@ -84,6 +86,39 @@
   // Kick off engineer refresh loop
   refreshEngineers();
   setInterval(refreshEngineers, cfg.refreshSeconds * 1000);
+  
+    // Populate a top-3 list element with engineers data
+    function renderTopList(listId, engineers) {
+      const el = document.getElementById(listId);
+      el.innerHTML = '';
+      if (engineers && engineers.length > 0) {
+        engineers.forEach((eng) => {
+          const li = document.createElement('li');
+          li.innerHTML = `<span>${eng.initials}</span><span class="value">${eng.count}</span>`;
+          el.appendChild(li);
+        });
+      }
+    }
+  
+    async function refreshTopByType(type, listId) {
+      try {
+        const res = await fetch(`/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        renderTopList(listId, data.engineers);
+      } catch (err) {
+        console.error('Top-by-type refresh error:', type, err);
+      }
+    }
+  
+    function refreshAllTopLists() {
+      refreshTopByType('laptops_desktops', 'topLD');
+      refreshTopByType('servers', 'topServers');
+      refreshTopByType('loose_drives', 'topDrives');
+    }
+  
+    refreshAllTopLists();
+    setInterval(refreshAllTopLists, cfg.refreshSeconds * 1000);
 
   function updateDonut(chart, value, target) {
     const remaining = Math.max(target - value, 0);

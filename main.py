@@ -117,14 +117,21 @@ async def engineer_erasure_hook(req: Request):
         payload = {**payload, **dict(req.query_params)}
 
     initials = _extract_initials_from_obj(payload) or ""
+    device_type = (
+        payload.get("deviceType") or
+        payload.get("device_type") or
+        payload.get("type") or
+        "laptops_desktops"
+    ).strip().lower()
 
     print(f"Received engineer erasure: initials={initials}, payload={payload}")
 
     if not initials:
         return JSONResponse({"status": "error", "reason": "missing initials"}, status_code=400)
 
-    # Increment count for this engineer
+    # Increment count for this engineer (overall and per device type)
     db.increment_engineer_count(initials, 1)
+    db.increment_engineer_type_count(device_type, initials, 1)
     engineers = db.get_top_engineers(limit=10)
     engineer_count = next((e["count"] for e in engineers if e["initials"] == initials), 0)
 
@@ -135,6 +142,11 @@ async def get_top_engineers():
     # Return top 3 engineers by erasure count
     engineers = db.get_top_engineers(limit=3)
     return {"engineers": engineers}
+
+@app.get("/metrics/engineers/top-by-type")
+async def get_top_engineers_by_type(type: str = "laptops_desktops"):
+    engineers = db.get_top_engineers_by_type(type, limit=3)
+    return {"engineers": engineers, "type": type}
 
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")

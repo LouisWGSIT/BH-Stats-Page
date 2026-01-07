@@ -29,6 +29,17 @@ def init_db():
             PRIMARY KEY (date, initials)
         )
     """)
+
+    # Engineer stats by device type
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS engineer_stats_type (
+            date TEXT,
+            device_type TEXT,
+            initials TEXT,
+            count INTEGER DEFAULT 0,
+            PRIMARY KEY (date, device_type, initials)
+        )
+    """)
     
     # Seen IDs table for deduplication
     cursor.execute("""
@@ -135,6 +146,21 @@ def increment_engineer_count(initials: str, amount: int = 1, date_str: str = Non
     conn.commit()
     conn.close()
 
+def increment_engineer_type_count(device_type: str, initials: str, amount: int = 1, date_str: str = None):
+    """Increment engineer erasure count for a specific device type"""
+    if date_str is None:
+        date_str = get_today_str()
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO engineer_stats_type (date, device_type, initials, count)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(date, device_type, initials) DO UPDATE SET count = count + ?
+    """, (date_str, device_type, initials, amount, amount))
+    conn.commit()
+    conn.close()
+
 def get_top_engineers(limit: int = 3, date_str: str = None) -> List[Dict[str, any]]:
     """Get top engineers by erasure count"""
     if date_str is None:
@@ -153,6 +179,26 @@ def get_top_engineers(limit: int = 3, date_str: str = None) -> List[Dict[str, an
     rows = cursor.fetchall()
     conn.close()
     
+    return [{"initials": row[0], "count": row[1]} for row in rows]
+
+def get_top_engineers_by_type(device_type: str, limit: int = 3, date_str: str = None) -> List[Dict[str, any]]:
+    """Get top engineers for a given device type"""
+    if date_str is None:
+        date_str = get_today_str()
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT initials, count
+        FROM engineer_stats_type
+        WHERE date = ? AND device_type = ?
+        ORDER BY count DESC
+        LIMIT ?
+    """, (date_str, device_type, limit))
+
+    rows = cursor.fetchall()
+    conn.close()
+
     return [{"initials": row[0], "count": row[1]} for row in rows]
 
 # Initialize DB on import
