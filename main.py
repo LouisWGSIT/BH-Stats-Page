@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
+from typing import Any, Dict
 
 app = FastAPI(title="Warehouse Stats Service")
 
@@ -57,32 +58,71 @@ async def erasure_hook(req: Request):
 async def get_metrics():
     return stats_today
 
-@app.post("/hooks/engineer-erasure")
+def _extract_initials_from_obj(obj: Any):
+    # Try common explicit keys first
+    if isinstance(obj, dict):
+        for key in [
+            "initials",
+            "engineerInitials",
+            "engineer_initials",
+            "Engineer Initals",
+            "Engineer Initials",
+            "engineerInitals",
+        ]:
+            val = obj.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip().upper()
+
+    # Deep search for any key containing 'initial'
+    def deep(o: Any):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                # Prefer direct initial-like keys
+                if isinstance(k, str) and "initial" in k.lower():
+                    if isinstance(v, str) and v.strip():
+                        return v.strip().upper()
+                res = deep(v)
+                if res:
+                    return res
+        elif isinstance(o, list):
+            for item in o:
+                res = deep(item)
+                if res:
+                    return res
+        return None
+
+    return deep(obj)
+
+
+@app.api_route("/hooks/engineer-erasure", methods=["GET", "POST"])
 async def engineer_erasure_hook(req: Request):
     hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
     if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    payload = await req.json()
-    
-    # Try multiple field name variations
-    initials = (
-        payload.get("initials") or
-        payload.get("engineerInitials") or
-        payload.get("engineer_initials") or
-        payload.get("Engineer Initals") or
-        payload.get("engineerInitals") or
-        ""
-    ).strip().upper()
-    
+    # Merge JSON body (if any) and query params to a single payload
+    payload: Dict[str, Any] = {}
+    try:
+        payload = await req.json()
+        if not isinstance(payload, dict):
+            payload = {"_body": payload}
+    except Exception:
+        payload = {}
+
+    # Include query params as fallback
+    if req.query_params:
+        payload = {**payload, **dict(req.query_params)}
+
+    initials = _extract_initials_from_obj(payload) or ""
+
     print(f"Received engineer erasure: initials={initials}, payload={payload}")
 
-    if not initials or initials == "":
+    if not initials:
         return JSONResponse({"status": "error", "reason": "missing initials"}, status_code=400)
 
     # Increment count for this engineer
     engineer_stats[initials] = engineer_stats.get(initials, 0) + 1
-    
+
     return {"status": "ok", "engineer": initials, "count": engineer_stats[initials]}
 
 @app.get("/metrics/top-engineers")
