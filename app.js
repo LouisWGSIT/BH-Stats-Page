@@ -107,13 +107,15 @@
       body.innerHTML = '';
       (data.items || []).forEach((row) => {
         const tr = document.createElement('tr');
-        const success = row.successRate != null ? row.successRate.toFixed(1) + '%' : '—';
-        const avg = formatDuration(row.avgDurationSec);
+        const color = getEngineerColor(row.initials || '');
+        const lastActive = formatTimeAgo(row.lastActive);
         tr.innerHTML = `
-          <td>${row.initials || ''}</td>
+          <td>
+            <span class="engineer-badge" style="background-color: ${color}"></span>
+            ${row.initials || ''}
+          </td>
           <td class="value-strong">${row.erasures || 0}</td>
-          <td>${avg}</td>
-          <td>${success}</td>
+          <td class="time-ago">${lastActive}</td>
         `;
         body.appendChild(tr);
       });
@@ -202,5 +204,28 @@
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  function getEngineerColor(initials) {
+    const colors = ['#ff1ea3', '#8cf04a', '#00d4ff', '#ffcc00', '#ff6b35', '#a78bfa', '#34d399', '#fb923c'];
+    let hash = 0;
+    for (let i = 0; i < initials.length; i++) {
+      hash = initials.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  }
+
+  function formatTimeAgo(timestamp) {
+    if (!timestamp) return '—';
+    const now = new Date();
+    const then = new Date(timestamp);
+    const diffMs = now - then;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return then.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   }
 })();

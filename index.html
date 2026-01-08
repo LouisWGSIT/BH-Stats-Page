@@ -12,6 +12,9 @@
   <div id="app">
     <header class="header">
       <div class="brand">
+        <img src="assets/logo_gsit.png" alt="GSIT" class="logo" />
+        <h1>Warehouse Erasure Stats</h1>
+      </div>
 
     <main class="layout">
       <div class="grid top-row">
@@ -25,12 +28,6 @@
         <section class="card">
           <h2>Total Erasures This Month</h2>
           <div class="big-number" id="monthTotalValue">0</div>
-        </section>
-
-        <section class="card">
-          <h2>Average Time</h2>
-          <div class="big-number" id="avgDurationValue">--:--</div>
-          <div class="subtext">Avg time per erasure today</div>
         </section>
       </div>
 
@@ -81,8 +78,7 @@
               <tr>
                 <th>Engineer</th>
                 <th>Erasures</th>
-                <th>Avg Time</th>
-                <th>Success</th>
+                <th>Last Active</th>
               </tr>
             </thead>
             <tbody id="leaderboardBody"></tbody>

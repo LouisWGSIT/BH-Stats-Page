@@ -299,8 +299,7 @@ def leaderboard(scope: str = 'today', limit: int = 6):
     cursor.execute(f"""
         SELECT initials,
                COUNT(1) AS total,
-               AVG(duration_sec) AS avg_dur,
-               SUM(CASE WHEN event='success' THEN 1 ELSE 0 END) * 1.0 / COUNT(1) * 100.0 AS success_rate
+               MAX(ts) AS last_active
         FROM erasures
         WHERE {key_col} = ? AND initials IS NOT NULL
         GROUP BY initials
@@ -313,8 +312,7 @@ def leaderboard(scope: str = 'today', limit: int = 6):
         {
             "initials": r[0],
             "erasures": r[1],
-            "avgDurationSec": int(r[2]) if r[2] is not None else None,
-            "successRate": round(r[3], 1) if r[3] is not None else None,
+            "lastActive": r[2],
         }
         for r in rows
     ]

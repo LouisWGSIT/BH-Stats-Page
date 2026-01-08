@@ -94,7 +94,7 @@ body {
   width: 100%;
 }
 
-.top-row { grid-template-columns: repeat(3, 1fr); }
+.top-row { grid-template-columns: repeat(2, 1fr); }
 .categories-row { grid-template-columns: repeat(4, 1fr); }
 .bottom-row { grid-template-columns: repeat(2, 1fr); }
 
@@ -178,6 +178,21 @@ body {
 
 .leaderboard .muted {
   color: var(--muted);
+}
+
+.engineer-badge {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.time-ago {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
 }
 
 .card {
