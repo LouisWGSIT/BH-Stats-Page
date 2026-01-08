@@ -64,18 +64,46 @@ async def get_metrics():
 async def get_yesterday_metrics():
     return db.get_daily_stats(db.get_yesterday_str())
 
-# New: detailed erasure webhook for richer dashboard
-@app.post("/hooks/erasure-detail")
+# New: detailed erasure webhook for richer dashboard (accept GET/POST, robust parsing)
+@app.api_route("/hooks/erasure-detail", methods=["GET", "POST"])
 async def erasure_detail(req: Request):
     hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
     if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    payload = await req.json()
+    # Robust payload parsing: try JSON, fall back to form/query/raw text
+    payload: Dict[str, Any] = {}
+    try:
+        payload = await req.json()
+        if not isinstance(payload, dict):
+            payload = {"_body": payload}
+    except Exception:
+        try:
+            raw = await req.body()
+            text = raw.decode("utf-8", errors="ignore") if isinstance(raw, (bytes, bytearray)) else str(raw)
+            import json as _json
+            try:
+                payload = _json.loads(text)
+            except Exception:
+                # Try form-encoded
+                from urllib.parse import parse_qs
+                qs = parse_qs(text)
+                payload = {k: v[0] for k, v in qs.items()} if qs else {"_raw": text}
+        except Exception:
+            payload = {}
+
+    # Merge query params for GET or as fallback
+    if req.query_params:
+        payload = {**payload, **dict(req.query_params)}
+
+    # Minimal debug print (sanitized)
+    print(f"erasure-detail headers={{'Content-Type': '{req.headers.get('content-type', '')}'}} payload_keys={list(payload.keys())}")
+
     event = (payload.get("event") or "success").strip().lower()
     job_id = payload.get("jobId") or payload.get("assetTag") or payload.get("id")
-    device_type = (payload.get("deviceType") or payload.get("device_type") or "laptops_desktops").strip().lower()
-    initials = (payload.get("initials") or "").strip().upper() or None
+    device_type = (payload.get("deviceType") or payload.get("device_type") or payload.get("type") or "laptops_desktops").strip().lower()
+    initials_raw = payload.get("initials") or payload.get("Engineer Initals") or payload.get("Engineer Initials") or ""
+    initials = (initials_raw or "").strip().upper() or None
     duration_sec = payload.get("durationSec") or payload.get("duration")
     try:
         duration_sec = int(duration_sec) if duration_sec is not None else None
