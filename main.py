@@ -8,6 +8,9 @@ import database as db
 
 app = FastAPI(title="Warehouse Stats Service")
 
+# Initialize database tables on startup
+db.init_db()
+
 # Enable CORS for TV access from network
 app.add_middleware(
     CORSMiddleware,
