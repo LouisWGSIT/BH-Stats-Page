@@ -31,7 +31,7 @@ body {
   display: flex; 
   justify-content: center;
   align-items: center;
-  padding: 6px 12px;
+  padding: 4px 8px;
   flex-shrink: 0;
   position: relative;
 }
@@ -81,8 +81,8 @@ body {
 .layout {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 12px 12px;
+  gap: 6px;
+  padding: 4px 6px 6px;
   flex: 1;
   overflow: hidden;
   min-height: 0;
@@ -90,13 +90,13 @@ body {
 
 .grid {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
 }
 
 .top-row { grid-template-columns: repeat(3, 1fr); }
 .categories-row { grid-template-columns: repeat(4, 1fr); }
-.bottom-row { grid-template-columns: repeat(2, 1fr); }
+.bottom-row { grid-template-columns: 1fr; }
 
 .wide { grid-column: span 1; }
 
