@@ -2,8 +2,10 @@ import sqlite3
 from datetime import datetime, date
 from typing import List, Dict, Tuple
 from pathlib import Path
+import os
 
-DB_PATH = Path(__file__).parent / "warehouse_stats.db"
+# Use env var for persistent disk path on Render, fall back to local for dev
+DB_PATH = os.getenv("STATS_DB_PATH", str(Path(__file__).parent / "warehouse_stats.db"))
 
 def init_db():
     """Initialize database with required tables"""
