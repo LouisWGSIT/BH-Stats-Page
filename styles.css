@@ -20,7 +20,7 @@ html, body {
 
 body {
   margin: 0;
-  font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif;
+  font-family: "Inter", "Segoe UI", "Roboto", Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   display: flex;
@@ -78,29 +78,121 @@ body {
   display: none; 
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: 1fr auto;
-  gap: 20px;
-  padding: 20px 24px 24px;
+.layout {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 24px 24px;
   flex: 1;
   overflow: hidden;
   min-height: 0;
 }
 
+.grid {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+}
+
+.top-row { grid-template-columns: repeat(4, 1fr); }
+.categories-row { grid-template-columns: repeat(4, 1fr); }
+.bottom-row { grid-template-columns: repeat(2, 1fr); }
+
+.wide { grid-column: span 1; }
+
+.card.wide {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.bars {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bar-label {
+  width: 140px;
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.bar-track {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  height: 12px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ring-secondary), var(--ring-primary));
+  width: 0%;
+  transition: width 0.4s ease;
+}
+
+.bar-value {
+  width: 40px;
+  text-align: right;
+  font-weight: 700;
+}
+
+.leaderboard {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.leaderboard th {
+  text-align: left;
+  padding: 6px 8px;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.leaderboard td {
+  padding: 8px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.leaderboard tr:first-child td {
+  border-top: none;
+}
+
+.leaderboard .value-strong {
+  font-weight: 800;
+}
+
+.leaderboard .muted {
+  color: var(--muted);
+}
+
 .card {
-  background: rgba(0, 0, 0, 0.35);
+  background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 16px;
-  padding: 24px;
-  backdrop-filter: blur(8px);
+  padding: 20px;
+  backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
   min-height: 0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 15px 35px rgba(0,0,0,0.25);
 }
 
 .card h2 {
@@ -113,9 +205,9 @@ body {
 }
 
 .card canvas {
-  width: 160px !important;
-  height: 160px !important;
-  margin: 8px 0;
+  width: 150px !important;
+  height: 150px !important;
+  margin: 4px 0;
   flex-shrink: 0;
 }
 
@@ -131,29 +223,54 @@ body {
   text-align: center;
   color: var(--muted);
   font-weight: 700;
-  font-size: 14px;
-  margin-top: 8px;
+  font-size: 13px;
+  margin-top: 6px;
   letter-spacing: 0.5px;
 }
 
-.list-card {
+.subtext {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  margin-top: 6px;
+  letter-spacing: 0.2px;
+}
+
+.stat-card {
   background: rgba(0, 0, 0, 0.35);
-  border-radius: 16px;
-  padding: 20px;
+  border-radius: 14px;
+  padding: 16px;
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
 }
 
-.list-card h3 {
-  margin: 0 0 12px 0;
+.stat-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.stat-card h3 {
+  margin: 0;
   letter-spacing: 0.5px;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   line-height: 1.2;
-  text-transform: uppercase;
+}
+
+.pill {
+  background: rgba(140, 240, 74, 0.2);
+  color: #8cf04a;
+  border: 1px solid rgba(140, 240, 74, 0.4);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 13px;
 }
 
 .top-list {
@@ -168,14 +285,14 @@ body {
 
 .top-list li {
   margin: 8px 0;
-  padding: 8px 12px;
+  padding: 8px 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   counter-increment: item;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .top-list:empty:after {
@@ -183,7 +300,7 @@ body {
   display: block;
   text-align: center;
   color: var(--muted);
-  padding: 20px;
+  padding: 16px;
   font-style: italic;
 }
 
@@ -202,30 +319,22 @@ body {
 
 /* Responsive for smaller screens - keep 3 columns for TV */
 @media (max-width: 1200px) {
-  .grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 15px;
-    padding: 15px 15px 15px;
-  }
-  .card { padding: 12px; }
-  .card h2 { font-size: 16px; margin-bottom: 8px; }
-  .card canvas { width: 100px !important; height: 100px !important; }
-  .big-number { font-size: 42px; }
-  .list-card { padding: 12px; }
-  .list-card h3 { font-size: 15px; }
+  .top-row { grid-template-columns: repeat(2, 1fr); }
+  .categories-row { grid-template-columns: repeat(2, 1fr); }
+  .bottom-row { grid-template-columns: 1fr; }
+  .card canvas { width: 120px !important; height: 120px !important; }
+  .big-number { font-size: 48px; }
 }
 
 @media (max-width: 800px) {
-  .grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    padding: 10px;
-  }
-  .card { padding: 8px; }
-  .card h2 { font-size: 13px; margin-bottom: 6px; }
-  .card canvas { width: 80px !important; height: 80px !important; }
-  .big-number { font-size: 32px; }
-  .list-card { padding: 8px; }
-  .list-card h3 { font-size: 13px; }
-  .top-list { font-size: 12px; padding-left: 12px; }
+  .layout { padding: 12px; gap: 12px; }
+  .top-row { grid-template-columns: 1fr; }
+  .categories-row { grid-template-columns: 1fr; }
+  .bottom-row { grid-template-columns: 1fr; }
+  .card { padding: 12px; }
+  .card h2 { font-size: 16px; }
+  .card canvas { width: 100px !important; height: 100px !important; }
+  .big-number { font-size: 42px; }
+  .stat-card { padding: 12px; }
+  .top-list { font-size: 13px; }
 }

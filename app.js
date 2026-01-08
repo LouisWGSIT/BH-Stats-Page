@@ -1,8 +1,7 @@
 (async function () {
-  // Load config
   const cfg = await fetch('config.json').then(r => r.json());
 
-  // Apply theme variables dynamically
+  // Apply theme variables
   const root = document.documentElement;
   root.style.setProperty('--bg', cfg.theme.bg);
   root.style.setProperty('--text', cfg.theme.text);
@@ -10,109 +9,154 @@
   root.style.setProperty('--ring-primary', cfg.theme.ringPrimary);
   root.style.setProperty('--ring-secondary', cfg.theme.ringSecondary);
 
-  // Targets (use erased as global target for today donut)
+  // Targets
   document.getElementById('erasedTarget').textContent = cfg.targets.erased;
 
   // Charts
   const totalTodayChart = donut('chartTotalToday');
-  const successChart    = donut('chartSuccess');
+  const successChart = donut('chartSuccess');
 
-  // State
-  let lastUpdated = 0;
+  const categories = [
+    { key: 'laptops_desktops', label: 'Laptops/Desktops', countId: 'countLD', listId: 'topLD' },
+    { key: 'servers', label: 'Servers', countId: 'countServers', listId: 'topServers' },
+    { key: 'macs', label: 'Macs', countId: 'countMacs', listId: 'topMacs' },
+    { key: 'mobiles', label: 'Mobiles', countId: 'countMobiles', listId: 'topMobiles' },
+  ];
 
-  // Refresh function - fetch local metrics
-  async function refresh() {
+  async function refreshSummary() {
     try {
-      const res = await fetch("/metrics/summary");
+      const res = await fetch('/metrics/summary');
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
 
       const todayTotal = data.todayTotal || 0;
       const monthTotal = data.monthTotal || 0;
       const successRate = data.successRate || 0;
+      const avgDuration = data.avgDurationSec;
 
       document.getElementById('totalTodayValue').textContent = todayTotal;
       document.getElementById('monthTotalValue').textContent = monthTotal;
       document.getElementById('successRateValue').textContent = Math.round(successRate) + '%';
+      document.getElementById('avgDurationValue').textContent = formatDuration(avgDuration);
 
       updateDonut(totalTodayChart, todayTotal, cfg.targets.erased);
       updateDonut(successChart, Math.round(successRate), 100);
 
-      // Meta
-      lastUpdated = Date.now();
-      document.getElementById('last-updated').textContent =
-        'Last updated: ' + new Date(lastUpdated).toLocaleTimeString();
+      const lastUpdated = Date.now();
+      document.getElementById('last-updated').textContent = 'Last updated: ' + new Date(lastUpdated).toLocaleTimeString();
       document.getElementById('stale-indicator').classList.add('hidden');
     } catch (err) {
-      console.error('Refresh error:', err);
+      console.error('Summary refresh error:', err);
       document.getElementById('stale-indicator').classList.remove('hidden');
     }
   }
 
-  // Kick off refresh loop
-  refresh();
-  setInterval(refresh, cfg.refreshSeconds * 1000);
-
-  // Refresh top engineers
-  async function refreshEngineers() {
-    try {
-      const res = await fetch("/metrics/top-engineers");
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      
-      const topDEList = document.getElementById('topDE');
-      topDEList.innerHTML = '';
-      
-      if (data.engineers && data.engineers.length > 0) {
-        data.engineers.forEach((eng) => {
-          const name = (eng.initials || '').toString().trim();
-          if (!name) return; // skip empty names to avoid blank row
-          const li = document.createElement('li');
-          li.innerHTML = `<span>${name}</span><span class="value">${eng.count}</span>`;
-          topDEList.appendChild(li);
-        });
-      }
-    } catch (err) {
-      console.error('Engineer refresh error:', err);
+  function renderTopList(listId, engineers) {
+    const el = document.getElementById(listId);
+    el.innerHTML = '';
+    if (engineers && engineers.length > 0) {
+      engineers.forEach((eng) => {
+        const name = (eng.initials || '').toString().trim();
+        if (!name) return;
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${name}</span><span class="value">${eng.count}</span>`;
+        el.appendChild(li);
+      });
     }
   }
 
-  // Kick off engineer refresh loop
-  refreshEngineers();
-  setInterval(refreshEngineers, cfg.refreshSeconds * 1000);
-  
-    // Populate a top-3 list element with engineers data
-    function renderTopList(listId, engineers) {
-      const el = document.getElementById(listId);
-      el.innerHTML = '';
-      if (engineers && engineers.length > 0) {
-        engineers.forEach((eng) => {
-          const li = document.createElement('li');
-          li.innerHTML = `<span>${eng.initials}</span><span class="value">${eng.count}</span>`;
-          el.appendChild(li);
-        });
-      }
+  async function refreshTopByType(type, listId) {
+    try {
+      const res = await fetch(`/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      renderTopList(listId, data.engineers);
+    } catch (err) {
+      console.error('Top-by-type refresh error:', type, err);
     }
-  
-    async function refreshTopByType(type, listId) {
-      try {
-        const res = await fetch(`/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}`);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        renderTopList(listId, data.engineers);
-      } catch (err) {
-        console.error('Top-by-type refresh error:', type, err);
-      }
+  }
+
+  function refreshAllTopLists() {
+    categories.forEach(c => refreshTopByType(c.key, c.listId));
+  }
+
+  async function refreshByTypeCounts() {
+    try {
+      const res = await fetch('/metrics/by-type');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const counts = {
+        laptops_desktops: data['laptops_desktops'] || 0,
+        servers: data['servers'] || 0,
+        macs: data['macs'] || 0,
+        mobiles: data['mobiles'] || 0,
+      };
+      categories.forEach(c => {
+        const el = document.getElementById(c.countId);
+        if (el) el.textContent = counts[c.key] || 0;
+      });
+      renderBars(counts);
+    } catch (err) {
+      console.error('By-type refresh error:', err);
     }
-  
-    function refreshAllTopLists() {
-      refreshTopByType('laptops_desktops', 'topLD');
-      refreshTopByType('servers', 'topServers');
-      refreshTopByType('loose_drives', 'topDrives');
+  }
+
+  async function refreshLeaderboard() {
+    try {
+      const res = await fetch('/metrics/engineers/leaderboard?scope=today&limit=6');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const body = document.getElementById('leaderboardBody');
+      body.innerHTML = '';
+      (data.items || []).forEach((row) => {
+        const tr = document.createElement('tr');
+        const success = row.successRate != null ? row.successRate.toFixed(1) + '%' : '—';
+        const avg = formatDuration(row.avgDurationSec);
+        tr.innerHTML = `
+          <td>${row.initials || ''}</td>
+          <td class="value-strong">${row.erasures || 0}</td>
+          <td>${avg}</td>
+          <td>${success}</td>
+        `;
+        body.appendChild(tr);
+      });
+    } catch (err) {
+      console.error('Leaderboard refresh error:', err);
     }
-  
+  }
+
+  function renderBars(counts) {
+    const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+    const defs = categories;
+    const container = document.getElementById('byTypeBars');
+    if (!container) return;
+    container.innerHTML = '';
+    defs.forEach(def => {
+      const val = counts[def.key] || 0;
+      const pct = Math.round((val / total) * 100);
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      row.innerHTML = `
+        <div class="bar-label">${def.label}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        <div class="bar-value">${val}</div>
+      `;
+      container.appendChild(row);
+    });
+  }
+
+  // Kick off refresh loops
+  refreshSummary();
+  refreshAllTopLists();
+  refreshByTypeCounts();
+  refreshLeaderboard();
+
+  setInterval(() => {
+    refreshSummary();
     refreshAllTopLists();
-    setInterval(refreshAllTopLists, cfg.refreshSeconds * 1000);
+    refreshByTypeCounts();
+    refreshLeaderboard();
+  }, cfg.refreshSeconds * 1000);
 
   function updateDonut(chart, value, target) {
     const remaining = Math.max(target - value, 0);
@@ -120,7 +164,6 @@
     chart.update();
   }
 
-  // Chart factory: ring look and feel
   function donut(canvasId) {
     const ctx = document.getElementById(canvasId);
     const primary = getComputedStyle(document.documentElement)
@@ -155,5 +198,12 @@
         }
       }
     });
+  }
+
+  function formatDuration(sec) {
+    if (sec == null || isNaN(sec)) return '--:--';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
 })();
