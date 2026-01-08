@@ -283,8 +283,8 @@ async def get_top_engineers():
     return {"engineers": engineers}
 
 @app.get("/metrics/engineers/top-by-type")
-async def get_top_engineers_by_type(type: str = "laptops_desktops"):
-    engineers = db.get_top_engineers_by_type(type, limit=3)
+async def get_top_engineers_by_type(type: str = "laptops_desktops", scope: str = "today", limit: int = 3):
+    engineers = db.top_engineers(scope=scope, device_type=type, limit=limit)
     return {"engineers": engineers, "type": type}
 
 # Serve static files (HTML, CSS, JS)
