@@ -14,6 +14,7 @@
 
   // Charts
   const totalTodayChart = donut('chartTotalToday');
+  const monthChart = donut('chartMonthToday');
 
   const categories = [
     { key: 'laptops_desktops', label: 'Laptops/Desktops', countId: 'countLD', listId: 'topLD' },
@@ -35,13 +36,16 @@
 
       document.getElementById('totalTodayValue').textContent = todayTotal;
       document.getElementById('monthTotalValue').textContent = monthTotal;
-      document.getElementById('avgDurationValue').textContent = formatDuration(avgDuration);
 
       updateDonut(totalTodayChart, todayTotal, cfg.targets.erased);
+      updateDonut(monthChart, monthTotal, 200);
 
       const lastUpdated = Date.now();
       document.getElementById('last-updated').textContent = 'Last updated: ' + new Date(lastUpdated).toLocaleTimeString();
       document.getElementById('stale-indicator').classList.add('hidden');
+      
+      // Keep screen alive by logging activity
+      keepScreenAlive();
     } catch (err) {
       console.error('Summary refresh error:', err);
       document.getElementById('stale-indicator').classList.remove('hidden');
@@ -198,6 +202,19 @@
       }
     });
   }
+
+  function keepScreenAlive() {
+    // Prevent Fire Stick timeout by periodically simulating user activity
+    // This keeps the screen from timing out after 10 minutes of inactivity
+    if (document.hidden) return; // Don't wake if app is hidden
+    
+    // Subtle visual pulse (barely noticeable)
+    document.body.style.opacity = '0.999';
+    setTimeout(() => { document.body.style.opacity = '1'; }, 100);
+  }
+  
+  // Keep screen alive every 5 minutes
+  setInterval(keepScreenAlive, 5 * 60 * 1000);
 
   function formatDuration(sec) {
     if (sec == null || isNaN(sec)) return '--:--';
