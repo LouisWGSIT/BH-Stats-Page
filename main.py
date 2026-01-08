@@ -61,6 +61,62 @@ async def get_metrics():
 async def get_yesterday_metrics():
     return db.get_daily_stats(db.get_yesterday_str())
 
+# New: detailed erasure webhook for richer dashboard
+@app.post("/hooks/erasure-detail")
+async def erasure_detail(req: Request):
+    hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
+    if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    payload = await req.json()
+    event = (payload.get("event") or "success").strip().lower()
+    job_id = payload.get("jobId") or payload.get("assetTag") or payload.get("id")
+    device_type = (payload.get("deviceType") or payload.get("device_type") or "laptops_desktops").strip().lower()
+    initials = (payload.get("initials") or "").strip().upper() or None
+    duration_sec = payload.get("durationSec") or payload.get("duration")
+    try:
+        duration_sec = int(duration_sec) if duration_sec is not None else None
+    except Exception:
+        duration_sec = None
+    error_type = payload.get("errorType") or payload.get("error")
+    ts = payload.get("timestamp")
+
+    # Dedup if a real job_id is present
+    if job_id and db.is_job_seen(job_id):
+        return {"status": "ignored", "reason": "duplicate"}
+
+    db.add_erasure_event(event=event, device_type=device_type, initials=initials,
+                         duration_sec=duration_sec, error_type=error_type, job_id=job_id, ts=ts)
+
+    # Keep simple daily erased counter in sync for compatibility when success
+    if event in ["success", "connected"]:
+        db.increment_stat("erased", 1)
+    if job_id:
+        db.mark_job_seen(job_id)
+
+    return {"status": "ok"}
+
+# Summary metrics powering the new dashboard
+@app.get("/metrics/summary")
+async def metrics_summary():
+    return db.get_summary_today_month()
+
+@app.get("/metrics/by-type")
+async def metrics_by_type():
+    return db.get_counts_by_type_today()
+
+@app.get("/metrics/errors")
+async def metrics_errors():
+    return db.get_error_distribution_today()
+
+@app.get("/metrics/engineers/top2")
+async def metrics_engineers_top(scope: str = "today", type: str | None = None, limit: int = 3):
+    return {"engineers": db.top_engineers(scope=scope, device_type=type, limit=limit)}
+
+@app.get("/metrics/engineers/leaderboard")
+async def metrics_engineers_leaderboard(scope: str = "today", limit: int = 6):
+    return {"items": db.leaderboard(scope=scope, limit=limit)}
+
 def _extract_initials_from_obj(obj: Any):
     # Try common explicit keys first
     if isinstance(obj, dict):

@@ -22,26 +22,23 @@
     </header>
 
     <main class="grid">
-      <!-- Donut cards -->
+      <!-- Summary cards -->
       <section class="card">
-        <h2>Items Booked In</h2>
-        <canvas id="chartBooked"></canvas>
-        <div class="big-number" id="bookedValue">0</div>
-        <div class="target">Target: <span id="bookedTarget">XX</span></div>
-      </section>
-
-      <section class="card">
-        <h2>Erased (Laptops/Desktops)</h2>
-        <canvas id="chartErased"></canvas>
-        <div class="big-number" id="erasedValue">0</div>
+        <h2>Total Erasures Today</h2>
+        <canvas id="chartTotalToday"></canvas>
+        <div class="big-number" id="totalTodayValue">0</div>
         <div class="target">Target: <span id="erasedTarget">XX</span></div>
       </section>
 
       <section class="card">
-        <h2>QA’d</h2>
-        <canvas id="chartQa"></canvas>
-        <div class="big-number" id="qaValue">0</div>
-        <div class="target">Target: <span id="qaTarget">XX</span></div>
+        <h2>Total Erasures This Month</h2>
+        <div class="big-number" id="monthTotalValue">0</div>
+      </section>
+
+      <section class="card">
+        <h2>Success Rate</h2>
+        <canvas id="chartSuccess"></canvas>
+        <div class="big-number" id="successRateValue">0%</div>
       </section>
 
       <!-- Top 3 lists -->

@@ -10,15 +10,12 @@
   root.style.setProperty('--ring-primary', cfg.theme.ringPrimary);
   root.style.setProperty('--ring-secondary', cfg.theme.ringSecondary);
 
-  // Targets
-  document.getElementById('bookedTarget').textContent = cfg.targets.bookedIn;
+  // Targets (use erased as global target for today donut)
   document.getElementById('erasedTarget').textContent = cfg.targets.erased;
-  document.getElementById('qaTarget').textContent = cfg.targets.qa;
 
   // Charts
-  const bookedChart = donut('chartBooked');
-  const erasedChart = donut('chartErased');
-  const qaChart     = donut('chartQa');
+  const totalTodayChart = donut('chartTotalToday');
+  const successChart    = donut('chartSuccess');
 
   // State
   let lastUpdated = 0;
@@ -26,23 +23,20 @@
   // Refresh function - fetch local metrics
   async function refresh() {
     try {
-      const res = await fetch("/metrics/today");
+      const res = await fetch("/metrics/summary");
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
 
-      // Update big numbers
-      const bookedVal = data.bookedIn || 0;
-      const erasedVal = data.erased || 0;
-      const qaVal = data.qa || 0;
+      const todayTotal = data.todayTotal || 0;
+      const monthTotal = data.monthTotal || 0;
+      const successRate = data.successRate || 0;
 
-      document.getElementById('bookedValue').textContent = bookedVal;
-      document.getElementById('erasedValue').textContent = erasedVal;
-      document.getElementById('qaValue').textContent = qaVal;
+      document.getElementById('totalTodayValue').textContent = todayTotal;
+      document.getElementById('monthTotalValue').textContent = monthTotal;
+      document.getElementById('successRateValue').textContent = Math.round(successRate) + '%';
 
-      // Update donuts (value vs remaining to target)
-      updateDonut(bookedChart, bookedVal, cfg.targets.bookedIn);
-      updateDonut(erasedChart, erasedVal, cfg.targets.erased);
-      updateDonut(qaChart, qaVal, cfg.targets.qa);
+      updateDonut(totalTodayChart, todayTotal, cfg.targets.erased);
+      updateDonut(successChart, Math.round(successRate), 100);
 
       // Meta
       lastUpdated = Date.now();

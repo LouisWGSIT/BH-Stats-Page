@@ -49,6 +49,26 @@ def init_db():
             PRIMARY KEY (date, job_id)
         )
     """)
+
+    # Detailed erasure events
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS erasures (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT,
+            date TEXT,
+            month TEXT,
+            event TEXT,             -- success|failure|connected
+            device_type TEXT,       -- laptops_desktops|servers|loose_drives|macs|mobiles
+            initials TEXT,
+            duration_sec INTEGER,
+            error_type TEXT,
+            job_id TEXT
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_date ON erasures(date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_month ON erasures(month)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_type ON erasures(device_type)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_initials ON erasures(initials)")
     
     conn.commit()
     conn.close()
@@ -160,6 +180,131 @@ def increment_engineer_type_count(device_type: str, initials: str, amount: int =
     """, (date_str, device_type, initials, amount, amount))
     conn.commit()
     conn.close()
+
+def add_erasure_event(*, event: str, device_type: str, initials: str = None, duration_sec: int = None,
+                      error_type: str = None, job_id: str = None, ts: str = None):
+    """Insert a detailed erasure event"""
+    from datetime import datetime
+    if ts is None:
+        ts = datetime.utcnow().isoformat()
+    d = ts[:10]
+    month = ts[:7]
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO erasures (ts, date, month, event, device_type, initials, duration_sec, error_type, job_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (ts, d, month, event, device_type, (initials or None), duration_sec, (error_type or None), (job_id or None))
+    )
+    conn.commit()
+    conn.close()
+
+def get_summary_today_month():
+    """Return totals for today and this month, success rate and avg duration (today)."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    today = get_today_str()
+    month = today[:7]
+
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE month = ?", (month,))
+    month_total = cursor.fetchone()[0] or 0
+
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date = ?", (today,))
+    today_total_all = cursor.fetchone()[0] or 0
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date = ? AND event = 'success'", (today,))
+    today_success = cursor.fetchone()[0] or 0
+    cursor.execute("SELECT AVG(duration_sec) FROM erasures WHERE date = ? AND duration_sec IS NOT NULL", (today,))
+    avg_dur = cursor.fetchone()[0]
+    conn.close()
+
+    success_rate = (today_success / today_total_all * 100.0) if today_total_all else 0.0
+    return {
+        "todayTotal": today_total_all,
+        "monthTotal": month_total,
+        "successRate": round(success_rate, 1),
+        "avgDurationSec": int(avg_dur) if avg_dur is not None else None
+    }
+
+def get_counts_by_type_today():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    today = get_today_str()
+    cursor.execute(
+        "SELECT device_type, COUNT(1) FROM erasures WHERE date = ? AND event = 'success' GROUP BY device_type",
+        (today,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return {k or "unknown": v for (k, v) in rows}
+
+def get_error_distribution_today():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    today = get_today_str()
+    cursor.execute(
+        "SELECT COALESCE(error_type, 'Other') AS et, COUNT(1) FROM erasures WHERE date = ? AND event = 'failure' GROUP BY et",
+        (today,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return {k: v for (k, v) in rows}
+
+def top_engineers(scope: str = 'today', device_type: str = None, limit: int = 3):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    if scope == 'month':
+        key_col = 'month'
+        key_val = get_today_str()[:7]
+    else:
+        key_col = 'date'
+        key_val = get_today_str()
+
+    where = f"{key_col} = ? AND event = 'success'"
+    params = [key_val]
+    if device_type:
+        where += " AND device_type = ?"
+        params.append(device_type)
+
+    cursor.execute(f"SELECT initials, COUNT(1) c FROM erasures WHERE {where} AND initials IS NOT NULL GROUP BY initials ORDER BY c DESC LIMIT ?", (*params, limit))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"initials": r[0], "count": r[1]} for r in rows]
+
+def leaderboard(scope: str = 'today', limit: int = 6):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    if scope == 'month':
+        key_col = 'month'
+        key_val = get_today_str()[:7]
+    else:
+        key_col = 'date'
+        key_val = get_today_str()
+
+    cursor.execute(f"""
+        SELECT initials,
+               COUNT(1) AS total,
+               AVG(duration_sec) AS avg_dur,
+               SUM(CASE WHEN event='success' THEN 1 ELSE 0 END) * 1.0 / COUNT(1) * 100.0 AS success_rate
+        FROM erasures
+        WHERE {key_col} = ? AND initials IS NOT NULL
+        GROUP BY initials
+        ORDER BY total DESC
+        LIMIT ?
+    """, (key_val, limit))
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {
+            "initials": r[0],
+            "erasures": r[1],
+            "avgDurationSec": int(r[2]) if r[2] is not None else None,
+            "successRate": round(r[3], 1) if r[3] is not None else None,
+        }
+        for r in rows
+    ]
 
 def get_top_engineers(limit: int = 3, date_str: str = None) -> List[Dict[str, any]]:
     """Get top engineers by erasure count"""
