@@ -120,6 +120,26 @@ async def metrics_engineers_top(scope: str = "today", type: str | None = None, l
 async def metrics_engineers_leaderboard(scope: str = "today", limit: int = 6):
     return {"items": db.leaderboard(scope=scope, limit=limit)}
 
+# Admin: delete an ingested event by jobId (secured by API key)
+@app.post("/admin/delete-event")
+async def admin_delete_event(req: Request):
+    hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
+    if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    body = {}
+    try:
+        body = await req.json()
+    except Exception:
+        pass
+    job_id = (body.get("jobId") if isinstance(body, dict) else None) or req.query_params.get("jobId")
+    if not job_id:
+        raise HTTPException(status_code=400, detail="jobId is required")
+
+    deleted = db.delete_event_by_job(job_id)
+    summary = db.get_summary_today_month()
+    return {"deleted": deleted, "jobId": job_id, "summary": summary}
+
 def _extract_initials_from_obj(obj: Any):
     # Try common explicit keys first
     if isinstance(obj, dict):

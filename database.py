@@ -82,6 +82,17 @@ def get_yesterday_str() -> str:
     from datetime import timedelta
     return (date.today() - timedelta(days=1)).isoformat()
 
+def delete_event_by_job(job_id: str) -> int:
+    """Delete erasure events and seen_id by job_id. Returns rows deleted from erasures."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM erasures WHERE job_id = ?", (job_id,))
+    deleted = cursor.rowcount
+    cursor.execute("DELETE FROM seen_ids WHERE job_id = ?", (job_id,))
+    conn.commit()
+    conn.close()
+    return deleted
+
 def get_daily_stats(date_str: str = None) -> Dict[str, int]:
     """Get stats for a specific date (defaults to today)"""
     if date_str is None:
