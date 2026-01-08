@@ -11,6 +11,10 @@
 
   // Targets
   document.getElementById('erasedTarget').textContent = cfg.targets.erased;
+  if (cfg.targets.month) {
+    const mt = document.getElementById('monthTarget');
+    if (mt) mt.textContent = cfg.targets.month;
+  }
 
   // Charts
   const totalTodayChart = donut('chartTotalToday');
@@ -31,14 +35,11 @@
 
       const todayTotal = data.todayTotal || 0;
       const monthTotal = data.monthTotal || 0;
-      const successRate = data.successRate || 0;
-      const avgDuration = data.avgDurationSec;
-
       document.getElementById('totalTodayValue').textContent = todayTotal;
       document.getElementById('monthTotalValue').textContent = monthTotal;
 
       updateDonut(totalTodayChart, todayTotal, cfg.targets.erased);
-      updateDonut(monthChart, monthTotal, 200);
+      updateDonut(monthChart, monthTotal, cfg.targets.month || 10000);
 
       const lastUpdated = Date.now();
       document.getElementById('last-updated').textContent = 'Last updated: ' + new Date(lastUpdated).toLocaleTimeString();
@@ -104,7 +105,7 @@
 
   async function refreshLeaderboard() {
     try {
-      const res = await fetch('/metrics/engineers/leaderboard?scope=today&limit=6');
+      const res = await fetch('/metrics/engineers/leaderboard?scope=today&limit=3');
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       const body = document.getElementById('leaderboardBody');

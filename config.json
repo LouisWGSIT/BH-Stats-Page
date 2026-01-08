@@ -9,7 +9,8 @@
   },
   "targets": {
     "bookedIn": 150,
-    "erased": 200,
+    "erased": 500,
+    "month": 10000,
     "qa": 180
   },
   "auth": {
