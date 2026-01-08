@@ -15,18 +15,22 @@
         <img src="assets/logo_gsit.png" alt="GSIT" class="logo" />
         <h1>Warehouse Erasure Stats</h1>
       </div>
+      <div class="meta">
+        <span id="last-updated">Last updated: --</span>
+        <span id="stale-indicator" class="stale hidden">Stale</span>
+      </div>
     </header>
 
     <main class="layout">
       <div class="grid top-row">
-        <section class="card">
+        <section class="card donut-card">
           <h2>Total Erasures Today</h2>
           <canvas id="chartTotalToday"></canvas>
           <div class="big-number" id="totalTodayValue">0</div>
           <div class="target">Target: <span id="erasedTarget">XX</span></div>
         </section>
 
-        <section class="card">
+        <section class="card donut-card">
           <h2>Total Erasures This Month</h2>
           <canvas id="chartMonthToday"></canvas>
           <div class="big-number" id="monthTotalValue">0</div>

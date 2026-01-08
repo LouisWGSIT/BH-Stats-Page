@@ -52,6 +52,15 @@ body {
   flex-shrink: 0;
 }
 
+.meta { 
+  display: flex; 
+  gap: 12px; 
+  font-weight: 600; 
+  color: var(--muted); 
+  font-size: 12px;
+  margin-left: auto;
+}
+
 .brand h1 {
   margin: 0;
   font-size: 22px;
@@ -234,6 +243,23 @@ body {
   height: 120px !important;
   margin: 4px 0;
   flex-shrink: 0;
+}
+
+.donut-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.donut-card::after {
+  content: '';
+  position: absolute;
+  inset: -30%;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 55%);
+  pointer-events: none;
+}
+
+.donut-card canvas {
+  filter: drop-shadow(0 6px 14px rgba(0,0,0,0.35));
 }
 
 .big-number {
