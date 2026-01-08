@@ -31,7 +31,7 @@ body {
   display: flex; 
   justify-content: center;
   align-items: center;
-  padding: 4px 8px;
+  padding: 10px 20px;
   flex-shrink: 0;
   position: relative;
 }
@@ -44,14 +44,14 @@ body {
 
 .brand h1 {
   margin: 0;
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1;
-  letter-spacing: 0.8px;
+  letter-spacing: 1px;
 }
 
 .logo { 
-  height: 26px; 
+  height: 32px; 
   width: auto; 
 }
 
@@ -81,8 +81,8 @@ body {
 .layout {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 4px 6px 6px;
+  gap: 12px;
+  padding: 12px 20px 20px;
   flex: 1;
   overflow: hidden;
   min-height: 0;
@@ -90,13 +90,13 @@ body {
 
 .grid {
   display: grid;
-  gap: 6px;
+  gap: 12px;
   width: 100%;
 }
 
 .top-row { grid-template-columns: repeat(3, 1fr); }
 .categories-row { grid-template-columns: repeat(4, 1fr); }
-.bottom-row { grid-template-columns: 1fr; }
+.bottom-row { grid-template-columns: repeat(2, 1fr); }
 
 .wide { grid-column: span 1; }
 
@@ -109,8 +109,8 @@ body {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  margin-top: 5px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .bar-row {
@@ -120,17 +120,17 @@ body {
 }
 
 .bar-label {
-  width: 100px;
+  width: 130px;
   font-weight: 700;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .bar-track {
   flex: 1;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 999px;
-  height: 10px;
+  height: 12px;
   overflow: hidden;
 }
 
@@ -151,20 +151,20 @@ body {
 .leaderboard {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 4px;
-  font-size: 11px;
+  margin-top: 6px;
+  font-size: 13px;
 }
 
 .leaderboard th {
   text-align: left;
-  padding: 3px 4px;
+  padding: 4px 6px;
   color: var(--muted);
   font-weight: 700;
   letter-spacing: 0.3px;
 }
 
 .leaderboard td {
-  padding: 4px 4px;
+  padding: 6px 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -182,8 +182,8 @@ body {
 
 .card {
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
-  border-radius: 10px;
-  padding: 10px;
+  border-radius: 14px;
+  padding: 16px;
   backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
@@ -196,25 +196,25 @@ body {
 }
 
 .card h2 {
-  margin: 0 0 4px 0;
-  letter-spacing: 0.4px;
-  font-size: 13px;
+  margin: 0 0 8px 0;
+  letter-spacing: 0.5px;
+  font-size: 16px;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.2;
   text-transform: uppercase;
 }
 
 .card canvas {
-  width: 100px !important;
-  height: 100px !important;
-  margin: 2px 0;
+  width: 120px !important;
+  height: 120px !important;
+  margin: 4px 0;
   flex-shrink: 0;
 }
 
 .big-number {
-  font-size: 38px;
+  font-size: 48px;
   font-weight: 800;
-  margin: 4px 0 0 0;
+  margin: 6px 0 0 0;
   line-height: 1;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
@@ -223,23 +223,23 @@ body {
   text-align: center;
   color: var(--muted);
   font-weight: 700;
-  font-size: 11px;
-  margin-top: 3px;
-  letter-spacing: 0.4px;
+  font-size: 13px;
+  margin-top: 6px;
+  letter-spacing: 0.5px;
 }
 
 .subtext {
   color: var(--muted);
   font-weight: 600;
-  font-size: 11px;
-  margin-top: 3px;
+  font-size: 13px;
+  margin-top: 6px;
   letter-spacing: 0.2px;
 }
 
 .stat-card {
   background: rgba(0, 0, 0, 0.35);
-  border-radius: 10px;
-  padding: 8px;
+  border-radius: 12px;
+  padding: 12px;
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
@@ -252,25 +252,25 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .stat-card h3 {
   margin: 0;
-  letter-spacing: 0.4px;
-  font-size: 12px;
+  letter-spacing: 0.5px;
+  font-size: 15px;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.2;
 }
 
 .pill {
   background: rgba(140, 240, 74, 0.2);
   color: #8cf04a;
   border: 1px solid rgba(140, 240, 74, 0.4);
-  padding: 2px 8px;
+  padding: 4px 10px;
   border-radius: 999px;
   font-weight: 700;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .top-list {
@@ -284,15 +284,15 @@ body {
 }
 
 .top-list li {
-  margin: 3px 0;
-  padding: 4px 6px;
+  margin: 6px 0;
+  padding: 6px 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   counter-increment: item;
   background: rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  font-size: 11px;
+  border-radius: 8px;
+  font-size: 13px;
 }
 
 .top-list:empty:after {
