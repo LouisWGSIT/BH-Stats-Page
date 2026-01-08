@@ -14,7 +14,6 @@
 
   // Charts
   const totalTodayChart = donut('chartTotalToday');
-  const successChart = donut('chartSuccess');
 
   const categories = [
     { key: 'laptops_desktops', label: 'Laptops/Desktops', countId: 'countLD', listId: 'topLD' },
@@ -36,11 +35,9 @@
 
       document.getElementById('totalTodayValue').textContent = todayTotal;
       document.getElementById('monthTotalValue').textContent = monthTotal;
-      document.getElementById('successRateValue').textContent = Math.round(successRate) + '%';
       document.getElementById('avgDurationValue').textContent = formatDuration(avgDuration);
 
       updateDonut(totalTodayChart, todayTotal, cfg.targets.erased);
-      updateDonut(successChart, Math.round(successRate), 100);
 
       const lastUpdated = Date.now();
       document.getElementById('last-updated').textContent = 'Last updated: ' + new Date(lastUpdated).toLocaleTimeString();
