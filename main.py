@@ -145,6 +145,11 @@ async def erasure_detail(req: Request):
 
     db.add_erasure_event(event=event, device_type=device_type, initials=initials,
                          duration_sec=duration_sec, error_type=error_type, job_id=job_id, ts=ts)
+    try:
+        dbg = db.get_summary_today_month()
+        print(f"erasure-detail wrote event={event} type={device_type} jobId={job_id} -> todayTotal={dbg.get('todayTotal')} avg={dbg.get('avgDurationSec')}")
+    except Exception as _e:
+        print(f"erasure-detail post-insert check failed: {_e}")
 
     # Keep simple daily erased counter in sync for compatibility when success
     if event in ["success", "connected"]:
