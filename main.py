@@ -110,7 +110,34 @@ async def erasure_detail(req: Request):
     except Exception:
         duration_sec = None
     error_type = payload.get("errorType") or payload.get("error")
-    ts = payload.get("timestamp")
+    ts_in = payload.get("timestamp")
+    # Normalize timestamp to ISO or drop to use UTC now
+    ts = None
+    if isinstance(ts_in, (int, float)):
+        try:
+            from datetime import datetime, timezone
+            ts = datetime.fromtimestamp(float(ts_in), tz=timezone.utc).isoformat()
+        except Exception:
+            ts = None
+    elif isinstance(ts_in, str) and ts_in.strip():
+        s = ts_in.strip()
+        try:
+            # ISO 8601 with possible 'Z'
+            from datetime import datetime
+            if s.endswith('Z'):
+                s = s.replace('Z', '+00:00')
+            try:
+                ts = datetime.fromisoformat(s).isoformat()
+            except Exception:
+                # Try common UK/EU formats
+                for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+                    try:
+                        ts = datetime.strptime(s, fmt).isoformat()
+                        break
+                    except Exception:
+                        continue
+        except Exception:
+            ts = None
 
     # Dedup if a real job_id is present
     if job_id and db.is_job_seen(job_id):
