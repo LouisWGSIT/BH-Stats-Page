@@ -121,7 +121,7 @@ body {
   height: 100%;
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
-  padding: 16px 12px;
+  padding: 12px 8px;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 15px 35px rgba(0,0,0,0.25);
@@ -134,25 +134,102 @@ body {
 }
 
 .race-section h2 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
+  margin: 0 0 6px 0;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.5px;
   text-transform: uppercase;
   text-align: center;
-  writing-mode: horizontal-tb;
 }
 
 .race-finish-line {
   text-align: center;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   color: var(--ring-secondary);
-  padding: 6px 0;
+  padding: 4px 0;
   border-bottom: 2px dashed var(--ring-secondary);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   flex-shrink: 0;
+}
+
+.race-track {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.race-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  position: relative;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+  padding: 4px 0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.lane-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--muted);
+  min-height: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.race-car {
+  position: relative;
+  width: 100%;
+  height: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 20px;
+}
+
+.car-trail {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+  border-radius: 2px;
+  transition: height 0.3s ease;
+  height: 0%;
+  z-index: 1;
+}
+
+.car-body {
+  font-size: 16px;
+  font-weight: 700;
+  transition: bottom 0.3s ease;
+  position: relative;
+  z-index: 2;
+  animation: carPulse 0.8s ease infinite;
+}
+
+.car-1 .car-body { animation-delay: 0s; }
+.car-2 .car-body { animation-delay: 0.2s; }
+.car-3 .car-body { animation-delay: 0.4s; }
+
+@keyframes carPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
 }
 
 .race-track {
@@ -195,6 +272,7 @@ body {
   bottom: 0;
   flex-shrink: 0;
 }
+
 
 .car-1 { animation-delay: 0s; }
 .car-2 { animation-delay: 0.2s; }
@@ -258,6 +336,103 @@ body {
   font-size: 24px;
   font-weight: 700;
   color: var(--text);
+}
+
+.greenie-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 8000;
+  max-width: 50vw;
+  max-height: 50vh;
+}
+
+.greenie-container.hidden {
+  display: none;
+}
+
+.greenie-wrapper {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  animation: slideInRight 2s ease-out forwards;
+}
+
+.greenie-image {
+  height: 280px;
+  width: auto;
+  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.4));
+  flex-shrink: 0;
+}
+
+.speech-bubble {
+  background: linear-gradient(145deg, rgba(140, 240, 74, 0.2), rgba(140, 240, 74, 0.1));
+  border: 2px solid var(--ring-primary);
+  border-radius: 20px;
+  padding: 16px 20px;
+  backdrop-filter: blur(10px);
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+}
+
+.speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -12px;
+  left: 20px;
+  width: 0;
+  height: 0;
+  border-left: 12px solid transparent;
+  border-right: 0 solid transparent;
+  border-top: 12px solid var(--ring-primary);
+}
+
+.speech-bubble::before {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 22px;
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 0 solid transparent;
+  border-top: 10px solid rgba(140, 240, 74, 0.2);
+}
+
+#greenieQuote {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100px);
+  }
+}
+
+.greenie-wrapper.exit {
+  animation: slideOutRight 2s ease-in forwards;
 }
 
 .grid {

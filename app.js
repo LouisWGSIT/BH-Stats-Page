@@ -31,6 +31,137 @@
   let raceData = { engineer1: null, engineer2: null, engineer3: null, firstFinisher: null };
   let winnerAnnounced = false;
 
+  // Greenie state
+  let greenieState = {
+    currentStats: { todayTotal: 0, monthTotal: 0, byType: {} },
+    lastQuotes: [],
+    lastShowTime: 0,
+  };
+
+  const greenieQuotes = {
+    praise: [
+      (eng) => `${eng}, you're crushing it! Keep up the amazing work! 💪`,
+      (eng) => `${eng}, you're the star of the show today! ⭐`,
+      (eng) => `Way to go ${eng}! You're on fire! 🔥`,
+      (eng) => `${eng}, absolutely dominating the leaderboard! 👑`,
+    ],
+    targetProgress: [
+      (diff) => `We're only ${diff} erasures away from today's target! Push push push! 🎯`,
+      (diff) => `${diff} more erasures to hit today's goal! We've got this! 💪`,
+      (diff) => `Just ${diff} erasures left to smash today's target! 🚀`,
+      (diff) => `Target incoming! Only ${diff} to go! 🎉`,
+    ],
+    categoryWins: [
+      (cat) => `${cat} erasures are looking absolutely stellar today! 🌟`,
+      (cat) => `${cat} team, you're absolutely crushing it! Keep that momentum! 🚀`,
+      (cat) => `Outstanding work on the ${cat}! That's what I like to see! 💯`,
+    ],
+    motivation: [
+      `Data erasure heroes, that's what you all are! 🦸‍♀️`,
+      `Every erasure counts! Keep up the fantastic work! ✨`,
+      `You're doing amazing work protecting data today! 🛡️`,
+      `This team is unstoppable! Let's keep rolling! 🎯`,
+      `Making a real difference one erasure at a time! 👍`,
+      `The warehouse is looking spotless thanks to you! ✨`,
+    ],
+  };
+
+  function getGreenieQuote() {
+    // Update current stats for dynamic quotes
+    const todayTotal = parseInt(document.getElementById('totalTodayValue').textContent) || 0;
+    const target = parseInt(document.getElementById('erasedTarget').textContent) || 500;
+    const leaderboardBody = document.getElementById('leaderboardBody');
+    const topEngineer = leaderboardBody?.querySelector('tr')?.textContent || '';
+    
+    greenieState.currentStats = {
+      todayTotal,
+      target,
+      diff: Math.max(0, target - todayTotal),
+    };
+
+    // Get random quote category
+    const categories = ['praise', 'targetProgress', 'categoryWins', 'motivation'];
+    let selectedCategory;
+    let quote;
+    let attempts = 0;
+
+    // Try to avoid repeating the same category/type
+    do {
+      selectedCategory = categories[Math.floor(Math.random() * categories.length)];
+      const quoteList = greenieQuotes[selectedCategory];
+      
+      if (selectedCategory === 'praise') {
+        // Get top engineer initials
+        const initials = topEngineer.split('\n')[0] || 'Team';
+        quote = quoteList[Math.floor(Math.random() * quoteList.length)](initials);
+      } else if (selectedCategory === 'targetProgress') {
+        quote = quoteList[Math.floor(Math.random() * quoteList.length)](greenieState.currentStats.diff);
+      } else if (selectedCategory === 'categoryWins') {
+        const categories_list = ['Laptops/Desktops', 'Servers', 'Macs', 'Mobiles'];
+        const category = categories_list[Math.floor(Math.random() * categories_list.length)];
+        quote = quoteList[Math.floor(Math.random() * quoteList.length)](category);
+      } else {
+        quote = quoteList[Math.floor(Math.random() * quoteList.length)];
+      }
+
+      attempts++;
+    } while (greenieState.lastQuotes.includes(quote) && attempts < 5);
+
+    // Track quote to avoid repeats
+    greenieState.lastQuotes.push(quote);
+    if (greenieState.lastQuotes.length > 8) {
+      greenieState.lastQuotes.shift();
+    }
+
+    return quote;
+  }
+
+  function showGreenie() {
+    const container = document.getElementById('greenieContainer');
+    const quoteEl = document.getElementById('greenieQuote');
+    const wrapper = container.querySelector('.greenie-wrapper');
+
+    // Get quote and display
+    const quote = getGreenieQuote();
+    quoteEl.textContent = quote;
+
+    // Remove exit animation class if present
+    wrapper.classList.remove('exit');
+
+    // Show Greenie
+    container.classList.remove('hidden');
+    greenieState.lastShowTime = Date.now();
+
+    // Auto-hide after 10 seconds total (2s in + 6s display + 2s out)
+    setTimeout(() => {
+      wrapper.classList.add('exit');
+      setTimeout(() => {
+        container.classList.add('hidden');
+        wrapper.classList.remove('exit');
+      }, 2000);
+    }, 6000);
+  }
+
+  function checkGreenieTime() {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+
+    // Only show between 8:00 and 16:00
+    if (hours < 8 || hours >= 16) return;
+
+    // Check if 20 minutes have passed since last show
+    const timeSinceLastShow = Date.now() - greenieState.lastShowTime;
+    const twentyMinutes = 20 * 60 * 1000;
+
+    if (timeSinceLastShow >= twentyMinutes) {
+      // Only show at specific times to avoid random triggers: :00, :20, :40
+      if (minutes === 0 || minutes === 20 || minutes === 40) {
+        showGreenie();
+      }
+    }
+  }
+
   async function refreshSummary() {
     try {
       const res = await fetch('/metrics/summary');
@@ -143,20 +274,24 @@
     topEngineers.forEach((engineer, idx) => {
       const position = idx + 1;
       const erasures = engineer.erasures || 0;
-      const percentage = (erasures / maxErasures) * 100;
+      const percentage = Math.min((erasures / maxErasures) * 100, 100);
       const carEl = document.getElementById(`racePos${position}`);
+      const trailEl = document.getElementById(`trail${position}`);
       const labelEl = document.getElementById(`driver${position}`);
 
-      if (carEl && labelEl) {
-        // Move car up based on progress (0-100%)
-        const bottomPixels = (percentage / 100) * 100; // 100% of lane height
-        carEl.style.bottom = `${Math.min(bottomPixels, 100)}%`;
+      if (carEl && trailEl && labelEl) {
+        // Update trail height (0-100% of lane)
+        trailEl.style.height = `${percentage}%`;
         
-        // Update label with engineer initials and count
+        // Color trail to match engineer color
+        const engineerColor = getEngineerColor(engineer.initials || '');
+        trailEl.style.background = `linear-gradient(to bottom, ${engineerColor}, ${engineerColor}40)`;
+        
+        // Update label with engineer initials
         labelEl.textContent = `${engineer.initials || '?'}`;
-        labelEl.style.color = getEngineerColor(engineer.initials || '');
+        labelEl.style.color = engineerColor;
 
-        // Check if car has finished (reached top)
+        // Check if car has finished (reached top/100%)
         if (percentage >= 95 && !engineer.finished) {
           engineer.finished = true;
           // Trigger winner announcement if this is the first to finish
@@ -285,6 +420,7 @@
     refreshByTypeCounts();
     refreshLeaderboard();
     checkAndTriggerWinner();
+    checkGreenieTime();
   }, cfg.refreshSeconds * 1000);
 
   function updateDonut(chart, value, target) {
