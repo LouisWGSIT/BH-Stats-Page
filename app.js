@@ -28,7 +28,7 @@
   ];
 
   // Race state
-  let raceData = { engineer1: null, engineer2: null, engineer3: null };
+  let raceData = { engineer1: null, engineer2: null, engineer3: null, firstFinisher: null };
   let winnerAnnounced = false;
 
   async function refreshSummary() {
@@ -144,24 +144,33 @@
       const position = idx + 1;
       const erasures = engineer.erasures || 0;
       const percentage = (erasures / maxErasures) * 100;
-      const posEl = document.getElementById(`racePos${position}`);
-      const driverEl = document.getElementById(`driver${position}`);
+      const carEl = document.getElementById(`racePos${position}`);
+      const labelEl = document.getElementById(`driver${position}`);
 
-      if (posEl && driverEl) {
-        // Update driver info with color
-        driverEl.textContent = `${engineer.initials || '?'} (${erasures})`;
-        driverEl.style.color = getEngineerColor(engineer.initials || '');
+      if (carEl && labelEl) {
+        // Move car up based on progress (0-100%)
+        const bottomPixels = (percentage / 100) * 100; // 100% of lane height
+        carEl.style.bottom = `${Math.min(bottomPixels, 100)}%`;
         
-        // Visual progress indicator (optional - can add a progress bar later)
-        // The vertical position is already handled by column-reverse in CSS
+        // Update label with engineer initials and count
+        labelEl.textContent = `${engineer.initials || '?'}`;
+        labelEl.style.color = getEngineerColor(engineer.initials || '');
+
+        // Check if car has finished (reached top)
+        if (percentage >= 95 && !engineer.finished) {
+          engineer.finished = true;
+          // Trigger winner announcement if this is the first to finish
+          if (!raceData.firstFinisher) {
+            raceData.firstFinisher = engineer;
+            announceWinner();
+          }
+        }
       }
     });
 
-    raceData = {
-      engineer1: topEngineers[0] || null,
-      engineer2: topEngineers[1] || null,
-      engineer3: topEngineers[2] || null,
-    };
+    raceData.engineer1 = topEngineers[0] || null;
+    raceData.engineer2 = topEngineers[1] || null;
+    raceData.engineer3 = topEngineers[2] || null;
   }
 
   function checkAndTriggerWinner() {
