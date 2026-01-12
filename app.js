@@ -148,14 +148,12 @@
       const driverEl = document.getElementById(`driver${position}`);
 
       if (posEl && driverEl) {
-        // Move car based on progress
-        const carEl = posEl.querySelector('.car');
-        const progressPixels = (percentage / 100) * 220; // 280px - padding
-        carEl.style.marginLeft = `${progressPixels}px`;
-        
-        // Update driver info
+        // Update driver info with color
         driverEl.textContent = `${engineer.initials || '?'} (${erasures})`;
         driverEl.style.color = getEngineerColor(engineer.initials || '');
+        
+        // Visual progress indicator (optional - can add a progress bar later)
+        // The vertical position is already handled by column-reverse in CSS
       }
     });
 

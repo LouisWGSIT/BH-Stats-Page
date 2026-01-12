@@ -116,48 +116,58 @@ body {
 }
 
 .race-section {
-  width: 280px;
+  width: 160px;
+  height: 100%;
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
-  padding: 16px;
+  padding: 16px 12px;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 15px 35px rgba(0,0,0,0.25);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   flex-shrink: 0;
-  overflow-y: auto;
+  overflow: hidden;
+  position: relative;
 }
 
 .race-section h2 {
-  margin: 0;
-  font-size: 16px;
+  margin: 0 0 12px 0;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.5px;
   text-transform: uppercase;
   text-align: center;
+  writing-mode: horizontal-tb;
 }
 
 .race-track {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  flex-direction: column-reverse;
+  gap: 0;
   flex: 1;
   min-height: 0;
+  position: relative;
+  justify-content: flex-end;
 }
 
 .race-position {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  gap: 4px;
   align-items: center;
+  justify-content: center;
+  height: 50px;
+  flex-shrink: 0;
+  position: relative;
 }
 
 .car {
-  font-size: 32px;
+  font-size: 28px;
   transition: all 0.3s ease;
   animation: carBounce 0.6s ease infinite;
+  flex-shrink: 0;
 }
 
 .car-1 { animation-delay: 0s; }
@@ -165,31 +175,32 @@ body {
 .car-3 { animation-delay: 0.4s; }
 
 @keyframes carBounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(4px); }
 }
 
 .driver-info {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   text-align: center;
   color: var(--muted);
-  min-height: 18px;
+  min-height: 16px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
+  max-width: 90px;
+  flex: 1;
 }
 
 .race-finish-line {
   text-align: center;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 900;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   color: var(--ring-secondary);
-  padding: 8px;
-  border-top: 3px dashed var(--ring-secondary);
-  margin-top: auto;
+  padding: 6px 0;
+  border-bottom: 3px dashed var(--ring-secondary);
+  margin-bottom: 8px;
 }
 
 .modal {
