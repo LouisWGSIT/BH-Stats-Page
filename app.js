@@ -271,15 +271,20 @@
     const topEngineers = leaderboardData.slice(0, 5);
     const maxErasures = topEngineers.length > 0 ? topEngineers[0].erasures || 1 : 1;
 
-    topEngineers.forEach((engineer, idx) => {
-      const position = idx + 1;
-      const erasures = engineer.erasures || 0;
-      const percentage = Math.min((erasures / maxErasures) * 100, 100);
-      const carEl = document.getElementById(`racePos${position}`);
-      const trailEl = document.getElementById(`trail${position}`);
-      const labelEl = document.getElementById(`driver${position}`);
-
-      if (carEl && trailEl && labelEl) {
+    // Update all 5 lanes
+    for (let i = 1; i <= 5; i++) {
+      const carEl = document.getElementById(`racePos${i}`);
+      const trailEl = document.getElementById(`trail${i}`);
+      const labelEl = document.getElementById(`driver${i}`);
+      
+      if (!carEl || !trailEl || !labelEl) continue;
+      
+      const engineer = topEngineers[i - 1];
+      
+      if (engineer) {
+        const erasures = engineer.erasures || 0;
+        const percentage = Math.min((erasures / maxErasures) * 100, 100);
+        
         // Move car up the lane based on percentage (0% = bottom, 100% = top)
         const carPosition = 100 - percentage;
         carEl.style.bottom = `${carPosition}%`;
@@ -304,8 +309,14 @@
             announceWinner();
           }
         }
+      } else {
+        // No engineer data for this lane - reset it
+        carEl.style.bottom = '0%';
+        trailEl.style.height = '0%';
+        labelEl.textContent = '—';
+        labelEl.style.color = 'var(--muted)';
       }
-    });
+    }
 
     raceData.engineer1 = topEngineers[0] || null;
     raceData.engineer2 = topEngineers[1] || null;
