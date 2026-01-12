@@ -268,7 +268,7 @@
   }
 
   function updateRace(leaderboardData) {
-    const topEngineers = leaderboardData.slice(0, 3);
+    const topEngineers = leaderboardData.slice(0, 5);
     const maxErasures = topEngineers.length > 0 ? topEngineers[0].erasures || 1 : 1;
 
     topEngineers.forEach((engineer, idx) => {
@@ -280,12 +280,16 @@
       const labelEl = document.getElementById(`driver${position}`);
 
       if (carEl && trailEl && labelEl) {
-        // Update trail height (0-100% of lane)
+        // Move car up the lane based on percentage (0% = bottom, 100% = top)
+        const carPosition = 100 - percentage;
+        carEl.style.bottom = `${carPosition}%`;
+        
+        // Update trail height from bottom to current car position
         trailEl.style.height = `${percentage}%`;
         
         // Color trail to match engineer color
         const engineerColor = getEngineerColor(engineer.initials || '');
-        trailEl.style.background = `linear-gradient(to bottom, ${engineerColor}, ${engineerColor}40)`;
+        trailEl.style.background = `linear-gradient(to top, ${engineerColor}, ${engineerColor}40)`;
         
         // Update label with engineer initials
         labelEl.textContent = `${engineer.initials || '?'}`;
