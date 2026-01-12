@@ -27,6 +27,10 @@
     { key: 'mobiles', label: 'Mobiles', countId: 'countMobiles', listId: 'topMobiles' },
   ];
 
+  // Race state
+  let raceData = { engineer1: null, engineer2: null, engineer3: null };
+  let winnerAnnounced = false;
+
   async function refreshSummary() {
     try {
       const res = await fetch('/metrics/summary');
@@ -124,9 +128,122 @@
         `;
         body.appendChild(tr);
       });
+
+      // Update race positions
+      updateRace(data.items || []);
     } catch (err) {
       console.error('Leaderboard refresh error:', err);
     }
+  }
+
+  function updateRace(leaderboardData) {
+    const topEngineers = leaderboardData.slice(0, 3);
+    const maxErasures = topEngineers.length > 0 ? topEngineers[0].erasures || 1 : 1;
+
+    topEngineers.forEach((engineer, idx) => {
+      const position = idx + 1;
+      const erasures = engineer.erasures || 0;
+      const percentage = (erasures / maxErasures) * 100;
+      const posEl = document.getElementById(`racePos${position}`);
+      const driverEl = document.getElementById(`driver${position}`);
+
+      if (posEl && driverEl) {
+        // Move car based on progress
+        const carEl = posEl.querySelector('.car');
+        const progressPixels = (percentage / 100) * 220; // 280px - padding
+        carEl.style.marginLeft = `${progressPixels}px`;
+        
+        // Update driver info
+        driverEl.textContent = `${engineer.initials || '?'} (${erasures})`;
+        driverEl.style.color = getEngineerColor(engineer.initials || '');
+      }
+    });
+
+    raceData = {
+      engineer1: topEngineers[0] || null,
+      engineer2: topEngineers[1] || null,
+      engineer3: topEngineers[2] || null,
+    };
+  }
+
+  function checkAndTriggerWinner() {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+
+    // Trigger at 15:58
+    if (hours === 15 && minutes === 58 && !winnerAnnounced) {
+      winnerAnnounced = true;
+      announceWinner();
+    }
+
+    // Reset flag at midnight for next day
+    if (hours === 0 && minutes === 0) {
+      winnerAnnounced = false;
+    }
+  }
+
+  function announceWinner() {
+    const winner = raceData.engineer1;
+    if (!winner) return;
+
+    const modal = document.getElementById('winnerModal');
+    const winnerText = document.getElementById('winnerText');
+    const winnerSubtext = document.getElementById('winnerSubtext');
+
+    winnerText.textContent = `🏆 ${winner.initials} WINS! 🏆`;
+    winnerSubtext.textContent = `${winner.erasures} erasures today`;
+
+    modal.classList.remove('hidden');
+
+    // Trigger confetti
+    triggerConfetti();
+
+    // Hide modal after 5 seconds
+    setTimeout(() => {
+      modal.classList.add('hidden');
+    }, 5000);
+  }
+
+  function triggerConfetti() {
+    if (typeof confetti === 'undefined') {
+      console.warn('Confetti library not loaded');
+      return;
+    }
+
+    const confettiColors = [
+      '#ff1ea3', // pink
+      '#8cf04a', // green
+      '#00d4ff', // cyan
+      '#ffcc00', // yellow
+      '#ff6b35', // orange
+      '#a78bfa', // purple
+    ];
+
+    const defaults = {
+      origin: { y: 0 },
+      zIndex: 10000,
+    };
+
+    // Burst from multiple points
+    confetti({
+      ...defaults,
+      particleCount: 100,
+      spread: 70,
+      startVelocity: 55,
+      colors: confettiColors,
+    });
+
+    // Second burst after delay
+    setTimeout(() => {
+      confetti({
+        ...defaults,
+        particleCount: 50,
+        spread: 100,
+        startVelocity: 45,
+        colors: confettiColors,
+      });
+    }, 150);
   }
 
   function renderBars(counts) {
@@ -160,6 +277,7 @@
     refreshAllTopLists();
     refreshByTypeCounts();
     refreshLeaderboard();
+    checkAndTriggerWinner();
   }, cfg.refreshSeconds * 1000);
 
   function updateDonut(chart, value, target) {

@@ -1,5 +1,5 @@
 {
-  "refreshSeconds": 10,
+  "refreshSeconds": 20,
   "theme": {
     "bg": "#0a2a4a",
     "ringPrimary": "#ff1ea3",

@@ -22,7 +22,27 @@
     </header>
 
     <main class="layout">
-      <div class="grid top-row">
+      <div class="main-content">
+        <section class="race-section">
+          <h2>Daily Race</h2>
+          <div class="race-track">
+            <div class="race-position" id="racePos1">
+              <div class="car car-1">🏎️</div>
+              <div class="driver-info" id="driver1">—</div>
+            </div>
+            <div class="race-position" id="racePos2">
+              <div class="car car-2">🏎️</div>
+              <div class="driver-info" id="driver2">—</div>
+            </div>
+            <div class="race-position" id="racePos3">
+              <div class="car car-3">🏎️</div>
+              <div class="driver-info" id="driver3">—</div>
+            </div>
+          </div>
+          <div class="race-finish-line">FINISH</div>
+        </section>
+
+        <div class="grid top-row">
         <section class="card donut-card">
           <h2>Total Erasures Today</h2>
           <canvas id="chartTotalToday"></canvas>
@@ -92,11 +112,22 @@
           </table>
         </section>
       </div>
+      </div>
     </main>
   </div>
 
   <!-- Chart.js -->
   <script src="vendor/chart.js-4.5.1/package/dist/chart.umd.min.js"></script>
+  <!-- Confetti Library -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.0/dist/confetti.browser.min.js"></script>
   <script src="app.js"></script>
+  
+  <!-- Winner announcement modal -->
+  <div id="winnerModal" class="modal hidden">
+    <div class="modal-content">
+      <h2 id="winnerText">🏆 Winner! 🏆</h2>
+      <p id="winnerSubtext"></p>
+    </div>
+  </div>
 </body>
 </html>

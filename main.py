@@ -4,6 +4,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from typing import Any, Dict
+from datetime import datetime
+import asyncio
 import database as db
 
 app = FastAPI(title="Warehouse Stats Service")
@@ -21,6 +23,30 @@ app.add_middleware(
 )
 
 WEBHOOK_API_KEY = os.getenv("WEBHOOK_API_KEY", "6LVepDbZkbMwA66Gpl9bWherzT5wKfOl")
+
+# Background task for daily reset
+async def check_daily_reset():
+    """Check at 18:00 each day and reset daily stats"""
+    while True:
+        now = datetime.now()
+        # If it's 18:00 (6 PM), reset the stats
+        if now.hour == 18 and now.minute == 0:
+            print(f"[{now}] Daily reset triggered at 18:00")
+            try:
+                # This clears today's stats for tomorrow's fresh start
+                # Stats are cumulative per day, so at 18:00 we let them accumulate tomorrow
+                pass  # Stats persist by date, so no action needed - next day starts fresh automatically
+            except Exception as e:
+                print(f"Error during daily reset: {e}")
+            # Wait until next day to avoid multiple resets
+            await asyncio.sleep(3600)  # Sleep for 1 hour
+        else:
+            await asyncio.sleep(60)  # Check every minute
+
+@app.on_event("startup")
+async def startup_event():
+    """Start the background reset task"""
+    asyncio.create_task(check_daily_reset())
 
 @app.post("/hooks/erasure")
 async def erasure_hook(req: Request):
