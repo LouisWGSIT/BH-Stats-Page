@@ -248,9 +248,10 @@ body {
 }
 
 @keyframes carSway {
-  0%, 100% { transform: translateX(-50%) translateX(0); }
-  25% { transform: translateX(-50%) translateX(-3px); }
-  75% { transform: translateX(-50%) translateX(3px); }
+  0%, 100% { transform: translateX(-50%) translateX(0) translateY(0); }
+  25% { transform: translateX(-50%) translateX(-1.5px) translateY(-2px); }
+  50% { transform: translateX(-50%) translateX(0) translateY(0); }
+  75% { transform: translateX(-50%) translateX(1.5px) translateY(2px); }
 }
 
 .modal {
