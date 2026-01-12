@@ -326,6 +326,7 @@ body {
   display: flex;
   gap: 16px;
   align-items: flex-end;
+  flex-direction: row-reverse;
   animation: slideInRight 2s ease-out forwards;
 }
 
@@ -352,11 +353,11 @@ body {
   content: '';
   position: absolute;
   bottom: -12px;
-  left: 20px;
+  right: 20px;
   width: 0;
   height: 0;
-  border-left: 12px solid transparent;
-  border-right: 0 solid transparent;
+  border-left: 0 solid transparent;
+  border-right: 12px solid transparent;
   border-top: 12px solid var(--ring-primary);
 }
 
@@ -364,11 +365,11 @@ body {
   content: '';
   position: absolute;
   bottom: -8px;
-  left: 22px;
+  right: 22px;
   width: 0;
   height: 0;
-  border-left: 10px solid transparent;
-  border-right: 0 solid transparent;
+  border-left: 0 solid transparent;
+  border-right: 10px solid transparent;
   border-top: 10px solid rgba(140, 240, 74, 0.2);
 }
 

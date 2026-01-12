@@ -150,13 +150,13 @@
     // Only show between 8:00 and 16:00
     if (hours < 8 || hours >= 16) return;
 
-    // Check if 20 minutes have passed since last show
+    // Check if 15 minutes have passed since last show
     const timeSinceLastShow = Date.now() - greenieState.lastShowTime;
-    const twentyMinutes = 20 * 60 * 1000;
+    const fifteenMinutes = 15 * 60 * 1000;
 
-    if (timeSinceLastShow >= twentyMinutes) {
-      // Only show at specific times to avoid random triggers: :00, :20, :40
-      if (minutes === 0 || minutes === 20 || minutes === 40) {
+    if (timeSinceLastShow >= fifteenMinutes) {
+      // Only show at specific times to avoid random triggers: :00, :15, :30, :45
+      if (minutes === 0 || minutes === 15 || minutes === 30 || minutes === 45) {
         showGreenie();
       }
     }
