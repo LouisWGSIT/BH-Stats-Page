@@ -157,27 +157,26 @@ body {
 .race-track {
   display: flex;
   flex-direction: row;
-  gap: 4px;
+  gap: 6px;
   flex: 1;
   min-height: 0;
   position: relative;
   width: 100%;
-  align-items: stretch;
 }
 
 .race-lane {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  flex: 1 1 0;
+  gap: 4px;
   position: relative;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 6px;
-  padding: 2px 0;
+  padding: 4px 2px;
   border: 1px solid rgba(255, 255, 255, 0.05);
   justify-content: flex-end;
   align-items: center;
-  min-width: 50px;
+  min-width: 0;
 }
 
 .lane-label {
@@ -570,10 +569,12 @@ body {
 .card h2 {
   margin: 0 0 8px 0;
   letter-spacing: 0.5px;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.2;
   text-transform: uppercase;
+  color: var(--text);
+  width: 100%;
 }
 
 .card canvas {
