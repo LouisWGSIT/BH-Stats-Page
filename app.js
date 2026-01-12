@@ -283,9 +283,12 @@
       
       if (engineer) {
         const erasures = engineer.erasures || 0;
-        const percentage = Math.min((erasures / maxErasures) * 100, 100);
+        let percentage = Math.min((erasures / maxErasures) * 100, 100);
         
-        // Move car up the lane based on percentage (0% = bottom, 100% = top)
+        // Cap at 95% so car doesn't go past finish line until 15:58
+        percentage = Math.min(percentage, 95);
+        
+        // Move car up the lane based on percentage (0% = bottom, 95% = near top)
         carEl.style.bottom = `${percentage}%`;
         
         // Update trail height from bottom to current car position
@@ -300,7 +303,7 @@
         labelEl.style.color = engineerColor;
 
         // Check if car has finished (reached top/100%)
-        if (percentage >= 95 && !engineer.finished) {
+        if (erasures >= maxErasures && !engineer.finished) {
           engineer.finished = true;
           // Trigger winner announcement if this is the first to finish
           if (!raceData.firstFinisher) {

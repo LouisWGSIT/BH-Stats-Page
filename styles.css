@@ -204,6 +204,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   transition: bottom 0.3s ease;
+  z-index: 10;
 }
 
 .car-trail {
@@ -216,7 +217,8 @@ body {
   border-radius: 2px;
   transition: height 0.3s ease;
   height: 0%;
-  z-index: 0;
+  z-index: 5;
+  pointer-events: none;
 }
 
 .car-body {
