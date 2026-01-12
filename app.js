@@ -286,8 +286,7 @@
         const percentage = Math.min((erasures / maxErasures) * 100, 100);
         
         // Move car up the lane based on percentage (0% = bottom, 100% = top)
-        const carPosition = 100 - percentage;
-        carEl.style.bottom = `${carPosition}%`;
+        carEl.style.bottom = `${percentage}%`;
         
         // Update trail height from bottom to current car position
         trailEl.style.height = `${percentage}%`;
