@@ -99,9 +99,9 @@ body {
 
 .layout {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 12px;
-  padding: 12px 20px 20px;
+  padding: 12px 12px 20px 12px;
   flex: 1;
   overflow: hidden;
   min-height: 0;
@@ -109,6 +109,7 @@ body {
 
 .main-content {
   display: flex;
+  flex-direction: column;
   gap: 12px;
   flex: 1;
   overflow: hidden;
