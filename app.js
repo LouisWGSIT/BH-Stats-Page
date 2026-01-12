@@ -285,8 +285,8 @@
         const erasures = engineer.erasures || 0;
         let percentage = Math.min((erasures / maxErasures) * 100, 100);
         
-        // Cap at 95% so car doesn't go past finish line until 15:58
-        percentage = Math.min(percentage, 95);
+        // Cap at 80% so car doesn't go past finish line until 15:58
+        percentage = Math.min(percentage, 80);
         
         // Move car up the lane based on percentage (0% = bottom, 95% = near top)
         carEl.style.bottom = `${percentage}%`;

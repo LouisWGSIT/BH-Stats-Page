@@ -205,11 +205,12 @@ body {
   transform: translateX(-50%);
   transition: bottom 0.3s ease;
   z-index: 10;
+  animation: carSway 3s ease-in-out infinite;
 }
 
 .car-trail {
   position: absolute;
-  bottom: 0;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   width: 3px;
@@ -244,6 +245,12 @@ body {
 @keyframes carPulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.15); }
+}
+
+@keyframes carSway {
+  0%, 100% { transform: translateX(-50%) translateX(0); }
+  25% { transform: translateX(-50%) translateX(-3px); }
+  75% { transform: translateX(-50%) translateX(3px); }
 }
 
 .modal {
