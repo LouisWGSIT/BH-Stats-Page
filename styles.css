@@ -157,24 +157,27 @@ body {
 .race-track {
   display: flex;
   flex-direction: row;
-  gap: 6px;
+  gap: 4px;
   flex: 1;
   min-height: 0;
   position: relative;
+  width: 100%;
+  align-items: stretch;
 }
 
 .race-lane {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
+  flex-direction: column-reverse;
+  gap: 2px;
+  flex: 1 1 0;
   position: relative;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 6px;
-  padding: 4px 0;
+  padding: 2px 0;
   border: 1px solid rgba(255, 255, 255, 0.05);
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: center;
+  min-width: 50px;
 }
 
 .lane-label {
@@ -192,26 +195,25 @@ body {
 .race-car {
   position: relative;
   width: 100%;
-  height: auto;
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  min-height: 20px;
+  justify-content: flex-start;
+  min-height: 0;
 }
 
 .car-trail {
   position: absolute;
-  bottom: 0;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
   width: 3px;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
   border-radius: 2px;
   transition: height 0.3s ease;
   height: 0%;
-  z-index: 1;
+  z-index: 0;
 }
 
 .car-body {
@@ -223,7 +225,8 @@ body {
   background-position: center;
   transition: transform 0.3s ease;
   position: relative;
-  z-index: 2;
+  z-index: 10;
+  flex-shrink: 0;
   animation: carPulse 0.8s ease infinite;
 }
 
