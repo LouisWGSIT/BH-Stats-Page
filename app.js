@@ -240,12 +240,13 @@
 
   async function refreshLeaderboard() {
     try {
-      const res = await fetch('/metrics/engineers/leaderboard?scope=today&limit=3');
+      const res = await fetch('/metrics/engineers/leaderboard?scope=today&limit=5');
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       const body = document.getElementById('leaderboardBody');
       body.innerHTML = '';
-      (data.items || []).forEach((row) => {
+      // Display only first 3 in the leaderboard table, but get all 5 for the race
+      (data.items || []).slice(0, 3).forEach((row) => {
         const tr = document.createElement('tr');
         const color = getEngineerColor(row.initials || '');
         const lastActive = formatTimeAgo(row.lastActive);
@@ -260,7 +261,7 @@
         body.appendChild(tr);
       });
 
-      // Update race positions
+      // Update race positions with all top 5 engineers
       updateRace(data.items || []);
     } catch (err) {
       console.error('Leaderboard refresh error:', err);
