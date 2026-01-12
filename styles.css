@@ -117,7 +117,7 @@ body {
 }
 
 .race-section {
-  width: 160px;
+  width: 220px;
   height: 100%;
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
@@ -215,9 +215,13 @@ body {
 }
 
 .car-body {
-  font-size: 16px;
-  font-weight: 700;
-  transition: bottom 0.3s ease;
+  width: 32px;
+  height: 32px;
+  background-image: url('assets/F1Car.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  transition: transform 0.3s ease;
   position: relative;
   z-index: 2;
   animation: carPulse 0.8s ease infinite;
