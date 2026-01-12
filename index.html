@@ -53,17 +53,21 @@
       <div class="main-content">
         <div class="grid top-row">
         <section class="card donut-card">
-          <h2>Total Erasures Today</h2>
+          <div>
+            <h2>Total Erasures Today</h2>
+            <div class="big-number" id="totalTodayValue">0</div>
+            <div class="target">Target: <span id="erasedTarget">XX</span></div>
+          </div>
           <canvas id="chartTotalToday"></canvas>
-          <div class="big-number" id="totalTodayValue">0</div>
-          <div class="target">Target: <span id="erasedTarget">XX</span></div>
         </section>
 
         <section class="card donut-card">
-          <h2>Total Erasures This Month</h2>
+          <div>
+            <h2>Total Erasures This Month</h2>
+            <div class="big-number" id="monthTotalValue">0</div>
+            <div class="target">Target: <span id="monthTarget">XX</span></div>
+          </div>
           <canvas id="chartMonthToday"></canvas>
-          <div class="big-number" id="monthTotalValue">0</div>
-          <div class="target">Target: <span id="monthTarget">XX</span></div>
         </section>
       </div>
 
