@@ -175,8 +175,8 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.05);
   justify-content: flex-end;
   align-items: center;
-  flex: 1;
-  min-width: 60px;
+  width: 60px;
+  flex-shrink: 0;
 }
 
 .lane-label {
@@ -236,57 +236,6 @@ body {
 @keyframes carPulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.15); }
-}
-
-.race-track {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-  min-height: 0;
-  position: relative;
-  overflow-y: auto;
-}
-
-.race-lane {
-  display: flex;
-  gap: 6px;
-  align-items: flex-end;
-  height: 100%;
-  flex: 1;
-  position: relative;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 6px;
-  padding: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.lane-label {
-  font-size: 10px;
-  font-weight: 700;
-  white-space: nowrap;
-  min-width: 35px;
-  text-align: center;
-  color: var(--muted);
-}
-
-.race-car {
-  font-size: 24px;
-  transition: bottom 0.3s ease;
-  animation: carPulse 0.8s ease infinite;
-  position: relative;
-  bottom: 0;
-  flex-shrink: 0;
-}
-
-
-.car-1 { animation-delay: 0s; }
-.car-2 { animation-delay: 0.2s; }
-.car-3 { animation-delay: 0.4s; }
-
-@keyframes carPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
 }
 
 .modal {
