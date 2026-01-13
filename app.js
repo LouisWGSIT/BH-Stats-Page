@@ -611,33 +611,6 @@
     const secondary = getComputedStyle(document.documentElement)
       .getPropertyValue('--ring-secondary').trim();
 
-    const gradientState = { value: null, remaining: null, width: 0, height: 0 };
-
-    const ensureGradients = (chart) => {
-      const area = chart.chartArea;
-      if (!area) return null;
-
-      if (!gradientState.value || area.width !== gradientState.width || area.height !== gradientState.height) {
-        gradientState.width = area.width;
-        gradientState.height = area.height;
-
-        const valueGrad = chart.ctx.createLinearGradient(0, area.bottom, 0, area.top);
-        valueGrad.addColorStop(0, adjustColor(secondary, -18));
-        valueGrad.addColorStop(0.5, secondary);
-        valueGrad.addColorStop(1, adjustColor(secondary, 14));
-
-        const remainingGrad = chart.ctx.createLinearGradient(0, area.bottom, 0, area.top);
-        remainingGrad.addColorStop(0, adjustColor(primary, -18));
-        remainingGrad.addColorStop(0.5, primary);
-        remainingGrad.addColorStop(1, adjustColor(primary, 14));
-
-        gradientState.value = valueGrad;
-        gradientState.remaining = remainingGrad;
-      }
-
-      return gradientState;
-    };
-
     if (!donutDepthRegistered) {
       Chart.register(donutDepthPlugin);
       donutDepthRegistered = true;
@@ -649,11 +622,7 @@
         labels: ['Value', 'Remaining'],
         datasets: [{
           data: [0, 0],
-          backgroundColor: (ctx) => {
-            const gradients = ensureGradients(ctx.chart);
-            if (!gradients) return ctx.dataIndex === 0 ? secondary : primary;
-            return ctx.dataIndex === 0 ? gradients.value : gradients.remaining;
-          },
+          backgroundColor: [secondary, primary],
           borderWidth: 0,
           borderRadius: 10,
           hoverOffset: 8
