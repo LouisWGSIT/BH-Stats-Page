@@ -609,6 +609,25 @@
   // First shot on load
   keepScreenAlive();
 
+  // Auto-reload page at 2 AM daily to clear cache and keep memory clean (off-hours)
+  function scheduleNightlyReload() {
+    const now = new Date();
+    let reloadTime = new Date();
+    reloadTime.setHours(2, 0, 0, 0); // 2 AM
+    
+    // If 2 AM has passed today, schedule for tomorrow
+    if (now > reloadTime) {
+      reloadTime.setDate(reloadTime.getDate() + 1);
+    }
+    
+    const msUntilReload = reloadTime - now;
+    setTimeout(() => {
+      location.reload();
+      scheduleNightlyReload(); // Reschedule for next day
+    }, msUntilReload);
+  }
+  scheduleNightlyReload();
+
   function formatDuration(sec) {
     if (sec == null || isNaN(sec)) return '--:--';
     const m = Math.floor(sec / 60);
