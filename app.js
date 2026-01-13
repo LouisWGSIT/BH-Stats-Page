@@ -924,12 +924,22 @@
   // Flip card logic with staggered timing
   function setupFlipCards() {
     const flipCards = document.querySelectorAll('.flip-card');
+    console.log('Setting up flip cards:', flipCards.length);
     const flipIntervals = [15000, 18000, 21000, 16000]; // Staggered timings (15-21s)
 
     flipCards.forEach((card, index) => {
       const interval = flipIntervals[index % flipIntervals.length];
       
+      // Do an initial flip after a short delay to test
+      setTimeout(() => {
+        console.log('Initial flip for card', index);
+        card.classList.add('flipped');
+        setTimeout(() => card.classList.remove('flipped'), 800);
+      }, 3000 + (index * 500));
+      
+      // Then set up the regular interval
       setInterval(() => {
+        console.log('Toggling flip for card', index);
         card.classList.toggle('flipped');
       }, interval);
     });

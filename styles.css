@@ -593,10 +593,6 @@ body {
 .donut-card {
   position: relative;
   overflow: hidden;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
 }
 
 .donut-card::after {
@@ -610,14 +606,6 @@ body {
 .donut-card canvas {
   filter: drop-shadow(0 6px 14px rgba(0,0,0,0.35));
   flex-shrink: 0;
-}
-
-.donut-card > div {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  flex: 1;
-  text-align: left;
 }
 
 .donut-card h2 {
@@ -799,9 +787,9 @@ body {
 }
 
 /* Ensure donut cards maintain proper structure when flipped */
-.donut-card .flip-card-front,
-.donut-card .flip-card-back {
+.donut-card .flip-card-front {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
@@ -809,26 +797,32 @@ body {
 }
 
 .donut-card .flip-card-front > div {
-  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1;
+  text-align: left;
 }
 
-.donut-card .flip-card-front canvas,
-.donut-card .flip-card-back canvas {
+.donut-card .flip-card-front canvas {
   width: 160px !important;
   height: 160px !important;
   flex-shrink: 0;
 }
 
 .donut-card .flip-card-back {
+  display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  flex-direction: column;
   gap: 12px;
+  padding: 20px;
 }
 
 .donut-card .flip-card-back h2 {
   margin: 0;
   text-align: center;
+  font-size: 16px;
 }
 
 .donut-card .flip-card-back canvas {
