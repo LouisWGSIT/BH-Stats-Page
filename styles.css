@@ -254,6 +254,16 @@ body {
   75% { transform: translateX(-50%) translateX(1.5px) translateY(2px); }
 }
 
+@keyframes donutPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+.donut-card.pulse-update {
+  animation: donutPulse 0.6s ease-out;
+}
+
 .modal {
   position: fixed;
   top: 0;
@@ -494,6 +504,16 @@ body {
   border-top: none;
 }
 
+.leaderboard tr.leader {
+  background: linear-gradient(135deg, rgba(140, 240, 74, 0.15), rgba(255, 30, 163, 0.1));
+  border-left: 3px solid var(--ring-primary);
+  border-radius: 6px;
+}
+
+.leaderboard tr.leader td {
+  padding-left: 9px;
+}
+
 .leaderboard .value-strong {
   font-weight: 800;
 }
@@ -680,8 +700,14 @@ body {
   display: block;
   text-align: center;
   color: var(--muted);
-  padding: 16px;
+  padding: 24px 16px;
   font-style: italic;
+  font-size: 12px;
+  background: radial-gradient(circle at 50% 50%, rgba(140, 240, 74, 0.08), rgba(140, 240, 74, 0) 70%);
+  border: 1px dashed rgba(140, 240, 74, 0.25);
+  border-radius: 8px;
+  margin: 4px 0;
+  letter-spacing: 0.3px;
 }
 
 .top-list li:before {

@@ -252,10 +252,11 @@
       const body = document.getElementById('leaderboardBody');
       body.innerHTML = '';
       // Display only first 3 in the leaderboard table, but get all 5 for the race
-      (data.items || []).slice(0, 3).forEach((row) => {
+      (data.items || []).slice(0, 3).forEach((row, idx) => {
         const tr = document.createElement('tr');
         const color = getEngineerColor(row.initials || '');
         const lastActive = formatTimeAgo(row.lastActive);
+        if (idx === 0) tr.classList.add('leader');
         tr.innerHTML = `
           <td>
             <span class="engineer-badge" style="background-color: ${color}"></span>
@@ -450,7 +451,15 @@
   function updateDonut(chart, value, target) {
     const remaining = Math.max(target - value, 0);
     chart.data.datasets[0].data = [value, remaining];
+    chart.canvas.dataset.target = target;
     chart.update();
+    
+    // Trigger pulse animation on chart container
+    const container = chart.canvas.closest('.donut-card');
+    if (container) {
+      container.classList.add('pulse-update');
+      setTimeout(() => container.classList.remove('pulse-update'), 600);
+    }
   }
 
   async function requestWakeLock() {
@@ -530,7 +539,7 @@
     const secondary = getComputedStyle(document.documentElement)
       .getPropertyValue('--ring-secondary').trim();
 
-    return new Chart(ctx, {
+    const chart = new Chart(ctx, {
       type: 'doughnut',
       data: {
         labels: ['Value', 'Remaining'],
@@ -543,7 +552,7 @@
       },
       options: {
         responsive: true,
-        cutout: '65%',
+        cutout: '70%',
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -553,10 +562,32 @@
                 return ctx.label + ': ' + ctx.raw;
               }
             }
+          },
+          centerLabel: {
+            id: 'centerLabel',
+            afterDatasetsDraw(chart) {
+              const { ctx: c, chartArea, data } = chart;
+              const value = data.datasets[0].data[0] || 0;
+              const target = chart.canvas.dataset.target || '?';
+              const pct = target !== '?' ? Math.round((value / target) * 100) : 0;
+              
+              const centerX = (chartArea.left + chartArea.right) / 2;
+              const centerY = (chartArea.top + chartArea.bottom) / 2;
+              
+              c.save();
+              c.font = 'bold 20px Inter, Segoe UI, Roboto, Arial, sans-serif';
+              c.fillStyle = '#ffffff';
+              c.textAlign = 'center';
+              c.textBaseline = 'middle';
+              c.fillText(pct + '%', centerX, centerY);
+              c.restore();
+            }
           }
         }
       }
     });
+    
+    return chart;
   }
 
   function keepScreenAlive() {
