@@ -117,11 +117,11 @@ body {
 }
 
 .race-section {
-  width: 400px;
+  width: 410px;
   height: 100%;
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
-  padding: 16px 12px;
+  padding: 16px 14px;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 15px 35px rgba(0,0,0,0.25);
@@ -203,7 +203,7 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255,255,255,0.1);
   letter-spacing: 0.3px;
   position: relative;
-  z-index: 15;
+  z-index: 20;
 }
 
 .race-car {
@@ -232,10 +232,10 @@ body {
   border-radius: 3px;
   transition: height 0.3s ease;
   height: 0%;
-  z-index: 5;
+  z-index: 2;
   pointer-events: none;
-  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.6)) drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.5), inset 0 0 4px rgba(255, 255, 255, 0.8);
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.3)) drop-shadow(0 0 2px rgba(255, 255, 255, 0.2));
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
 }
 
 .car-body {
