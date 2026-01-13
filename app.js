@@ -532,27 +532,137 @@
     }
   });
 
+  // Slight color tint helper (positive percent lightens, negative darkens)
+  function adjustColor(hex, percent) {
+    const clean = hex.replace('#', '');
+    if (clean.length < 6) return hex;
+    const num = parseInt(clean, 16);
+    if (Number.isNaN(num)) return hex;
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+    const target = percent < 0 ? 0 : 255;
+    const p = Math.abs(percent) / 100;
+    const nr = Math.round(r + (target - r) * p);
+    const ng = Math.round(g + (target - g) * p);
+    const nb = Math.round(b + (target - b) * p);
+    return `rgb(${nr}, ${ng}, ${nb})`;
+  }
+
+  // Depth/gloss plugin to give donuts a subtle 3D feel
+  const donutDepthPlugin = {
+    id: 'donutDepth',
+    afterDatasetsDraw(chart) {
+      const meta = chart.getDatasetMeta(0);
+      const arc = meta?.data?.[0];
+      if (!arc) return;
+
+      const { ctx } = chart;
+      const { x, y, innerRadius, outerRadius } = arc;
+      const ringThickness = outerRadius - innerRadius;
+
+      // Soft shadow under the ring
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-over';
+      const shadowGrad = ctx.createRadialGradient(
+        x,
+        y + ringThickness * 0.45,
+        innerRadius,
+        x,
+        y + ringThickness * 0.45,
+        outerRadius + 12
+      );
+      shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.18)');
+      shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = shadowGrad;
+      ctx.beginPath();
+      ctx.arc(x, y, outerRadius + 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Subtle top gloss on the ring
+      ctx.save();
+      const shineGrad = ctx.createRadialGradient(
+        x,
+        y - ringThickness * 0.65,
+        innerRadius * 0.35,
+        x,
+        y - ringThickness * 0.65,
+        outerRadius
+      );
+      shineGrad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+      shineGrad.addColorStop(0.6, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = shineGrad;
+      ctx.beginPath();
+      ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+      ctx.arc(x, y, innerRadius, 0, Math.PI * 2, true);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    },
+  };
+
+  let donutDepthRegistered = false;
+
   function donut(canvasId) {
-    const ctx = document.getElementById(canvasId);
+    const ctxEl = document.getElementById(canvasId);
     const primary = getComputedStyle(document.documentElement)
       .getPropertyValue('--ring-primary').trim();
     const secondary = getComputedStyle(document.documentElement)
       .getPropertyValue('--ring-secondary').trim();
 
-    const chart = new Chart(ctx, {
+    const gradientState = { value: null, remaining: null, width: 0, height: 0 };
+
+    const ensureGradients = (chart) => {
+      const area = chart.chartArea;
+      if (!area) return null;
+
+      if (!gradientState.value || area.width !== gradientState.width || area.height !== gradientState.height) {
+        gradientState.width = area.width;
+        gradientState.height = area.height;
+
+        const valueGrad = chart.ctx.createLinearGradient(0, area.bottom, 0, area.top);
+        valueGrad.addColorStop(0, adjustColor(secondary, -18));
+        valueGrad.addColorStop(0.5, secondary);
+        valueGrad.addColorStop(1, adjustColor(secondary, 14));
+
+        const remainingGrad = chart.ctx.createLinearGradient(0, area.bottom, 0, area.top);
+        remainingGrad.addColorStop(0, adjustColor(primary, -18));
+        remainingGrad.addColorStop(0.5, primary);
+        remainingGrad.addColorStop(1, adjustColor(primary, 14));
+
+        gradientState.value = valueGrad;
+        gradientState.remaining = remainingGrad;
+      }
+
+      return gradientState;
+    };
+
+    if (!donutDepthRegistered) {
+      Chart.register(donutDepthPlugin);
+      donutDepthRegistered = true;
+    }
+
+    const chart = new Chart(ctxEl, {
       type: 'doughnut',
       data: {
         labels: ['Value', 'Remaining'],
         datasets: [{
           data: [0, 0],
-          backgroundColor: [secondary, primary],
+          backgroundColor: (ctx) => {
+            const gradients = ensureGradients(ctx.chart);
+            if (!gradients) return ctx.dataIndex === 0 ? secondary : primary;
+            return ctx.dataIndex === 0 ? gradients.value : gradients.remaining;
+          },
           borderWidth: 0,
-          hoverOffset: 4
+          borderRadius: 10,
+          hoverOffset: 8
         }]
       },
       options: {
         responsive: true,
-        cutout: '70%',
+        cutout: '68%',
+        animation: { duration: 400 },
         plugins: {
           legend: { display: false },
           tooltip: {
