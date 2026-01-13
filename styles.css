@@ -747,6 +747,7 @@ body {
 .flip-card {
   perspective: 1000px;
   position: relative;
+  height: 100%;
 }
 
 .flip-card-inner {
@@ -804,15 +805,37 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  padding: 20px;
+}
+
+.donut-card .flip-card-front > div {
+  flex-shrink: 0;
+}
+
+.donut-card .flip-card-front canvas,
+.donut-card .flip-card-back canvas {
+  width: 160px !important;
+  height: 160px !important;
+  flex-shrink: 0;
 }
 
 .donut-card .flip-card-back {
   justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.donut-card .flip-card-back h2 {
+  margin: 0;
+  text-align: center;
 }
 
 .donut-card .flip-card-back canvas {
-  max-width: 100%;
-  max-height: 280px;
+  max-width: 90%;
+  max-height: 220px !important;
+  height: 220px !important;
+  width: auto !important;
 }
 
 /* Wide cards (category and leaderboard) maintain their layout */
