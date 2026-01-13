@@ -87,8 +87,7 @@
         datasets: [{
           data: [0, 0],
           backgroundColor: [secondary, primary],
-          borderWidth: 2,
-          borderColor: 'rgba(0, 0, 0, 0.2)',
+          borderWidth: 0,
           borderRadius: 8,
           hoverOffset: 8
         }]

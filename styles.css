@@ -157,13 +157,13 @@ body {
 .race-track {
   display: flex;
   flex-direction: row;
-  gap: 10px;
+  gap: 12px;
   flex: 1;
   min-height: 0;
   position: relative;
   width: 100%;
   align-items: flex-end;
-  padding: 4px 8px 12px;
+  padding: 4px 10px 12px;
 }
 
 .race-lane {
@@ -179,7 +179,7 @@ body {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 16px rgba(0,0,0,0.25);
   justify-content: flex-end;
   align-items: center;
-  width: 52px;
+  width: 60px;
   flex-shrink: 0;
   height: 100%;
   overflow: visible;
@@ -218,7 +218,6 @@ body {
   left: 50%;
   transform: translateX(-50%);
   transition: bottom 0.3s ease;
-  z-index: 10;
   animation: carSway 3s ease-in-out infinite;
 }
 
@@ -232,7 +231,7 @@ body {
   border-radius: 3px;
   transition: height 0.3s ease;
   height: 0%;
-  z-index: 2;
+  z-index: -1;
   pointer-events: none;
   filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.3)) drop-shadow(0 0 2px rgba(255, 255, 255, 0.2));
   box-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
