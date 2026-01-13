@@ -198,9 +198,9 @@ body {
   width: 100%;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(10, 42, 74, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255,255,255,0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.1);
   letter-spacing: 0.3px;
   position: relative;
   z-index: 25;
@@ -388,8 +388,6 @@ body {
   height: 0;
   border-left: 12px solid transparent;
   border-right: 0 solid transparent;
-  border-top: 12px solid var(--ring-primary);
-}
   border-top: 12px solid var(--ring-primary);
 }
 
