@@ -925,22 +925,34 @@
   function setupFlipCards() {
     const flipCards = document.querySelectorAll('.flip-card');
     console.log('Setting up flip cards:', flipCards.length);
-    const flipIntervals = [15000, 18000, 21000, 16000]; // Staggered timings (15-21s)
+    const flipIntervals = [25000, 28000, 31000, 26000]; // Staggered timings (25-31s) - longer than refresh
 
     flipCards.forEach((card, index) => {
       const interval = flipIntervals[index % flipIntervals.length];
       
-      // Do an initial flip after a short delay to test
+      // Do an initial flip after 5 seconds to test
       setTimeout(() => {
         console.log('Initial flip for card', index);
         card.classList.add('flipped');
-        setTimeout(() => card.classList.remove('flipped'), 800);
-      }, 3000 + (index * 500));
+        // Keep flipped for 10 seconds, then flip back
+        setTimeout(() => {
+          card.classList.remove('flipped');
+        }, 10000);
+      }, 5000 + (index * 1000));
       
       // Then set up the regular interval
       setInterval(() => {
         console.log('Toggling flip for card', index);
-        card.classList.toggle('flipped');
+        const isFlipped = card.classList.contains('flipped');
+        if (isFlipped) {
+          card.classList.remove('flipped');
+        } else {
+          card.classList.add('flipped');
+          // Auto flip back after 10 seconds
+          setTimeout(() => {
+            card.classList.remove('flipped');
+          }, 10000);
+        }
       }, interval);
     });
   }

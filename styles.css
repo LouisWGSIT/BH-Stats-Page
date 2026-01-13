@@ -772,11 +772,11 @@ body {
 
 .flip-indicator {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  font-size: 20px;
+  top: 8px;
+  right: 8px;
+  font-size: 16px;
   color: var(--ring-primary);
-  opacity: 0.6;
+  opacity: 0.5;
   z-index: 10;
   animation: rotateIcon 2s ease-in-out infinite;
 }
