@@ -357,7 +357,7 @@ body {
   gap: 16px;
   align-items: flex-start;
   flex-direction: row;
-  animation: slideInRight 2s ease-out forwards;
+  animation: slideInRight 4s ease-out forwards;
 }
 
 .greenie-image {
@@ -383,7 +383,7 @@ body {
   content: '';
   position: absolute;
   bottom: -12px;
-  right: 40px;
+  left: 30px;
   width: 0;
   height: 0;
   border-left: 12px solid transparent;
@@ -395,7 +395,7 @@ body {
   content: '';
   position: absolute;
   bottom: -8px;
-  right: 42px;
+  left: 32px;
   width: 0;
   height: 0;
   border-left: 10px solid transparent;
