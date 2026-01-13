@@ -117,7 +117,7 @@ body {
 }
 
 .race-section {
-  width: 340px;
+  width: 380px;
   height: 100%;
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
@@ -173,12 +173,12 @@ body {
   position: relative;
   background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
   border-radius: 10px;
-  padding: 10px 6px 12px;
+  padding: 10px 4px 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 16px rgba(0,0,0,0.25);
   justify-content: flex-end;
   align-items: center;
-  width: 64px;
+  width: 52px;
   flex-shrink: 0;
   height: 100%;
   overflow: visible;

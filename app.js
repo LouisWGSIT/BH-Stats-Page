@@ -1,6 +1,118 @@
 (async function () {
   const cfg = await fetch('config.json').then(r => r.json());
 
+  // Slight color tint helper (positive percent lightens, negative darkens)
+  function adjustColor(hex, percent) {
+    const clean = hex.replace('#', '');
+    if (clean.length < 6) return hex;
+    const num = parseInt(clean, 16);
+    if (Number.isNaN(num)) return hex;
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+    const target = percent < 0 ? 0 : 255;
+    const p = Math.abs(percent) / 100;
+    const nr = Math.round(r + (target - r) * p);
+    const ng = Math.round(g + (target - g) * p);
+    const nb = Math.round(b + (target - b) * p);
+    return `rgb(${nr}, ${ng}, ${nb})`;
+  }
+
+  // Depth/gloss plugin to give donuts a subtle 3D feel
+  const donutDepthPlugin = {
+    id: 'donutDepth',
+    afterDatasetsDraw(chart) {
+      const meta = chart.getDatasetMeta(0);
+      const arc = meta?.data?.[0];
+      if (!arc) return;
+
+      const { ctx } = chart;
+      const { x, y, innerRadius, outerRadius } = arc;
+      const ringThickness = outerRadius - innerRadius;
+
+      // Soft shadow under the ring
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-over';
+      const shadowGrad = ctx.createRadialGradient(
+        x,
+        y + ringThickness * 0.45,
+        innerRadius,
+        x,
+        y + ringThickness * 0.45,
+        outerRadius + 12
+      );
+      shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.18)');
+      shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = shadowGrad;
+      ctx.beginPath();
+      ctx.arc(x, y, outerRadius + 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Subtle top gloss on the ring
+      ctx.save();
+      const shineGrad = ctx.createRadialGradient(
+        x,
+        y - ringThickness * 0.65,
+        innerRadius * 0.35,
+        x,
+        y - ringThickness * 0.65,
+        outerRadius
+      );
+      shineGrad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+      shineGrad.addColorStop(0.6, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = shineGrad;
+      ctx.beginPath();
+      ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+      ctx.arc(x, y, innerRadius, 0, Math.PI * 2, true);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    },
+  };
+
+  Chart.register(donutDepthPlugin);
+
+  function donut(canvasId) {
+    const ctxEl = document.getElementById(canvasId);
+    const primary = getComputedStyle(document.documentElement)
+      .getPropertyValue('--ring-primary').trim();
+    const secondary = getComputedStyle(document.documentElement)
+      .getPropertyValue('--ring-secondary').trim();
+
+    const chart = new Chart(ctxEl, {
+      type: 'doughnut',
+      data: {
+        labels: ['Value', 'Remaining'],
+        datasets: [{
+          data: [0, 0],
+          backgroundColor: [secondary, primary],
+          borderWidth: 0,
+          borderRadius: 10,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        cutout: '68%',
+        animation: { duration: 400 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: true,
+            callbacks: {
+              label: function(ctx) {
+                return ctx.label + ': ' + ctx.raw;
+              }
+            }
+          }
+        }
+      }
+    });
+    
+    return chart;
+  }
+
   // Apply theme variables
   const root = document.documentElement;
   root.style.setProperty('--bg', cfg.theme.bg);
@@ -531,123 +643,6 @@
       startKeepAliveVideo();
     }
   });
-
-  // Slight color tint helper (positive percent lightens, negative darkens)
-  function adjustColor(hex, percent) {
-    const clean = hex.replace('#', '');
-    if (clean.length < 6) return hex;
-    const num = parseInt(clean, 16);
-    if (Number.isNaN(num)) return hex;
-    const r = (num >> 16) & 255;
-    const g = (num >> 8) & 255;
-    const b = num & 255;
-    const target = percent < 0 ? 0 : 255;
-    const p = Math.abs(percent) / 100;
-    const nr = Math.round(r + (target - r) * p);
-    const ng = Math.round(g + (target - g) * p);
-    const nb = Math.round(b + (target - b) * p);
-    return `rgb(${nr}, ${ng}, ${nb})`;
-  }
-
-  // Depth/gloss plugin to give donuts a subtle 3D feel
-  const donutDepthPlugin = {
-    id: 'donutDepth',
-    afterDatasetsDraw(chart) {
-      const meta = chart.getDatasetMeta(0);
-      const arc = meta?.data?.[0];
-      if (!arc) return;
-
-      const { ctx } = chart;
-      const { x, y, innerRadius, outerRadius } = arc;
-      const ringThickness = outerRadius - innerRadius;
-
-      // Soft shadow under the ring
-      ctx.save();
-      ctx.globalCompositeOperation = 'destination-over';
-      const shadowGrad = ctx.createRadialGradient(
-        x,
-        y + ringThickness * 0.45,
-        innerRadius,
-        x,
-        y + ringThickness * 0.45,
-        outerRadius + 12
-      );
-      shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.18)');
-      shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = shadowGrad;
-      ctx.beginPath();
-      ctx.arc(x, y, outerRadius + 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // Subtle top gloss on the ring
-      ctx.save();
-      const shineGrad = ctx.createRadialGradient(
-        x,
-        y - ringThickness * 0.65,
-        innerRadius * 0.35,
-        x,
-        y - ringThickness * 0.65,
-        outerRadius
-      );
-      shineGrad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
-      shineGrad.addColorStop(0.6, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = shineGrad;
-      ctx.beginPath();
-      ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
-      ctx.arc(x, y, innerRadius, 0, Math.PI * 2, true);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    },
-  };
-
-  let donutDepthRegistered = false;
-
-  function donut(canvasId) {
-    const ctxEl = document.getElementById(canvasId);
-    const primary = getComputedStyle(document.documentElement)
-      .getPropertyValue('--ring-primary').trim();
-    const secondary = getComputedStyle(document.documentElement)
-      .getPropertyValue('--ring-secondary').trim();
-
-    if (!donutDepthRegistered) {
-      Chart.register(donutDepthPlugin);
-      donutDepthRegistered = true;
-    }
-
-    const chart = new Chart(ctxEl, {
-      type: 'doughnut',
-      data: {
-        labels: ['Value', 'Remaining'],
-        datasets: [{
-          data: [0, 0],
-          backgroundColor: [secondary, primary],
-          borderWidth: 0,
-          borderRadius: 10,
-          hoverOffset: 8
-        }]
-      },
-      options: {
-        responsive: true,
-        cutout: '68%',
-        animation: { duration: 400 },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            enabled: true,
-            callbacks: {
-              label: function(ctx) {
-                return ctx.label + ': ' + ctx.raw;
-              }
-            }
-          }
-        }
-      }
-    });
-    
-    return chart;
-  }
 
   function keepScreenAlive() {
     if (document.hidden) return;
