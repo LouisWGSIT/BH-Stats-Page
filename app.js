@@ -707,4 +707,243 @@
     if (diffHours < 24) return `${diffHours}h ago`;
     return then.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   }
+
+  // ==================== ANALYTICS & FLIP CARDS ====================
+  
+  let analyticsCharts = {};
+
+  async function fetchAnalytics() {
+    try {
+      const [categoryTrends, engineerStats, peakHours, dayPatterns] = await Promise.all([
+        fetch('/analytics/weekly-category-trends').then(r => r.json()),
+        fetch('/analytics/weekly-engineer-stats').then(r => r.json()),
+        fetch('/analytics/peak-hours').then(r => r.json()),
+        fetch('/analytics/day-of-week-patterns').then(r => r.json())
+      ]);
+
+      return { categoryTrends, engineerStats, peakHours, dayPatterns };
+    } catch (error) {
+      console.error('Failed to fetch analytics:', error);
+      return null;
+    }
+  }
+
+  function createPeakHoursChart(data) {
+    const canvas = document.getElementById('chartPeakHours');
+    if (!canvas) return;
+
+    if (analyticsCharts.peakHours) {
+      analyticsCharts.peakHours.destroy();
+    }
+
+    const ctx = canvas.getContext('2d');
+    analyticsCharts.peakHours = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: data.hours.map(h => `${h.hour}:00`),
+        datasets: [{
+          label: 'Erasures',
+          data: data.hours.map(h => h.count),
+          backgroundColor: cfg.colors.primary,
+          borderRadius: 4,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: {
+            display: true,
+            text: 'Hourly Activity',
+            color: cfg.colors.text,
+            font: { size: 14 }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: cfg.colors.muted, font: { size: 10 } }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: cfg.colors.muted, font: { size: 9 }, maxRotation: 0 }
+          }
+        }
+      }
+    });
+  }
+
+  function createDayOfWeekChart(data) {
+    const canvas = document.getElementById('chartDayOfWeek');
+    if (!canvas) return;
+
+    if (analyticsCharts.dayOfWeek) {
+      analyticsCharts.dayOfWeek.destroy();
+    }
+
+    const ctx = canvas.getContext('2d');
+    analyticsCharts.dayOfWeek = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: data.patterns.map(p => p.day),
+        datasets: [{
+          label: 'Avg Erasures',
+          data: data.patterns.map(p => p.avgCount),
+          backgroundColor: cfg.colors.secondary,
+          borderRadius: 4,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: {
+            display: true,
+            text: 'Average by Day (Last 4 Weeks)',
+            color: cfg.colors.text,
+            font: { size: 14 }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: cfg.colors.muted }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: cfg.colors.muted }
+          }
+        }
+      }
+    });
+  }
+
+  function createWeeklyCategoryTrendsChart(data) {
+    const canvas = document.getElementById('chartWeeklyCategoryTrends');
+    if (!canvas) return;
+
+    if (analyticsCharts.categoryTrends) {
+      analyticsCharts.categoryTrends.destroy();
+    }
+
+    const trends = data.trends;
+    const allDates = [...new Set(
+      Object.values(trends).flatMap(arr => arr.map(d => d.date))
+    )].sort();
+
+    const datasets = Object.keys(trends).map((category, idx) => {
+      const colorMap = {
+        'laptops_desktops': cfg.colors.primary,
+        'servers': cfg.colors.secondary,
+        'macs': '#ffcc00',
+        'mobiles': cfg.colors.secondary
+      };
+      
+      return {
+        label: category.replace('_', ' / ').toUpperCase(),
+        data: allDates.map(date => {
+          const entry = trends[category].find(d => d.date === date);
+          return entry ? entry.count : 0;
+        }),
+        borderColor: colorMap[category] || cfg.colors.primary,
+        backgroundColor: colorMap[category] || cfg.colors.primary,
+        tension: 0.3,
+        borderWidth: 2,
+        fill: false
+      };
+    });
+
+    const ctx = canvas.getContext('2d');
+    analyticsCharts.categoryTrends = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: allDates.map(d => new Date(d).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })),
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: { color: cfg.colors.text, font: { size: 11 } }
+          },
+          title: {
+            display: true,
+            text: 'Last 7 Days',
+            color: cfg.colors.text,
+            font: { size: 14 }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: cfg.colors.muted }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: cfg.colors.muted, font: { size: 10 } }
+          }
+        }
+      }
+    });
+  }
+
+  function updateWeeklyLeaderboard(data) {
+    const tbody = document.getElementById('weeklyLeaderboardBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = data.stats.slice(0, 10).map(eng => `
+      <tr>
+        <td><span class="engineer-badge" style="background: ${getEngineerColor(eng.initials)}">${eng.initials}</span></td>
+        <td>${eng.weeklyTotal}</td>
+        <td>${eng.daysActive}/7</td>
+        <td>${eng.consistency}%</td>
+      </tr>
+    `).join('');
+  }
+
+  async function initializeAnalytics() {
+    const analytics = await fetchAnalytics();
+    if (!analytics) return;
+
+    createPeakHoursChart(analytics.peakHours);
+    createDayOfWeekChart(analytics.dayPatterns);
+    createWeeklyCategoryTrendsChart(analytics.categoryTrends);
+    updateWeeklyLeaderboard(analytics.engineerStats);
+  }
+
+  // Flip card logic with staggered timing
+  function setupFlipCards() {
+    const flipCards = document.querySelectorAll('.flip-card');
+    const flipIntervals = [15000, 18000, 21000, 16000]; // Staggered timings (15-21s)
+
+    flipCards.forEach((card, index) => {
+      const interval = flipIntervals[index % flipIntervals.length];
+      
+      setInterval(() => {
+        card.classList.toggle('flipped');
+      }, interval);
+    });
+  }
+
+  // Initialize analytics and flip on first load
+  setTimeout(async () => {
+    await initializeAnalytics();
+    setupFlipCards();
+  }, 2000); // Wait for main data to load first
+
+  // Refresh analytics every 5 minutes
+  setInterval(() => {
+    initializeAnalytics();
+  }, 300000);
+
 })();

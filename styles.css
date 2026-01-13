@@ -743,6 +743,88 @@ body {
   padding-left: 12px;
 }
 
+/* Flip Card Styles */
+.flip-card {
+  perspective: 1000px;
+  position: relative;
+}
+
+.flip-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.8s;
+  transform-style: preserve-3d;
+}
+
+.flip-card.flipped .flip-card-inner {
+  transform: rotateY(180deg);
+}
+
+.flip-card-front,
+.flip-card-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.flip-card-front {
+  z-index: 2;
+}
+
+.flip-card-back {
+  transform: rotateY(180deg);
+  padding: 20px;
+}
+
+.flip-indicator {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 20px;
+  color: var(--ring-primary);
+  opacity: 0.6;
+  z-index: 10;
+  animation: rotateIcon 2s ease-in-out infinite;
+}
+
+@keyframes rotateIcon {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(180deg); }
+}
+
+/* Ensure donut cards maintain proper structure when flipped */
+.donut-card .flip-card-front,
+.donut-card .flip-card-back {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.donut-card .flip-card-back {
+  justify-content: center;
+}
+
+.donut-card .flip-card-back canvas {
+  max-width: 100%;
+  max-height: 280px;
+}
+
+/* Wide cards (category and leaderboard) maintain their layout */
+.wide.flip-card {
+  min-height: 300px;
+}
+
+.wide .flip-card-back canvas {
+  flex: 1;
+  max-height: 250px;
+}
+
 /* Responsive for smaller screens - keep 3 columns for TV */
 @media (max-width: 1200px) {
   .top-row { grid-template-columns: repeat(2, 1fr); }

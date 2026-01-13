@@ -357,5 +357,115 @@ def get_top_engineers_by_type(device_type: str, limit: int = 3, date_str: str = 
 
     return [{"initials": row[0], "count": row[1]} for row in rows]
 
+def get_weekly_category_trends() -> Dict[str, List[Dict]]:
+    """Get last 7 days of category data for trend analysis"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get last 7 days
+    cursor.execute("""
+        SELECT date, device_type, SUM(count) as total
+        FROM engineer_stats_type
+        WHERE date >= date('now', '-7 days')
+        GROUP BY date, device_type
+        ORDER BY date ASC
+    """)
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # Organize by category
+    trends = {}
+    for row in rows:
+        date_str, device_type, total = row
+        if device_type not in trends:
+            trends[device_type] = []
+        trends[device_type].append({"date": date_str, "count": total})
+    
+    return trends
+
+def get_weekly_engineer_stats() -> List[Dict]:
+    """Get weekly totals and consistency for engineers"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get weekly totals and days active
+    cursor.execute("""
+        SELECT initials, 
+               SUM(count) as weekly_total,
+               COUNT(DISTINCT date) as days_active
+        FROM engineer_stats
+        WHERE date >= date('now', '-7 days')
+        GROUP BY initials
+        ORDER BY weekly_total DESC
+    """)
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [
+        {
+            "initials": row[0],
+            "weeklyTotal": row[1],
+            "daysActive": row[2],
+            "consistency": round((row[2] / 7.0) * 100, 1)  # % of days active
+        }
+        for row in rows
+    ]
+
+def get_peak_hours() -> List[Dict]:
+    """Get hourly breakdown of erasures for today"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    today = get_today_str()
+    
+    # Extract hour from timestamp and count
+    cursor.execute("""
+        SELECT CAST(strftime('%H', ts) AS INTEGER) as hour,
+               COUNT(*) as count
+        FROM erasures
+        WHERE date(ts) = ?
+        GROUP BY hour
+        ORDER BY hour
+    """, (today,))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # Fill in missing hours with 0
+    hourly_data = {i: 0 for i in range(24)}
+    for row in rows:
+        hourly_data[row[0]] = row[1]
+    
+    return [{"hour": h, "count": c} for h, c in hourly_data.items()]
+
+def get_day_of_week_patterns() -> List[Dict]:
+    """Get average erasures by day of week over last 4 weeks"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get day of week (0=Sunday, 6=Saturday) and average counts
+    cursor.execute("""
+        SELECT CAST(strftime('%w', date) AS INTEGER) as dow,
+               AVG(erased) as avg_count
+        FROM daily_stats
+        WHERE date >= date('now', '-28 days')
+        GROUP BY dow
+        ORDER BY dow
+    """)
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    day_names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    
+    # Fill in missing days with 0
+    dow_data = {i: 0 for i in range(7)}
+    for row in rows:
+        dow_data[row[0]] = round(row[1], 1)
+    
+    return [{"day": day_names[i], "avgCount": dow_data[i]} for i in range(7)]
+
 # Initialize DB on import
 init_db()

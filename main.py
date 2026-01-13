@@ -313,5 +313,29 @@ async def get_top_engineers_by_type(type: str = "laptops_desktops", scope: str =
     engineers = db.top_engineers(scope=scope, device_type=type, limit=limit)
     return {"engineers": engineers, "type": type}
 
+@app.get("/analytics/weekly-category-trends")
+async def get_weekly_category_trends():
+    """Get last 7 days of category trends for flip cards"""
+    trends = db.get_weekly_category_trends()
+    return {"trends": trends}
+
+@app.get("/analytics/weekly-engineer-stats")
+async def get_weekly_engineer_stats():
+    """Get weekly totals and consistency scores for engineers"""
+    stats = db.get_weekly_engineer_stats()
+    return {"stats": stats}
+
+@app.get("/analytics/peak-hours")
+async def get_peak_hours():
+    """Get hourly breakdown for today"""
+    hours = db.get_peak_hours()
+    return {"hours": hours}
+
+@app.get("/analytics/day-of-week-patterns")
+async def get_day_of_week_patterns():
+    """Get average erasures by day of week"""
+    patterns = db.get_day_of_week_patterns()
+    return {"patterns": patterns}
+
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")

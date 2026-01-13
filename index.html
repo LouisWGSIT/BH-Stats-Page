@@ -66,22 +66,42 @@
 
       <div class="main-content">
         <div class="grid top-row">
-        <section class="card donut-card">
-          <div>
-            <h2>Total Erasures Today</h2>
-            <div class="big-number" id="totalTodayValue">0</div>
-            <div class="target">Target: <span id="erasedTarget">XX</span></div>
+        <section class="card donut-card flip-card">
+          <div class="flip-card-inner">
+            <div class="flip-card-front">
+              <div class="flip-indicator">⟲</div>
+              <div>
+                <h2>Total Erasures Today</h2>
+                <div class="big-number" id="totalTodayValue">0</div>
+                <div class="target">Target: <span id="erasedTarget">XX</span></div>
+              </div>
+              <canvas id="chartTotalToday"></canvas>
+            </div>
+            <div class="flip-card-back">
+              <div class="flip-indicator">⟲</div>
+              <h2>Peak Hours Today</h2>
+              <canvas id="chartPeakHours"></canvas>
+            </div>
           </div>
-          <canvas id="chartTotalToday"></canvas>
         </section>
 
-        <section class="card donut-card">
-          <div>
-            <h2>Total Erasures This Month</h2>
-            <div class="big-number" id="monthTotalValue">0</div>
-            <div class="target">Target: <span id="monthTarget">XX</span></div>
+        <section class="card donut-card flip-card">
+          <div class="flip-card-inner">
+            <div class="flip-card-front">
+              <div class="flip-indicator">⟲</div>
+              <div>
+                <h2>Total Erasures This Month</h2>
+                <div class="big-number" id="monthTotalValue">0</div>
+                <div class="target">Target: <span id="monthTarget">XX</span></div>
+              </div>
+              <canvas id="chartMonthToday"></canvas>
+            </div>
+            <div class="flip-card-back">
+              <div class="flip-indicator">⟲</div>
+              <h2>Day of Week Patterns</h2>
+              <canvas id="chartDayOfWeek"></canvas>
+            </div>
           </div>
-          <canvas id="chartMonthToday"></canvas>
         </section>
       </div>
 
@@ -120,23 +140,53 @@
       </div>
 
       <div class="grid bottom-row">
-        <section class="card wide">
-          <h2>Category Mix Today</h2>
-          <div id="byTypeBars" class="bars"></div>
+        <section class="card wide flip-card">
+          <div class="flip-card-inner">
+            <div class="flip-card-front">
+              <div class="flip-indicator">⟲</div>
+              <h2>Category Mix Today</h2>
+              <div id="byTypeBars" class="bars"></div>
+            </div>
+            <div class="flip-card-back">
+              <div class="flip-indicator">⟲</div>
+              <h2>Weekly Category Trends</h2>
+              <canvas id="chartWeeklyCategoryTrends"></canvas>
+            </div>
+          </div>
         </section>
 
-        <section class="card wide">
-          <h2>Engineer Leaderboard (Today)</h2>
-          <table class="leaderboard">
-            <thead>
-              <tr>
-                <th>Engineer</th>
-                <th>Erasures</th>
-                <th>Last Active</th>
-              </tr>
-            </thead>
-            <tbody id="leaderboardBody"></tbody>
-          </table>
+        <section class="card wide flip-card">
+          <div class="flip-card-inner">
+            <div class="flip-card-front">
+              <div class="flip-indicator">⟲</div>
+              <h2>Engineer Leaderboard (Today)</h2>
+              <table class="leaderboard">
+                <thead>
+                  <tr>
+                    <th>Engineer</th>
+                    <th>Erasures</th>
+                    <th>Last Active</th>
+                  </tr>
+                </thead>
+                <tbody id="leaderboardBody"></tbody>
+              </table>
+            </div>
+            <div class="flip-card-back">
+              <div class="flip-indicator">⟲</div>
+              <h2>Weekly Engineer Stats</h2>
+              <table class="leaderboard">
+                <thead>
+                  <tr>
+                    <th>Engineer</th>
+                    <th>Week Total</th>
+                    <th>Days Active</th>
+                    <th>Consistency</th>
+                  </tr>
+                </thead>
+                <tbody id="weeklyLeaderboardBody"></tbody>
+              </table>
+            </div>
+          </div>
         </section>
       </div>
       </div>
