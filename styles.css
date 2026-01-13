@@ -341,7 +341,7 @@ body {
 
 .greenie-container {
   position: fixed;
-  bottom: 120px;
+  bottom: 280px;
   right: 20px;
   z-index: 8000;
   max-width: 50vw;
