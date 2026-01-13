@@ -117,11 +117,11 @@ body {
 }
 
 .race-section {
-  width: 380px;
+  width: 400px;
   height: 100%;
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
-  padding: 14px 10px;
+  padding: 16px 12px;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 15px 35px rgba(0,0,0,0.25);
@@ -157,13 +157,13 @@ body {
 .race-track {
   display: flex;
   flex-direction: row;
-  gap: 8px;
+  gap: 10px;
   flex: 1;
   min-height: 0;
   position: relative;
   width: 100%;
   align-items: flex-end;
-  padding: 2px 6px 10px;
+  padding: 4px 8px 12px;
 }
 
 .race-lane {
@@ -171,7 +171,8 @@ body {
   flex-direction: column;
   gap: 8px;
   position: relative;
-  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)), 
+              repeating-linear-gradient(0deg, transparent, transparent 12px, rgba(140, 240, 74, 0.08) 12px, rgba(140, 240, 74, 0.08) 13px);
   border-radius: 10px;
   padding: 10px 4px 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -182,6 +183,7 @@ body {
   flex-shrink: 0;
   height: 100%;
   overflow: visible;
+  animation: trackPulse 3s ease-in-out infinite;
 }
 
 .lane-label {
@@ -200,6 +202,8 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255,255,255,0.1);
   letter-spacing: 0.3px;
+  position: relative;
+  z-index: 15;
 }
 
 .race-car {
@@ -223,13 +227,15 @@ body {
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  width: 3px;
-  background: linear-gradient(to top, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0));
-  border-radius: 2px;
+  width: 5px;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+  border-radius: 3px;
   transition: height 0.3s ease;
   height: 0%;
   z-index: 5;
   pointer-events: none;
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.6)) drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.5), inset 0 0 4px rgba(255, 255, 255, 0.8);
 }
 
 .car-body {
@@ -255,6 +261,11 @@ body {
 @keyframes carPulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.15); }
+}
+
+@keyframes trackPulse {
+  0%, 100% { background-position: 0 0; }
+  50% { background-position: 0 4px; }
 }
 
 @keyframes carSway {
@@ -346,7 +357,7 @@ body {
   display: flex;
   gap: 16px;
   align-items: flex-end;
-  flex-direction: row-reverse;
+  flex-direction: row;
   animation: slideInRight 2s ease-out forwards;
 }
 
@@ -373,11 +384,13 @@ body {
   content: '';
   position: absolute;
   bottom: -12px;
-  right: 20px;
+  left: 20px;
   width: 0;
   height: 0;
-  border-left: 0 solid transparent;
-  border-right: 12px solid transparent;
+  border-left: 12px solid transparent;
+  border-right: 0 solid transparent;
+  border-top: 12px solid var(--ring-primary);
+}
   border-top: 12px solid var(--ring-primary);
 }
 
@@ -385,11 +398,11 @@ body {
   content: '';
   position: absolute;
   bottom: -8px;
-  right: 22px;
+  left: 22px;
   width: 0;
   height: 0;
-  border-left: 0 solid transparent;
-  border-right: 10px solid transparent;
+  border-left: 10px solid transparent;
+  border-right: 0 solid transparent;
   border-top: 10px solid rgba(140, 240, 74, 0.2);
 }
 

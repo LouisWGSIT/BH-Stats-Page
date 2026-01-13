@@ -86,7 +86,7 @@
         labels: ['Value', 'Remaining'],
         datasets: [{
           data: [0, 0],
-          backgroundColor: [secondary, primary],
+          backgroundColor: [primary, secondary],
           borderWidth: 0,
           borderRadius: 10,
           hoverOffset: 8
