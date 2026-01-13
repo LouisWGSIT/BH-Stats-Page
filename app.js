@@ -88,7 +88,7 @@
           data: [0, 0],
           backgroundColor: [secondary, primary],
           borderWidth: 0,
-          borderRadius: 8,
+          borderRadius: 0,
           hoverOffset: 8
         }]
       },

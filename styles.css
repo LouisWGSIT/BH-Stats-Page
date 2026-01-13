@@ -117,11 +117,11 @@ body {
 }
 
 .race-section {
-  width: 410px;
+  width: 380px;
   height: 100%;
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
-  padding: 16px 14px;
+  padding: 16px 12px;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 15px 35px rgba(0,0,0,0.25);
@@ -157,13 +157,13 @@ body {
 .race-track {
   display: flex;
   flex-direction: row;
-  gap: 12px;
+  gap: 10px;
   flex: 1;
   min-height: 0;
   position: relative;
   width: 100%;
   align-items: flex-end;
-  padding: 4px 10px 12px;
+  padding: 4px 8px 12px;
 }
 
 .race-lane {
@@ -203,7 +203,7 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255,255,255,0.1);
   letter-spacing: 0.3px;
   position: relative;
-  z-index: 20;
+  z-index: 25;
 }
 
 .race-car {
@@ -231,7 +231,7 @@ body {
   border-radius: 3px;
   transition: height 0.3s ease;
   height: 0%;
-  z-index: -1;
+  z-index: -10;
   pointer-events: none;
   filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.3)) drop-shadow(0 0 2px rgba(255, 255, 255, 0.2));
   box-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
@@ -341,7 +341,7 @@ body {
 
 .greenie-container {
   position: fixed;
-  bottom: 20px;
+  bottom: 120px;
   right: 20px;
   z-index: 8000;
   max-width: 50vw;
