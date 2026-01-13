@@ -532,29 +532,6 @@
     }
   });
 
-  // Center text plugin for donuts
-  const centerTextPlugin = {
-    id: 'centerText',
-    afterDatasetsDraw(chart) {
-      const { ctx, chartArea, data } = chart;
-      if (!chartArea) return;
-      const value = data.datasets[0].data[0] || 0;
-      const target = parseInt(chart.canvas.dataset.target) || 1;
-      const pct = Math.round((value / target) * 100);
-      
-      const centerX = (chartArea.left + chartArea.right) / 2;
-      const centerY = (chartArea.top + chartArea.bottom) / 2;
-      
-      ctx.save();
-      ctx.font = 'bold 24px Inter, Segoe UI, Roboto, Arial';
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(pct + '%', centerX, centerY);
-      ctx.restore();
-    }
-  };
-
   function donut(canvasId) {
     const ctx = document.getElementById(canvasId);
     const primary = getComputedStyle(document.documentElement)
@@ -587,8 +564,7 @@
             }
           }
         }
-      },
-      plugins: [centerTextPlugin]
+      }
     });
     
     return chart;
