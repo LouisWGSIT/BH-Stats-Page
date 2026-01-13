@@ -515,7 +515,7 @@
       vid.style.left = '0';
       vid.style.pointerEvents = 'none';
       // 1s silent WebM
-      vid.src = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC9+BBQvWBAULpgQRC8YEEQvGBAAAB9uWdlYm0BVmVyc2lvbj4xAAAAAAoAAABHYXZrVjkAAAAAAAAD6aNjYWI9AAABY2FkYwEAAAAAAAAAAAAAAAAAAAAAAAACdC9hAAAAAAACAAEAAQAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+      vid.src = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC9+BBQvWBAULpgQRC8YEEQvGBAAAB9uWdlYm0BVmVyc2lvbj4xAAAAAAoAAABHYXZrVjkAAAAAAAAD6aNjYWI9AAAZY2FkYwEAAAAAAAAAAAAAAAAAAAAAAAACdC9hAAAAAAACAAEAAQAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
       document.body.appendChild(vid);
       keepAliveVideo = vid;
       vid.play().catch(() => {});
@@ -531,6 +531,29 @@
       startKeepAliveVideo();
     }
   });
+
+  // Center text plugin for donuts
+  const centerTextPlugin = {
+    id: 'centerText',
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea, data } = chart;
+      if (!chartArea) return;
+      const value = data.datasets[0].data[0] || 0;
+      const target = parseInt(chart.canvas.dataset.target) || 1;
+      const pct = Math.round((value / target) * 100);
+      
+      const centerX = (chartArea.left + chartArea.right) / 2;
+      const centerY = (chartArea.top + chartArea.bottom) / 2;
+      
+      ctx.save();
+      ctx.font = 'bold 24px Inter, Segoe UI, Roboto, Arial';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pct + '%', centerX, centerY);
+      ctx.restore();
+    }
+  };
 
   function donut(canvasId) {
     const ctx = document.getElementById(canvasId);
@@ -562,29 +585,10 @@
                 return ctx.label + ': ' + ctx.raw;
               }
             }
-          },
-          centerLabel: {
-            id: 'centerLabel',
-            afterDatasetsDraw(chart) {
-              const { ctx: c, chartArea, data } = chart;
-              const value = data.datasets[0].data[0] || 0;
-              const target = chart.canvas.dataset.target || '?';
-              const pct = target !== '?' ? Math.round((value / target) * 100) : 0;
-              
-              const centerX = (chartArea.left + chartArea.right) / 2;
-              const centerY = (chartArea.top + chartArea.bottom) / 2;
-              
-              c.save();
-              c.font = 'bold 20px Inter, Segoe UI, Roboto, Arial, sans-serif';
-              c.fillStyle = '#ffffff';
-              c.textAlign = 'center';
-              c.textBaseline = 'middle';
-              c.fillText(pct + '%', centerX, centerY);
-              c.restore();
-            }
           }
         }
-      }
+      },
+      plugins: [centerTextPlugin]
     });
     
     return chart;
