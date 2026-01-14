@@ -819,7 +819,7 @@
           legend: { display: false },
           title: {
             display: true,
-            text: 'Average by Day (Last 4 Weeks)',
+            text: 'Average Daily Erasures',
             color: cfg.theme.text,
             font: { size: 14 }
           }
@@ -949,7 +949,7 @@
       return;
     }
 
-    const flipIntervals = [25000, 28000, 31000, 26000]; // Staggered timings (25-31s)
+    const flipIntervals = [40000, 45000, 50000, 42000]; // Staggered timings (40-50s)
     
     flipCards.forEach((card, index) => {
       console.log(`📍 Card ${index}:`, card.className);
