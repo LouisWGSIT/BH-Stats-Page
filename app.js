@@ -816,8 +816,8 @@
     }
 
     const rects = pixels.map(p => `<rect x="${p.x}" y="${p.y}" width="1" height="1" fill="${p.color}"/>`).join('');
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 ${size} ${size}' shape-rendering='crispEdges'>${rects}</svg>`;
-    const uri = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">${rects}</svg>`;
+    const uri = `data:image/svg+xml,${encodeURIComponent(svg)}`;
     avatarCache.set(initials, uri);
     return uri;
   }
