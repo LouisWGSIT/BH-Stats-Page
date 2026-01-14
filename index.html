@@ -84,8 +84,8 @@
             </div>
             <div class="flip-card-back">
               <div class="flip-indicator">⟲</div>
-              <h2>Peak Hours Today</h2>
-              <canvas id="chartPeakHours"></canvas>
+              <h2>Category Mix Today</h2>
+              <div id="byTypeBars" class="bars"></div>
             </div>
           </div>
         </section>
@@ -103,8 +103,17 @@
             </div>
             <div class="flip-card-back">
               <div class="flip-indicator">⟲</div>
-              <h2>Average Daily Erasures</h2>
-              <canvas id="chartDayOfWeek"></canvas>
+              <h2>Engineer Leaderboard (Today)</h2>
+              <table class="leaderboard">
+                <thead>
+                  <tr>
+                    <th>Engineer</th>
+                    <th>Erasures</th>
+                    <th>Last Active</th>
+                  </tr>
+                </thead>
+                <tbody id="leaderboardBody"></tbody>
+              </table>
             </div>
           </div>
         </section>
@@ -141,57 +150,6 @@
             <span class="pill" id="countMobiles">0</span>
           </div>
           <ol id="topMobiles" class="top-list"></ol>
-        </section>
-      </div>
-
-      <div class="grid bottom-row rotating-row">
-        <section class="card wide flip-card">
-          <div class="flip-card-inner">
-            <div class="flip-card-front">
-              <div class="flip-indicator">⟲</div>
-              <h2>Category Mix Today</h2>
-              <div id="byTypeBars" class="bars"></div>
-            </div>
-            <div class="flip-card-back">
-              <div class="flip-indicator">⟲</div>
-              <h2>Weekly Category Trends</h2>
-              <canvas id="chartWeeklyCategoryTrends"></canvas>
-            </div>
-          </div>
-        </section>
-
-        <section class="card wide flip-card">
-          <div class="flip-card-inner">
-            <div class="flip-card-front">
-              <div class="flip-indicator">⟲</div>
-              <h2>Engineer Leaderboard (Today)</h2>
-              <table class="leaderboard">
-                <thead>
-                  <tr>
-                    <th>Engineer</th>
-                    <th>Erasures</th>
-                    <th>Last Active</th>
-                  </tr>
-                </thead>
-                <tbody id="leaderboardBody"></tbody>
-              </table>
-            </div>
-            <div class="flip-card-back">
-              <div class="flip-indicator">⟲</div>
-              <h2>Weekly Engineer Stats</h2>
-              <table class="leaderboard">
-                <thead>
-                  <tr>
-                    <th>Engineer</th>
-                    <th>Week Total</th>
-                    <th>Days Active</th>
-                    <th>Consistency</th>
-                  </tr>
-                </thead>
-                <tbody id="weeklyLeaderboardBody"></tbody>
-              </table>
-            </div>
-          </div>
         </section>
       </div>
 
