@@ -1340,10 +1340,32 @@
     });
   }
 
+  // Rotate between the two bottom rows to keep all cards visible without overflow
+  function setupBottomRowRotation() {
+    const rows = Array.from(document.querySelectorAll('.rotating-row'));
+    if (rows.length <= 1) return;
+
+    // Hide all except the first
+    rows.forEach((row, idx) => {
+      row.classList.toggle('hidden-row', idx !== 0);
+    });
+
+    let current = 0;
+    const interval = 30000; // 30s between swaps
+
+    setInterval(() => {
+      const next = (current + 1) % rows.length;
+      rows[current].classList.add('hidden-row');
+      rows[next].classList.remove('hidden-row');
+      current = next;
+    }, interval);
+  }
+
   // Initialize analytics and flip on first load
   setTimeout(async () => {
     await initializeAnalytics();
     setupFlipCards();
+    setupBottomRowRotation();
   }, 500);
 
   // Refresh analytics every 5 minutes

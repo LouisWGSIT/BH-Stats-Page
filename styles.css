@@ -503,6 +503,10 @@ body {
   display: none;
 }
 
+.rotating-row.hidden-row {
+  display: none;
+}
+
 .wide { grid-column: span 1; }
 
 .card.wide {
