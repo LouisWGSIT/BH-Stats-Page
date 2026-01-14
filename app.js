@@ -552,6 +552,14 @@
   refreshAllTopLists();
   refreshByTypeCounts();
   refreshLeaderboard();
+  
+  // Initialize new flip cards
+  updateRecordsMilestones();
+  updateMonthlyProgress();
+  updateRaceUpdates();
+  updateCategoryChampions();
+  updateTargetTracker();
+  createMonthlyMomentumChart();
 
   setInterval(() => {
     refreshSummary();
@@ -560,6 +568,13 @@
     refreshLeaderboard();
     checkAndTriggerWinner();
     checkGreenieTime();
+    
+    // Update new flip cards
+    updateRecordsMilestones();
+    updateMonthlyProgress();
+    updateRaceUpdates();
+    updateCategoryChampions();
+    updateTargetTracker();
   }, cfg.refreshSeconds * 1000);
 
   function updateDonut(chart, value, target) {
@@ -1140,12 +1155,164 @@
     updateWeeklyLeaderboard(analytics.engineerStats);
   }
 
+  // ==================== NEW FLIP CARDS DATA ====================
+
+  function updateRecordsMilestones() {
+    // Mock data - replace with real API calls
+    document.getElementById('recordBestDay').textContent = '687';
+    document.getElementById('recordBestDayDate').textContent = 'Dec 15, 2025';
+    document.getElementById('recordTopEngineer').textContent = 'MS';
+    document.getElementById('recordTopEngineerCount').textContent = '8,432 total erasures';
+    document.getElementById('currentStreak').textContent = '3';
+  }
+
+  function updateMonthlyProgress() {
+    const monthTotal = parseInt(document.getElementById('monthTotalValue')?.textContent) || 0;
+    const today = new Date().getDate();
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    
+    const dailyAvg = Math.round(monthTotal / today);
+    document.getElementById('monthlyAverage').textContent = dailyAvg;
+    
+    const targetMonthly = parseInt(cfg.targets.month);
+    const projectedTotal = Math.round(dailyAvg * daysInMonth);
+    const paceStatus = projectedTotal >= targetMonthly ? '✅ On Pace' : '⚠️ Behind';
+    document.getElementById('paceIndicator').textContent = paceStatus;
+    
+    document.getElementById('daysRemaining').textContent = daysInMonth - today;
+  }
+
+  function updateRaceUpdates() {
+    const leaderboardBody = document.getElementById('leaderboardBody');
+    const rows = leaderboardBody?.querySelectorAll('tr') || [];
+    
+    if (rows.length >= 2) {
+      const first = rows[0].querySelectorAll('td');
+      const second = rows[1].querySelectorAll('td');
+      if (first.length >= 2 && second.length >= 2) {
+        const firstName = first[0].textContent.trim();
+        const firstCount = parseInt(first[1].textContent.trim()) || 0;
+        const secondName = second[0].textContent.trim();
+        const secondCount = parseInt(second[1].textContent.trim()) || 0;
+        const gap = firstCount - secondCount;
+        
+        document.getElementById('leaderGap').textContent = `${firstName} leads by ${gap} erasures`;
+        
+        if (gap <= 5 && gap > 0) {
+          document.getElementById('closestRace').textContent = `${secondName} closing in - only ${gap} behind!`;
+        } else {
+          document.getElementById('closestRace').textContent = 'Race is heating up! 🔥';
+        }
+      }
+    }
+    
+    if (rows.length >= 3) {
+      const third = rows[2].querySelectorAll('td');
+      if (third.length >= 2) {
+        const thirdName = third[0].textContent.trim();
+        const thirdCount = parseInt(third[1].textContent.trim()) || 0;
+        document.getElementById('comebackStory').textContent = `${thirdName} making moves with ${thirdCount} erasures`;
+      }
+    }
+  }
+
+  function updateCategoryChampions() {
+    categories.forEach(cat => {
+      const listEl = document.getElementById(cat.listId);
+      if (listEl) {
+        const firstItem = listEl.querySelector('li');
+        if (firstItem) {
+          const text = firstItem.textContent.trim();
+          const parts = text.match(/(.+?)\s+(\d+)$/);
+          if (parts) {
+            const champId = cat.key === 'laptops_desktops' ? 'champLD' :
+                           cat.key === 'servers' ? 'champServers' :
+                           cat.key === 'macs' ? 'champMacs' : 'champMobiles';
+            document.getElementById(champId).textContent = `${parts[1]} (${parts[2]})`;
+          }
+        }
+      }
+    });
+  }
+
+  function updateTargetTracker() {
+    const todayTotal = parseInt(document.getElementById('totalTodayValue')?.textContent) || 0;
+    const target = parseInt(cfg.targets.daily);
+    const percentage = Math.min((todayTotal / target) * 100, 100);
+    
+    if (todayTotal >= target) {
+      document.getElementById('trackerStatus').textContent = '🎯 TARGET ACHIEVED!';
+    } else if (todayTotal >= target * 0.8) {
+      document.getElementById('trackerStatus').textContent = `${target - todayTotal} away from target`;
+    } else {
+      document.getElementById('trackerStatus').textContent = `${Math.round(percentage)}% to target`;
+    }
+    
+    const projectedEnd = Math.round((todayTotal / (new Date().getHours() || 1)) * 16);
+    document.getElementById('trackerProjection').textContent = `Projected: ${projectedEnd} by end of day`;
+    
+    document.getElementById('trackerFill').style.width = `${percentage}%`;
+    document.getElementById('trackerCurrent').textContent = todayTotal;
+    document.getElementById('trackerTarget').textContent = target;
+  }
+
+  function createMonthlyMomentumChart() {
+    const canvas = document.getElementById('chartMonthlyMomentum');
+    if (!canvas) return;
+
+    if (analyticsCharts.monthlyMomentum) {
+      analyticsCharts.monthlyMomentum.destroy();
+    }
+
+    // Mock weekly data - replace with real API
+    const weeklyData = [180, 245, 310, 380];
+    
+    const ctx = canvas.getContext('2d');
+    analyticsCharts.monthlyMomentum = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+        datasets: [{
+          label: 'Weekly Total',
+          data: weeklyData,
+          backgroundColor: cfg.theme.ringSecondary,
+          borderRadius: 6,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: {
+            display: true,
+            text: 'Week-by-Week Progress',
+            color: cfg.theme.text,
+            font: { size: 14 }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: cfg.theme.muted }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: cfg.theme.muted }
+          }
+        }
+      }
+    });
+  }
+
   // Flip card logic with staggered timing
   function setupFlipCards() {
     const flipCards = document.querySelectorAll('.flip-card');
     if (flipCards.length === 0) return;
 
-    const flipIntervals = [40000, 45000, 50000, 42000]; // Staggered timings (40-50s)
+    const flipIntervals = [40000, 45000, 50000, 42000, 48000, 43000, 46000]; // Staggered timings (40-50s) for 7 cards
     
     flipCards.forEach((card, index) => {
       const interval = flipIntervals[index % flipIntervals.length];
@@ -1303,6 +1470,13 @@
       });
     }
 
+    // Calculate monthly progress metrics
+    const today = new Date().getDate();
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const dailyAvg = Math.round(parseInt(monthTotal) / today);
+    const projectedTotal = Math.round(dailyAvg * daysInMonth);
+    const daysRemaining = daysInMonth - today;
+    
     // Build CSV
     const reportTitle = isYesterday ? 'Warehouse Erasure Stats Report (Yesterday)' : 'Warehouse Erasure Stats Report';
     const csv = [
@@ -1316,6 +1490,9 @@
       ['Month Total', monthTotal],
       ['Daily Target', target],
       ['Progress to Target', `${Math.round((parseInt(todayTotal) / parseInt(target)) * 100)}%`],
+      ['Daily Average (Month)', dailyAvg],
+      ['Projected Month Total', projectedTotal],
+      ['Days Remaining', daysRemaining],
       [],
     ];
 
@@ -1323,6 +1500,14 @@
       csv.push(['TOP 3 ENGINEERS (TODAY)']);
       csv.push(['Rank', 'Engineer', 'Erasures', 'Last Active']);
       csv.push(...leaderboardRows);
+      
+      // Add race gap analysis
+      if (leaderboardRows.length >= 2) {
+        const gap = parseInt(leaderboardRows[0][2]) - parseInt(leaderboardRows[1][2]);
+        csv.push([]);
+        csv.push(['Race Status', `${leaderboardRows[0][1]} leads ${leaderboardRows[1][1]} by ${gap} erasures`]);
+      }
+      
       csv.push([]);
     }
 
