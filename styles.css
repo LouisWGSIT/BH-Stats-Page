@@ -503,9 +503,10 @@ body {
   max-height: 200px;
 }
 .bottom-row { 
-  grid-template-columns: repeat(3, 1fr); 
+  grid-template-columns: repeat(2, 1fr); 
+  grid-template-rows: auto auto;
   min-height: 200px;
-  max-height: 200px;
+  max-height: 420px;
 }
 .bottom-row-extra {
   display: none;
