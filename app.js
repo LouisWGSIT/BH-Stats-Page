@@ -744,7 +744,7 @@
         datasets: [{
           label: 'Erasures',
           data: data.hours.map(h => h.count),
-          backgroundColor: cfg.colors.primary,
+          backgroundColor: cfg.theme.ringPrimary,
           borderRadius: 4,
           borderSkipped: false
         }]
@@ -757,7 +757,7 @@
           title: {
             display: true,
             text: 'Hourly Activity',
-            color: cfg.colors.text,
+            color: cfg.theme.text,
             font: { size: 14 }
           }
         },
@@ -765,11 +765,11 @@
           y: {
             beginAtZero: true,
             grid: { color: 'rgba(255,255,255,0.05)' },
-            ticks: { color: cfg.colors.muted, font: { size: 10 } }
+            ticks: { color: cfg.theme.muted, font: { size: 10 } }
           },
           x: {
             grid: { display: false },
-            ticks: { color: cfg.colors.muted, font: { size: 9 }, maxRotation: 0 }
+            ticks: { color: cfg.theme.muted, font: { size: 9 }, maxRotation: 0 }
           }
         }
       }
@@ -792,7 +792,7 @@
         datasets: [{
           label: 'Avg Erasures',
           data: data.patterns.map(p => p.avgCount),
-          backgroundColor: cfg.colors.secondary,
+          backgroundColor: cfg.theme.ringSecondary,
           borderRadius: 4,
           borderSkipped: false
         }]
@@ -805,7 +805,7 @@
           title: {
             display: true,
             text: 'Average by Day (Last 4 Weeks)',
-            color: cfg.colors.text,
+            color: cfg.theme.text,
             font: { size: 14 }
           }
         },
@@ -813,11 +813,11 @@
           y: {
             beginAtZero: true,
             grid: { color: 'rgba(255,255,255,0.05)' },
-            ticks: { color: cfg.colors.muted }
+            ticks: { color: cfg.theme.muted }
           },
           x: {
             grid: { display: false },
-            ticks: { color: cfg.colors.muted }
+            ticks: { color: cfg.theme.muted }
           }
         }
       }
@@ -839,10 +839,10 @@
 
     const datasets = Object.keys(trends).map((category, idx) => {
       const colorMap = {
-        'laptops_desktops': cfg.colors.primary,
-        'servers': cfg.colors.secondary,
+        'laptops_desktops': cfg.theme.ringPrimary,
+        'servers': cfg.theme.ringSecondary,
         'macs': '#ffcc00',
-        'mobiles': cfg.colors.secondary
+        'mobiles': cfg.theme.ringSecondary
       };
       
       return {
@@ -851,8 +851,8 @@
           const entry = trends[category].find(d => d.date === date);
           return entry ? entry.count : 0;
         }),
-        borderColor: colorMap[category] || cfg.colors.primary,
-        backgroundColor: colorMap[category] || cfg.colors.primary,
+        borderColor: colorMap[category] || cfg.theme.ringPrimary,
+        backgroundColor: colorMap[category] || cfg.theme.ringPrimary,
         tension: 0.3,
         borderWidth: 2,
         fill: false
@@ -873,12 +873,12 @@
           legend: {
             display: true,
             position: 'top',
-            labels: { color: cfg.colors.text, font: { size: 11 } }
+            labels: { color: cfg.theme.text, font: { size: 11 } }
           },
           title: {
             display: true,
             text: 'Last 7 Days',
-            color: cfg.colors.text,
+            color: cfg.theme.text,
             font: { size: 14 }
           }
         },
@@ -886,11 +886,11 @@
           y: {
             beginAtZero: true,
             grid: { color: 'rgba(255,255,255,0.05)' },
-            ticks: { color: cfg.colors.muted }
+            ticks: { color: cfg.theme.muted }
           },
           x: {
             grid: { display: false },
-            ticks: { color: cfg.colors.muted, font: { size: 10 } }
+            ticks: { color: cfg.theme.muted, font: { size: 10 } }
           }
         }
       }
