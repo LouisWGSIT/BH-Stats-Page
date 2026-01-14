@@ -226,6 +226,7 @@ body {
   height: 100%;
   overflow: visible;
   animation: trackPulse 3s ease-in-out infinite;
+  contain: layout style;
 }
 
 .lane-label {
@@ -258,9 +259,13 @@ body {
   justify-content: center;
   bottom: 0;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) translateZ(0);
   transition: bottom 0.3s ease;
   animation: carSway 3s ease-in-out infinite;
+  will-change: bottom;
+  backface-visibility: hidden;
+  will-change: bottom, transform;
+  contain: layout style paint;
 }
 
 .car-trail {
@@ -802,10 +807,12 @@ body {
   height: 100%;
   transition: transform 0.8s ease-in-out;
   transform-style: preserve-3d;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 .flip-card.flipped .flip-card-inner {
-  transform: rotateY(180deg);
+  transform: rotateY(180deg) translateZ(0);
 }
 
 .flip-card-front,
