@@ -143,7 +143,7 @@ body {
 .main-content {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
   overflow: hidden;
   min-height: 0;
@@ -476,7 +476,7 @@ body {
 
 .grid {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   flex: 1;
   overflow: hidden;
@@ -485,19 +485,19 @@ body {
 
 .top-row { 
   grid-template-columns: repeat(2, 1fr); 
-  min-height: 220px;
-  max-height: 220px;
+  min-height: 180px;
+  max-height: 180px;
 }
 .categories-row { 
   grid-template-columns: repeat(4, 1fr);
-  min-height: 200px;
-  max-height: 200px;
+  min-height: 170px;
+  max-height: 170px;
 }
 .bottom-row { 
   grid-template-columns: repeat(2, 1fr); 
   grid-template-rows: auto auto;
-  min-height: 200px;
-  max-height: 420px;
+  min-height: 180px;
+  max-height: 360px;
 }
 .bottom-row-extra {
   display: none;
@@ -651,7 +651,7 @@ body {
 .card {
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
-  padding: 12px;
+  padding: 10px;
   backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
@@ -870,7 +870,7 @@ body {
   flex-direction: column;
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
-  padding: 12px;
+  padding: 10px;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 15px 35px rgba(0,0,0,0.25);
@@ -923,8 +923,8 @@ body {
 }
 
 .donut-card .flip-card-front canvas {
-  width: 130px !important;
-  height: 130px !important;
+  width: 110px !important;
+  height: 110px !important;
   flex-shrink: 0;
 }
 
