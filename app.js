@@ -930,30 +930,34 @@
     flipCards.forEach((card, index) => {
       const interval = flipIntervals[index % flipIntervals.length];
       
-      // Do an initial flip after 5 seconds to test
+      // Do an initial flip after 3 seconds to test (reduced from 5)
       setTimeout(() => {
         console.log('Initial flip for card', index);
         card.classList.add('flipped');
-        // Keep flipped for 10 seconds, then flip back
+        // Keep flipped for 8 seconds, then flip back
         setTimeout(() => {
+          console.log('Flipping back card', index);
           card.classList.remove('flipped');
-        }, 10000);
-      }, 5000 + (index * 1000));
+        }, 8000);
+      }, 3000 + (index * 500)); // Reduced stagger
       
-      // Then set up the regular interval
-      setInterval(() => {
-        console.log('Toggling flip for card', index);
-        const isFlipped = card.classList.contains('flipped');
-        if (isFlipped) {
-          card.classList.remove('flipped');
-        } else {
-          card.classList.add('flipped');
-          // Auto flip back after 10 seconds
-          setTimeout(() => {
+      // Then set up the regular interval starting after initial flip
+      setTimeout(() => {
+        setInterval(() => {
+          console.log('Toggling flip for card', index);
+          const isFlipped = card.classList.contains('flipped');
+          if (isFlipped) {
             card.classList.remove('flipped');
-          }, 10000);
-        }
-      }, interval);
+          } else {
+            card.classList.add('flipped');
+            // Auto flip back after 8 seconds
+            setTimeout(() => {
+              console.log('Auto-flipping back card', index);
+              card.classList.remove('flipped');
+            }, 8000);
+          }
+        }, interval);
+      }, 3000 + (index * 500) + 8000); // Start interval after first flip cycle completes
     });
   }
 
@@ -961,7 +965,7 @@
   setTimeout(async () => {
     await initializeAnalytics();
     setupFlipCards();
-  }, 2000); // Wait for main data to load first
+  }, 500); // Reduced wait time for quicker startup
 
   // Refresh analytics every 5 minutes
   setInterval(() => {
