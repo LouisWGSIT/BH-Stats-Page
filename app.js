@@ -719,7 +719,7 @@
       hash = initials.charCodeAt(i) + ((hash << 5) - hash);
     }
     const absHash = Math.abs(hash);
-    const variant = absHash % 8; // 8 different creature types
+    const variant = absHash % 16; // 16 different creature types
     
     const size = 8;
     const pixels = [];
@@ -805,7 +805,7 @@
       addPixel(2, 5, veryDark);
       // Eyes
       addPixel(2, 2, '#fff'); addPixel(2, 3, '#0d1b2a');
-    } else {
+    } else if (variant === 7) {
       // Compact blob
       addPixel(1, 1, base); addPixel(2, 1, light); addPixel(3, 1, light);
       addPixel(1, 2, base); addPixel(2, 2, light); addPixel(3, 2, light);
@@ -813,6 +813,89 @@
       addPixel(1, 4, dark); addPixel(2, 4, dark); addPixel(3, 4, dark);
       // Eyes
       addPixel(2, 2, '#fff'); addPixel(2, 3, veryDark);
+    } else if (variant === 8) {
+      // Robot square head
+      addPixel(1, 1, base); addPixel(2, 1, base); addPixel(3, 1, base);
+      addPixel(1, 2, light); addPixel(2, 2, light); addPixel(3, 2, light);
+      addPixel(1, 3, base); addPixel(2, 3, base); addPixel(3, 3, base);
+      addPixel(1, 4, base); addPixel(2, 4, light); addPixel(3, 4, light);
+      addPixel(2, 5, dark); addPixel(3, 5, dark);
+      // Eyes
+      addPixel(1, 2, '#fff'); addPixel(3, 2, '#fff');
+      addPixel(1, 3, veryDark); addPixel(3, 3, veryDark);
+    } else if (variant === 9) {
+      // Triangle alien
+      addPixel(3, 1, light);
+      addPixel(2, 2, base); addPixel(3, 2, light);
+      addPixel(1, 3, base); addPixel(2, 3, light); addPixel(3, 3, light);
+      addPixel(0, 4, base); addPixel(1, 4, base); addPixel(2, 4, base); addPixel(3, 4, base);
+      addPixel(1, 5, dark); addPixel(2, 5, dark);
+      // Eyes
+      addPixel(1, 3, '#fff'); addPixel(3, 3, '#fff');
+      addPixel(1, 4, veryDark); addPixel(3, 4, veryDark);
+    } else if (variant === 10) {
+      // Rounded with double antenna
+      addPixel(1, 0, light); addPixel(3, 0, light);
+      addPixel(2, 1, base); addPixel(3, 1, base);
+      addPixel(1, 2, base); addPixel(2, 2, light); addPixel(3, 2, light);
+      addPixel(1, 3, base); addPixel(2, 3, base); addPixel(3, 3, base);
+      addPixel(1, 4, dark); addPixel(2, 4, dark); addPixel(3, 4, dark);
+      addPixel(2, 5, veryDark);
+      // Eyes
+      addPixel(2, 2, '#fff'); addPixel(2, 3, '#0d1b2a');
+    } else if (variant === 11) {
+      // Side-eye creature
+      addPixel(1, 1, base); addPixel(2, 1, light); addPixel(3, 1, light);
+      addPixel(1, 2, base); addPixel(2, 2, base); addPixel(3, 2, base);
+      addPixel(1, 3, light); addPixel(2, 3, light); addPixel(3, 3, light);
+      addPixel(1, 4, base); addPixel(2, 4, dark); addPixel(3, 4, dark);
+      addPixel(2, 5, veryDark);
+      // Side eyes
+      addPixel(1, 2, '#fff'); addPixel(3, 2, '#fff');
+      pixels.push({ x: 1, y: 3, color: veryDark });
+      pixels.push({ x: 3, y: 3, color: veryDark });
+    } else if (variant === 12) {
+      // Tall narrow creature
+      addPixel(2, 0, base); addPixel(3, 0, base);
+      addPixel(2, 1, light); addPixel(3, 1, light);
+      addPixel(2, 2, base); addPixel(3, 2, base);
+      addPixel(2, 3, light); addPixel(3, 3, light);
+      addPixel(2, 4, base); addPixel(3, 4, base);
+      addPixel(2, 5, dark); addPixel(3, 5, dark);
+      addPixel(2, 6, veryDark);
+      // Small eyes
+      pixels.push({ x: 3, y: 2, color: '#fff' });
+      pixels.push({ x: 4, y: 2, color: '#fff' });
+      pixels.push({ x: 3, y: 3, color: '#0d1b2a' });
+    } else if (variant === 13) {
+      // Wide flat creature
+      addPixel(0, 2, base); addPixel(1, 2, light); addPixel(2, 2, light); addPixel(3, 2, light);
+      addPixel(0, 3, base); addPixel(1, 3, base); addPixel(2, 3, base); addPixel(3, 3, base);
+      addPixel(0, 4, dark); addPixel(1, 4, dark); addPixel(2, 4, dark); addPixel(3, 4, dark);
+      addPixel(1, 5, veryDark); addPixel(2, 5, veryDark);
+      // Wide eyes
+      addPixel(1, 3, '#fff'); addPixel(3, 3, '#fff');
+      pixels.push({ x: 1, y: 4, color: '#0d1b2a' });
+      pixels.push({ x: 3, y: 4, color: '#0d1b2a' });
+    } else if (variant === 14) {
+      // Mohawk creature
+      addPixel(2, 0, light); 
+      addPixel(1, 1, base); addPixel(2, 1, light); addPixel(3, 1, base);
+      addPixel(1, 2, base); addPixel(2, 2, light); addPixel(3, 2, light);
+      addPixel(1, 3, base); addPixel(2, 3, base); addPixel(3, 3, base);
+      addPixel(1, 4, dark); addPixel(2, 4, dark); addPixel(3, 4, dark);
+      addPixel(2, 5, veryDark);
+      // Eyes
+      addPixel(2, 2, '#fff'); addPixel(2, 3, veryDark);
+    } else {
+      // Rounded ears creature
+      addPixel(0, 1, light); addPixel(1, 1, base); addPixel(2, 1, light); addPixel(3, 1, light);
+      addPixel(1, 2, base); addPixel(2, 2, light); addPixel(3, 2, light);
+      addPixel(1, 3, base); addPixel(2, 3, base); addPixel(3, 3, base);
+      addPixel(1, 4, dark); addPixel(2, 4, dark); addPixel(3, 4, dark);
+      addPixel(2, 5, veryDark);
+      // Eyes
+      addPixel(2, 2, '#fff'); addPixel(2, 3, '#0d1b2a');
     }
 
     const rects = pixels.map(p => `<rect x="${p.x}" y="${p.y}" width="1" height="1" fill="${p.color}"/>`).join('');
