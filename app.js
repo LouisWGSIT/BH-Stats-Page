@@ -1225,8 +1225,8 @@
 
   function updateTargetTracker() {
     const todayTotal = parseInt(document.getElementById('totalTodayValue')?.textContent) || 0;
-    const target = parseInt(cfg.targets.daily);
-    const percentage = Math.min((todayTotal / target) * 100, 100);
+    const target = parseInt(cfg.targets.daily) || 500;
+    const percentage = target > 0 ? Math.min((todayTotal / target) * 100, 100) : 0;
     
     const statusEl = document.getElementById('trackerStatus');
     if (statusEl) {
