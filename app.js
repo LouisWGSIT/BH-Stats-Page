@@ -1308,6 +1308,7 @@
   // Flip card logic with staggered timing
   function setupFlipCards() {
     const flipCards = document.querySelectorAll('.flip-card');
+    console.log(`Found ${flipCards.length} flip cards to animate`);
     if (flipCards.length === 0) return;
 
     const flipIntervals = [40000, 45000, 50000, 42000, 48000, 43000, 46000]; // Staggered timings (40-50s) for 7 cards

@@ -52,15 +52,6 @@ body {
   flex-shrink: 0;
 }
 
-.meta { 
-  display: flex; 
-  gap: 12px; 
-  font-weight: 600; 
-  color: var(--muted); 
-  font-size: 12px;
-  margin-left: auto;
-}
-
 .brand h1 {
   margin: 0;
   font-size: 22px;
@@ -76,7 +67,7 @@ body {
 
 .meta { 
   display: flex; 
-  gap: 16px; 
+  gap: 8px; 
   font-weight: 600; 
   color: var(--muted); 
   font-size: 12px;
