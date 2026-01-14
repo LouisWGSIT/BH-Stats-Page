@@ -547,36 +547,6 @@
     });
   }
 
-  // Kick off refresh loops
-  refreshSummary();
-  refreshAllTopLists();
-  refreshByTypeCounts();
-  refreshLeaderboard();
-  
-  // Initialize new flip cards
-  updateRecordsMilestones();
-  updateMonthlyProgress();
-  updateRaceUpdates();
-  updateCategoryChampions();
-  updateTargetTracker();
-  createMonthlyMomentumChart();
-
-  setInterval(() => {
-    refreshSummary();
-    refreshAllTopLists();
-    refreshByTypeCounts();
-    refreshLeaderboard();
-    checkAndTriggerWinner();
-    checkGreenieTime();
-    
-    // Update new flip cards
-    updateRecordsMilestones();
-    updateMonthlyProgress();
-    updateRaceUpdates();
-    updateCategoryChampions();
-    updateTargetTracker();
-  }, cfg.refreshSeconds * 1000);
-
   function updateDonut(chart, value, target) {
     const remaining = Math.max(target - value, 0);
     chart.data.datasets[0].data = [value, remaining];
@@ -1553,5 +1523,36 @@
 
   // Add button listener
   document.getElementById('downloadBtn')?.addEventListener('click', downloadCSV);
+
+  // ==================== INITIALIZATION ====================
+  // Kick off refresh loops (after all functions are defined)
+  refreshSummary();
+  refreshAllTopLists();
+  refreshByTypeCounts();
+  refreshLeaderboard();
+  
+  // Initialize new flip cards
+  updateRecordsMilestones();
+  updateMonthlyProgress();
+  updateRaceUpdates();
+  updateCategoryChampions();
+  updateTargetTracker();
+  createMonthlyMomentumChart();
+
+  setInterval(() => {
+    refreshSummary();
+    refreshAllTopLists();
+    refreshByTypeCounts();
+    refreshLeaderboard();
+    checkAndTriggerWinner();
+    checkGreenieTime();
+    
+    // Update new flip cards
+    updateRecordsMilestones();
+    updateMonthlyProgress();
+    updateRaceUpdates();
+    updateCategoryChampions();
+    updateTargetTracker();
+  }, cfg.refreshSeconds * 1000);
 
 })();
