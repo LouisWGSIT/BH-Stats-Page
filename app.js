@@ -1003,4 +1003,76 @@
     initializeAnalytics();
   }, 300000);
 
+  // ==================== CSV EXPORT ====================
+  
+  function generateCSV() {
+    const today = new Date().toLocaleDateString('en-GB');
+    const todayTotal = document.getElementById('totalTodayValue')?.textContent || '0';
+    const monthTotal = document.getElementById('monthTotalValue')?.textContent || '0';
+    const target = document.getElementById('erasedTarget')?.textContent || '500';
+    
+    // Get leaderboard data
+    const leaderboardRows = [];
+    const rows = document.getElementById('leaderboardBody')?.querySelectorAll('tr') || [];
+    rows.forEach((row, idx) => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length >= 2) {
+        const engineer = cells[0].textContent.trim();
+        const erasures = cells[1].textContent.trim();
+        leaderboardRows.push([idx + 1, engineer, erasures]);
+      }
+    });
+
+    // Get category data
+    const categoryRows = [];
+    categories.forEach(cat => {
+      const count = document.getElementById(cat.countId)?.textContent || '0';
+      categoryRows.push([cat.label, count]);
+    });
+
+    // Build CSV
+    const csv = [
+      ['Warehouse Erasure Stats Report'],
+      ['Generated:', today],
+      [],
+      ['SUMMARY'],
+      ['Metric', 'Value'],
+      ['Today Total', todayTotal],
+      ['Month Total', monthTotal],
+      ['Daily Target', target],
+      [],
+      ['TOP ENGINEERS (TODAY)'],
+      ['Rank', 'Engineer', 'Erasures'],
+      ...leaderboardRows,
+      [],
+      ['BREAKDOWN BY CATEGORY'],
+      ['Category', 'Count'],
+      ...categoryRows,
+    ]
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n');
+
+    return csv;
+  }
+
+  function downloadCSV() {
+    const csv = generateCSV();
+    const filename = `warehouse-stats-${new Date().toISOString().split('T')[0]}.csv`;
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  // Add button listener
+  document.getElementById('downloadBtn')?.addEventListener('click', downloadCSV);
+
 })();

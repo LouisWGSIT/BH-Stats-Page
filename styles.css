@@ -93,6 +93,29 @@ body {
   border-radius: 6px; 
 }
 
+.download-btn {
+  background: linear-gradient(145deg, rgba(140, 240, 74, 0.2), rgba(140, 240, 74, 0.1));
+  border: 1px solid rgba(140, 240, 74, 0.4);
+  color: #8cf04a;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-right: 12px;
+}
+
+.download-btn:hover {
+  background: linear-gradient(145deg, rgba(140, 240, 74, 0.3), rgba(140, 240, 74, 0.15));
+  box-shadow: 0 4px 12px rgba(140, 240, 74, 0.2);
+  transform: translateY(-1px);
+}
+
+.download-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
 .hidden { 
   display: none; 
 }
