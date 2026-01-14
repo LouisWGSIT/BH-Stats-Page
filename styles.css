@@ -142,8 +142,8 @@ body {
 .layout {
   display: flex;
   flex-direction: row;
-  gap: 12px;
-  padding: 10px;
+  gap: 10px;
+  padding: 8px;
   flex: 1;
   overflow: hidden;
   min-height: 0;
@@ -152,7 +152,7 @@ body {
 .main-content {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
   overflow: hidden;
   min-height: 0;
@@ -485,7 +485,7 @@ body {
 
 .grid {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   flex: 1;
   overflow: hidden;
@@ -494,18 +494,21 @@ body {
 
 .top-row { 
   grid-template-columns: repeat(2, 1fr); 
-  min-height: 280px;
+  min-height: 220px;
+  max-height: 220px;
 }
 .categories-row { 
   grid-template-columns: repeat(4, 1fr);
-  min-height: 240px;
+  min-height: 200px;
+  max-height: 200px;
 }
 .bottom-row { 
   grid-template-columns: repeat(3, 1fr); 
-  min-height: 240px;
+  min-height: 200px;
+  max-height: 200px;
 }
 .bottom-row-extra {
-  display: none; /* Hide extra row - merge back into bottom-row */
+  display: none;
 }
 
 .wide { grid-column: span 1; }
@@ -656,7 +659,7 @@ body {
 .card {
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
-  padding: 16px;
+  padding: 12px;
   backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
@@ -875,7 +878,7 @@ body {
   flex-direction: column;
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
-  padding: 16px;
+  padding: 12px;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 15px 35px rgba(0,0,0,0.25);
@@ -915,8 +918,8 @@ body {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 20px;
+  gap: 16px;
+  padding: 12px;
 }
 
 .donut-card .flip-card-front > div {
@@ -928,8 +931,8 @@ body {
 }
 
 .donut-card .flip-card-front canvas {
-  width: 160px !important;
-  height: 160px !important;
+  width: 130px !important;
+  height: 130px !important;
   flex-shrink: 0;
 }
 
