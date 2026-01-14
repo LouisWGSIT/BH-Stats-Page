@@ -697,7 +697,6 @@
   }
 
   const avatarCache = new Map();
-  const avatarAccentColors = ['#0d1b2a', '#0b1320', '#12263b', '#1c3553'];
 
   function shadeColor(hex, factor) {
     const num = parseInt(hex.replace('#', ''), 16);
@@ -709,38 +708,115 @@
 
   function getAvatarDataUri(initials) {
     if (avatarCache.has(initials)) return avatarCache.get(initials);
+    
     const base = getEngineerColor(initials || '');
+    const light = shadeColor(base, 1.4);
+    const dark = shadeColor(base, 0.5);
+    const veryDark = shadeColor(base, 0.3);
+    
     let hash = 0;
     for (let i = 0; i < initials.length; i++) {
       hash = initials.charCodeAt(i) + ((hash << 5) - hash);
     }
-    const accent = avatarAccentColors[Math.abs(hash) % avatarAccentColors.length];
-    const light = shadeColor(base, 1.2);
-    const dark = shadeColor(base, 0.6);
-
-    // Build a simple mirrored 6x6 pixel creature
+    const absHash = Math.abs(hash);
+    const variant = absHash % 8; // 8 different creature types
+    
+    const size = 8;
     const pixels = [];
-    const size = 6;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < Math.ceil(size / 2); x++) {
-        const bit = (hash >> ((y * size + x) % 24)) & 1;
-        const color = bit ? base : dark;
-        if (y <= 1 && x >= 2 && bit) continue; // leave some space for eyes
-        pixels.push({ x, y, color });
-        if (x !== size - x - 1) {
-          pixels.push({ x: size - x - 1, y, color });
-        }
+    
+    // Helper to add symmetric pixels
+    const addPixel = (x, y, color) => {
+      pixels.push({ x, y, color });
+      if (x !== size - x - 1) {
+        pixels.push({ x: size - x - 1, y, color });
       }
+    };
+
+    // Base head shape variants
+    if (variant === 0) {
+      // Round blob with big eyes
+      addPixel(2, 1, base); addPixel(3, 1, base);
+      addPixel(1, 2, base); addPixel(2, 2, light); addPixel(3, 2, light);
+      addPixel(1, 3, base); addPixel(2, 3, light); addPixel(3, 3, base);
+      addPixel(1, 4, base); addPixel(2, 4, dark); addPixel(3, 4, dark);
+      addPixel(2, 5, base); addPixel(3, 5, base);
+      // Eyes
+      addPixel(2, 2, '#fff'); addPixel(2, 3, veryDark);
+    } else if (variant === 1) {
+      // Square head with antenna
+      addPixel(2, 0, light); // antenna
+      addPixel(1, 1, base); addPixel(2, 1, light); addPixel(3, 1, light);
+      addPixel(1, 2, base); addPixel(2, 2, base); addPixel(3, 2, base);
+      addPixel(1, 3, base); addPixel(2, 3, light); addPixel(3, 3, light);
+      addPixel(1, 4, base); addPixel(2, 4, base); addPixel(3, 4, base);
+      addPixel(2, 5, dark);
+      // Eyes
+      addPixel(2, 2, '#fff'); addPixel(2, 3, '#0d1b2a');
+    } else if (variant === 2) {
+      // Cyclops
+      addPixel(2, 1, base); addPixel(3, 1, base);
+      addPixel(1, 2, base); addPixel(2, 2, light); addPixel(3, 2, light);
+      addPixel(1, 3, base); addPixel(2, 3, light); addPixel(3, 3, light);
+      addPixel(1, 4, base); addPixel(2, 4, base); addPixel(3, 4, base);
+      addPixel(2, 5, dark); addPixel(3, 5, dark);
+      // Single eye
+      pixels.push({ x: 3, y: 2, color: '#fff' });
+      pixels.push({ x: 4, y: 2, color: '#fff' });
+      pixels.push({ x: 3, y: 3, color: '#0d1b2a' });
+      pixels.push({ x: 4, y: 3, color: '#0d1b2a' });
+    } else if (variant === 3) {
+      // Horned creature
+      addPixel(1, 0, dark); addPixel(3, 0, dark);
+      addPixel(1, 1, base); addPixel(2, 1, light); addPixel(3, 1, light);
+      addPixel(1, 2, base); addPixel(2, 2, light); addPixel(3, 2, light);
+      addPixel(1, 3, base); addPixel(2, 3, base); addPixel(3, 3, base);
+      addPixel(1, 4, base); addPixel(2, 4, dark); addPixel(3, 4, dark);
+      addPixel(2, 5, base);
+      // Eyes
+      addPixel(2, 2, '#fff'); addPixel(2, 3, veryDark);
+    } else if (variant === 4) {
+      // Tall thin creature
+      addPixel(2, 0, light); addPixel(3, 0, light);
+      addPixel(2, 1, base); addPixel(3, 1, base);
+      addPixel(2, 2, light); addPixel(3, 2, light);
+      addPixel(2, 3, base); addPixel(3, 3, base);
+      addPixel(2, 4, base); addPixel(3, 4, base);
+      addPixel(2, 5, dark); addPixel(3, 5, dark);
+      // Eyes
+      pixels.push({ x: 3, y: 2, color: '#fff' });
+      pixels.push({ x: 4, y: 2, color: '#fff' });
+      pixels.push({ x: 3, y: 3, color: '#0d1b2a' });
+    } else if (variant === 5) {
+      // Wide creature with ears
+      addPixel(0, 1, base); addPixel(1, 1, light); addPixel(2, 1, light); addPixel(3, 1, light);
+      addPixel(0, 2, base); addPixel(1, 2, base); addPixel(2, 2, base); addPixel(3, 2, base);
+      addPixel(1, 3, base); addPixel(2, 3, light); addPixel(3, 3, light);
+      addPixel(1, 4, base); addPixel(2, 4, base); addPixel(3, 4, base);
+      addPixel(2, 5, dark);
+      // Eyes
+      addPixel(1, 2, '#fff'); addPixel(2, 3, veryDark);
+    } else if (variant === 6) {
+      // Spiky top
+      addPixel(1, 0, light); addPixel(2, 0, base); addPixel(3, 0, light);
+      addPixel(1, 1, base); addPixel(2, 1, light); addPixel(3, 1, light);
+      addPixel(1, 2, base); addPixel(2, 2, base); addPixel(3, 2, base);
+      addPixel(1, 3, base); addPixel(2, 3, light); addPixel(3, 3, light);
+      addPixel(1, 4, base); addPixel(2, 4, dark); addPixel(3, 4, dark);
+      addPixel(2, 5, veryDark);
+      // Eyes
+      addPixel(2, 2, '#fff'); addPixel(2, 3, '#0d1b2a');
+    } else {
+      // Compact blob
+      addPixel(1, 1, base); addPixel(2, 1, light); addPixel(3, 1, light);
+      addPixel(1, 2, base); addPixel(2, 2, light); addPixel(3, 2, light);
+      addPixel(1, 3, base); addPixel(2, 3, base); addPixel(3, 3, base);
+      addPixel(1, 4, dark); addPixel(2, 4, dark); addPixel(3, 4, dark);
+      // Eyes
+      addPixel(2, 2, '#fff'); addPixel(2, 3, veryDark);
     }
 
-    // Eyes and mouth
-    pixels.push({ x: 2, y: 2, color: '#fff' });
-    pixels.push({ x: 3, y: 2, color: '#fff' });
-    pixels.push({ x: 2, y: 3, color: accent });
-    pixels.push({ x: 3, y: 3, color: accent });
-
-    const rects = pixels.map(p => `<rect x="${p.x}" y="${p.y}" width="1" height="1" fill="${p.color}" />`).join('');
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 6 6' shape-rendering='crispEdges'>${rects}</svg>`;
+    const rects = pixels.map(p => `<rect x="${p.x}" y="${p.y}" width="1" height="1" fill="${p.color}"/>`).join('');
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 ${size} ${size}' shape-rendering='crispEdges'>${rects}</svg>`;
     const uri = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
     avatarCache.set(initials, uri);
     return uri;
