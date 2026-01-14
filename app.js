@@ -819,7 +819,7 @@
           legend: { display: false },
           title: {
             display: true,
-            text: 'Average Daily Erasures',
+            text: 'Average by Day (Last 4 Weeks)',
             color: cfg.theme.text,
             font: { size: 14 }
           }
