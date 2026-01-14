@@ -28,45 +28,60 @@
 
       const { ctx } = chart;
       const { x, y, innerRadius, outerRadius } = arc;
+      
+      // Validate that values are finite before drawing
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(innerRadius) || !Number.isFinite(outerRadius)) {
+        return;
+      }
+
       const ringThickness = outerRadius - innerRadius;
+      if (ringThickness <= 0) return;
 
       // Soft shadow under the ring
       ctx.save();
       ctx.globalCompositeOperation = 'destination-over';
-      const shadowGrad = ctx.createRadialGradient(
-        x,
-        y + ringThickness * 0.45,
-        innerRadius,
-        x,
-        y + ringThickness * 0.45,
-        outerRadius + 12
-      );
-      shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.18)');
-      shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = shadowGrad;
-      ctx.beginPath();
-      ctx.arc(x, y, outerRadius + 10, 0, Math.PI * 2);
-      ctx.fill();
+      try {
+        const shadowGrad = ctx.createRadialGradient(
+          x,
+          y + ringThickness * 0.45,
+          innerRadius,
+          x,
+          y + ringThickness * 0.45,
+          outerRadius + 12
+        );
+        shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.18)');
+        shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = shadowGrad;
+        ctx.beginPath();
+        ctx.arc(x, y, outerRadius + 10, 0, Math.PI * 2);
+        ctx.fill();
+      } catch (e) {
+        console.warn('Shadow gradient error:', e);
+      }
       ctx.restore();
 
       // Subtle top gloss on the ring
       ctx.save();
-      const shineGrad = ctx.createRadialGradient(
-        x,
-        y - ringThickness * 0.65,
-        innerRadius * 0.35,
-        x,
-        y - ringThickness * 0.65,
-        outerRadius
-      );
-      shineGrad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
-      shineGrad.addColorStop(0.6, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = shineGrad;
-      ctx.beginPath();
-      ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
-      ctx.arc(x, y, innerRadius, 0, Math.PI * 2, true);
-      ctx.closePath();
-      ctx.fill();
+      try {
+        const shineGrad = ctx.createRadialGradient(
+          x,
+          y - ringThickness * 0.65,
+          Math.max(innerRadius * 0.35, 0),
+          x,
+          y - ringThickness * 0.65,
+          outerRadius
+        );
+        shineGrad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+        shineGrad.addColorStop(0.6, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = shineGrad;
+        ctx.beginPath();
+        ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+        ctx.arc(x, y, innerRadius, 0, Math.PI * 2, true);
+        ctx.closePath();
+        ctx.fill();
+      } catch (e) {
+        console.warn('Shine gradient error:', e);
+      }
       ctx.restore();
     },
   };
