@@ -499,8 +499,8 @@ body {
 .bottom-row { 
   grid-template-columns: repeat(3, 1fr); 
   grid-template-rows: auto;
-  min-height: 290px;
-  max-height: 310px;
+  min-height: 270px;
+  max-height: 290px;
 }
 .bottom-row-extra {
   display: none;
@@ -514,7 +514,7 @@ body {
   position: relative;
   overflow: hidden;
   padding: 0;
-  min-height: 280px;
+  min-height: 265px;
   perspective: 1000px;
 }
 
