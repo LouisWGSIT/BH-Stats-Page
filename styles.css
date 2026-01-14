@@ -388,7 +388,7 @@ body {
 .greenie-container {
   position: fixed;
   bottom: 20px;
-  right: 60px;
+  right: 20px;
   z-index: 8000;
   max-width: 50vw;
   max-height: 50vh;
@@ -400,10 +400,10 @@ body {
 
 .greenie-wrapper {
   display: flex;
-  gap: 16px;
+  gap: 8px;
   align-items: flex-start;
   flex-direction: row;
-  animation: slideInRight 4s ease-out forwards;
+  animation: slideInRight 2s ease-out forwards;
 }
 
 .greenie-image {

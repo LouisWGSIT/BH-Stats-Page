@@ -245,14 +245,14 @@
     container.classList.remove('hidden');
     greenieState.lastShowTime = Date.now();
 
-    // Auto-hide after 10 seconds total (2s in + 6s display + 2s out)
+    // Auto-hide after 14 seconds total (2s in + 10s display + 2s out)
     setTimeout(() => {
       wrapper.classList.add('exit');
       setTimeout(() => {
         container.classList.add('hidden');
         wrapper.classList.remove('exit');
       }, 2000);
-    }, 6000);
+    }, 10000);
   }
 
   function checkGreenieTime() {
