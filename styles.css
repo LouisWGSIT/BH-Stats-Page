@@ -496,8 +496,8 @@ body {
 .bottom-row { 
   grid-template-columns: repeat(3, 1fr); 
   grid-template-rows: auto;
-  min-height: 220px;
-  max-height: 240px;
+  min-height: 240px;
+  max-height: 260px;
 }
 .bottom-row-extra {
   display: none;
@@ -511,7 +511,8 @@ body {
   position: relative;
   overflow: hidden;
   padding: 0;
-  min-height: 240px;
+  min-height: 250px;
+  perspective: 1000px;
 }
 
 .rotator-card .panel {
@@ -521,19 +522,34 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
+  background: linear-gradient(145deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.38));
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 15px 40px rgba(0,0,0,0.3);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.7s ease;
+  transform: rotateY(90deg);
+  transition: transform 0.65s ease, opacity 0.65s ease;
+  backface-visibility: hidden;
 }
 
 .rotator-card .panel.active {
   opacity: 1;
   pointer-events: auto;
+  z-index: 2;
+  transform: rotateY(0deg);
+}
+
+.rotator-card .panel.exiting {
+  opacity: 0;
+  transform: rotateY(-90deg);
   z-index: 1;
+}
+
+.rotator-card .panel.entering {
+  opacity: 0;
+  transform: rotateY(90deg);
+  z-index: 2;
 }
 
 .rotator-card canvas {
@@ -689,7 +705,7 @@ body {
 }
 
 .card {
-  background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
+  background: linear-gradient(145deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.38));
   border-radius: 14px;
   padding: 10px;
   backdrop-filter: blur(10px);
@@ -699,8 +715,8 @@ body {
   justify-content: center;
   text-align: center;
   min-height: 0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 15px 40px rgba(0,0,0,0.3);
   overflow: visible;
 }
 
@@ -908,12 +924,12 @@ body {
   -webkit-backface-visibility: hidden;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
+  background: linear-gradient(145deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.38));
   border-radius: 14px;
   padding: 10px;
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 15px 40px rgba(0,0,0,0.3);
   top: 0;
   left: 0;
   box-sizing: border-box;

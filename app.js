@@ -1128,18 +1128,17 @@
   // ==================== NEW FLIP CARDS DATA ====================
 
   function updateRecordsMilestones() {
-    // Mock data - replace with real API calls
     const bestDayEl = document.getElementById('recordBestDay');
     const bestDateEl = document.getElementById('recordBestDayDate');
     const topEngEl = document.getElementById('recordTopEngineer');
     const topCountEl = document.getElementById('recordTopEngineerCount');
     const streakEl = document.getElementById('currentStreak');
-    
-    if (bestDayEl) bestDayEl.textContent = '687';
-    if (bestDateEl) bestDateEl.textContent = 'Dec 15, 2025';
-    if (topEngEl) topEngEl.textContent = 'MS';
-    if (topCountEl) topCountEl.textContent = '8,432 total erasures';
-    if (streakEl) streakEl.textContent = '3';
+
+    if (bestDayEl) bestDayEl.textContent = '—';
+    if (bestDateEl) bestDateEl.textContent = '—';
+    if (topEngEl) topEngEl.textContent = '—';
+    if (topCountEl) topCountEl.textContent = '—';
+    if (streakEl) streakEl.textContent = '—';
   }
 
   function updateMonthlyProgress() {
@@ -1350,12 +1349,26 @@
       if (panels.length <= 1) return;
 
       let index = 0;
-      const interval = parseInt(card.dataset.interval, 10) || 42000;
+      const interval = parseInt(card.dataset.interval, 10) || 14000;
 
       function showPanel(nextIndex) {
-        panels.forEach((panel, idx) => {
-          panel.classList.toggle('active', idx === nextIndex);
+        const currentIndex = panels.findIndex(p => p.classList.contains('active'));
+
+        panels.forEach(panel => {
+          panel.classList.remove('entering', 'exiting');
         });
+
+        if (currentIndex !== -1 && currentIndex !== nextIndex) {
+          panels[currentIndex].classList.remove('active');
+          panels[currentIndex].classList.add('exiting');
+          setTimeout(() => panels[currentIndex].classList.remove('exiting'), 700);
+        }
+
+        const nextPanel = panels[nextIndex];
+        nextPanel.classList.add('entering');
+        void nextPanel.offsetWidth; // force reflow
+        nextPanel.classList.add('active');
+        setTimeout(() => nextPanel.classList.remove('entering'), 700);
       }
 
       // Ensure the first panel is visible
@@ -1367,7 +1380,7 @@
           index = (index + 1) % panels.length;
           showPanel(index);
         }, interval);
-      }, 2000);
+      }, 3000);
     });
   }
 
