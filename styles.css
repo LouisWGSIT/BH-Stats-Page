@@ -342,7 +342,7 @@ body {
 .greenie-container {
   position: fixed;
   bottom: 20px;
-  right: 20px;
+  right: 60px;
   z-index: 8000;
   max-width: 50vw;
   max-height: 50vh;
@@ -573,6 +573,19 @@ body {
   overflow: visible;
 }
 
+.card:not(.flip-card) {
+  display: flex;
+}
+
+.flip-card.card {
+  display: block;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
 .card h2 {
   margin: 0 0 8px 0;
   letter-spacing: 0.5px;
@@ -736,7 +749,9 @@ body {
 .flip-card {
   position: relative;
   height: 100%;
+  width: 100%;
   perspective: 1000px;
+  display: block;
 }
 
 .flip-card-inner {
@@ -760,6 +775,14 @@ body {
   -webkit-backface-visibility: hidden;
   display: flex;
   flex-direction: column;
+  background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
+  border-radius: 14px;
+  padding: 16px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+  top: 0;
+  left: 0;
 }
 
 .flip-card-front {
@@ -768,7 +791,6 @@ body {
 
 .flip-card-back {
   transform: rotateY(180deg);
-  padding: 20px;
 }
 
 .flip-indicator {

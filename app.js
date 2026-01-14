@@ -927,48 +927,36 @@
   // Flip card logic with staggered timing
   function setupFlipCards() {
     const flipCards = document.querySelectorAll('.flip-card');
-    console.log('Setting up flip cards:', flipCards.length);
-    const flipIntervals = [25000, 28000, 31000, 26000]; // Staggered timings (25-31s) - longer than refresh
+    console.log('🔄 Setting up flip cards:', flipCards.length);
+    
+    if (flipCards.length === 0) {
+      console.error('❌ No flip cards found!');
+      return;
+    }
 
     flipCards.forEach((card, index) => {
-      const interval = flipIntervals[index % flipIntervals.length];
+      console.log(`📍 Card ${index}:`, card.className);
       
-      // Do an initial flip after 3 seconds to test (reduced from 5)
+      // Do an initial flip after 2 seconds
       setTimeout(() => {
-        console.log('Initial flip for card', index);
+        console.log(`✨ Initial flip for card ${index}`);
         card.classList.add('flipped');
+        console.log(`  → classList now contains:`, card.className);
+        
         // Keep flipped for 8 seconds, then flip back
         setTimeout(() => {
-          console.log('Flipping back card', index);
+          console.log(`↩️  Flipping back card ${index}`);
           card.classList.remove('flipped');
         }, 8000);
-      }, 3000 + (index * 500)); // Reduced stagger
-      
-      // Then set up the regular interval starting after initial flip
-      setTimeout(() => {
-        setInterval(() => {
-          console.log('Toggling flip for card', index);
-          const isFlipped = card.classList.contains('flipped');
-          if (isFlipped) {
-            card.classList.remove('flipped');
-          } else {
-            card.classList.add('flipped');
-            // Auto flip back after 8 seconds
-            setTimeout(() => {
-              console.log('Auto-flipping back card', index);
-              card.classList.remove('flipped');
-            }, 8000);
-          }
-        }, interval);
-      }, 3000 + (index * 500) + 8000); // Start interval after first flip cycle completes
+      }, 2000);
     });
   }
 
   // Initialize analytics and flip on first load
   setTimeout(async () => {
-    console.log('Starting flip card initialization...');
+    console.log('🚀 Starting flip card initialization...');
     await initializeAnalytics();
-    console.log('Calling setupFlipCards...');
+    console.log('📳 Calling setupFlipCards...');
     setupFlipCards();
   }, 500); // Reduced wait time for quicker startup
 
