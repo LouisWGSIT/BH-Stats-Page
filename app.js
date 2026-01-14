@@ -971,59 +971,167 @@
 
   // ==================== CSV EXPORT ====================
   
-  function generateCSV() {
-    const today = new Date().toLocaleDateString('en-GB');
-    const todayTotal = document.getElementById('totalTodayValue')?.textContent || '0';
-    const monthTotal = document.getElementById('monthTotalValue')?.textContent || '0';
-    const target = document.getElementById('erasedTarget')?.textContent || '500';
+  async function generateCSV() {
+    const dateScope = document.getElementById('dateSelector')?.value || 'today';
+    const isYesterday = dateScope === 'yesterday';
     
-    // Get leaderboard data
-    const leaderboardRows = [];
-    const rows = document.getElementById('leaderboardBody')?.querySelectorAll('tr') || [];
-    rows.forEach((row, idx) => {
-      const cells = row.querySelectorAll('td');
-      if (cells.length >= 2) {
-        const engineer = cells[0].textContent.trim();
-        const erasures = cells[1].textContent.trim();
-        leaderboardRows.push([idx + 1, engineer, erasures]);
+    // Calculate date for display and API calls
+    const targetDate = new Date();
+    if (isYesterday) {
+      targetDate.setDate(targetDate.getDate() - 1);
+    }
+    const dateStr = targetDate.toLocaleDateString('en-GB');
+    const time = new Date().toLocaleTimeString('en-GB');
+    
+    // Get current displayed values (only valid for "today")
+    let todayTotal, monthTotal, target;
+    if (!isYesterday) {
+      todayTotal = document.getElementById('totalTodayValue')?.textContent || '0';
+      monthTotal = document.getElementById('monthTotalValue')?.textContent || '0';
+      target = document.getElementById('erasedTarget')?.textContent || '500';
+    } else {
+      // For yesterday, fetch from API
+      todayTotal = '0';
+      monthTotal = '0';
+      target = '500';
+      try {
+        const res = await fetch(`/metrics/summary?date=${targetDate.toISOString().split('T')[0]}`);
+        if (res.ok) {
+          const data = await res.json();
+          todayTotal = data.todayTotal || '0';
+          monthTotal = data.monthTotal || '0';
+        }
+      } catch (err) {
+        console.error('Failed to fetch summary for yesterday:', err);
       }
-    });
+    }
+    
+    // Get leaderboard data (top 3 displayed) - only for today
+    const leaderboardRows = [];
+    if (!isYesterday) {
+      const rows = document.getElementById('leaderboardBody')?.querySelectorAll('tr') || [];
+      rows.forEach((row, idx) => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length >= 2) {
+          const engineer = cells[0].textContent.trim();
+          const erasures = cells[1].textContent.trim();
+          const lastActive = cells[2]?.textContent.trim() || '';
+          leaderboardRows.push([idx + 1, engineer, erasures, lastActive]);
+        }
+      });
+    }
 
-    // Get category data
+    // Fetch full engineer list from API
+    let allEngineersRows = [];
+    try {
+      const apiScope = isYesterday ? 'yesterday' : 'today';
+      const res = await fetch(`/metrics/engineers/leaderboard?scope=${apiScope}&limit=50`);
+      if (res.ok) {
+        const data = await res.json();
+        allEngineersRows = (data.items || []).map((eng, idx) => [
+          idx + 1,
+          eng.initials || '',
+          eng.erasures || 0,
+          formatTimeAgo(eng.lastActive),
+          (eng.avgPerHour || 0).toFixed(1)
+        ]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch full engineer list:', err);
+    }
+
+    // Get category data - only for today
     const categoryRows = [];
-    categories.forEach(cat => {
-      const count = document.getElementById(cat.countId)?.textContent || '0';
-      categoryRows.push([cat.label, count]);
-    });
+    if (!isYesterday) {
+      categories.forEach(cat => {
+        const count = document.getElementById(cat.countId)?.textContent || '0';
+        categoryRows.push([cat.label, count]);
+      });
+    } else {
+      // For yesterday, fetch from API
+      try {
+        const res = await fetch(`/analytics/category-breakdown?date=${targetDate.toISOString().split('T')[0]}`);
+        if (res.ok) {
+          const data = await res.json();
+          (data.categories || []).forEach(cat => {
+            categoryRows.push([cat.name, cat.count]);
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch category data:', err);
+      }
+    }
+
+    // Get top performers per category - only for today
+    const categoryTopPerformers = [];
+    if (!isYesterday) {
+      categories.forEach(cat => {
+        const listEl = document.getElementById(cat.listId);
+        if (listEl) {
+          const items = listEl.querySelectorAll('li');
+          if (items.length > 0) {
+            categoryTopPerformers.push([cat.label, '', '']);
+            items.forEach(item => {
+              const text = item.textContent.trim();
+              const parts = text.match(/(.+?)\s+(\d+)$/);
+              if (parts) {
+                categoryTopPerformers.push(['', parts[1], parts[2]]);
+              }
+            });
+          }
+        }
+      });
+    }
 
     // Build CSV
+    const reportTitle = isYesterday ? 'Warehouse Erasure Stats Report (Yesterday)' : 'Warehouse Erasure Stats Report';
     const csv = [
-      ['Warehouse Erasure Stats Report'],
-      ['Generated:', today],
+      [reportTitle],
+      ['Report Date:', dateStr],
+      ['Generated:', new Date().toLocaleDateString('en-GB'), time],
       [],
       ['SUMMARY'],
       ['Metric', 'Value'],
-      ['Today Total', todayTotal],
+      [isYesterday ? 'Total' : 'Today Total', todayTotal],
       ['Month Total', monthTotal],
       ['Daily Target', target],
+      ['Progress to Target', `${Math.round((parseInt(todayTotal) / parseInt(target)) * 100)}%`],
       [],
-      ['TOP ENGINEERS (TODAY)'],
-      ['Rank', 'Engineer', 'Erasures'],
-      ...leaderboardRows,
-      [],
-      ['BREAKDOWN BY CATEGORY'],
-      ['Category', 'Count'],
-      ...categoryRows,
-    ]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
-      .join('\n');
+    ];
 
-    return csv;
+    if (!isYesterday && leaderboardRows.length > 0) {
+      csv.push(['TOP 3 ENGINEERS (TODAY)']);
+      csv.push(['Rank', 'Engineer', 'Erasures', 'Last Active']);
+      csv.push(...leaderboardRows);
+      csv.push([]);
+    }
+
+    csv.push([isYesterday ? 'ALL ENGINEERS (YESTERDAY)' : 'ALL ENGINEERS (TODAY)']);
+    csv.push(['Rank', 'Engineer', 'Total Erasures', 'Last Active', 'Avg/Hour']);
+    csv.push(...(allEngineersRows.length > 0 ? allEngineersRows : [['No data available']]));
+    csv.push([]);
+    
+    if (categoryRows.length > 0) {
+      csv.push(['BREAKDOWN BY CATEGORY']);
+      csv.push(['Category', 'Count']);
+      csv.push(...categoryRows);
+      csv.push([]);
+    }
+
+    if (!isYesterday && categoryTopPerformers.length > 0) {
+      csv.push(['TOP PERFORMERS BY CATEGORY']);
+      csv.push(['Category', 'Engineer', 'Count']);
+      csv.push(...categoryTopPerformers);
+    }
+
+    return csv.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
   }
 
-  function downloadCSV() {
-    const csv = generateCSV();
-    const filename = `warehouse-stats-${new Date().toISOString().split('T')[0]}.csv`;
+  async function downloadCSV() {
+    const dateScope = document.getElementById('dateSelector')?.value || 'today';
+    const csv = await generateCSV();
+    const dateSuffix = dateScope === 'yesterday' ? 'yesterday' : new Date().toISOString().split('T')[0];
+    const filename = `warehouse-stats-${dateSuffix}.csv`;
     
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');

@@ -93,6 +93,25 @@ body {
   border-radius: 6px; 
 }
 
+.date-selector {
+  background: rgba(30, 30, 40, 0.6);
+  border: 1px solid rgba(140, 240, 74, 0.3);
+  color: #8cf04a;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-right: 8px;
+  outline: none;
+}
+
+.date-selector:hover {
+  border-color: rgba(140, 240, 74, 0.5);
+  background: rgba(30, 30, 40, 0.8);
+}
+
 .download-btn {
   background: linear-gradient(145deg, rgba(140, 240, 74, 0.2), rgba(140, 240, 74, 0.1));
   border: 1px solid rgba(140, 240, 74, 0.4);
@@ -103,7 +122,7 @@ body {
   font-size: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
-  margin-right: 12px;
+  margin-right: 20px;
 }
 
 .download-btn:hover {
