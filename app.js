@@ -949,20 +949,43 @@
       return;
     }
 
+    const flipIntervals = [25000, 28000, 31000, 26000]; // Staggered timings (25-31s)
+    
     flipCards.forEach((card, index) => {
       console.log(`📍 Card ${index}:`, card.className);
+      const interval = flipIntervals[index % flipIntervals.length];
+      
+      // Function to perform flip/unflip
+      function performFlip() {
+        const isFlipped = card.classList.contains('flipped');
+        if (isFlipped) {
+          console.log(`↩️  Flipping back card ${index}`);
+          card.classList.remove('flipped');
+        } else {
+          console.log(`✨ Flipping card ${index}`);
+          card.classList.add('flipped');
+        }
+      }
       
       // Do an initial flip after 2 seconds
       setTimeout(() => {
         console.log(`✨ Initial flip for card ${index}`);
         card.classList.add('flipped');
-        console.log(`  → classList now contains:`, card.className);
         
         // Keep flipped for 8 seconds, then flip back
         setTimeout(() => {
           console.log(`↩️  Flipping back card ${index}`);
           card.classList.remove('flipped');
         }, 8000);
+        
+        // Set up recurring flips after initial cycle
+        setTimeout(() => {
+          setInterval(() => {
+            performFlip();
+            // Auto-toggle after 8 seconds
+            setTimeout(performFlip, 8000);
+          }, interval);
+        }, 8000); // Start interval after first flip cycle completes
       }, 2000);
     });
   }
