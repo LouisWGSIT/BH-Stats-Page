@@ -1129,11 +1129,17 @@
 
   function updateRecordsMilestones() {
     // Mock data - replace with real API calls
-    document.getElementById('recordBestDay').textContent = '687';
-    document.getElementById('recordBestDayDate').textContent = 'Dec 15, 2025';
-    document.getElementById('recordTopEngineer').textContent = 'MS';
-    document.getElementById('recordTopEngineerCount').textContent = '8,432 total erasures';
-    document.getElementById('currentStreak').textContent = '3';
+    const bestDayEl = document.getElementById('recordBestDay');
+    const bestDateEl = document.getElementById('recordBestDayDate');
+    const topEngEl = document.getElementById('recordTopEngineer');
+    const topCountEl = document.getElementById('recordTopEngineerCount');
+    const streakEl = document.getElementById('currentStreak');
+    
+    if (bestDayEl) bestDayEl.textContent = '687';
+    if (bestDateEl) bestDateEl.textContent = 'Dec 15, 2025';
+    if (topEngEl) topEngEl.textContent = 'MS';
+    if (topCountEl) topCountEl.textContent = '8,432 total erasures';
+    if (streakEl) streakEl.textContent = '3';
   }
 
   function updateMonthlyProgress() {
@@ -1142,14 +1148,17 @@
     const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
     
     const dailyAvg = Math.round(monthTotal / today);
-    document.getElementById('monthlyAverage').textContent = dailyAvg;
+    const avgEl = document.getElementById('monthlyAverage');
+    if (avgEl) avgEl.textContent = dailyAvg;
     
     const targetMonthly = parseInt(cfg.targets.month);
     const projectedTotal = Math.round(dailyAvg * daysInMonth);
     const paceStatus = projectedTotal >= targetMonthly ? '✅ On Pace' : '⚠️ Behind';
-    document.getElementById('paceIndicator').textContent = paceStatus;
+    const paceEl = document.getElementById('paceIndicator');
+    if (paceEl) paceEl.textContent = paceStatus;
     
-    document.getElementById('daysRemaining').textContent = daysInMonth - today;
+    const daysEl = document.getElementById('daysRemaining');
+    if (daysEl) daysEl.textContent = daysInMonth - today;
   }
 
   function updateRaceUpdates() {
@@ -1160,18 +1169,25 @@
       const first = rows[0].querySelectorAll('td');
       const second = rows[1].querySelectorAll('td');
       if (first.length >= 2 && second.length >= 2) {
-        const firstName = first[0].textContent.trim();
+        // Extract initials from the .engineer-name span, not the whole cell
+        const firstName = first[0].querySelector('.engineer-name')?.textContent.trim() || '?';
         const firstCount = parseInt(first[1].textContent.trim()) || 0;
-        const secondName = second[0].textContent.trim();
+        const secondName = second[0].querySelector('.engineer-name')?.textContent.trim() || '?';
         const secondCount = parseInt(second[1].textContent.trim()) || 0;
         const gap = firstCount - secondCount;
         
-        document.getElementById('leaderGap').textContent = `${firstName} leads by ${gap} erasures`;
+        const leaderGapEl = document.getElementById('leaderGap');
+        if (leaderGapEl) {
+          leaderGapEl.textContent = `${firstName} leads by ${gap} erasures`;
+        }
         
-        if (gap <= 5 && gap > 0) {
-          document.getElementById('closestRace').textContent = `${secondName} closing in - only ${gap} behind!`;
-        } else {
-          document.getElementById('closestRace').textContent = 'Race is heating up! 🔥';
+        const closestRaceEl = document.getElementById('closestRace');
+        if (closestRaceEl) {
+          if (gap <= 5 && gap > 0) {
+            closestRaceEl.textContent = `${secondName} closing in - only ${gap} behind!`;
+          } else {
+            closestRaceEl.textContent = 'Race is heating up! 🔥';
+          }
         }
       }
     }
@@ -1179,9 +1195,12 @@
     if (rows.length >= 3) {
       const third = rows[2].querySelectorAll('td');
       if (third.length >= 2) {
-        const thirdName = third[0].textContent.trim();
+        const thirdName = third[0].querySelector('.engineer-name')?.textContent.trim() || '?';
         const thirdCount = parseInt(third[1].textContent.trim()) || 0;
-        document.getElementById('comebackStory').textContent = `${thirdName} making moves with ${thirdCount} erasures`;
+        const comebackEl = document.getElementById('comebackStory');
+        if (comebackEl) {
+          comebackEl.textContent = `${thirdName} making moves with ${thirdCount} erasures`;
+        }
       }
     }
   }
@@ -1210,20 +1229,29 @@
     const target = parseInt(cfg.targets.daily);
     const percentage = Math.min((todayTotal / target) * 100, 100);
     
-    if (todayTotal >= target) {
-      document.getElementById('trackerStatus').textContent = '🎯 TARGET ACHIEVED!';
-    } else if (todayTotal >= target * 0.8) {
-      document.getElementById('trackerStatus').textContent = `${target - todayTotal} away from target`;
-    } else {
-      document.getElementById('trackerStatus').textContent = `${Math.round(percentage)}% to target`;
+    const statusEl = document.getElementById('trackerStatus');
+    if (statusEl) {
+      if (todayTotal >= target) {
+        statusEl.textContent = '🎯 TARGET ACHIEVED!';
+      } else if (todayTotal >= target * 0.8) {
+        statusEl.textContent = `${target - todayTotal} away from target`;
+      } else {
+        statusEl.textContent = `${Math.round(percentage)}% to target`;
+      }
     }
     
     const projectedEnd = Math.round((todayTotal / (new Date().getHours() || 1)) * 16);
-    document.getElementById('trackerProjection').textContent = `Projected: ${projectedEnd} by end of day`;
+    const projEl = document.getElementById('trackerProjection');
+    if (projEl) projEl.textContent = `Projected: ${projectedEnd} by end of day`;
     
-    document.getElementById('trackerFill').style.width = `${percentage}%`;
-    document.getElementById('trackerCurrent').textContent = todayTotal;
-    document.getElementById('trackerTarget').textContent = target;
+    const fillEl = document.getElementById('trackerFill');
+    if (fillEl) fillEl.style.width = `${percentage}%`;
+    
+    const currentEl = document.getElementById('trackerCurrent');
+    if (currentEl) currentEl.textContent = todayTotal;
+    
+    const targetEl = document.getElementById('trackerTarget');
+    if (targetEl) targetEl.textContent = target;
   }
 
   function createMonthlyMomentumChart() {
