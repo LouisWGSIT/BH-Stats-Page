@@ -262,7 +262,6 @@ body {
   transform: translateX(-50%) translateZ(0);
   transition: bottom 0.3s ease;
   animation: carSway 3s ease-in-out infinite;
-  will-change: bottom;
   backface-visibility: hidden;
   will-change: bottom, transform;
   contain: layout style paint;

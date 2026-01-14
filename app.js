@@ -132,6 +132,8 @@
     { key: 'mobiles', label: 'Mobiles', countId: 'countMobiles', listId: 'topMobiles' },
   ];
 
+  const SHIFT_HOURS = 8; // Standard shift duration (08:00-16:00)
+
   // Race state
   let raceData = { engineer1: null, engineer2: null, engineer3: null, firstFinisher: null };
   let winnerAnnounced = false;
@@ -191,14 +193,14 @@
     };
 
     // Get random quote category
-    const categories = ['praise', 'targetProgress', 'categoryWins', 'motivation'];
+    const quoteCategories = ['praise', 'targetProgress', 'categoryWins', 'motivation'];
     let selectedCategory;
     let quote;
     let attempts = 0;
 
     // Try to avoid repeating the same category/type
     do {
-      selectedCategory = categories[Math.floor(Math.random() * categories.length)];
+      selectedCategory = quoteCategories[Math.floor(Math.random() * quoteCategories.length)];
       const quoteList = greenieQuotes[selectedCategory];
       
       if (selectedCategory === 'praise') {
@@ -208,8 +210,8 @@
       } else if (selectedCategory === 'targetProgress') {
         quote = quoteList[Math.floor(Math.random() * quoteList.length)](greenieState.currentStats.diff);
       } else if (selectedCategory === 'categoryWins') {
-        const categories_list = ['Laptops/Desktops', 'Servers', 'Macs', 'Mobiles'];
-        const category = categories_list[Math.floor(Math.random() * categories_list.length)];
+        const categoryList = ['Laptops/Desktops', 'Servers', 'Macs', 'Mobiles'];
+        const category = categoryList[Math.floor(Math.random() * categoryList.length)];
         quote = quoteList[Math.floor(Math.random() * quoteList.length)](category);
       } else {
         quote = quoteList[Math.floor(Math.random() * quoteList.length)];
@@ -1021,7 +1023,6 @@
       const res = await fetch(`/metrics/engineers/leaderboard?scope=${apiScope}&limit=50`);
       if (res.ok) {
         const data = await res.json();
-        const SHIFT_HOURS = 8; // 8:00-16:00 shift
         allEngineersRows = (data.items || []).map((eng, idx) => {
           const erasures = eng.erasures || 0;
           const avgPerHour = (erasures / SHIFT_HOURS).toFixed(1);
