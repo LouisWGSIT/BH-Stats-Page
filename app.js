@@ -1028,13 +1028,27 @@
       const res = await fetch(`/metrics/engineers/leaderboard?scope=${apiScope}&limit=50`);
       if (res.ok) {
         const data = await res.json();
-        allEngineersRows = (data.items || []).map((eng, idx) => [
-          idx + 1,
-          eng.initials || '',
-          eng.erasures || 0,
-          formatTimeAgo(eng.lastActive),
-          (eng.avgPerHour || 0).toFixed(1)
-        ]);
+        allEngineersRows = (data.items || []).map((eng, idx) => {
+          const erasures = eng.erasures || 0;
+          const lastActive = eng.lastActive;
+          let avgPerHour = 0;
+          
+          // Calculate avg per hour if we have valid data
+          if (erasures > 0 && lastActive) {
+            const now = new Date();
+            const lastActiveDate = new Date(lastActive);
+            const hoursActive = Math.max((now - lastActiveDate) / (1000 * 60 * 60), 0.1); // At least 0.1 hour
+            avgPerHour = erasures / hoursActive;
+          }
+          
+          return [
+            idx + 1,
+            eng.initials || '',
+            erasures,
+            formatTimeAgo(lastActive),
+            avgPerHour > 0 ? avgPerHour.toFixed(1) : '0'
+          ];
+        });
       }
     } catch (err) {
       console.error('Failed to fetch full engineer list:', err);
@@ -1070,12 +1084,11 @@
         if (listEl) {
           const items = listEl.querySelectorAll('li');
           if (items.length > 0) {
-            categoryTopPerformers.push([cat.label, '', '']);
             items.forEach(item => {
               const text = item.textContent.trim();
               const parts = text.match(/(.+?)\s+(\d+)$/);
               if (parts) {
-                categoryTopPerformers.push(['', parts[1], parts[2]]);
+                categoryTopPerformers.push([cat.label, parts[1], parts[2]]);
               }
             });
           }
@@ -1107,7 +1120,7 @@
     }
 
     csv.push([isYesterday ? 'ALL ENGINEERS (YESTERDAY)' : 'ALL ENGINEERS (TODAY)']);
-    csv.push(['Rank', 'Engineer', 'Total Erasures', 'Last Active', 'Avg/Hour']);
+    csv.push(['Rank', 'Engineer', 'Total Erasures', 'Last Active', 'Avg Per Hour']);
     csv.push(...(allEngineersRows.length > 0 ? allEngineersRows : [['No data available']]));
     csv.push([]);
     
@@ -1118,7 +1131,7 @@
       csv.push([]);
     }
 
-    if (!isYesterday && categoryTopPerformers.length > 0) {
+    if (categoryTopPerformers.length > 0) {
       csv.push(['TOP PERFORMERS BY CATEGORY']);
       csv.push(['Category', 'Engineer', 'Count']);
       csv.push(...categoryTopPerformers);
