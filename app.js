@@ -1021,25 +1021,17 @@
       const res = await fetch(`/metrics/engineers/leaderboard?scope=${apiScope}&limit=50`);
       if (res.ok) {
         const data = await res.json();
+        const SHIFT_HOURS = 8; // 8:00-16:00 shift
         allEngineersRows = (data.items || []).map((eng, idx) => {
           const erasures = eng.erasures || 0;
-          const lastActive = eng.lastActive;
-          let avgPerHour = 0;
-          
-          // Calculate avg per hour if we have valid data
-          if (erasures > 0 && lastActive) {
-            const now = new Date();
-            const lastActiveDate = new Date(lastActive);
-            const hoursActive = Math.max((now - lastActiveDate) / (1000 * 60 * 60), 0.1); // At least 0.1 hour
-            avgPerHour = erasures / hoursActive;
-          }
+          const avgPerHour = (erasures / SHIFT_HOURS).toFixed(1);
           
           return [
             idx + 1,
             eng.initials || '',
             erasures,
-            formatTimeAgo(lastActive),
-            avgPerHour > 0 ? avgPerHour.toFixed(1) : '0'
+            formatTimeAgo(eng.lastActive),
+            avgPerHour
           ];
         });
       }
