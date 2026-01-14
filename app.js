@@ -1,22 +1,7 @@
 (async function () {
   const cfg = await fetch('config.json').then(r => r.json());
 
-  // Slight color tint helper (positive percent lightens, negative darkens)
-  function adjustColor(hex, percent) {
-    const clean = hex.replace('#', '');
-    if (clean.length < 6) return hex;
-    const num = parseInt(clean, 16);
-    if (Number.isNaN(num)) return hex;
-    const r = (num >> 16) & 255;
-    const g = (num >> 8) & 255;
-    const b = num & 255;
-    const target = percent < 0 ? 0 : 255;
-    const p = Math.abs(percent) / 100;
-    const nr = Math.round(r + (target - r) * p);
-    const ng = Math.round(g + (target - g) * p);
-    const nb = Math.round(b + (target - b) * p);
-    return `rgb(${nr}, ${ng}, ${nb})`;
-  }
+  // ==================== CHART PLUGINS ====================
 
   // Depth/gloss plugin to give donuts a subtle 3D feel
   const donutDepthPlugin = {
@@ -942,61 +927,42 @@
   // Flip card logic with staggered timing
   function setupFlipCards() {
     const flipCards = document.querySelectorAll('.flip-card');
-    console.log('🔄 Setting up flip cards:', flipCards.length);
-    
-    if (flipCards.length === 0) {
-      console.error('❌ No flip cards found!');
-      return;
-    }
+    if (flipCards.length === 0) return;
 
     const flipIntervals = [40000, 45000, 50000, 42000]; // Staggered timings (40-50s)
     
     flipCards.forEach((card, index) => {
-      console.log(`📍 Card ${index}:`, card.className);
       const interval = flipIntervals[index % flipIntervals.length];
       
-      // Function to perform flip/unflip
       function performFlip() {
-        const isFlipped = card.classList.contains('flipped');
-        if (isFlipped) {
-          console.log(`↩️  Flipping back card ${index}`);
-          card.classList.remove('flipped');
-        } else {
-          console.log(`✨ Flipping card ${index}`);
-          card.classList.add('flipped');
-        }
+        card.classList.toggle('flipped');
       }
       
-      // Do an initial flip after 2 seconds
+      // Initial flip after 2 seconds
       setTimeout(() => {
-        console.log(`✨ Initial flip for card ${index}`);
-        card.classList.add('flipped');
+        performFlip();
         
-        // Keep flipped for 8 seconds, then flip back
+        // Flip back after 8 seconds
         setTimeout(() => {
-          console.log(`↩️  Flipping back card ${index}`);
-          card.classList.remove('flipped');
+          performFlip();
         }, 8000);
         
-        // Set up recurring flips after initial cycle
+        // Setup recurring flips after initial cycle
         setTimeout(() => {
           setInterval(() => {
             performFlip();
-            // Auto-toggle after 8 seconds
             setTimeout(performFlip, 8000);
           }, interval);
-        }, 8000); // Start interval after first flip cycle completes
+        }, 8000);
       }, 2000);
     });
   }
 
   // Initialize analytics and flip on first load
   setTimeout(async () => {
-    console.log('🚀 Starting flip card initialization...');
     await initializeAnalytics();
-    console.log('📳 Calling setupFlipCards...');
     setupFlipCards();
-  }, 500); // Reduced wait time for quicker startup
+  }, 500);
 
   // Refresh analytics every 5 minutes
   setInterval(() => {
