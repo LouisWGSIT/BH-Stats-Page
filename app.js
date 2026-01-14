@@ -1340,32 +1340,42 @@
     });
   }
 
-  // Rotate between the two bottom rows to keep all cards visible without overflow
-  function setupBottomRowRotation() {
-    const rows = Array.from(document.querySelectorAll('.rotating-row'));
-    if (rows.length <= 1) return;
+  // Rotate multi-panel cards in place (bottom row)
+  function setupRotatorCards() {
+    const cards = document.querySelectorAll('.rotator-card');
+    if (!cards.length) return;
 
-    // Hide all except the first
-    rows.forEach((row, idx) => {
-      row.classList.toggle('hidden-row', idx !== 0);
+    cards.forEach(card => {
+      const panels = Array.from(card.querySelectorAll('.panel'));
+      if (panels.length <= 1) return;
+
+      let index = 0;
+      const interval = parseInt(card.dataset.interval, 10) || 42000;
+
+      function showPanel(nextIndex) {
+        panels.forEach((panel, idx) => {
+          panel.classList.toggle('active', idx === nextIndex);
+        });
+      }
+
+      // Ensure the first panel is visible
+      showPanel(index);
+
+      // Begin rotation after a short delay to stagger with flip-cards
+      setTimeout(() => {
+        setInterval(() => {
+          index = (index + 1) % panels.length;
+          showPanel(index);
+        }, interval);
+      }, 2000);
     });
-
-    let current = 0;
-    const interval = 30000; // 30s between swaps
-
-    setInterval(() => {
-      const next = (current + 1) % rows.length;
-      rows[current].classList.add('hidden-row');
-      rows[next].classList.remove('hidden-row');
-      current = next;
-    }, interval);
   }
 
   // Initialize analytics and flip on first load
   setTimeout(async () => {
     await initializeAnalytics();
     setupFlipCards();
-    setupBottomRowRotation();
+    setupRotatorCards();
   }, 500);
 
   // Refresh analytics every 5 minutes

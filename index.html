@@ -153,124 +153,127 @@
         </section>
       </div>
 
-      <!-- New flip cards row -->
+      <!-- Rotating bottom row: 3 cards, each with its own panel pool -->
       <div class="grid bottom-row rotating-row">
-        <!-- Card 1: Records & Milestones / Monthly Progress - spans 2 columns -->
-        <section class="card wide flip-card" style="grid-column: span 2;">
-          <div class="flip-card-inner">
-            <div class="flip-card-front">
-              <div class="flip-indicator">⟲</div>
-              <h2>Records & Milestones</h2>
-              <div class="records-grid">
-                <div class="record-item">
-                  <div class="record-label">Best Day Ever</div>
-                  <div class="record-value" id="recordBestDay">—</div>
-                  <div class="record-date" id="recordBestDayDate">—</div>
-                </div>
-                <div class="record-item">
-                  <div class="record-label">Top Engineer (All-Time)</div>
-                  <div class="record-value" id="recordTopEngineer">—</div>
-                  <div class="record-date" id="recordTopEngineerCount">—</div>
-                </div>
-                <div class="record-item">
-                  <div class="record-label">Current Streak</div>
-                  <div class="record-value" id="currentStreak">—</div>
-                  <div class="record-date">days above target</div>
-                </div>
+        <section class="card rotator-card" data-interval="42000">
+          <div class="panel active" data-panel="records">
+            <h2>Records & Milestones</h2>
+            <div class="records-grid">
+              <div class="record-item">
+                <div class="record-label">Best Day Ever</div>
+                <div class="record-value" id="recordBestDay">—</div>
+                <div class="record-date" id="recordBestDayDate">—</div>
+              </div>
+              <div class="record-item">
+                <div class="record-label">Top Engineer (All-Time)</div>
+                <div class="record-value" id="recordTopEngineer">—</div>
+                <div class="record-date" id="recordTopEngineerCount">—</div>
+              </div>
+              <div class="record-item">
+                <div class="record-label">Current Streak</div>
+                <div class="record-value" id="currentStreak">—</div>
+                <div class="record-date">days above target</div>
               </div>
             </div>
-            <div class="flip-card-back">
-              <div class="flip-indicator">⟲</div>
-              <h2>This Month's Progress</h2>
-              <div class="progress-stats">
-                <div class="progress-item">
-                  <div class="progress-label">Daily Average</div>
-                  <div class="progress-value" id="monthlyAverage">—</div>
+          </div>
+          <div class="panel" data-panel="monthly-progress">
+            <h2>This Month's Progress</h2>
+            <div class="progress-stats">
+              <div class="progress-item">
+                <div class="progress-label">Daily Average</div>
+                <div class="progress-value" id="monthlyAverage">—</div>
+              </div>
+              <div class="progress-item">
+                <div class="progress-label">Pace to Target</div>
+                <div class="progress-value" id="paceIndicator">—</div>
+              </div>
+              <div class="progress-item">
+                <div class="progress-label">Days Remaining</div>
+                <div class="progress-value" id="daysRemaining">—</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel" data-panel="weekly-trends">
+            <h2>Weekly Category Trends</h2>
+            <canvas id="chartWeeklyCategoryTrends"></canvas>
+          </div>
+        </section>
+
+        <section class="card rotator-card" data-interval="45000">
+          <div class="panel active" data-panel="race-updates">
+            <h2>Race Updates</h2>
+            <div class="race-updates">
+              <div class="update-item">
+                <div class="update-icon">🏆</div>
+                <div class="update-text" id="leaderGap">—</div>
+              </div>
+              <div class="update-item">
+                <div class="update-icon">🔥</div>
+                <div class="update-text" id="closestRace">—</div>
+              </div>
+              <div class="update-item">
+                <div class="update-icon">📈</div>
+                <div class="update-text" id="comebackStory">—</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel" data-panel="category-champions">
+            <h2>Category Champions</h2>
+            <div class="category-champions">
+              <div class="champion-item">
+                <span class="champion-category">Laptops/Desktops</span>
+                <span class="champion-name" id="champLD">—</span>
+              </div>
+              <div class="champion-item">
+                <span class="champion-category">Servers</span>
+                <span class="champion-name" id="champServers">—</span>
+              </div>
+              <div class="champion-item">
+                <span class="champion-category">Macs</span>
+                <span class="champion-name" id="champMacs">—</span>
+              </div>
+              <div class="champion-item">
+                <span class="champion-category">Mobiles</span>
+                <span class="champion-name" id="champMobiles">—</span>
+              </div>
+            </div>
+          </div>
+          <div class="panel" data-panel="weekly-engineers">
+            <h2>Weekly Engineer Stats</h2>
+            <table class="leaderboard">
+              <thead>
+                <tr>
+                  <th>Engineer</th>
+                  <th>Week Total</th>
+                  <th>Days Active</th>
+                  <th>Consistency</th>
+                </tr>
+              </thead>
+              <tbody id="weeklyLeaderboardBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card rotator-card" data-interval="43000">
+          <div class="panel active" data-panel="target-tracker">
+            <h2>Target Tracker</h2>
+            <div class="target-tracker">
+              <div class="tracker-status" id="trackerStatus">—</div>
+              <div class="tracker-projection" id="trackerProjection">—</div>
+              <div class="tracker-visual">
+                <div class="tracker-bar">
+                  <div class="tracker-fill" id="trackerFill"></div>
                 </div>
-                <div class="progress-item">
-                  <div class="progress-label">Pace to Target</div>
-                  <div class="progress-value" id="paceIndicator">—</div>
-                </div>
-                <div class="progress-item">
-                  <div class="progress-label">Days Remaining</div>
-                  <div class="progress-value" id="daysRemaining">—</div>
+                <div class="tracker-labels">
+                  <span id="trackerCurrent">—</span>
+                  <span id="trackerTarget">—</span>
                 </div>
               </div>
             </div>
           </div>
-        </section>
-
-        <!-- Card 3: Live Competition / Category Champions -->
-        <section class="card wide flip-card">
-          <div class="flip-card-inner">
-            <div class="flip-card-front">
-              <div class="flip-indicator">⟲</div>
-              <h2>Race Updates</h2>
-              <div class="race-updates">
-                <div class="update-item">
-                  <div class="update-icon">🏆</div>
-                  <div class="update-text" id="leaderGap">—</div>
-                </div>
-                <div class="update-item">
-                  <div class="update-icon">🔥</div>
-                  <div class="update-text" id="closestRace">—</div>
-                </div>
-                <div class="update-item">
-                  <div class="update-icon">📈</div>
-                  <div class="update-text" id="comebackStory">—</div>
-                </div>
-              </div>
-            </div>
-            <div class="flip-card-back">
-              <div class="flip-indicator">⟲</div>
-              <h2>Category Champions</h2>
-              <div class="category-champions">
-                <div class="champion-item">
-                  <span class="champion-category">Laptops/Desktops</span>
-                  <span class="champion-name" id="champLD">—</span>
-                </div>
-                <div class="champion-item">
-                  <span class="champion-category">Servers</span>
-                  <span class="champion-name" id="champServers">—</span>
-                </div>
-                <div class="champion-item">
-                  <span class="champion-category">Macs</span>
-                  <span class="champion-name" id="champMacs">—</span>
-                </div>
-                <div class="champion-item">
-                  <span class="champion-category">Mobiles</span>
-                  <span class="champion-name" id="champMobiles">—</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Card 4: Goals & Projections / Monthly Momentum -->
-        <section class="card wide flip-card">
-          <div class="flip-card-inner">
-            <div class="flip-card-front">
-              <div class="flip-indicator">⟲</div>
-              <h2>Target Tracker</h2>
-              <div class="target-tracker">
-                <div class="tracker-status" id="trackerStatus">—</div>
-                <div class="tracker-projection" id="trackerProjection">—</div>
-                <div class="tracker-visual">
-                  <div class="tracker-bar">
-                    <div class="tracker-fill" id="trackerFill"></div>
-                  </div>
-                  <div class="tracker-labels">
-                    <span id="trackerCurrent">—</span>
-                    <span id="trackerTarget">—</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="flip-card-back">
-              <div class="flip-indicator">⟲</div>
-              <h2>Monthly Momentum</h2>
-              <canvas id="chartMonthlyMomentum"></canvas>
-            </div>
+          <div class="panel" data-panel="monthly-momentum">
+            <h2>Monthly Momentum</h2>
+            <canvas id="chartMonthlyMomentum"></canvas>
           </div>
         </section>
       </div>
