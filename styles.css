@@ -180,14 +180,17 @@ body {
 
 .race-finish-line {
   text-align: center;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 900;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
   color: var(--ring-secondary);
-  padding: 4px 0;
-  border-bottom: 2px dashed var(--ring-secondary);
-  margin: 0 6px 8px;
+  text-shadow: 0 0 8px var(--ring-secondary), 0 2px 4px rgba(0, 0, 0, 0.5);
+  padding: 6px 0;
+  border-bottom: 3px dashed var(--ring-secondary);
+  margin: 0 6px 10px;
   flex-shrink: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 30, 163, 0.15), transparent);
+  box-shadow: 0 2px 12px rgba(255, 30, 163, 0.3);
 }
 
 .race-track {
@@ -246,7 +249,7 @@ body {
 .race-car {
   position: absolute;
   width: 60px;
-  height: 32px;
+  height: 44px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -266,20 +269,20 @@ body {
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  width: 5px;
-  background: linear-gradient(to top, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
-  border-radius: 3px;
+  width: 8px;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+  border-radius: 4px;
   transition: height 0.3s ease;
   height: 0%;
   z-index: -10;
   pointer-events: none;
-  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.3)) drop-shadow(0 0 2px rgba(255, 255, 255, 0.2));
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.5)) drop-shadow(0 0 3px rgba(255, 255, 255, 0.3));
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.35);
 }
 
 .car-body {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   background-image: url('assets/F1Car.png');
   background-size: contain;
   background-repeat: no-repeat;
