@@ -494,7 +494,10 @@ body {
 
 .top-row { grid-template-columns: repeat(2, 1fr); }
 .categories-row { grid-template-columns: repeat(4, 1fr); }
-.bottom-row { grid-template-columns: repeat(2, 1fr); }
+.bottom-row { 
+  grid-template-columns: repeat(3, 1fr); 
+  max-height: 300px;
+}
 
 .wide { grid-column: span 1; }
 
@@ -976,45 +979,45 @@ body {
 .records-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  padding: 16px 0;
+  gap: 12px;
+  padding: 8px 0;
 }
 
 .record-item {
   text-align: center;
-  padding: 12px;
+  padding: 8px;
   background: rgba(140, 240, 74, 0.05);
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid rgba(140, 240, 74, 0.15);
 }
 
 .record-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .record-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 800;
   color: var(--ring-primary);
-  margin: 4px 0;
+  margin: 2px 0;
 }
 
 .record-date {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--muted);
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 /* Monthly Progress */
 .progress-stats {
   display: flex;
   justify-content: space-around;
-  padding: 24px 0;
-  gap: 16px;
+  padding: 12px 0;
+  gap: 12px;
 }
 
 .progress-item {
@@ -1023,15 +1026,15 @@ body {
 }
 
 .progress-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .progress-value {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 800;
   color: var(--ring-secondary);
 }
@@ -1040,27 +1043,27 @@ body {
 .race-updates {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 16px 8px;
+  gap: 10px;
+  padding: 8px 4px;
 }
 
 .update-item {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 16px;
+  gap: 12px;
+  padding: 8px 12px;
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 8px;
+  border-radius: 6px;
   border-left: 3px solid var(--ring-primary);
 }
 
 .update-icon {
-  font-size: 24px;
+  font-size: 20px;
   flex-shrink: 0;
 }
 
 .update-text {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text);
   font-weight: 600;
 }
@@ -1069,28 +1072,28 @@ body {
 .category-champions {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 8px;
+  gap: 8px;
+  padding: 8px 4px;
 }
 
 .champion-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 8px 12px;
   background: rgba(140, 240, 74, 0.05);
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid rgba(140, 240, 74, 0.15);
 }
 
 .champion-category {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
   font-weight: 600;
 }
 
 .champion-name {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--ring-primary);
   font-weight: 800;
 }
@@ -1099,35 +1102,35 @@ body {
 .target-tracker {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 16px 12px;
+  gap: 10px;
+  padding: 8px;
 }
 
 .tracker-status {
   text-align: center;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--ring-primary);
 }
 
 .tracker-projection {
   text-align: center;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .tracker-visual {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tracker-bar {
   width: 100%;
-  height: 32px;
+  height: 28px;
   background: rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
+  border-radius: 14px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
