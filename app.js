@@ -312,7 +312,7 @@
         const avatar = getAvatarDataUri(name);
         li.innerHTML = `
           <span class="engineer-chip">
-            <span class="engineer-avatar" style="background-image: url('${avatar}')"></span>
+            <span class="engineer-avatar" style="background-image: url(${avatar})"></span>
             <span class="engineer-name">${name}</span>
           </span>
           <span class="value">${eng.count}</span>`;
@@ -373,7 +373,7 @@
         if (idx === 0) tr.classList.add('leader');
         tr.innerHTML = `
           <td>
-            <span class="engineer-avatar" style="background-image: url('${avatar}'); border-color: ${color}"></span>
+            <span class="engineer-avatar" style="background-image: url(${avatar}); border-color: ${color}"></span>
             <span class="engineer-name">${row.initials || ''}</span>
           </td>
           <td class="value-strong">${row.erasures || 0}</td>
@@ -1034,7 +1034,7 @@
       return `
       <tr>
         <td>
-          <span class="engineer-avatar" style="background-image: url('${avatar}')"></span>
+          <span class="engineer-avatar" style="background-image: url(${avatar})"></span>
           <span class="engineer-name">${eng.initials}</span>
         </td>
         <td>${eng.weeklyTotal}</td>
