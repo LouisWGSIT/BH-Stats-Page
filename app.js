@@ -913,7 +913,10 @@
 
   async function initializeAnalytics() {
     const analytics = await fetchAnalytics();
-    if (!analytics) return;
+    if (!analytics) {
+      console.warn('Analytics data unavailable, skipping chart setup');
+      return;
+    }
 
     createPeakHoursChart(analytics.peakHours);
     createDayOfWeekChart(analytics.dayPatterns);
@@ -963,7 +966,9 @@
 
   // Initialize analytics and flip on first load
   setTimeout(async () => {
+    console.log('Starting flip card initialization...');
     await initializeAnalytics();
+    console.log('Calling setupFlipCards...');
     setupFlipCards();
   }, 500); // Reduced wait time for quicker startup
 
