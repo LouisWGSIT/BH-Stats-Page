@@ -309,7 +309,13 @@
         const name = (eng.initials || '').toString().trim();
         if (!name) return;
         const li = document.createElement('li');
-        li.innerHTML = `<span>${name}</span><span class="value">${eng.count}</span>`;
+        const avatar = getAvatarDataUri(name);
+        li.innerHTML = `
+          <span class="engineer-chip">
+            <span class="engineer-avatar" style="background-image: url('${avatar}')"></span>
+            <span class="engineer-name">${name}</span>
+          </span>
+          <span class="value">${eng.count}</span>`;
         el.appendChild(li);
       });
     }
@@ -362,12 +368,13 @@
       (data.items || []).slice(0, 3).forEach((row, idx) => {
         const tr = document.createElement('tr');
         const color = getEngineerColor(row.initials || '');
+        const avatar = getAvatarDataUri(row.initials || '');
         const lastActive = formatTimeAgo(row.lastActive);
         if (idx === 0) tr.classList.add('leader');
         tr.innerHTML = `
           <td>
-            <span class="engineer-badge" style="background-color: ${color}"></span>
-            ${row.initials || ''}
+            <span class="engineer-avatar" style="background-image: url('${avatar}'); border-color: ${color}"></span>
+            <span class="engineer-name">${row.initials || ''}</span>
           </td>
           <td class="value-strong">${row.erasures || 0}</td>
           <td class="time-ago">${lastActive}</td>
@@ -689,6 +696,56 @@
     return colors[Math.abs(hash) % colors.length];
   }
 
+  const avatarCache = new Map();
+  const avatarAccentColors = ['#0d1b2a', '#0b1320', '#12263b', '#1c3553'];
+
+  function shadeColor(hex, factor) {
+    const num = parseInt(hex.replace('#', ''), 16);
+    const r = Math.max(0, Math.min(255, Math.round(((num >> 16) & 0xff) * factor)));
+    const g = Math.max(0, Math.min(255, Math.round(((num >> 8) & 0xff) * factor)));
+    const b = Math.max(0, Math.min(255, Math.round((num & 0xff) * factor)));
+    return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
+  }
+
+  function getAvatarDataUri(initials) {
+    if (avatarCache.has(initials)) return avatarCache.get(initials);
+    const base = getEngineerColor(initials || '');
+    let hash = 0;
+    for (let i = 0; i < initials.length; i++) {
+      hash = initials.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const accent = avatarAccentColors[Math.abs(hash) % avatarAccentColors.length];
+    const light = shadeColor(base, 1.2);
+    const dark = shadeColor(base, 0.6);
+
+    // Build a simple mirrored 6x6 pixel creature
+    const pixels = [];
+    const size = 6;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < Math.ceil(size / 2); x++) {
+        const bit = (hash >> ((y * size + x) % 24)) & 1;
+        const color = bit ? base : dark;
+        if (y <= 1 && x >= 2 && bit) continue; // leave some space for eyes
+        pixels.push({ x, y, color });
+        if (x !== size - x - 1) {
+          pixels.push({ x: size - x - 1, y, color });
+        }
+      }
+    }
+
+    // Eyes and mouth
+    pixels.push({ x: 2, y: 2, color: '#fff' });
+    pixels.push({ x: 3, y: 2, color: '#fff' });
+    pixels.push({ x: 2, y: 3, color: accent });
+    pixels.push({ x: 3, y: 3, color: accent });
+
+    const rects = pixels.map(p => `<rect x="${p.x}" y="${p.y}" width="1" height="1" fill="${p.color}" />`).join('');
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 6 6' shape-rendering='crispEdges'>${rects}</svg>`;
+    const uri = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    avatarCache.set(initials, uri);
+    return uri;
+  }
+
   function formatTimeAgo(timestamp) {
     if (!timestamp) return '—';
     const now = new Date();
@@ -896,14 +953,19 @@
     const tbody = document.getElementById('weeklyLeaderboardBody');
     if (!tbody) return;
 
-    tbody.innerHTML = data.stats.slice(0, 10).map(eng => `
+    tbody.innerHTML = data.stats.slice(0, 10).map(eng => {
+      const avatar = getAvatarDataUri(eng.initials || '');
+      return `
       <tr>
-        <td><span class="engineer-badge" style="background: ${getEngineerColor(eng.initials)}">${eng.initials}</span></td>
+        <td>
+          <span class="engineer-avatar" style="background-image: url('${avatar}')"></span>
+          <span class="engineer-name">${eng.initials}</span>
+        </td>
         <td>${eng.weeklyTotal}</td>
         <td>${eng.daysActive}/7</td>
         <td>${eng.consistency}%</td>
-      </tr>
-    `).join('');
+      </tr>`;
+    }).join('');
   }
 
   async function initializeAnalytics() {

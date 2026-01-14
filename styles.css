@@ -588,13 +588,41 @@ body {
   color: var(--muted);
 }
 
-.engineer-badge {
+.engineer-avatar {
   display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.12);
   margin-right: 8px;
   vertical-align: middle;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+
+.engineer-name {
+  vertical-align: middle;
+  font-weight: 700;
+}
+
+.engineer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.top-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.top-list li:last-child {
+  border-bottom: none;
 }
 
 .time-ago {
