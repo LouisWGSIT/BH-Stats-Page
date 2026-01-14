@@ -1359,14 +1359,13 @@
         if (currentIndex !== -1 && currentIndex !== nextIndex) {
           panels[currentIndex].classList.remove('active');
           panels[currentIndex].classList.add('exiting');
-          setTimeout(() => panels[currentIndex].classList.remove('exiting'), 700);
+          setTimeout(() => panels[currentIndex].classList.remove('exiting'), 550);
         }
 
         const nextPanel = panels[nextIndex];
         nextPanel.classList.add('entering');
-        void nextPanel.offsetWidth; // force reflow
         nextPanel.classList.add('active');
-        setTimeout(() => nextPanel.classList.remove('entering'), 700);
+        setTimeout(() => nextPanel.classList.remove('entering'), 550);
       }
 
       // Ensure the first panel is visible
