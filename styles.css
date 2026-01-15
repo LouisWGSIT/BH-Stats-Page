@@ -157,7 +157,7 @@ body {
   height: 100%;
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
-  padding: 16px 12px;
+  padding: 0;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 15px 35px rgba(0,0,0,0.25);
@@ -167,6 +167,41 @@ body {
   flex-shrink: 0;
   overflow: hidden;
   position: relative;
+  perspective: 1000px;
+}
+
+.race-section .panel {
+  position: absolute;
+  inset: 0;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: rotateY(90deg) translate3d(0, 0, 0);
+  transition: transform 0.55s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.55s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
+.race-section .panel.active {
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 2;
+  transform: rotateY(0deg) translate3d(0, 0, 0);
+}
+
+.race-section .panel.exiting {
+  opacity: 0;
+  transform: rotateY(-90deg) translate3d(0, 0, 0);
+  z-index: 1;
+}
+
+.race-section .panel.entering {
+  opacity: 0;
+  transform: rotateY(90deg);
+  z-index: 2;
 }
 
 .race-section h2 {

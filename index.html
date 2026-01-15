@@ -28,45 +28,107 @@
     </header>
 
     <main class="layout">
-      <section class="race-section">
-        <h2>Daily Race</h2>
-        <div class="race-finish-line">🏁 FINISH</div>
-        <div class="race-track">
-          <div class="race-lane" id="raceLane1">
-            <div class="car-trail" id="trail1"></div>
-            <div class="race-car car-1" id="racePos1">
-              <div class="car-body"></div>
+      <!-- Daily Race + Competitions Rotator -->
+      <section class="race-section card rotator-card" data-interval="16000">
+        <div class="panel active" data-panel="daily-race">
+          <h2>Daily Race</h2>
+          <div class="race-finish-line">🏁 FINISH</div>
+          <div class="race-track">
+            <div class="race-lane" id="raceLane1">
+              <div class="car-trail" id="trail1"></div>
+              <div class="race-car car-1" id="racePos1">
+                <div class="car-body"></div>
+              </div>
+              <div class="lane-label" id="driver1">—</div>
             </div>
-            <div class="lane-label" id="driver1">—</div>
-          </div>
-          <div class="race-lane" id="raceLane2">
-            <div class="car-trail" id="trail2"></div>
-            <div class="race-car car-2" id="racePos2">
-              <div class="car-body"></div>
+            <div class="race-lane" id="raceLane2">
+              <div class="car-trail" id="trail2"></div>
+              <div class="race-car car-2" id="racePos2">
+                <div class="car-body"></div>
+              </div>
+              <div class="lane-label" id="driver2">—</div>
             </div>
-            <div class="lane-label" id="driver2">—</div>
-          </div>
-          <div class="race-lane" id="raceLane3">
-            <div class="car-trail" id="trail3"></div>
-            <div class="race-car car-3" id="racePos3">
-              <div class="car-body"></div>
+            <div class="race-lane" id="raceLane3">
+              <div class="car-trail" id="trail3"></div>
+              <div class="race-car car-3" id="racePos3">
+                <div class="car-body"></div>
+              </div>
+              <div class="lane-label" id="driver3">—</div>
             </div>
-            <div class="lane-label" id="driver3">—</div>
-          </div>
-          <div class="race-lane" id="raceLane4">
-            <div class="car-trail" id="trail4"></div>
-            <div class="race-car car-4" id="racePos4">
-              <div class="car-body"></div>
+            <div class="race-lane" id="raceLane4">
+              <div class="car-trail" id="trail4"></div>
+              <div class="race-car car-4" id="racePos4">
+                <div class="car-body"></div>
+              </div>
+              <div class="lane-label" id="driver4">—</div>
             </div>
-            <div class="lane-label" id="driver4">—</div>
-          </div>
-          <div class="race-lane" id="raceLane5">
-            <div class="car-trail" id="trail5"></div>
-            <div class="race-car car-5" id="racePos5">
-              <div class="car-body"></div>
+            <div class="race-lane" id="raceLane5">
+              <div class="car-trail" id="trail5"></div>
+              <div class="race-car car-5" id="racePos5">
+                <div class="car-body"></div>
+              </div>
+              <div class="lane-label" id="driver5">—</div>
             </div>
-            <div class="lane-label" id="driver5">—</div>
           </div>
+        </div>
+        <div class="panel" data-panel="speed-am">
+          <div class="panel-header with-icon">
+            <img src="assets/Lightning.png" alt="Speed" class="panel-icon pixel" />
+            <div>
+              <h2>Speed Challenge (AM)</h2>
+              <div class="subtext" id="speedAmStatus">—</div>
+            </div>
+            <img src="assets/Stopwatch.png" alt="Timer" class="panel-icon pixel right" />
+          </div>
+          <ol id="speedAmList" class="speed-list"></ol>
+        </div>
+        <div class="panel" data-panel="speed-pm">
+          <div class="panel-header with-icon">
+            <img src="assets/Lightning.png" alt="Speed" class="panel-icon pixel" />
+            <div>
+              <h2>Speed Challenge (PM)</h2>
+              <div class="subtext" id="speedPmStatus">—</div>
+            </div>
+            <img src="assets/Stopwatch.png" alt="Timer" class="panel-icon pixel right" />
+          </div>
+          <ol id="speedPmList" class="speed-list"></ol>
+        </div>
+        <div class="panel" data-panel="specialists">
+          <div class="panel-header with-icon">
+            <div class="panel-icon trophy gold"></div>
+            <div>
+              <h2>Category Specialists</h2>
+              <div class="subtext">Top 3 per category</div>
+            </div>
+          </div>
+          <div class="specialists-grid">
+            <div class="specialists-col">
+              <div class="spec-title">Laptops/Desktops</div>
+              <ol id="specLD" class="spec-list"></ol>
+            </div>
+            <div class="specialists-col">
+              <div class="spec-title">Servers</div>
+              <ol id="specServers" class="spec-list"></ol>
+            </div>
+            <div class="specialists-col">
+              <div class="spec-title">Macs</div>
+              <ol id="specMacs" class="spec-list"></ol>
+            </div>
+            <div class="specialists-col">
+              <div class="spec-title">Mobiles</div>
+              <ol id="specMobiles" class="spec-list"></ol>
+            </div>
+          </div>
+        </div>
+        <div class="panel" data-panel="consistency">
+          <div class="panel-header with-icon">
+            <img src="assets/Regal.png" alt="Regal" class="panel-icon pixel" />
+            <div>
+              <h2>Consistency Kings/Queens</h2>
+              <div class="subtext">Steadiest pace today</div>
+            </div>
+          </div>
+          <ol id="consistencyList" class="consistency-list"></ol>
         </div>
       </section>
 
@@ -154,30 +216,10 @@
         </section>
       </div>
 
-      <!-- Rotating bottom row: 3 cards, each with its own panel pool -->
+      <!-- Bottom row: 3 cards with rotating panels -->
       <div class="grid bottom-row rotating-row">
         <section class="card rotator-card" data-interval="16000">
-          <div class="panel active" data-panel="records">
-            <h2>Records & Milestones</h2>
-            <div class="records-grid">
-              <div class="record-item">
-                <div class="record-label">Best Day Ever</div>
-                <div class="record-value" id="recordBestDay">—</div>
-                <div class="record-date" id="recordBestDayDate">—</div>
-              </div>
-              <div class="record-item">
-                <div class="record-label">Top Engineer (All-Time)</div>
-                <div class="record-value" id="recordTopEngineer">—</div>
-                <div class="record-date" id="recordTopEngineerCount">—</div>
-              </div>
-              <div class="record-item">
-                <div class="record-label">Current Streak</div>
-                <div class="record-value" id="currentStreak">—</div>
-                <div class="record-date">days above target</div>
-              </div>
-            </div>
-          </div>
-          <div class="panel" data-panel="monthly-progress">
+          <div class="panel active" data-panel="monthly-progress">
             <h2>This Month's Progress</h2>
             <div class="progress-stats">
               <div class="progress-item">
@@ -197,6 +239,27 @@
           <div class="panel" data-panel="weekly-trends">
             <h2>Weekly Category Trends</h2>
             <canvas id="chartWeeklyCategoryTrends"></canvas>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Records & Milestones</h2>
+          <div class="records-grid">
+            <div class="record-item">
+              <div class="record-label">Best Day Ever</div>
+              <div class="record-value" id="recordBestDay">—</div>
+              <div class="record-date" id="recordBestDayDate">—</div>
+            </div>
+            <div class="record-item">
+              <div class="record-label">Top Engineer (All-Time)</div>
+              <div class="record-value" id="recordTopEngineer">—</div>
+              <div class="record-date" id="recordTopEngineerCount">—</div>
+            </div>
+            <div class="record-item">
+              <div class="record-label">Current Streak</div>
+              <div class="record-value" id="currentStreak">—</div>
+              <div class="record-date">days above target</div>
+            </div>
           </div>
         </section>
 
@@ -253,69 +316,7 @@
               <tbody id="weeklyLeaderboardBody"></tbody>
             </table>
           </div>
-          <div class="panel" data-panel="speed-am">
-            <div class="panel-header with-icon">
-              <img src="assets/Lightning.png" alt="Speed" class="panel-icon pixel" />
-              <div>
-                <h2>Speed Challenge (AM)</h2>
-                <div class="subtext" id="speedAmStatus">—</div>
-              </div>
-              <img src="assets/Stopwatch.png" alt="Timer" class="panel-icon pixel right" />
-            </div>
-            <ol id="speedAmList" class="speed-list"></ol>
-          </div>
-          <div class="panel" data-panel="speed-pm">
-            <div class="panel-header with-icon">
-              <img src="assets/Lightning.png" alt="Speed" class="panel-icon pixel" />
-              <div>
-                <h2>Speed Challenge (PM)</h2>
-                <div class="subtext" id="speedPmStatus">—</div>
-              </div>
-              <img src="assets/Stopwatch.png" alt="Timer" class="panel-icon pixel right" />
-            </div>
-            <ol id="speedPmList" class="speed-list"></ol>
-          </div>
-          <div class="panel" data-panel="specialists">
-            <div class="panel-header with-icon">
-              <div class="panel-icon trophy gold"></div>
-              <div>
-                <h2>Category Specialists</h2>
-                <div class="subtext">Top 3 per category</div>
-              </div>
-            </div>
-            <div class="specialists-grid">
-              <div class="specialists-col">
-                <div class="spec-title">Laptops/Desktops</div>
-                <ol id="specLD" class="spec-list"></ol>
-              </div>
-              <div class="specialists-col">
-                <div class="spec-title">Servers</div>
-                <ol id="specServers" class="spec-list"></ol>
-              </div>
-              <div class="specialists-col">
-                <div class="spec-title">Macs</div>
-                <ol id="specMacs" class="spec-list"></ol>
-              </div>
-              <div class="specialists-col">
-                <div class="spec-title">Mobiles</div>
-                <ol id="specMobiles" class="spec-list"></ol>
-              </div>
-            </div>
-          </div>
-          <div class="panel" data-panel="consistency">
-            <div class="panel-header with-icon">
-              <img src="assets/Regal.png" alt="Regal" class="panel-icon pixel" />
-              <div>
-                <h2>Consistency Kings/Queens</h2>
-                <div class="subtext">Steadiest pace today</div>
-              </div>
-            </div>
-            <ol id="consistencyList" class="consistency-list"></ol>
-          </div>
-        </section>
-
-        <section class="card rotator-card" data-interval="16000">
-          <div class="panel active" data-panel="target-tracker">
+          <div class="panel" data-panel="target-tracker">
             <h2>Target Tracker</h2>
             <div class="target-tracker">
               <div class="tracker-status" id="trackerStatus">—</div>

@@ -141,10 +141,30 @@
   let raceData = { engineer1: null, engineer2: null, engineer3: null, firstFinisher: null, winnerAnnounced: false };
 
   function triggerGreenie(quote) {
-    showGreenie();
-    // Greenie will use the quote from getGreenieQuote, override if needed
+    const container = document.getElementById('greenieContainer');
     const quoteEl = document.getElementById('greenieQuote');
-    if (quoteEl && quote) quoteEl.textContent = quote;
+    const wrapper = container.querySelector('.greenie-wrapper');
+
+    // Set the custom quote directly
+    if (quoteEl && quote) {
+      quoteEl.textContent = quote;
+    }
+
+    // Remove exit animation class if present
+    wrapper.classList.remove('exit');
+
+    // Show Greenie
+    container.classList.remove('hidden');
+    greenieState.lastShowTime = Date.now();
+
+    // Auto-hide after 14 seconds total (2s in + 10s display + 2s out)
+    setTimeout(() => {
+      wrapper.classList.add('exit');
+      setTimeout(() => {
+        container.classList.add('hidden');
+        wrapper.classList.remove('exit');
+      }, 2000);
+    }, 10000);
   }
 
   function animateNumberUpdate(elementId) {
@@ -1811,6 +1831,86 @@
       csv.push(['TOP PERFORMERS BY CATEGORY']);
       csv.push(['Category', 'Engineer', 'Count']);
       csv.push(...categoryTopPerformers);
+    }
+
+    // Fetch competition data for richer report
+    try {
+      const [speedAm, speedPm, specialists, consistency, records] = await Promise.all([
+        fetch('/competitions/speed-challenge?window=am').then(r => r.ok ? r.json() : {}),
+        fetch('/competitions/speed-challenge?window=pm').then(r => r.ok ? r.json() : {}),
+        fetch('/competitions/category-specialists').then(r => r.ok ? r.json() : {}),
+        fetch('/competitions/consistency').then(r => r.ok ? r.json() : {}),
+        fetch('/metrics/records').then(r => r.ok ? r.json() : {})
+      ]);
+
+      // Speed challenges
+      if (speedAm?.leaderboard?.length) {
+        csv.push([]);
+        csv.push(['SPEED CHALLENGE (AM)']);
+        csv.push(['Rank', 'Engineer', 'Erasures', 'Status']);
+        csv.push(...speedAm.leaderboard.map((row, idx) => [
+          idx + 1,
+          row.initials || '',
+          row.erasures || 0,
+          speedAm.status?.isActive ? `${speedAm.status.timeRemainingMinutes}m left` : `${speedAm.status?.startTime || ''}-${speedAm.status?.endTime || ''}`
+        ]));
+      }
+
+      if (speedPm?.leaderboard?.length) {
+        csv.push([]);
+        csv.push(['SPEED CHALLENGE (PM)']);
+        csv.push(['Rank', 'Engineer', 'Erasures', 'Status']);
+        csv.push(...speedPm.leaderboard.map((row, idx) => [
+          idx + 1,
+          row.initials || '',
+          row.erasures || 0,
+          speedPm.status?.isActive ? `${speedPm.status.timeRemainingMinutes}m left` : `${speedPm.status?.startTime || ''}-${speedPm.status?.endTime || ''}`
+        ]));
+      }
+
+      // Category specialists
+      if (specialists?.specialists) {
+        csv.push([]);
+        csv.push(['CATEGORY SPECIALISTS (Top 3)']);
+        csv.push(['Category', 'Engineer', 'Count']);
+        const catOrder = ['laptops_desktops', 'servers', 'macs', 'mobiles'];
+        const catNames = {
+          laptops_desktops: 'Laptops/Desktops',
+          servers: 'Servers',
+          macs: 'Macs',
+          mobiles: 'Mobiles'
+        };
+        catOrder.forEach(cat => {
+          (specialists.specialists[cat] || []).forEach((row, idx) => {
+            csv.push([`${catNames[cat]} #${idx + 1}`, row.initials || '', row.count || 0]);
+          });
+        });
+      }
+
+      // Consistency
+      if (consistency?.leaderboard?.length) {
+        csv.push([]);
+        csv.push(['CONSISTENCY KINGS/QUEENS']);
+        csv.push(['Rank', 'Engineer', 'Erasures', 'Avg Gap (m)', 'Sigma']);
+        csv.push(...consistency.leaderboard.map((row, idx) => [
+          idx + 1,
+          row.initials || '',
+          row.erasures || 0,
+          row.avgGapMinutes || 0,
+          row.consistencyScore || 0
+        ]));
+      }
+
+      // Records
+      if (records && (records.bestDay || records.topEngineer || records.currentStreak !== undefined)) {
+        csv.push([]);
+        csv.push(['RECORDS & MILESTONES']);
+        csv.push(['Best Day Ever', records.bestDay?.count || 0, records.bestDay?.date || '']);
+        csv.push(['Top Engineer (All-Time)', records.topEngineer?.initials || '', records.topEngineer?.count || 0, records.topEngineer?.date || '']);
+        csv.push(['Current Streak (>= target)', records.currentStreak || 0]);
+      }
+    } catch (err) {
+      console.error('CSV competition enrichment failed:', err);
     }
 
     return csv.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
