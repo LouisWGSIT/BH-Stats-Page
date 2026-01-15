@@ -1882,44 +1882,70 @@
 
     // Fetch competition data for richer report
     try {
-      const [speedAm, speedPm, specialists, consistency, records] = await Promise.all([
+      const [speedAm, speedPm, specialists, consistency, records, weekly] = await Promise.all([
         fetch('/competitions/speed-challenge?window=am').then(r => r.ok ? r.json() : {}),
         fetch('/competitions/speed-challenge?window=pm').then(r => r.ok ? r.json() : {}),
         fetch('/competitions/category-specialists').then(r => r.ok ? r.json() : {}),
         fetch('/competitions/consistency').then(r => r.ok ? r.json() : {}),
-        fetch('/metrics/records').then(r => r.ok ? r.json() : {})
+        fetch('/metrics/records').then(r => r.ok ? r.json() : {}),
+        fetch('/metrics/weekly').then(r => r.ok ? r.json() : {})
       ]);
+
+      // Add records & milestones section at the top after summary
+      if (records?.bestDay || records?.topEngineer || records?.currentStreak !== undefined) {
+        const recordsIdx = csv.findIndex(row => row[0] === '');
+        if (recordsIdx > 0) {
+          csv.splice(recordsIdx + 1, 0,
+            [],
+            ['RECORDS & MILESTONES'],
+            ['Best Day Ever', records.bestDay?.date || '', records.bestDay?.count || 0],
+            ['Top Engineer (All-Time)', records.topEngineer?.initials || '', `${records.topEngineer?.totalCount || 0} total erasures`],
+            ['Current Streak', `${records.currentStreak || 0} days`, 'above target']
+          );
+        }
+      }
+
+      // Add weekly statistics
+      if (weekly?.weekTotal || weekly?.daysActive) {
+        csv.push([]);
+        csv.push(['WEEKLY STATISTICS (Past 7 days)']);
+        csv.push(['Metric', 'Value']);
+        csv.push(['Week Total', weekly.weekTotal || 0]);
+        csv.push(['Best Day of Week', weekly.bestDayOfWeek?.date || '', weekly.bestDayOfWeek?.count || 0]);
+        csv.push(['Daily Average', weekly.weekAverage || 0]);
+        csv.push(['Days Active', weekly.daysActive || 0]);
+      }
 
       // Speed challenges
       if (speedAm?.leaderboard?.length) {
         csv.push([]);
-        csv.push(['SPEED CHALLENGE (AM)']);
+        csv.push(['SPEED CHALLENGE (AM)', `${speedAm.status?.startTime || ''}-${speedAm.status?.endTime || ''}`]);
         csv.push(['Rank', 'Engineer', 'Erasures', 'Status']);
         csv.push(...speedAm.leaderboard.map((row, idx) => [
           idx + 1,
           row.initials || '',
           row.erasures || 0,
-          speedAm.status?.isActive ? `${speedAm.status.timeRemainingMinutes}m left` : `${speedAm.status?.startTime || ''}-${speedAm.status?.endTime || ''}`
+          speedAm.status?.isActive ? `${speedAm.status.timeRemainingMinutes}m remaining` : 'Closed'
         ]));
       }
 
       if (speedPm?.leaderboard?.length) {
         csv.push([]);
-        csv.push(['SPEED CHALLENGE (PM)']);
+        csv.push(['SPEED CHALLENGE (PM)', `${speedPm.status?.startTime || ''}-${speedPm.status?.endTime || ''}`]);
         csv.push(['Rank', 'Engineer', 'Erasures', 'Status']);
         csv.push(...speedPm.leaderboard.map((row, idx) => [
           idx + 1,
           row.initials || '',
           row.erasures || 0,
-          speedPm.status?.isActive ? `${speedPm.status.timeRemainingMinutes}m left` : `${speedPm.status?.startTime || ''}-${speedPm.status?.endTime || ''}`
+          speedPm.status?.isActive ? `${speedPm.status.timeRemainingMinutes}m remaining` : 'Closed'
         ]));
       }
 
       // Category specialists
       if (specialists?.specialists) {
         csv.push([]);
-        csv.push(['CATEGORY SPECIALISTS (Top 3)']);
-        csv.push(['Category', 'Engineer', 'Count']);
+        csv.push(['CATEGORY SPECIALISTS (Top 3 per category)']);
+        csv.push(['Category', 'Rank', 'Engineer', 'Count']);
         const catOrder = ['laptops_desktops', 'servers', 'macs', 'mobiles'];
         const catNames = {
           laptops_desktops: 'Laptops/Desktops',
@@ -1929,7 +1955,7 @@
         };
         catOrder.forEach(cat => {
           (specialists.specialists[cat] || []).forEach((row, idx) => {
-            csv.push([`${catNames[cat]} #${idx + 1}`, row.initials || '', row.count || 0]);
+            csv.push([catNames[cat], idx + 1, row.initials || '', row.count || 0]);
           });
         });
       }
@@ -1937,8 +1963,8 @@
       // Consistency
       if (consistency?.leaderboard?.length) {
         csv.push([]);
-        csv.push(['CONSISTENCY KINGS/QUEENS']);
-        csv.push(['Rank', 'Engineer', 'Erasures', 'Avg Gap (m)', 'Sigma']);
+        csv.push(['CONSISTENCY KINGS/QUEENS', 'Steadiest pace - lowest variability']);
+        csv.push(['Rank', 'Engineer', 'Erasures', 'Avg Gap (min)', 'Std Dev']);
         csv.push(...consistency.leaderboard.map((row, idx) => [
           idx + 1,
           row.initials || '',
