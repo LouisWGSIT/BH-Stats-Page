@@ -1933,6 +1933,7 @@
         csv.push(['Daily Average', weekly.weekAverage || 0, `vs ${target} target`, weekly.weekAverage >= parseInt(target) ? '✓ Above Target' : '✗ Below Target']);
         csv.push(['Days Active', weekly.daysActive || 0, `out of 7 days`, '']);
         csv.push([]);
+      }
 
       // Speed challenges
       if (speedAm?.leaderboard?.length) {
@@ -1990,15 +1991,6 @@
           row.avgGapMinutes || 0,
           row.consistencyScore || 0
         ]));
-      }
-
-      // Records
-      if (records && (records.bestDay || records.topEngineer || records.currentStreak !== undefined)) {
-        csv.push([]);
-        csv.push(['RECORDS & MILESTONES']);
-        csv.push(['Best Day Ever', records.bestDay?.count || 0, records.bestDay?.date || '']);
-        csv.push(['Top Engineer (All-Time)', records.topEngineer?.initials || '', records.topEngineer?.count || 0, records.topEngineer?.date || '']);
-        csv.push(['Current Streak (>= target)', records.currentStreak || 0]);
       }
     } catch (err) {
       console.error('CSV competition enrichment failed:', err);
