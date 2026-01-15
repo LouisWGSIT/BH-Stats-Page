@@ -1827,44 +1827,61 @@
     const dailyAvg = Math.round(parseInt(monthTotal) / today);
     const projectedTotal = Math.round(dailyAvg * daysInMonth);
     const daysRemaining = daysInMonth - today;
+    const progressPercent = Math.round((parseInt(todayTotal) / parseInt(target)) * 100);
+    const statusIndicator = progressPercent >= 100 ? '✓ ON TARGET' : progressPercent >= 80 ? '⚠ APPROACHING' : '✗ BELOW TARGET';
+    const monthProgressPercent = Math.round((parseInt(monthTotal) / (parseInt(target) * today)) * 100);
     
-    // Build CSV
-    const reportTitle = isYesterday ? 'Warehouse Erasure Stats Report (Yesterday)' : 'Warehouse Erasure Stats Report';
+    // Build professional CSV report
+    const reportTitle = isYesterday ? 'WAREHOUSE ERASURE STATS REPORT (Yesterday)' : 'WAREHOUSE ERASURE STATS REPORT';
+    const reportSubtitle = isYesterday ? `Data for: ${dateStr}` : `Current Status - ${dateStr}`;
+    
     const csv = [
       [reportTitle],
-      ['Report Date:', dateStr],
-      ['Generated:', new Date().toLocaleDateString('en-GB'), time],
+      [reportSubtitle],
+      ['Generated:', new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })],
+      ['Time:', time],
       [],
-      ['SUMMARY'],
-      ['Metric', 'Value'],
-      [isYesterday ? 'Total' : 'Today Total', todayTotal],
-      ['Month Total', monthTotal],
-      ['Daily Target', target],
-      ['Progress to Target', `${Math.round((parseInt(todayTotal) / parseInt(target)) * 100)}%`],
-      ['Daily Average (Month)', dailyAvg],
-      ['Projected Month Total', projectedTotal],
-      ['Days Remaining', daysRemaining],
+      ['EXECUTIVE SUMMARY'],
+      ['Key Metric', 'Value', 'Status/Target', 'Performance'],
+      [isYesterday ? 'Daily Total' : 'Today\'s Total', todayTotal, `Target: ${target}`, statusIndicator],
+      ['Month Total', monthTotal, `Avg ${target}/day`, `${monthProgressPercent}% of pace`],
+      ['Daily Average', dailyAvg, 'Per day', `${dailyAvg > parseInt(target) ? '↑ Above' : '↓ Below'} target`],
+      ['Projected Month', projectedTotal, `of ~${parseInt(target) * daysInMonth} max`, `${Math.round((projectedTotal / (parseInt(target) * daysInMonth)) * 100)}% utilization`],
+      ['Days Remaining', daysRemaining, `in ${new Date().toLocaleDateString('en-US', { month: 'long' })}`, ''],
       [],
     ];
 
     if (!isYesterday && leaderboardRows.length > 0) {
-      csv.push(['TOP 3 ENGINEERS (TODAY)']);
-      csv.push(['Rank', 'Engineer', 'Erasures', 'Last Active']);
-      csv.push(...leaderboardRows);
+      csv.push(['TOP 3 ENGINEERS (Daily Leaders)']);
+      csv.push(['Rank', 'Engineer', 'Erasures', 'Last Active', 'Status']);
+      leaderboardRows.forEach((row, idx) => {
+        const erasures = parseInt(row[2]);
+        let status = erasures >= parseInt(target) ? '✓ Exceeding Target' : '◐ On Pace';
+        csv.push([row[0], row[1], row[2], row[3], status]);
+      });
       
-      // Add race gap analysis
+      // Add race analysis
       if (leaderboardRows.length >= 2) {
-        const gap = parseInt(leaderboardRows[0][2]) - parseInt(leaderboardRows[1][2]);
+        const lead = parseInt(leaderboardRows[0][2]);
+        const second = parseInt(leaderboardRows[1][2]);
+        const gap = lead - second;
+        const gapPercent = Math.round((gap / second) * 100);
         csv.push([]);
-        csv.push(['Race Status', `${leaderboardRows[0][1]} leads ${leaderboardRows[1][1]} by ${gap} erasures`]);
+        csv.push(['RACE ANALYSIS']);
+        csv.push(['Leader', leaderboardRows[0][1]]);
+        csv.push(['Lead Margin', `${gap} erasures (${gapPercent}% ahead)`]);
+        csv.push(['Second Place', leaderboardRows[1][1]]);
       }
-      
       csv.push([]);
     }
 
-    csv.push([isYesterday ? 'ALL ENGINEERS (YESTERDAY)' : 'ALL ENGINEERS (TODAY)']);
-    csv.push(['Rank', 'Engineer', 'Total Erasures', 'Last Active', 'Avg Per Hour']);
-    csv.push(...(allEngineersRows.length > 0 ? allEngineersRows : [['No data available']]));
+    csv.push([isYesterday ? 'ALL ENGINEERS (YESTERDAY)' : 'ALL ENGINEERS - DETAILED LEADERBOARD']);
+    csv.push(['Rank', 'Engineer', 'Erasures', 'Avg/Hour', 'Last Active', 'Performance vs Target']);
+    csv.push(...(allEngineersRows.length > 0 ? allEngineersRows.map(row => {
+      const erasures = parseInt(row[2]);
+      const pct = parseInt(target) > 0 ? Math.round((erasures / parseInt(target)) * 100) : 0;
+      return [row[0], row[1], row[2], row[3], row[4], `${pct}%`];
+    }) : [['No data available']]));
     csv.push([]);
     
     if (categoryRows.length > 0) {
@@ -1891,30 +1908,31 @@
         fetch('/metrics/weekly').then(r => r.ok ? r.json() : {})
       ]);
 
-      // Add records & milestones section at the top after summary
+      // Add records & milestones with better formatting
       if (records?.bestDay || records?.topEngineer || records?.currentStreak !== undefined) {
-        const recordsIdx = csv.findIndex(row => row[0] === '');
-        if (recordsIdx > 0) {
-          csv.splice(recordsIdx + 1, 0,
-            [],
-            ['RECORDS & MILESTONES'],
-            ['Best Day Ever', records.bestDay?.date || '', records.bestDay?.count || 0],
-            ['Top Engineer (All-Time)', records.topEngineer?.initials || '', `${records.topEngineer?.totalCount || 0} total erasures`],
-            ['Current Streak', `${records.currentStreak || 0} days`, 'above target']
-          );
+        csv.push(['HISTORICAL RECORDS & ACHIEVEMENTS']);
+        csv.push(['Metric', 'Value', 'Details']);
+        if (records.bestDay) {
+          csv.push(['Best Day Ever', records.bestDay.count || 0, `Achieved on ${records.bestDay.date || 'N/A'}`]);
         }
+        if (records.topEngineer) {
+          csv.push(['Top Engineer (All-Time)', records.topEngineer.initials || '—', `${records.topEngineer.totalCount || 0} total erasures`]);
+        }
+        if (records.currentStreak !== undefined) {
+          csv.push(['Current Streak', `${records.currentStreak || 0} days`, 'above daily target']);
+        }
+        csv.push([]);
       }
 
-      // Add weekly statistics
+      // Add weekly statistics with comparison
       if (weekly?.weekTotal || weekly?.daysActive) {
+        csv.push(['WEEKLY PERFORMANCE (Past 7 Days)']);
+        csv.push(['Metric', 'Value', 'Comparison', 'Notes']);
+        csv.push(['Week Total', weekly.weekTotal || 0, `${Math.round((weekly.weekTotal / (parseInt(target) * 7)) * 100)}% of weekly goal`, '']);
+        csv.push(['Best Day', weekly.bestDayOfWeek?.count || 0, `(${weekly.bestDayOfWeek?.date || 'N/A'})`, weekly.bestDayOfWeek?.count >= parseInt(target) ? 'On Target' : 'Below Target']);
+        csv.push(['Daily Average', weekly.weekAverage || 0, `vs ${target} target`, weekly.weekAverage >= parseInt(target) ? '✓ Above Target' : '✗ Below Target']);
+        csv.push(['Days Active', weekly.daysActive || 0, `out of 7 days`, '']);
         csv.push([]);
-        csv.push(['WEEKLY STATISTICS (Past 7 days)']);
-        csv.push(['Metric', 'Value']);
-        csv.push(['Week Total', weekly.weekTotal || 0]);
-        csv.push(['Best Day of Week', weekly.bestDayOfWeek?.date || '', weekly.bestDayOfWeek?.count || 0]);
-        csv.push(['Daily Average', weekly.weekAverage || 0]);
-        csv.push(['Days Active', weekly.daysActive || 0]);
-      }
 
       // Speed challenges
       if (speedAm?.leaderboard?.length) {
@@ -1985,6 +2003,22 @@
     } catch (err) {
       console.error('CSV competition enrichment failed:', err);
     }
+
+    // Add footer with notes and context
+    csv.push([]);
+    csv.push(['NOTES & CONTEXT']);
+    csv.push(['Report Type', 'Daily Warehouse Erasure Statistics']);
+    csv.push(['Target', `${target} erasures per day`]);
+    csv.push(['Scope', isYesterday ? 'Yesterday\'s performance' : 'Current day (real-time)']);
+    csv.push(['Data Freshness', 'Real-time updates every 30 seconds']);
+    csv.push(['Competitions', 'Speed Challenge (AM: 8-12, PM: 13:30-15:45) | Category Specialists | Consistency Kings/Queens']);
+    csv.push([]);
+    csv.push(['Legend']);
+    csv.push(['✓', 'Target Achieved / On Target']);
+    csv.push(['✗', 'Below Target']);
+    csv.push(['⚠', 'Approaching Target']);
+    csv.push(['◐', 'On Pace to Target']);
+    csv.push(['σ', 'Standard Deviation (Consistency Score)']);
 
     return csv.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
   }
