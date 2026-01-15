@@ -422,7 +422,7 @@ body {
 
 .greenie-wrapper {
   display: flex;
-  gap: 8px;
+  gap: 0;
   align-items: flex-start;
   flex-direction: row;
   animation: slideInRight 2s ease-out forwards;
@@ -433,6 +433,7 @@ body {
   width: auto;
   filter: drop-shadow(0 10px 20px rgba(0,0,0,0.4));
   flex-shrink: 0;
+  margin-right: -6px; /* pull Greenie closer to speech bubble */
 }
 
 .speech-bubble {
@@ -445,13 +446,14 @@ body {
   flex: 1;
   min-width: 200px;
   box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+  margin-left: -12px; /* pull bubble toward Greenie */
 }
 
 .speech-bubble::after {
   content: '';
   position: absolute;
   bottom: -12px;
-  left: 30px;
+  left: 24px;
   width: 0;
   height: 0;
   border-left: 12px solid transparent;
@@ -463,7 +465,7 @@ body {
   content: '';
   position: absolute;
   bottom: -8px;
-  left: 32px;
+  left: 26px;
   width: 0;
   height: 0;
   border-left: 10px solid transparent;
