@@ -1828,7 +1828,7 @@
     const projectedTotal = Math.round(dailyAvg * daysInMonth);
     const daysRemaining = daysInMonth - today;
     const progressPercent = Math.round((parseInt(todayTotal) / parseInt(target)) * 100);
-    const statusIndicator = progressPercent >= 100 ? '✓ ON TARGET' : progressPercent >= 80 ? '⚠ APPROACHING' : '✗ BELOW TARGET';
+    const statusIndicator = progressPercent >= 100 ? 'ON TARGET' : progressPercent >= 80 ? 'APPROACHING' : 'BELOW TARGET';
     const monthProgressPercent = Math.round((parseInt(monthTotal) / (parseInt(target) * today)) * 100);
     
     // Build professional CSV report
@@ -1845,7 +1845,7 @@
       ['Key Metric', 'Value', 'Status/Target', 'Performance'],
       [isYesterday ? 'Daily Total' : 'Today\'s Total', todayTotal, `Target: ${target}`, statusIndicator],
       ['Month Total', monthTotal, `Avg ${target}/day`, `${monthProgressPercent}% of pace`],
-      ['Daily Average', dailyAvg, 'Per day', `${dailyAvg > parseInt(target) ? '↑ Above' : '↓ Below'} target`],
+      ['Daily Average', dailyAvg, 'Per day', `${dailyAvg > parseInt(target) ? 'Above' : 'Below'} target`],
       ['Projected Month', projectedTotal, `of ~${parseInt(target) * daysInMonth} max`, `${Math.round((projectedTotal / (parseInt(target) * daysInMonth)) * 100)}% utilization`],
       ['Days Remaining', daysRemaining, `in ${new Date().toLocaleDateString('en-US', { month: 'long' })}`, ''],
       [],
@@ -1856,7 +1856,7 @@
       csv.push(['Rank', 'Engineer', 'Erasures', 'Last Active', 'Status']);
       leaderboardRows.forEach((row, idx) => {
         const erasures = parseInt(row[2]);
-        let status = erasures >= parseInt(target) ? '✓ Exceeding Target' : '◐ On Pace';
+        let status = erasures >= parseInt(target) ? 'Exceeding Target' : 'On Pace';
         csv.push([row[0], row[1], row[2], row[3], status]);
       });
       
@@ -1930,7 +1930,7 @@
         csv.push(['Metric', 'Value', 'Comparison', 'Notes']);
         csv.push(['Week Total', weekly.weekTotal || 0, `${Math.round((weekly.weekTotal / (parseInt(target) * 7)) * 100)}% of weekly goal`, '']);
         csv.push(['Best Day', weekly.bestDayOfWeek?.count || 0, `(${weekly.bestDayOfWeek?.date || 'N/A'})`, weekly.bestDayOfWeek?.count >= parseInt(target) ? 'On Target' : 'Below Target']);
-        csv.push(['Daily Average', weekly.weekAverage || 0, `vs ${target} target`, weekly.weekAverage >= parseInt(target) ? '✓ Above Target' : '✗ Below Target']);
+        csv.push(['Daily Average', weekly.weekAverage || 0, `vs ${target} target`, weekly.weekAverage >= parseInt(target) ? 'Above Target' : 'Below Target']);
         csv.push(['Days Active', weekly.daysActive || 0, `out of 7 days`, '']);
         csv.push([]);
       }
@@ -1998,19 +1998,23 @@
 
     // Add footer with notes and context
     csv.push([]);
-    csv.push(['NOTES & CONTEXT']);
+    csv.push(['REPORT INFORMATION']);
     csv.push(['Report Type', 'Daily Warehouse Erasure Statistics']);
     csv.push(['Target', `${target} erasures per day`]);
     csv.push(['Scope', isYesterday ? 'Yesterday\'s performance' : 'Current day (real-time)']);
     csv.push(['Data Freshness', 'Real-time updates every 30 seconds']);
     csv.push(['Competitions', 'Speed Challenge (AM: 8-12, PM: 13:30-15:45) | Category Specialists | Consistency Kings/Queens']);
+    
     csv.push([]);
-    csv.push(['Legend']);
-    csv.push(['✓', 'Target Achieved / On Target']);
-    csv.push(['✗', 'Below Target']);
-    csv.push(['⚠', 'Approaching Target']);
-    csv.push(['◐', 'On Pace to Target']);
-    csv.push(['σ', 'Standard Deviation (Consistency Score)']);
+    csv.push(['GLOSSARY & DEFINITIONS']);
+    csv.push(['Term', 'Definition']);
+    csv.push(['Status Indicator', 'ON TARGET (100%+) | APPROACHING (80-99%) | BELOW TARGET (<80%)']);
+    csv.push(['On Pace', 'Engineer is performing at expected rate to meet daily target']);
+    csv.push(['Exceeding Target', 'Engineer has already completed more than daily target']);
+    csv.push(['Avg Gap', 'Average time between consecutive erasures (minutes)']);
+    csv.push(['Std Dev', 'Standard Deviation - measure of consistency (lower is more consistent)']);
+    csv.push(['Week Total', 'Sum of all erasures across 7-day period']);
+    csv.push(['Daily Average', 'Total divided by number of days active']);
 
     return csv.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
   }
