@@ -1339,26 +1339,24 @@
   }
 
   function updateWeeklyRecords() {
-    // Calculate from existing data
-    const leaderboard = Array.from(document.querySelectorAll('#leaderboardBody tr')).map(tr => {
-      const cells = tr.querySelectorAll('td');
-      return {
-        initials: cells[0]?.textContent || '',
-        count: parseInt(cells[1]?.textContent) || 0
-      };
-    });
-
-    const todayTotal = parseInt(document.getElementById('totalTodayValue')?.textContent) || 0;
     const weekTotalEl = document.getElementById('weekTotal');
     const weekBestDayEl = document.getElementById('weekBestDay');
     const weekBestDayDateEl = document.getElementById('weekBestDayDate');
     const weekAverageEl = document.getElementById('weekAverage');
 
-    // For now, show today's stats (would need backend for full week)
-    if (weekTotalEl) weekTotalEl.textContent = todayTotal;
-    if (weekBestDayEl) weekBestDayEl.textContent = todayTotal;
-    if (weekBestDayDateEl) weekBestDayDateEl.textContent = 'Today';
-    if (weekAverageEl) weekAverageEl.textContent = Math.round(todayTotal / 1); // Would be /7 for week
+    fetch('/metrics/weekly')
+      .then(r => r.json())
+      .then(data => {
+        if (weekTotalEl) weekTotalEl.textContent = data.weekTotal || 0;
+        if (weekBestDayEl) weekBestDayEl.textContent = data.bestDayOfWeek?.count || 0;
+        if (weekBestDayDateEl && data.bestDayOfWeek?.date) {
+          weekBestDayDateEl.textContent = new Date(data.bestDayOfWeek.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+        if (weekAverageEl) weekAverageEl.textContent = data.weekAverage || 0;
+      })
+      .catch(err => {
+        console.error('Weekly stats fetch error:', err);
+      });
   }
 
   function updateTodayStats() {

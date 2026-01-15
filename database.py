@@ -668,5 +668,52 @@ def get_speed_challenge_status(time_window: str = "am") -> Dict:
         "endTime": end_time.strftime("%H:%M")
     }
 
+
+def get_weekly_stats(date_str: str = None) -> Dict:
+    """Get statistics for the current week (past 7 days including today)"""
+    if date_str is None:
+        date_str = get_today_str()
+    
+    from datetime import timedelta
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get past 7 days including today
+    week_start = (datetime.strptime(date_str, '%Y-%m-%d') - timedelta(days=6)).strftime('%Y-%m-%d')
+    week_end = date_str
+    
+    # Get all daily totals for the week
+    cursor.execute("""
+        SELECT date, erased
+        FROM daily_stats
+        WHERE date >= ? AND date <= ?
+        ORDER BY date DESC
+    """, (week_start, week_end))
+    
+    daily_totals = cursor.fetchall()
+    
+    if not daily_totals:
+        conn.close()
+        return {
+            "weekTotal": 0,
+            "bestDayOfWeek": {"date": None, "count": 0},
+            "weekAverage": 0,
+            "daysActive": 0
+        }
+    
+    week_total = sum(total[1] for total in daily_totals)
+    best_day = max(daily_totals, key=lambda x: x[1])
+    days_active = len([t for t in daily_totals if t[1] > 0])
+    week_average = round(week_total / 7) if len(daily_totals) > 0 else 0
+    
+    conn.close()
+    
+    return {
+        "weekTotal": week_total,
+        "bestDayOfWeek": {"date": best_day[0], "count": best_day[1]},
+        "weekAverage": week_average,
+        "daysActive": days_active
+    }
+
 # Initialize DB on import
 init_db()

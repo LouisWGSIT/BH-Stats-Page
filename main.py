@@ -365,5 +365,11 @@ async def get_records():
     records = db.get_records_and_milestones()
     return records
 
+@app.get("/metrics/weekly")
+async def get_weekly():
+    """Get weekly statistics (past 7 days)"""
+    weekly = db.get_weekly_stats()
+    return weekly
+
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")
