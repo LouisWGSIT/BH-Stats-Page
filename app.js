@@ -507,8 +507,10 @@
         li.innerHTML = `
           <span class="speed-rank">${idx + 1}.</span>
           <span class="speed-name">${row.initials || '—'}</span>
-          <span class="speed-count">${row.erasures || 0} erasures</span>
-          <span class="gap">avg gap ${row.avgGapMinutes || 0}m · σ ${row.consistencyScore || 0}</span>
+          <div class="consistency-stats">
+            <span class="speed-count">${row.erasures || 0} erasures</span>
+            <span class="gap">avg gap ${row.avgGapMinutes || 0}m · σ ${row.consistencyScore || 0}</span>
+          </div>
         `;
         list.appendChild(li);
       });

@@ -644,7 +644,14 @@ body {
 
 .consistency-list .gap {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.consistency-stats {
+  display: flex;
+  align-items: center;
+  gap: 0;
 }
 
 .grid {
