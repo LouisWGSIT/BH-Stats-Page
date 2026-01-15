@@ -134,9 +134,41 @@
 
   const SHIFT_HOURS = 8; // Standard shift duration (08:00-16:00)
 
-  // Race state
-  let raceData = { engineer1: null, engineer2: null, engineer3: null, firstFinisher: null };
-  let winnerAnnounced = false;
+  // Track leaderboard state for Greenie commentary
+  let leaderboardState = { leader: null, gap: null };
+
+  function triggerGreenie(quote) {
+    showGreenie();
+    // Greenie will use the quote from getGreenieQuote, override if needed
+    const quoteEl = document.getElementById('greenieQuote');
+    if (quoteEl && quote) quoteEl.textContent = quote;
+  }
+
+  function animateNumberUpdate(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.classList.add('pulse-update');
+    setTimeout(() => el.classList.remove('pulse-update'), 1000);
+  }
+
+  function triggerRaceConfetti() {
+    // Check if someone has crossed the finish line
+    const racePositions = ['racePos1', 'racePos2', 'racePos3', 'racePos4', 'racePos5'].map(id => {
+      const el = document.getElementById(id);
+      return el ? parseInt(el.style.bottom) || 0 : -9999;
+    });
+    
+    const maxPosition = Math.max(...racePositions);
+    if (maxPosition >= 85) { // Near finish line (90% height)
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+      return true;
+    }
+    return false;
+  }
 
   // Greenie state
   let greenieState = {
@@ -283,8 +315,28 @@
 
       const todayTotal = data.todayTotal || 0;
       const monthTotal = data.monthTotal || 0;
-      document.getElementById('totalTodayValue').textContent = todayTotal;
-      document.getElementById('monthTotalValue').textContent = monthTotal;
+      
+      // Animate number updates
+      const todayEl = document.getElementById('totalTodayValue');
+      const monthEl = document.getElementById('monthTotalValue');
+      if (todayEl) {
+        const oldValue = parseInt(todayEl.textContent) || 0;
+        if (oldValue !== todayTotal) {
+          todayEl.classList.add('count-animating');
+          setTimeout(() => todayEl.classList.remove('count-animating'), 500);
+        }
+        todayEl.textContent = todayTotal;
+        animateNumberUpdate('totalTodayValue');
+      }
+      if (monthEl) {
+        const oldValue = parseInt(monthEl.textContent) || 0;
+        if (oldValue !== monthTotal) {
+          monthEl.classList.add('count-animating');
+          setTimeout(() => monthEl.classList.remove('count-animating'), 500);
+        }
+        monthEl.textContent = monthTotal;
+        animateNumberUpdate('monthTotalValue');
+      }
 
       updateDonut(totalTodayChart, todayTotal, cfg.targets.erased);
       updateDonut(monthChart, monthTotal, cfg.targets.month || 10000);
@@ -427,6 +479,10 @@
         // Check if car has finished (reached top/100%)
         if (erasures >= maxErasures && !engineer.finished) {
           engineer.finished = true;
+          // Trigger confetti and Greenie
+          triggerRaceConfetti();
+          triggerGreenie(`🏁 ${engineer.initials} CROSSES THE FINISH LINE! What a performance! 🎉`);
+          
           // Trigger winner announcement if this is the first to finish
           if (!raceData.firstFinisher) {
             raceData.firstFinisher = engineer;
@@ -1175,9 +1231,29 @@
         const secondCount = parseInt(second[1].textContent.trim()) || 0;
         const gap = firstCount - secondCount;
         
+        // Trigger Greenie if leader changed or gap narrowed significantly
+        if (leaderboardState.leader !== firstName) {
+          leaderboardState.leader = firstName;
+          const raceQuotes = [
+            `${firstName} takes the lead! All eyes on them! 👀`,
+            `Fresh leader: ${firstName} is dominating today! 🔥`,
+            `${firstName} just claimed the top spot! Impressive! 💪`
+          ];
+          triggerGreenie(raceQuotes[Math.floor(Math.random() * raceQuotes.length)]);
+        } else if (leaderboardState.gap !== null && gap < leaderboardState.gap && gap <= 5) {
+          const closingQuotes = [
+            `${secondName} closing in on ${firstName}! This race is ON! 🏁`,
+            `Gap tightening! ${secondName} is making moves! 🚀`,
+            `Only ${gap} erasures between them! Tension rising! ⚡`
+          ];
+          triggerGreenie(closingQuotes[Math.floor(Math.random() * closingQuotes.length)]);
+        }
+        leaderboardState.gap = gap;
+        
         const leaderGapEl = document.getElementById('leaderGap');
         if (leaderGapEl) {
           leaderGapEl.textContent = `${firstName} leads by ${gap} erasures`;
+          animateNumberUpdate('leaderGap');
         }
         
         const closestRaceEl = document.getElementById('closestRace');
