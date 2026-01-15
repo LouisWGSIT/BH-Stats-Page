@@ -994,14 +994,6 @@ body {
   letter-spacing: 0.5px;
 }
 
-.subtext {
-  color: var(--muted);
-  font-weight: 600;
-  font-size: 13px;
-  margin-top: 6px;
-  letter-spacing: 0.2px;
-}
-
 .stat-card {
   background: rgba(0, 0, 0, 0.35);
   border-radius: 12px;
