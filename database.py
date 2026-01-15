@@ -594,11 +594,12 @@ def get_records_and_milestones() -> Dict:
     """)
     best_day = cursor.fetchone()
     
+    # Get top engineer all-time (total across all days)
     cursor.execute("""
-        SELECT initials, date, count
+        SELECT initials, SUM(count) as total_count
         FROM engineer_stats
-        WHERE count > 0
-        ORDER BY count DESC
+        GROUP BY initials
+        ORDER BY total_count DESC
         LIMIT 1
     """)
     top_engineer = cursor.fetchone()
@@ -629,8 +630,7 @@ def get_records_and_milestones() -> Dict:
         },
         "topEngineer": {
             "initials": top_engineer[0] if top_engineer else None,
-            "date": top_engineer[1] if top_engineer else None,
-            "count": top_engineer[2] if top_engineer else 0
+            "totalCount": top_engineer[1] if top_engineer else 0
         },
         "currentStreak": streak
     }

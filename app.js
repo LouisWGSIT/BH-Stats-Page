@@ -1325,7 +1325,7 @@
           topEngEl.textContent = data.topEngineer.initials || '—';
         }
         if (topCountEl && data.topEngineer) {
-          topCountEl.textContent = `${data.topEngineer.count || 0} on ${data.topEngineer.date ? new Date(data.topEngineer.date).toLocaleDateString() : ''}`.trim();
+          topCountEl.textContent = `${data.topEngineer.totalCount || 0} erasures`;
         }
         if (streakEl && typeof data.currentStreak === 'number') {
           streakEl.textContent = data.currentStreak;
