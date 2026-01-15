@@ -416,8 +416,8 @@
       const data = await res.json();
       const body = document.getElementById('leaderboardBody');
       body.innerHTML = '';
-      // Display only first 3 in the leaderboard table, but get all 5 for the race
-      (data.items || []).slice(0, 3).forEach((row, idx) => {
+      // Display all top engineers in the leaderboard table (up to 5 to match race lanes)
+      (data.items || []).slice(0, 5).forEach((row, idx) => {
         const tr = document.createElement('tr');
         const color = getEngineerColor(row.initials || '');
         const avatar = getAvatarDataUri(row.initials || '');
@@ -477,16 +477,23 @@
         labelEl.style.color = engineerColor;
 
         // Check if car has finished (reached top/100%)
+        // Only trigger finish message at 15:58 when race officially ends
         if (erasures >= maxErasures && !engineer.finished) {
-          engineer.finished = true;
-          // Trigger confetti and Greenie
-          triggerRaceConfetti();
-          triggerGreenie(`🏁 ${engineer.initials} CROSSES THE FINISH LINE! What a performance! 🎉`);
+          const now = new Date();
+          const hours = now.getHours();
+          const minutes = now.getMinutes();
           
-          // Trigger winner announcement if this is the first to finish
-          if (!raceData.firstFinisher) {
-            raceData.firstFinisher = engineer;
-            announceWinner();
+          // Only at 15:58 does the race officially finish
+          if (hours === 15 && minutes === 58) {
+            engineer.finished = true;
+            triggerRaceConfetti();
+            triggerGreenie(`🏁 ${engineer.initials} CROSSES THE FINISH LINE! What a performance! 🎉`);
+            
+            // Trigger winner announcement if this is the first to finish
+            if (!raceData.firstFinisher) {
+              raceData.firstFinisher = engineer;
+              announceWinner();
+            }
           }
         }
       } else {
@@ -1234,21 +1241,55 @@
         // Trigger Greenie if leader changed or gap narrowed significantly
         if (leaderboardState.leader !== firstName) {
           leaderboardState.leader = firstName;
-          const raceQuotes = [
+          const leaderQuotes = [
             `${firstName} takes the lead! All eyes on them! 👀`,
             `Fresh leader: ${firstName} is dominating today! 🔥`,
-            `${firstName} just claimed the top spot! Impressive! 💪`
+            `${firstName} just claimed the top spot! Impressive! 💪`,
+            `🚨 NEW LEADER ALERT! ${firstName} is unstoppable right now! 🚨`,
+            `Plot twist! ${firstName} just surged to first place! 📈`,
+            `${firstName} said "Not today!" and took the lead! 💯`,
+            `The momentum shifts! ${firstName} is in control now! 👑`
           ];
-          triggerGreenie(raceQuotes[Math.floor(Math.random() * raceQuotes.length)]);
+          triggerGreenie(leaderQuotes[Math.floor(Math.random() * leaderQuotes.length)]);
         } else if (leaderboardState.gap !== null && gap < leaderboardState.gap && gap <= 5) {
           const closingQuotes = [
             `${secondName} closing in on ${firstName}! This race is ON! 🏁`,
             `Gap tightening! ${secondName} is making moves! 🚀`,
-            `Only ${gap} erasures between them! Tension rising! ⚡`
+            `Only ${gap} erasures between them! Tension rising! ⚡`,
+            `🔥 DRAMA! The gap is shrinking! ${secondName} is RIGHT THERE! 🔥`,
+            `${secondName} is not giving up! The pressure is ON for ${firstName}!`,
+            `This is getting SPICY! ${gap} erasures - anything can happen! 🌶️`,
+            `${secondName} is hunting! ${firstName}, watch your back! 👀`
           ];
           triggerGreenie(closingQuotes[Math.floor(Math.random() * closingQuotes.length)]);
+        } else if (leaderboardState.gap !== null && gap > leaderboardState.gap + 3) {
+          // Gap widening - momentum shift
+          const breakawayQuotes = [
+            `${firstName} is PULLING AWAY! Dominant performance! 🏃‍♂️💨`,
+            `${firstName} is running away with this! The lead is growing! 📊`,
+            `${firstName} putting on a MASTERCLASS right now! Incredible pace! 🎯`
+          ];
+          triggerGreenie(breakawayQuotes[Math.floor(Math.random() * breakawayQuotes.length)]);
+        } else if (leaderboardState.gap !== null && rows.length > (leaderboardState.lastRaceSize || 0)) {
+          // New competitor entered top 5
+          const newCompetitorQuotes = [
+            `We've got a new challenger in the top 5! The race is WIDE OPEN! 🆕`,
+            `Fresh blood entering the race! This just got more interesting! 🎪`,
+            `Another contender steps up! May the best engineer win! ⚡`
+          ];
+          triggerGreenie(newCompetitorQuotes[Math.floor(Math.random() * newCompetitorQuotes.length)]);
+          leaderboardState.lastRaceSize = rows.length;
+        } else if (leaderboardState.gap !== null && firstCount > (leaderboardState.lastLeaderCount || 0)) {
+          // Leader is extending their lead organically
+          const momentumQuotes = [
+            `${firstName} keeps the pedal down! Steady progress! 💪`,
+            `The momentum continues! ${firstName} is in the zone! 🎯`,
+            `Consistency wins races! ${firstName} adding more to the lead! ✨`
+          ];
+          triggerGreenie(momentumQuotes[Math.floor(Math.random() * momentumQuotes.length)]);
         }
         leaderboardState.gap = gap;
+        leaderboardState.lastLeaderCount = firstCount;
         
         const leaderGapEl = document.getElementById('leaderGap');
         if (leaderGapEl) {
