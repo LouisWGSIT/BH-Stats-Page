@@ -1336,6 +1336,53 @@
       });
   }
 
+  function updateWeeklyRecords() {
+    // Calculate from existing data
+    const leaderboard = Array.from(document.querySelectorAll('#leaderboardBody tr')).map(tr => {
+      const cells = tr.querySelectorAll('td');
+      return {
+        initials: cells[0]?.textContent || '',
+        count: parseInt(cells[1]?.textContent) || 0
+      };
+    });
+
+    const todayTotal = parseInt(document.getElementById('totalTodayValue')?.textContent) || 0;
+    const weekTotalEl = document.getElementById('weekTotal');
+    const weekBestDayEl = document.getElementById('weekBestDay');
+    const weekBestDayDateEl = document.getElementById('weekBestDayDate');
+    const weekAverageEl = document.getElementById('weekAverage');
+
+    // For now, show today's stats (would need backend for full week)
+    if (weekTotalEl) weekTotalEl.textContent = todayTotal;
+    if (weekBestDayEl) weekBestDayEl.textContent = todayTotal;
+    if (weekBestDayDateEl) weekBestDayDateEl.textContent = 'Today';
+    if (weekAverageEl) weekAverageEl.textContent = Math.round(todayTotal / 1); // Would be /7 for week
+  }
+
+  function updateTodayStats() {
+    const leaderboard = Array.from(document.querySelectorAll('#leaderboardBody tr')).map(tr => {
+      const cells = tr.querySelectorAll('td');
+      return {
+        initials: cells[0]?.textContent || '',
+        count: parseInt(cells[1]?.textContent) || 0
+      };
+    });
+
+    const activeCount = leaderboard.filter(e => e.count > 0).length;
+    const todayTotal = parseInt(document.getElementById('totalTodayValue')?.textContent) || 0;
+    const avgPerEng = activeCount > 0 ? Math.round(todayTotal / activeCount) : 0;
+
+    const activeEl = document.getElementById('activeEngineers');
+    const avgEl = document.getElementById('avgPerEngineer');
+    const topHourEl = document.getElementById('topHour');
+    const topHourCountEl = document.getElementById('topHourCount');
+
+    if (activeEl) activeEl.textContent = activeCount;
+    if (avgEl) avgEl.textContent = avgPerEng;
+    if (topHourEl) topHourEl.textContent = '—'; // Would need backend
+    if (topHourCountEl) topHourCountEl.textContent = 'N/A';
+  }
+
   function updateMonthlyProgress() {
     const monthTotal = parseInt(document.getElementById('monthTotalValue')?.textContent) || 0;
     const today = new Date().getDate();
@@ -1947,6 +1994,8 @@
   
   // Initialize new flip cards
   updateRecordsMilestones();
+  updateWeeklyRecords();
+  updateTodayStats();
   updateMonthlyProgress();
   updateRaceUpdates();
   updateCategoryChampions();
@@ -1963,6 +2012,8 @@
     
     // Update new flip cards
     updateRecordsMilestones();
+    updateWeeklyRecords();
+    updateTodayStats();
     updateMonthlyProgress();
     updateRaceUpdates();
     updateCategoryChampions();

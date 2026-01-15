@@ -242,23 +242,65 @@
           </div>
         </section>
 
-        <section class="card">
-          <h2>Records & Milestones</h2>
-          <div class="records-grid">
-            <div class="record-item">
-              <div class="record-label">Best Day Ever</div>
-              <div class="record-value" id="recordBestDay">—</div>
-              <div class="record-date" id="recordBestDayDate">—</div>
+        <section class="card rotator-card" data-interval="16000">
+          <div class="panel active" data-panel="records">
+            <h2>Records & Milestones</h2>
+            <div class="records-grid">
+              <div class="record-item">
+                <div class="record-label">Best Day Ever</div>
+                <div class="record-value" id="recordBestDay">—</div>
+                <div class="record-date" id="recordBestDayDate">—</div>
+              </div>
+              <div class="record-item">
+                <div class="record-label">Top Engineer (All-Time)</div>
+                <div class="record-value" id="recordTopEngineer">—</div>
+                <div class="record-date" id="recordTopEngineerCount">—</div>
+              </div>
+              <div class="record-item">
+                <div class="record-label">Current Streak</div>
+                <div class="record-value" id="currentStreak">—</div>
+                <div class="record-date">days above target</div>
+              </div>
             </div>
-            <div class="record-item">
-              <div class="record-label">Top Engineer (All-Time)</div>
-              <div class="record-value" id="recordTopEngineer">—</div>
-              <div class="record-date" id="recordTopEngineerCount">—</div>
+          </div>
+          <div class="panel" data-panel="weekly-records">
+            <h2>This Week's Achievements</h2>
+            <div class="records-grid">
+              <div class="record-item">
+                <div class="record-label">Week Total</div>
+                <div class="record-value" id="weekTotal">—</div>
+                <div class="record-date">erasures this week</div>
+              </div>
+              <div class="record-item">
+                <div class="record-label">Best Day This Week</div>
+                <div class="record-value" id="weekBestDay">—</div>
+                <div class="record-date" id="weekBestDayDate">—</div>
+              </div>
+              <div class="record-item">
+                <div class="record-label">Team Average</div>
+                <div class="record-value" id="weekAverage">—</div>
+                <div class="record-date">per day</div>
+              </div>
             </div>
-            <div class="record-item">
-              <div class="record-label">Current Streak</div>
-              <div class="record-value" id="currentStreak">—</div>
-              <div class="record-date">days above target</div>
+          </div>
+          <div class="panel" data-panel="today-stats">
+            <h2>Today's Highlights</h2>
+            <div class="records-grid">
+              <div class="record-item">
+                <div class="record-label">Most Productive Hour</div>
+                <div class="record-value" id="topHour">—</div>
+                <div class="record-date" id="topHourCount">—</div>
+              </div>
+              <div class="record-item">
+                <div class="record-label">Active Engineers</div>
+                <div class="record-value" id="activeEngineers">—</div>
+                <div class="record-date">working today</div>
+              </div>
+              <div class="record-item">
+                <div class="record-label">Avg per Engineer</div>
+                <div class="record-value" id="avgPerEngineer">—</div>
+                <div class="record-date">erasures each</div>
+              </div>
             </div>
           </div>
         </section>
