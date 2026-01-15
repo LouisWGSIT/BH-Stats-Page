@@ -507,6 +507,109 @@ body {
   animation: slideOutRight 2s ease-in forwards;
 }
 
+/* Competition assets */
+.icon-pixel {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.trophy {
+  width: 110px;
+  height: 110px;
+  background-image: url('assets/Trophies.png');
+  background-repeat: no-repeat;
+  background-size: 300% 100%;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.25));
+}
+
+.trophy.gold { background-position: 16.6% 50%; }
+.trophy.silver { background-position: 50% 50%; }
+.trophy.bronze { background-position: 83.3% 50%; }
+
+.panel-header.with-icon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panel-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.panel-icon.right {
+  margin-left: auto;
+}
+
+.subtext {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.speed-list, .spec-list, .consistency-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.speed-list li, .spec-list li, .consistency-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.speed-rank {
+  width: 22px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.speed-name {
+  flex: 1;
+  padding: 0 8px;
+}
+
+.speed-count {
+  color: var(--ring-primary);
+}
+
+.specialists-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.specialists-col {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.spec-title {
+  font-weight: 800;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.consistency-list .gap {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .grid {
   display: grid;
   gap: 6px;

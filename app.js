@@ -137,6 +137,9 @@
   // Track leaderboard state for Greenie commentary
   let leaderboardState = { leader: null, gap: null };
 
+  // Track race data for winner announcement
+  let raceData = { engineer1: null, engineer2: null, engineer3: null, firstFinisher: null, winnerAnnounced: false };
+
   function triggerGreenie(quote) {
     showGreenie();
     // Greenie will use the quote from getGreenieQuote, override if needed
@@ -409,6 +412,91 @@
     }
   }
 
+  async function refreshSpeedChallenge(window, listId, statusId) {
+    try {
+      const res = await fetch(`/competitions/speed-challenge?window=${window}`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const list = document.getElementById(listId);
+      const statusEl = document.getElementById(statusId);
+      if (statusEl && data.status) {
+        const st = data.status;
+        const liveBadge = st.isActive ? 'LIVE · ' : '';
+        const remaining = st.isActive ? `${st.timeRemainingMinutes} mins left` : `${st.startTime} - ${st.endTime}`;
+        statusEl.textContent = `${liveBadge}${st.name} (${remaining})`;
+      }
+      if (!list) return;
+      list.innerHTML = '';
+      (data.leaderboard || []).forEach((row, idx) => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <span class="speed-rank">${idx + 1}.</span>
+          <span class="speed-name">${row.initials || '—'}</span>
+          <span class="speed-count">${row.erasures || 0}</span>
+        `;
+        list.appendChild(li);
+      });
+    } catch (err) {
+      console.error('Speed challenge fetch error:', err);
+    }
+  }
+
+  async function refreshCategorySpecialists() {
+    try {
+      const res = await fetch('/competitions/category-specialists');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const map = {
+        laptops_desktops: 'specLD',
+        servers: 'specServers',
+        macs: 'specMacs',
+        mobiles: 'specMobiles'
+      };
+      Object.entries(map).forEach(([key, listId]) => {
+        const list = document.getElementById(listId);
+        if (!list) return;
+        list.innerHTML = '';
+        const rows = (data.specialists && data.specialists[key]) || [];
+        rows.forEach((row, idx) => {
+          const li = document.createElement('li');
+          const trophyClass = idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze';
+          li.innerHTML = `
+            <span class="speed-rank">${idx + 1}.</span>
+            <span class="speed-name">${row.initials || '—'}</span>
+            <span class="speed-count">${row.count || 0}</span>
+            <span class="trophy ${trophyClass}"></span>
+          `;
+          list.appendChild(li);
+        });
+      });
+    } catch (err) {
+      console.error('Category specialists fetch error:', err);
+    }
+  }
+
+  async function refreshConsistency() {
+    try {
+      const res = await fetch('/competitions/consistency');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const list = document.getElementById('consistencyList');
+      if (!list) return;
+      list.innerHTML = '';
+      (data.leaderboard || []).forEach((row, idx) => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <span class="speed-rank">${idx + 1}.</span>
+          <span class="speed-name">${row.initials || '—'}</span>
+          <span class="speed-count">${row.erasures || 0} erasures</span>
+          <span class="gap">avg gap ${row.avgGapMinutes || 0}m · σ ${row.consistencyScore || 0}</span>
+        `;
+        list.appendChild(li);
+      });
+    } catch (err) {
+      console.error('Consistency fetch error:', err);
+    }
+  }
+
   async function refreshLeaderboard() {
     try {
       const res = await fetch('/metrics/engineers/leaderboard?scope=today&limit=5');
@@ -516,14 +604,14 @@
     const minutes = now.getMinutes();
 
     // Trigger at 15:58
-    if (hours === 15 && minutes === 58 && !winnerAnnounced) {
-      winnerAnnounced = true;
+    if (hours === 15 && minutes === 58 && !raceData.winnerAnnounced) {
+      raceData.winnerAnnounced = true;
       announceWinner();
     }
 
     // Reset flag at midnight for next day
     if (hours === 0 && minutes === 0) {
-      winnerAnnounced = false;
+      raceData.winnerAnnounced = false;
     }
   }
 
@@ -1197,11 +1285,35 @@
     const topCountEl = document.getElementById('recordTopEngineerCount');
     const streakEl = document.getElementById('currentStreak');
 
+    // Reset placeholders first
     if (bestDayEl) bestDayEl.textContent = '—';
     if (bestDateEl) bestDateEl.textContent = '—';
     if (topEngEl) topEngEl.textContent = '—';
     if (topCountEl) topCountEl.textContent = '—';
     if (streakEl) streakEl.textContent = '—';
+
+    fetch('/metrics/records')
+      .then(r => r.json())
+      .then(data => {
+        if (bestDayEl && data.bestDay) {
+          bestDayEl.textContent = data.bestDay.count || 0;
+        }
+        if (bestDateEl && data.bestDay && data.bestDay.date) {
+          bestDateEl.textContent = new Date(data.bestDay.date).toLocaleDateString();
+        }
+        if (topEngEl && data.topEngineer) {
+          topEngEl.textContent = data.topEngineer.initials || '—';
+        }
+        if (topCountEl && data.topEngineer) {
+          topCountEl.textContent = `${data.topEngineer.count || 0} on ${data.topEngineer.date ? new Date(data.topEngineer.date).toLocaleDateString() : ''}`.trim();
+        }
+        if (streakEl && typeof data.currentStreak === 'number') {
+          streakEl.textContent = data.currentStreak;
+        }
+      })
+      .catch(err => {
+        console.error('Records fetch error:', err);
+      });
   }
 
   function updateMonthlyProgress() {
@@ -1504,6 +1616,20 @@
     setupFlipCards();
     setupRotatorCards();
   }, 500);
+
+  // Periodic competition refresh
+  setInterval(() => {
+    refreshSpeedChallenge('am', 'speedAmList', 'speedAmStatus');
+    refreshSpeedChallenge('pm', 'speedPmList', 'speedPmStatus');
+    refreshCategorySpecialists();
+    refreshConsistency();
+  }, cfg.refreshSeconds * 1000);
+
+  // Initial competition data load
+  refreshSpeedChallenge('am', 'speedAmList', 'speedAmStatus');
+  refreshSpeedChallenge('pm', 'speedPmList', 'speedPmStatus');
+  refreshCategorySpecialists();
+  refreshConsistency();
 
   // Refresh analytics every 5 minutes
   setInterval(() => {
