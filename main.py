@@ -337,5 +337,33 @@ async def get_day_of_week_patterns():
     patterns = db.get_day_of_week_patterns()
     return {"patterns": patterns}
 
+@app.get("/competitions/speed-challenge")
+async def get_speed_challenge(window: str = "am"):
+    """Get speed challenge leaderboard and status for AM or PM"""
+    stats = db.get_speed_challenge_stats(window)
+    status = db.get_speed_challenge_status(window)
+    return {
+        "leaderboard": stats,
+        "status": status
+    }
+
+@app.get("/competitions/category-specialists")
+async def get_category_specialists():
+    """Get top 3 specialists for each equipment category"""
+    specialists = db.get_category_specialists()
+    return {"specialists": specialists}
+
+@app.get("/competitions/consistency")
+async def get_consistency():
+    """Get consistency rankings - engineers with steadiest pace"""
+    stats = db.get_consistency_stats()
+    return {"leaderboard": stats}
+
+@app.get("/metrics/records")
+async def get_records():
+    """Get historical records and milestones"""
+    records = db.get_records_and_milestones()
+    return records
+
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")
