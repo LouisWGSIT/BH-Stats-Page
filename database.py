@@ -290,10 +290,16 @@ def top_engineers(scope: str = 'today', device_type: str = None, limit: int = 3)
 def leaderboard(scope: str = 'today', limit: int = 6):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    
     if scope == 'month':
         key_col = 'month'
         key_val = get_today_str()[:7]
-    else:
+    elif scope == 'yesterday':
+        from datetime import timedelta
+        key_col = 'date'
+        yesterday = datetime.now() - timedelta(days=1)
+        key_val = yesterday.strftime('%Y-%m-%d')
+    else:  # today
         key_col = 'date'
         key_val = get_today_str()
 
