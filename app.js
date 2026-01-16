@@ -2046,13 +2046,8 @@
     document.body.removeChild(link);
   }
 
-  // Add button listeners
+  // Add button listener
   document.getElementById('downloadBtn')?.addEventListener('click', downloadCSV);
-  
-  // Refresh page when date selector changes
-  document.getElementById('dateSelector')?.addEventListener('change', () => {
-    location.reload();
-  });
 
   // ==================== INITIALIZATION ====================
   // Kick off refresh loops (after all functions are defined)
