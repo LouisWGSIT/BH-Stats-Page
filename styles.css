@@ -515,16 +515,16 @@ body {
 .trophy {
   width: 110px;
   height: 110px;
-  background-image: url('assets/trophies-optimized.svg');
   background-repeat: no-repeat;
-  background-size: 300% 100%;
+  background-size: contain;
+  background-position: center;
   image-rendering: auto;
   display: inline-block;
 }
 
-.trophy.gold { background-position: 16.6% 50%; }
-.trophy.silver { background-position: 50% 50%; }
-.trophy.bronze { background-position: 83.3% 50%; }
+.trophy.gold { background-image: url('assets/trophy-gold.svg'); }
+.trophy.silver { background-image: url('assets/trophy-silver.svg'); }
+.trophy.bronze { background-image: url('assets/trophy-bronze.svg'); }
 
 .panel-header.with-icon {
   display: flex;
