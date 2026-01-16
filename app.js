@@ -1910,10 +1910,11 @@
     }
 
     csv.push([isYesterday ? 'ALL ENGINEERS (YESTERDAY)' : 'ALL ENGINEERS - DETAILED LEADERBOARD']);
-    csv.push(['Rank', 'Engineer', 'Erasures', 'Avg/Hour', 'Last Active', 'Performance vs Target']);
+    csv.push(['Rank', 'Engineer', 'Total Erasures', 'Finished At', 'Per Hour', '% of Daily Target']);
     csv.push(...(allEngineersRows.length > 0 ? allEngineersRows.map(row => {
       const erasures = parseInt(row[2]);
       const pct = parseInt(target) > 0 ? Math.round((erasures / parseInt(target)) * 100) : 0;
+      // Return in order: rank, engineer, erasures, lastActive, avgPerHour, targetPercent
       return [row[0], row[1], row[2], row[3], row[4], `${pct}%`];
     }) : [['No data available']]));
     csv.push([]);
