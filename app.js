@@ -1733,7 +1733,7 @@
             panels[currentIndex].classList.remove('exiting');
             nextPanel.classList.remove('entering');
             isTransitioning = false;
-          }, 900);
+          }, 600);
         }, PRE_ROTATE_INDICATOR_TIME);
       }
 
