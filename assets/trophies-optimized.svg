@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 64" width="192" height="64">
+  <!-- Gold Trophy (left third) -->
+  <g id="gold">
+    <!-- Cup -->
+    <rect x="20" y="16" width="24" height="20" fill="#FFD700"/>
+    <rect x="18" y="14" width="28" height="2" fill="#FFA500"/>
+    <rect x="18" y="36" width="28" height="2" fill="#B8860B"/>
+    <!-- Handles -->
+    <rect x="16" y="20" width="2" height="8" fill="#FFD700"/>
+    <rect x="46" y="20" width="2" height="8" fill="#FFD700"/>
+    <!-- Base -->
+    <rect x="26" y="38" width="12" height="4" fill="#B8860B"/>
+    <rect x="24" y="42" width="16" height="4" fill="#8B6914"/>
+    <rect x="22" y="46" width="20" height="4" fill="#654321"/>
+    <!-- Shine -->
+    <rect x="24" y="18" width="4" height="4" fill="#FFEB3B" opacity="0.7"/>
+    <rect x="36" y="22" width="2" height="2" fill="#FFEB3B" opacity="0.5"/>
+  </g>
+  
+  <!-- Silver Trophy (middle third) -->
+  <g id="silver" transform="translate(64, 0)">
+    <!-- Cup -->
+    <rect x="20" y="16" width="24" height="20" fill="#C0C0C0"/>
+    <rect x="18" y="14" width="28" height="2" fill="#E8E8E8"/>
+    <rect x="18" y="36" width="28" height="2" fill="#A0A0A0"/>
+    <!-- Handles -->
+    <rect x="16" y="20" width="2" height="8" fill="#C0C0C0"/>
+    <rect x="46" y="20" width="2" height="8" fill="#C0C0C0"/>
+    <!-- Base -->
+    <rect x="26" y="38" width="12" height="4" fill="#A0A0A0"/>
+    <rect x="24" y="42" width="16" height="4" fill="#808080"/>
+    <rect x="22" y="46" width="20" height="4" fill="#606060"/>
+    <!-- Shine -->
+    <rect x="24" y="18" width="4" height="4" fill="#FFFFFF" opacity="0.6"/>
+    <rect x="36" y="22" width="2" height="2" fill="#FFFFFF" opacity="0.4"/>
+  </g>
+  
+  <!-- Bronze Trophy (right third) -->
+  <g id="bronze" transform="translate(128, 0)">
+    <!-- Cup -->
+    <rect x="20" y="16" width="24" height="20" fill="#CD7F32"/>
+    <rect x="18" y="14" width="28" height="2" fill="#E69545"/>
+    <rect x="18" y="36" width="28" height="2" fill="#8B4513"/>
+    <!-- Handles -->
+    <rect x="16" y="20" width="2" height="8" fill="#CD7F32"/>
+    <rect x="46" y="20" width="2" height="8" fill="#CD7F32"/>
+    <!-- Base -->
+    <rect x="26" y="38" width="12" height="4" fill="#8B4513"/>
+    <rect x="24" y="42" width="16" height="4" fill="#654321"/>
+    <rect x="22" y="46" width="20" height="4" fill="#4A2511"/>
+    <!-- Shine -->
+    <rect x="24" y="18" width="4" height="4" fill="#FFA500" opacity="0.5"/>
+    <rect x="36" y="22" width="2" height="2" fill="#FFA500" opacity="0.3"/>
+  </g>
+</svg>
