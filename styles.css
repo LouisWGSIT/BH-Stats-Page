@@ -694,8 +694,8 @@ body {
 .bottom-row { 
   grid-template-columns: repeat(3, 1fr); 
   grid-template-rows: auto;
-  min-height: 270px;
-  max-height: 290px;
+  min-height: 280px;
+  max-height: 300px;
 }
 .bottom-row-extra {
   display: none;
