@@ -1639,6 +1639,7 @@
 
     const FLIP_INTERVAL = 25000;
     const FLIP_HOLD = 12000;
+    const PRE_FLIP_INDICATOR_TIME = 500; // Show indicator before flip
 
     flipCards.forEach((card, index) => {
       const inner = card.querySelector('.flip-card-inner');
@@ -1646,8 +1647,15 @@
       
       function performFlip() {
         if (isFlipping) return;
-        isFlipping = true;
-        card.classList.toggle('flipped');
+        
+        // Add pre-flip indicator
+        card.classList.add('about-to-flip');
+        
+        setTimeout(() => {
+          card.classList.remove('about-to-flip');
+          isFlipping = true;
+          card.classList.toggle('flipped');
+        }, PRE_FLIP_INDICATOR_TIME);
       }
       
       // Listen for transition end to know when flip completes
@@ -1691,32 +1699,42 @@
       let index = 0;
       let isTransitioning = false;
       const interval = parseInt(card.dataset.interval, 10) || 14000;
+      const PRE_ROTATE_INDICATOR_TIME = 400;
 
       function showPanel(nextIndex) {
         if (isTransitioning) return;
-        isTransitioning = true;
         
         const currentIndex = panels.findIndex(p => p.classList.contains('active'));
+        if (currentIndex === -1) {
+          // First time setup - no indicator needed
+          panels[nextIndex].classList.add('active');
+          return;
+        }
+        
+        // Add pre-rotation indicator to current panel
+        panels[currentIndex].classList.add('about-to-rotate');
+        
+        setTimeout(() => {
+          isTransitioning = true;
+          
+          panels.forEach(panel => {
+            panel.classList.remove('entering', 'exiting', 'about-to-rotate');
+          });
 
-        panels.forEach(panel => {
-          panel.classList.remove('entering', 'exiting');
-        });
-
-        if (currentIndex !== -1 && currentIndex !== nextIndex) {
           panels[currentIndex].classList.remove('active');
           panels[currentIndex].classList.add('exiting');
-        }
 
-        const nextPanel = panels[nextIndex];
-        nextPanel.classList.add('entering');
-        nextPanel.classList.add('active');
-        
-        // Wait for transition to complete before allowing next transition
-        setTimeout(() => {
-          if (currentIndex !== -1) panels[currentIndex].classList.remove('exiting');
-          nextPanel.classList.remove('entering');
-          isTransitioning = false;
-        }, 700);
+          const nextPanel = panels[nextIndex];
+          nextPanel.classList.add('entering');
+          nextPanel.classList.add('active');
+          
+          // Wait for transition to complete before allowing next transition
+          setTimeout(() => {
+            panels[currentIndex].classList.remove('exiting');
+            nextPanel.classList.remove('entering');
+            isTransitioning = false;
+          }, 900);
+        }, PRE_ROTATE_INDICATOR_TIME);
       }
 
       // Ensure the first panel is visible
