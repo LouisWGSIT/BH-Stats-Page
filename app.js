@@ -1821,15 +1821,15 @@
       });
     }
 
-    // Calculate monthly progress metrics
-    const today = new Date().getDate();
-    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-    const dailyAvg = Math.round(parseInt(monthTotal) / today);
+    // Calculate monthly progress metrics (use targetDate for correct day calculations)
+    const currentDay = targetDate.getDate();
+    const daysInMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
+    const dailyAvg = Math.round(parseInt(monthTotal) / currentDay);
     const projectedTotal = Math.round(dailyAvg * daysInMonth);
-    const daysRemaining = daysInMonth - today;
+    const daysRemaining = daysInMonth - currentDay;
     const progressPercent = Math.round((parseInt(todayTotal) / parseInt(target)) * 100);
     const statusIndicator = progressPercent >= 100 ? 'ON TARGET' : progressPercent >= 80 ? 'APPROACHING' : 'BELOW TARGET';
-    const monthProgressPercent = Math.round((parseInt(monthTotal) / (parseInt(target) * today)) * 100);
+    const monthProgressPercent = Math.round((parseInt(monthTotal) / (parseInt(target) * currentDay)) * 100);
     
     // Build professional CSV report
     const reportTitle = isYesterday ? 'WAREHOUSE ERASURE STATS REPORT (Yesterday)' : 'WAREHOUSE ERASURE STATS REPORT';
@@ -1847,7 +1847,7 @@
       ['Month Total', monthTotal, `Avg ${target}/day`, `${monthProgressPercent}% of pace`],
       ['Daily Average', dailyAvg, 'Per day', `${dailyAvg > parseInt(target) ? 'Above' : 'Below'} target`],
       ['Projected Month', projectedTotal, `of ~${parseInt(target) * daysInMonth} max`, `${Math.round((projectedTotal / (parseInt(target) * daysInMonth)) * 100)}% utilization`],
-      ['Days Remaining', daysRemaining, `in ${new Date().toLocaleDateString('en-US', { month: 'long' })}`, ''],
+      ['Days Remaining', daysRemaining, `in ${targetDate.toLocaleDateString('en-US', { month: 'long' })}`, ''],
       [],
     ];
 
