@@ -1688,11 +1688,19 @@
   }
 
   // Rotate multi-panel cards in place (bottom row)
+  const rotatorIntervals = new Map();
+  
   function setupRotatorCards() {
     const cards = document.querySelectorAll('.rotator-card');
     if (!cards.length) return;
 
-    cards.forEach(card => {
+    cards.forEach((card, cardIdx) => {
+      // Clear any existing interval for this card
+      if (rotatorIntervals.has(cardIdx)) {
+        clearInterval(rotatorIntervals.get(cardIdx));
+        rotatorIntervals.delete(cardIdx);
+      }
+      
       const panels = Array.from(card.querySelectorAll('.panel'));
       if (panels.length <= 1) return;
 
@@ -1702,7 +1710,10 @@
       const PRE_ROTATE_INDICATOR_TIME = 400;
 
       function showPanel(nextIndex) {
-        if (isTransitioning) return;
+        if (isTransitioning) {
+          console.warn('Rotator card transition already in progress, skipping');
+          return;
+        }
         
         const currentIndex = panels.findIndex(p => p.classList.contains('active'));
         if (currentIndex === -1) {
@@ -1734,6 +1745,14 @@
             nextPanel.classList.remove('entering');
             isTransitioning = false;
           }, 1200);
+          
+          // Safety timeout to reset isTransitioning if something goes wrong
+          setTimeout(() => {
+            if (isTransitioning) {
+              console.warn('Rotator card transition took too long, resetting');
+              isTransitioning = false;
+            }
+          }, 3000);
         }, PRE_ROTATE_INDICATOR_TIME);
       }
 
@@ -1742,10 +1761,13 @@
 
       // Begin rotation after a short delay to stagger with flip-cards
       setTimeout(() => {
-        setInterval(() => {
+        const intervalId = setInterval(() => {
           index = (index + 1) % panels.length;
           showPanel(index);
         }, interval);
+        
+        // Store interval ID so we can clear it later if needed
+        rotatorIntervals.set(cardIdx, intervalId);
       }, 3000);
     });
   }
