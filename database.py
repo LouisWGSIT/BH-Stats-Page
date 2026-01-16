@@ -507,7 +507,7 @@ def get_speed_challenge_stats(time_window: str = "am") -> List[Dict]:
 
 
 def get_category_specialists(date_str: str = None) -> Dict[str, List[Dict]]:
-    """Get top 3 specialists for each device category"""
+    """Get top 3 specialists for each device category from erasures table"""
     if date_str is None:
         date_str = get_today_str()
     
@@ -519,8 +519,8 @@ def get_category_specialists(date_str: str = None) -> Dict[str, List[Dict]]:
     
     for category in categories:
         cursor.execute("""
-            SELECT initials, SUM(count) as total
-            FROM engineer_stats_type
+            SELECT initials, COUNT(1) as total
+            FROM erasures
             WHERE date = ? AND device_type = ? AND initials IS NOT NULL
             GROUP BY initials
             ORDER BY total DESC
