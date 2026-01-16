@@ -614,29 +614,42 @@ body {
 }
 
 .spec-list li {
-  padding: 6px 8px;
-  font-size: 12px;
-  gap: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  gap: 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  align-items: center;
 }
 
 .spec-list .speed-rank {
-  width: 18px;
-  font-size: 11px;
+  width: 20px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
 }
 
 .spec-list .speed-name {
   padding: 0 4px;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 800;
+  flex: 1;
 }
 
 .spec-list .speed-count {
-  font-size: 12px;
+  font-size: 13px;
+  color: var(--ring-primary);
+  font-weight: 700;
+  min-width: 30px;
+  text-align: right;
 }
 
 .spec-list .trophy {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .speed-rank {
@@ -656,28 +669,30 @@ body {
 
 .specialists-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
   margin-top: 12px;
   overflow: visible;
 }
 
 .specialists-col {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 10px;
-  padding: 10px;
-  min-height: 120px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 12px;
+  min-height: auto;
 }
 
 .spec-title {
-  font-weight: 800;
-  margin-bottom: 8px;
-  font-size: 12px;
-  text-align: center;
+  font-weight: 900;
+  margin-bottom: 10px;
+  font-size: 11px;
+  text-align: left;
   color: var(--ring-primary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid rgba(0,255,100,0.3);
 }
 
 .consistency-list .gap {
