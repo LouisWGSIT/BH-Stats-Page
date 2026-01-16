@@ -1379,9 +1379,11 @@
     fetch('/analytics/peak-hours')
       .then(r => r.json())
       .then(data => {
-        if (data && data.length > 0) {
+        // API returns { hours: [...] }; fallback to array for backwards compatibility
+        const hours = Array.isArray(data) ? data : (data?.hours || []);
+        if (hours.length > 0) {
           // Find hour with highest count
-          const peakHour = data.reduce((max, curr) => curr.count > max.count ? curr : max, data[0]);
+          const peakHour = hours.reduce((max, curr) => curr.count > max.count ? curr : max, hours[0]);
           if (topHourEl && peakHour.count > 0) {
             const hour12 = peakHour.hour === 0 ? 12 : peakHour.hour > 12 ? peakHour.hour - 12 : peakHour.hour;
             const ampm = peakHour.hour >= 12 ? 'PM' : 'AM';
