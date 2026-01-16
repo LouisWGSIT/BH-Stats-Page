@@ -215,21 +215,22 @@ def add_erasure_event(*, event: str, device_type: str, initials: str = None, dur
     conn.commit()
     conn.close()
 
-def get_summary_today_month():
-    """Return totals for today and this month, success rate and avg duration (today)."""
+def get_summary_today_month(date_str: str = None):
+    """Return totals for a specific date and its month, success rate and avg duration.
+    If date_str is None, uses today's date."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    today = get_today_str()
-    month = today[:7]
+    target_date = date_str if date_str else get_today_str()
+    month = target_date[:7]
 
     cursor.execute("SELECT COUNT(1) FROM erasures WHERE month = ?", (month,))
     month_total = cursor.fetchone()[0] or 0
 
-    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date = ?", (today,))
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date = ?", (target_date,))
     today_total_all = cursor.fetchone()[0] or 0
-    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date = ? AND event = 'success'", (today,))
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date = ? AND event = 'success'", (target_date,))
     today_success = cursor.fetchone()[0] or 0
-    cursor.execute("SELECT AVG(duration_sec) FROM erasures WHERE date = ? AND duration_sec IS NOT NULL", (today,))
+    cursor.execute("SELECT AVG(duration_sec) FROM erasures WHERE date = ? AND duration_sec IS NOT NULL", (target_date,))
     avg_dur = cursor.fetchone()[0]
     conn.close()
 

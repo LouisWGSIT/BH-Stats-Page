@@ -187,8 +187,9 @@ async def erasure_detail(req: Request):
 
 # Summary metrics powering the new dashboard
 @app.get("/metrics/summary")
-async def metrics_summary():
-    return db.get_summary_today_month()
+async def metrics_summary(date: str = None):
+    """Get summary for a specific date (YYYY-MM-DD) or today if not provided"""
+    return db.get_summary_today_month(date)
 
 @app.get("/metrics/by-type")
 async def metrics_by_type():
