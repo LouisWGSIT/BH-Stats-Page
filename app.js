@@ -1791,11 +1791,20 @@
           const erasures = eng.erasures || 0;
           const avgPerHour = (erasures / SHIFT_HOURS).toFixed(1);
           
+          // For yesterday, show absolute time instead of "x ago"
+          let lastActiveDisplay;
+          if (isYesterday && eng.lastActive) {
+            const timestamp = new Date(eng.lastActive);
+            lastActiveDisplay = timestamp.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+          } else {
+            lastActiveDisplay = formatTimeAgo(eng.lastActive);
+          }
+          
           return [
             idx + 1,
             eng.initials || '',
             erasures,
-            formatTimeAgo(eng.lastActive),
+            lastActiveDisplay,
             avgPerHour
           ];
         });
