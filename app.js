@@ -1605,8 +1605,8 @@
     const flipCards = document.querySelectorAll('.flip-card');
     if (flipCards.length === 0) return;
 
-    const FLIP_INTERVAL = 16000;
-    const FLIP_HOLD = 8000;
+    const FLIP_INTERVAL = 25000;
+    const FLIP_HOLD = 12000;
 
     flipCards.forEach((card, index) => {
       function performFlip() {
@@ -1655,13 +1655,13 @@
         if (currentIndex !== -1 && currentIndex !== nextIndex) {
           panels[currentIndex].classList.remove('active');
           panels[currentIndex].classList.add('exiting');
-          setTimeout(() => panels[currentIndex].classList.remove('exiting'), 550);
+          setTimeout(() => panels[currentIndex].classList.remove('exiting'), 800);
         }
 
         const nextPanel = panels[nextIndex];
         nextPanel.classList.add('entering');
         nextPanel.classList.add('active');
-        setTimeout(() => nextPanel.classList.remove('entering'), 550);
+        setTimeout(() => nextPanel.classList.remove('entering'), 800);
       }
 
       // Ensure the first panel is visible
@@ -1897,16 +1897,17 @@
       csv.push(...categoryTopPerformers);
     }
 
-    // Fetch competition data for richer report
-    try {
-      const [speedAm, speedPm, specialists, consistency, records, weekly] = await Promise.all([
-        fetch('/competitions/speed-challenge?window=am').then(r => r.ok ? r.json() : {}),
-        fetch('/competitions/speed-challenge?window=pm').then(r => r.ok ? r.json() : {}),
-        fetch('/competitions/category-specialists').then(r => r.ok ? r.json() : {}),
-        fetch('/competitions/consistency').then(r => r.ok ? r.json() : {}),
-        fetch('/metrics/records').then(r => r.ok ? r.json() : {}),
-        fetch('/metrics/weekly').then(r => r.ok ? r.json() : {})
-      ]);
+    // Fetch competition data for richer report (only for today)
+    if (!isYesterday) {
+      try {
+        const [speedAm, speedPm, specialists, consistency, records, weekly] = await Promise.all([
+          fetch('/competitions/speed-challenge?window=am').then(r => r.ok ? r.json() : {}),
+          fetch('/competitions/speed-challenge?window=pm').then(r => r.ok ? r.json() : {}),
+          fetch('/competitions/category-specialists').then(r => r.ok ? r.json() : {}),
+          fetch('/competitions/consistency').then(r => r.ok ? r.json() : {}),
+          fetch('/metrics/records').then(r => r.ok ? r.json() : {}),
+          fetch('/metrics/weekly').then(r => r.ok ? r.json() : {})
+        ]);
 
       // Add records & milestones with better formatting
       if (records?.bestDay || records?.topEngineer || records?.currentStreak !== undefined) {
@@ -1991,9 +1992,17 @@
           row.avgGapMinutes || 0,
           row.consistencyScore || 0
         ]));
+        ]));
       }
     } catch (err) {
       console.error('CSV competition enrichment failed:', err);
+    }
+    } else {
+      // For yesterday's report, add note about competitions
+      csv.push([]);
+      csv.push(['COMPETITION DATA NOT AVAILABLE']);
+      csv.push(['Note', 'Competition data (Speed Challenges, Category Specialists, Consistency) is only available for current day reports.']);
+      csv.push(['', 'Historical competition data is not stored in the system.']);
     }
 
     // Add footer with notes and context
