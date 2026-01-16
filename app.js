@@ -1641,15 +1641,29 @@
     const FLIP_HOLD = 12000;
 
     flipCards.forEach((card, index) => {
+      const inner = card.querySelector('.flip-card-inner');
+      let isFlipping = false;
+      
       function performFlip() {
+        if (isFlipping) return;
+        isFlipping = true;
         card.classList.toggle('flipped');
+      }
+      
+      // Listen for transition end to know when flip completes
+      if (inner) {
+        inner.addEventListener('transitionend', (e) => {
+          if (e.propertyName === 'transform') {
+            isFlipping = false;
+          }
+        });
       }
       
       // Initial flip after a brief stagger
       setTimeout(() => {
         performFlip();
         
-        // Flip back after hold
+        // Flip back after hold (wait for flip to complete + hold time)
         setTimeout(() => {
           performFlip();
         }, FLIP_HOLD);
@@ -1675,9 +1689,13 @@
       if (panels.length <= 1) return;
 
       let index = 0;
+      let isTransitioning = false;
       const interval = parseInt(card.dataset.interval, 10) || 14000;
 
       function showPanel(nextIndex) {
+        if (isTransitioning) return;
+        isTransitioning = true;
+        
         const currentIndex = panels.findIndex(p => p.classList.contains('active'));
 
         panels.forEach(panel => {
@@ -1687,13 +1705,18 @@
         if (currentIndex !== -1 && currentIndex !== nextIndex) {
           panels[currentIndex].classList.remove('active');
           panels[currentIndex].classList.add('exiting');
-          setTimeout(() => panels[currentIndex].classList.remove('exiting'), 800);
         }
 
         const nextPanel = panels[nextIndex];
         nextPanel.classList.add('entering');
         nextPanel.classList.add('active');
-        setTimeout(() => nextPanel.classList.remove('entering'), 800);
+        
+        // Wait for transition to complete before allowing next transition
+        setTimeout(() => {
+          if (currentIndex !== -1) panels[currentIndex].classList.remove('exiting');
+          nextPanel.classList.remove('entering');
+          isTransitioning = false;
+        }, 700);
       }
 
       // Ensure the first panel is visible
