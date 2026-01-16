@@ -738,7 +738,8 @@ body {
 .rotator-card .panel.active {
   opacity: 1;
   pointer-events: auto;
-  z-index: 2;Z(0);
+  z-index: 2;
+  transform: rotateY(0deg) translateZ(0);
   visibility: visible;
 }
 
