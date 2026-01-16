@@ -322,11 +322,7 @@ body {
   flex-shrink: 0;
 }
 
-.car-1 .car-body {}
-.car-2 .car-body {}
-.car-3 .car-body {}
-.car-4 .car-body {}
-.car-5 .car-body {}
+/* Car body classes removed - no longer needed without animations */
 
 /* Animations for carPulse, trackPulse, carSway removed for TV performance optimization */
 
@@ -441,11 +437,11 @@ body {
   margin-right: -6px; /* pull Greenie closer to speech bubble */
 }
 .speech-bubble {
-  background: linear-gradient(145deg, rgba(140, 240, 74, 0.2), rgba(140, 240, 74, 0.1));
-  border: 2px rgba(140, 240, 74, 0.15);
+  background: rgba(10, 42, 74, 0.95);
   border: 2px solid var(--ring-primary);
   border-radius: 20px;
-  padding: 16px 20px
+  padding: 16px 20px;
+  position: relative;
   flex: 1;
   min-width: 200px;
   box-shadow: 0 8px 16px rgba(0,0,0,0.3);
