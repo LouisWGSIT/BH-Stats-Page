@@ -1379,8 +1379,33 @@
 
     if (activeEl) activeEl.textContent = activeCount;
     if (avgEl) avgEl.textContent = avgPerEng;
-    if (topHourEl) topHourEl.textContent = '—'; // Would need backend
-    if (topHourCountEl) topHourCountEl.textContent = 'N/A';
+    
+    // Fetch most productive hour from backend
+    fetch('/analytics/peak-hours')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.length > 0) {
+          // Find hour with highest count
+          const peakHour = data.reduce((max, curr) => curr.count > max.count ? curr : max, data[0]);
+          if (topHourEl && peakHour.count > 0) {
+            const hour12 = peakHour.hour === 0 ? 12 : peakHour.hour > 12 ? peakHour.hour - 12 : peakHour.hour;
+            const ampm = peakHour.hour >= 12 ? 'PM' : 'AM';
+            topHourEl.textContent = `${hour12}:00 ${ampm}`;
+            if (topHourCountEl) topHourCountEl.textContent = `${peakHour.count} erasures`;
+          } else {
+            if (topHourEl) topHourEl.textContent = 'N/A';
+            if (topHourCountEl) topHourCountEl.textContent = 'No data yet';
+          }
+        } else {
+          if (topHourEl) topHourEl.textContent = 'N/A';
+          if (topHourCountEl) topHourCountEl.textContent = 'No data yet';
+        }
+      })
+      .catch(err => {
+        console.error('Peak hours fetch error:', err);
+        if (topHourEl) topHourEl.textContent = 'N/A';
+        if (topHourCountEl) topHourCountEl.textContent = 'Error';
+      });
   }
 
   function updateMonthlyProgress() {
