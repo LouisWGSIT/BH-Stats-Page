@@ -245,8 +245,7 @@ body {
   flex-direction: column;
   gap: 8px;
   position: relative;
-  background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)), 
-              repeating-linear-gradient(0deg, transparent, transparent 12px, rgba(140, 240, 74, 0.08) 12px, rgba(140, 240, 74, 0.08) 13px);
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 10px;
   padding: 10px 4px 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -257,7 +256,6 @@ body {
   flex-shrink: 0;
   height: 100%;
   overflow: visible;
-  animation: trackPulse 3s ease-in-out infinite;
   contain: layout style;
 }
 
@@ -292,10 +290,9 @@ body {
   bottom: 0;
   left: 50%;
   transform: translateX(-50%) translateZ(0);
-  transition: bottom 0.3s ease;
-  animation: carSway 3s ease-in-out infinite;
+  transition: bottom 0.4s ease-out;
   backface-visibility: hidden;
-  will-change: bottom, transform;
+  will-change: bottom;
   contain: layout style paint;
 }
 
@@ -305,14 +302,12 @@ body {
   left: 50%;
   transform: translateX(-50%);
   width: 8px;
-  background: linear-gradient(to top, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+  background: rgba(140, 240, 74, 0.8);
   border-radius: 4px;
-  transition: height 0.3s ease;
+  transition: height 0.4s ease-out;
   height: 0%;
   z-index: -10;
   pointer-events: none;
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.5)) drop-shadow(0 0 3px rgba(255, 255, 255, 0.3));
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.35);
 }
 
 .car-body {
@@ -322,35 +317,18 @@ body {
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
-  transition: transform 0.3s ease;
   position: relative;
   z-index: 10;
   flex-shrink: 0;
-  animation: carPulse 0.8s ease infinite;
 }
 
-.car-1 .car-body { animation-delay: 0s; }
-.car-2 .car-body { animation-delay: 0.2s; }
-.car-3 .car-body { animation-delay: 0.4s; }
-.car-4 .car-body { animation-delay: 0.6s; }
-.car-5 .car-body { animation-delay: 0.8s; }
+.car-1 .car-body {}
+.car-2 .car-body {}
+.car-3 .car-body {}
+.car-4 .car-body {}
+.car-5 .car-body {}
 
-@keyframes carPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.15); }
-}
-
-@keyframes trackPulse {
-  0%, 100% { background-position: 0 0; }
-  50% { background-position: 0 4px; }
-}
-
-@keyframes carSway {
-  0%, 100% { transform: translateX(-50%) translateX(0) translateY(0); }
-  25% { transform: translateX(-50%) translateX(-1.5px) translateY(-2px); }
-  50% { transform: translateX(-50%) translateX(0) translateY(0); }
-  75% { transform: translateX(-50%) translateX(1.5px) translateY(2px); }
-}
+/* Animations for carPulse, trackPulse, carSway removed for TV performance optimization */
 
 @keyframes donutPulse {
   0% { transform: scale(1); }

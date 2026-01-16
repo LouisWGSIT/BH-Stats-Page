@@ -572,19 +572,29 @@
         // Cap at 80% so car doesn't go past finish line until 15:58
         percentage = Math.min(percentage, 80);
         
-        // Move car up the lane based on percentage (0% = bottom, 95% = near top)
-        carEl.style.bottom = `${percentage}%`;
+        // Only update if value actually changed to reduce DOM thrashing
+        if (carEl.style.bottom !== `${percentage}%`) {
+          carEl.style.bottom = `${percentage}%`;
+        }
         
         // Update trail height from bottom to current car position
-        trailEl.style.height = `${percentage}%`;
+        if (trailEl.style.height !== `${percentage}%`) {
+          trailEl.style.height = `${percentage}%`;
+        }
         
-        // Color trail to match engineer color
+        // Color trail to match engineer color - use solid color instead of gradient for TV performance
         const engineerColor = getEngineerColor(engineer.initials || '');
-        trailEl.style.background = `linear-gradient(to top, ${engineerColor}, ${engineerColor}40)`;
+        if (trailEl.style.background !== engineerColor) {
+          trailEl.style.background = engineerColor;
+        }
         
         // Update label with engineer initials
-        labelEl.textContent = `${engineer.initials || '?'}`;
-        labelEl.style.color = engineerColor;
+        if (labelEl.textContent !== engineer.initials) {
+          labelEl.textContent = `${engineer.initials || '?'}`;
+        }
+        if (labelEl.style.color !== engineerColor) {
+          labelEl.style.color = engineerColor;
+        }
 
         // Check if car has finished (reached top/100%)
         // Only trigger finish message at 15:58 when race officially ends
