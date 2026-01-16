@@ -509,7 +509,7 @@
           <span class="speed-name">${row.initials || '—'}</span>
           <div class="consistency-stats">
             <span class="speed-count">${row.erasures || 0} erasures</span>
-            <span class="gap">avg gap ${row.avgGapMinutes || 0}m · σ ${row.consistencyScore || 0}</span>
+            <span class="gap">avg pace every ${row.avgGapMinutes || 0}m • consistency ${row.consistencyScore || 0}</span>
           </div>
         `;
         list.appendChild(li);
@@ -1984,14 +1984,13 @@
       if (consistency?.leaderboard?.length) {
         csv.push([]);
         csv.push(['CONSISTENCY KINGS/QUEENS', 'Steadiest pace - lowest variability']);
-        csv.push(['Rank', 'Engineer', 'Erasures', 'Avg Gap (min)', 'Std Dev']);
+        csv.push(['Rank', 'Engineer', 'Erasures', 'Avg Pace (min)', 'Consistency Score']);
         csv.push(...consistency.leaderboard.map((row, idx) => [
           idx + 1,
           row.initials || '',
           row.erasures || 0,
           row.avgGapMinutes || 0,
           row.consistencyScore || 0
-        ]));
         ]));
       }
     } catch (err) {
