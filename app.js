@@ -1307,30 +1307,25 @@
     const topCountEl = document.getElementById('recordTopEngineerCount');
     const streakEl = document.getElementById('currentStreak');
 
-    // Reset placeholders first
-    if (bestDayEl) bestDayEl.textContent = '—';
-    if (bestDateEl) bestDateEl.textContent = '—';
-    if (topEngEl) topEngEl.textContent = '—';
-    if (topCountEl) topCountEl.textContent = '—';
-    if (streakEl) streakEl.textContent = '—';
-
     fetch('/metrics/records')
       .then(r => r.json())
       .then(data => {
-        if (bestDayEl && data.bestDay) {
-          bestDayEl.textContent = data.bestDay.count || 0;
+        console.log('Records data:', data); // Debug log
+        
+        if (data.bestDay && data.bestDay.count) {
+          if (bestDayEl) bestDayEl.textContent = data.bestDay.count;
+          if (bestDateEl && data.bestDay.date) {
+            bestDateEl.textContent = new Date(data.bestDay.date).toLocaleDateString();
+          }
         }
-        if (bestDateEl && data.bestDay && data.bestDay.date) {
-          bestDateEl.textContent = new Date(data.bestDay.date).toLocaleDateString();
+        
+        if (data.topEngineer && data.topEngineer.initials) {
+          if (topEngEl) topEngEl.textContent = data.topEngineer.initials;
+          if (topCountEl) topCountEl.textContent = `${data.topEngineer.totalCount || 0} erasures`;
         }
-        if (topEngEl && data.topEngineer) {
-          topEngEl.textContent = data.topEngineer.initials || '—';
-        }
-        if (topCountEl && data.topEngineer) {
-          topCountEl.textContent = `${data.topEngineer.totalCount || 0} erasures`;
-        }
-        if (streakEl && typeof data.currentStreak === 'number') {
-          streakEl.textContent = data.currentStreak;
+        
+        if (typeof data.currentStreak === 'number' && data.currentStreak > 0) {
+          if (streakEl) streakEl.textContent = data.currentStreak;
         }
       })
       .catch(err => {
