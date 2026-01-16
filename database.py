@@ -601,10 +601,11 @@ def get_records_and_milestones() -> Dict:
     """)
     best_day = cursor.fetchone()
     
-    # Get top engineer all-time (total across all days)
+    # Get top engineer all-time (total across all days) from raw erasure events
     cursor.execute("""
-        SELECT initials, SUM(count) as total_count
-        FROM engineer_stats
+        SELECT initials, COUNT(1) AS total_count
+        FROM erasures
+        WHERE initials IS NOT NULL
         GROUP BY initials
         ORDER BY total_count DESC
         LIMIT 1
