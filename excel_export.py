@@ -65,20 +65,20 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
                 # Resize logo to reasonable size
                 img.width = 140
                 img.height = 80
-                # Place in top right corner (column H)
-                ws.add_image(img, 'H1')
+                # Place in far right corner (column N) to avoid content overlap
+                ws.add_image(img, 'N1')
                 print(f"Logo added successfully to {sheet_name}")
                 
                 # Add colored background behind logo to make it visible
                 logo_bg_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
                 for row in range(1, 5):  # Rows 1-4
-                    for col in range(8, 13):  # Columns H-L
+                    for col in range(14, 17):  # Columns N-P
                         cell = ws.cell(row=row, column=col)
                         cell.fill = logo_bg_fill
 
                 # Add some space for logo
-                ws.row_dimensions[1].height = 65
-                ws.row_dimensions[2].height = 28
+                ws.row_dimensions[1].height = 50
+                ws.row_dimensions[2].height = 25
                 if not first_sheet_processed:
                     first_sheet_processed = True
             except Exception as e:
