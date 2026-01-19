@@ -4,6 +4,15 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from typing import List, Dict, Tuple
 from io import BytesIO
+import os
+
+# Try to import image support
+try:
+    from openpyxl.drawing.image import Image as ExcelImage
+    IMAGE_SUPPORT = True
+except ImportError:
+    IMAGE_SUPPORT = False
+    print("Warning: Image support not available in openpyxl")
 
 def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
     """
@@ -32,9 +41,39 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
         bottom=Side(style='thin')
     )
     
+    # Check if logo exists
+    logo_path = os.path.join(os.path.dirname(__file__), 'assets', 'logo_gsit_ss.png')
+    has_logo = IMAGE_SUPPORT and os.path.exists(logo_path)
+    
+    if not IMAGE_SUPPORT:
+        print("Warning: PIL/Pillow not installed - images disabled")
+    if not os.path.exists(logo_path):
+        print(f"Warning: Logo file not found at {logo_path}")
+    
     # Create sheets
+    first_sheet_processed = False
     for sheet_idx, (sheet_name, data) in enumerate(sheets_data.items()):
         ws = wb.create_sheet(title=sheet_name)
+        
+        # Add logo to first sheet and Executive Summary/Summary sheets
+        add_logo = (not first_sheet_processed) or ('Summary' in sheet_name or 'SUMMARY' in sheet_name)
+        
+        if add_logo and has_logo:
+            try:
+                print(f"Adding logo to sheet: {sheet_name}")
+                img = ExcelImage(logo_path)
+                # Resize logo to fit nicely
+                img.width = 120
+                img.height = 60
+                # Place at E1 (top-right area, won't interfere with main content)
+                ws.add_image(img, 'E1')
+                print(f"Logo added successfully to {sheet_name}")
+                if not first_sheet_processed:
+                    first_sheet_processed = True
+            except Exception as e:
+                print(f"Error adding logo to {sheet_name}: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Write data
         start_row = 1
