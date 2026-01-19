@@ -384,5 +384,17 @@ async def get_target_achievement(target: int = 500):
     achievement = db.get_target_achievement(target=target)
     return achievement
 
+@app.get("/metrics/engineers/{initials}/kpis")
+async def get_engineer_kpis(initials: str):
+    """Get comprehensive KPI metrics for a specific engineer"""
+    kpis = db.get_individual_engineer_kpis(initials)
+    return kpis
+
+@app.get("/metrics/engineers/kpis/all")
+async def get_all_engineers_kpis():
+    """Get KPI metrics for all engineers"""
+    kpis = db.get_all_engineers_kpis()
+    return {"engineers": kpis}
+
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")

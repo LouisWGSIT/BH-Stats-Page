@@ -882,5 +882,130 @@ def get_target_achievement(target: int = 500) -> Dict:
         "daysInMonth": days_in_month
     }
 
+def get_individual_engineer_kpis(initials: str) -> Dict:
+    """Get comprehensive KPI metrics for a specific engineer"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    today = date.today()
+    current_month = today.strftime('%Y-%m')
+    
+    # Get 7-day average
+    cursor.execute("""
+        SELECT COALESCE(AVG(count), 0)
+        FROM engineer_stats
+        WHERE initials = ? AND date >= date('now', '-7 days')
+    """, (initials,))
+    avg_7day = round(cursor.fetchone()[0], 1)
+    
+    # Get 30-day average
+    cursor.execute("""
+        SELECT COALESCE(AVG(count), 0)
+        FROM engineer_stats
+        WHERE initials = ? AND date >= date('now', '-30 days')
+    """, (initials,))
+    avg_30day = round(cursor.fetchone()[0], 1)
+    
+    # Get previous 7-day average (8-14 days ago) for trend calculation
+    cursor.execute("""
+        SELECT COALESCE(AVG(count), 0)
+        FROM engineer_stats
+        WHERE initials = ? AND date >= date('now', '-14 days') AND date < date('now', '-7 days')
+    """, (initials,))
+    prev_7day = round(cursor.fetchone()[0], 1)
+    
+    # Calculate trend
+    trend = "→ Stable"
+    trend_pct = 0
+    if prev_7day > 0:
+        trend_pct = round(((avg_7day - prev_7day) / prev_7day) * 100, 1)
+        if trend_pct > 10:
+            trend = "↑ Improving"
+        elif trend_pct < -10:
+            trend = "↓ Declining"
+    
+    # Get personal best (highest single day)
+    cursor.execute("""
+        SELECT date, count
+        FROM engineer_stats
+        WHERE initials = ?
+        ORDER BY count DESC
+        LIMIT 1
+    """, (initials,))
+    best_day = cursor.fetchone()
+    personal_best = best_day[1] if best_day else 0
+    best_date = best_day[0] if best_day else None
+    
+    # Get days active this month
+    cursor.execute("""
+        SELECT COUNT(DISTINCT date)
+        FROM engineer_stats
+        WHERE initials = ? AND date LIKE ?
+    """, (initials, f"{current_month}%"))
+    days_active_month = cursor.fetchone()[0]
+    
+    # Calculate consistency score (standard deviation of last 30 days - lower is better)
+    cursor.execute("""
+        SELECT count
+        FROM engineer_stats
+        WHERE initials = ? AND date >= date('now', '-30 days')
+    """, (initials,))
+    daily_counts = [row[0] for row in cursor.fetchall()]
+    
+    consistency_score = 0
+    if len(daily_counts) > 1:
+        mean = sum(daily_counts) / len(daily_counts)
+        variance = sum((x - mean) ** 2 for x in daily_counts) / len(daily_counts)
+        consistency_score = round(variance ** 0.5, 1)  # Standard deviation
+    
+    # Get breakdown by device type (last 30 days)
+    cursor.execute("""
+        SELECT device_type, SUM(count) as total, 
+               ROUND(AVG(count), 1) as avg_per_day
+        FROM engineer_stats_type
+        WHERE initials = ? AND date >= date('now', '-30 days')
+        GROUP BY device_type
+        ORDER BY total DESC
+    """, (initials,))
+    device_breakdown = [
+        {
+            "deviceType": row[0],
+            "total": row[1],
+            "avgPerDay": row[2]
+        }
+        for row in cursor.fetchall()
+    ]
+    
+    conn.close()
+    
+    return {
+        "initials": initials,
+        "avg7Day": avg_7day,
+        "avg30Day": avg_30day,
+        "trend": trend,
+        "trendPct": trend_pct,
+        "personalBest": personal_best,
+        "bestDate": best_date,
+        "daysActiveMonth": days_active_month,
+        "consistencyScore": consistency_score,
+        "deviceBreakdown": device_breakdown
+    }
+
+def get_all_engineers_kpis() -> List[Dict]:
+    """Get KPI metrics for all engineers (for CSV export)"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get list of all engineers with activity in last 30 days
+    cursor.execute("""
+        SELECT DISTINCT initials
+        FROM engineer_stats
+        WHERE date >= date('now', '-30 days') AND initials IS NOT NULL
+    """)
+    engineers = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    
+    return [get_individual_engineer_kpis(eng) for eng in engineers]
+
 # Initialize DB on import
 init_db()

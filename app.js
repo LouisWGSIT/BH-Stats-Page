@@ -1855,12 +1855,31 @@
 
     // Fetch full engineer list from API
     let allEngineersRows = [];
+    let engineerKPIs = {};
+    
     try {
       const apiScope = isYesterday ? 'yesterday' : 'today';
       const dateParam = isYesterday ? `&date=${targetDate.toISOString().split('T')[0]}` : '';
       const res = await fetch(`/metrics/engineers/leaderboard?scope=${apiScope}&limit=50${dateParam}`);
       if (res.ok) {
         const data = await res.json();
+        
+        // Fetch KPI data for all engineers (only for today)
+        if (!isYesterday) {
+          try {
+            const kpiRes = await fetch('/metrics/engineers/kpis/all');
+            if (kpiRes.ok) {
+              const kpiData = await kpiRes.json();
+              engineerKPIs = (kpiData.engineers || []).reduce((acc, kpi) => {
+                acc[kpi.initials] = kpi;
+                return acc;
+              }, {});
+            }
+          } catch (err) {
+            console.error('Failed to fetch engineer KPIs:', err);
+          }
+        }
+        
         allEngineersRows = (data.items || []).map((eng, idx) => {
           const erasures = eng.erasures || 0;
           const avgPerHour = (erasures / SHIFT_HOURS).toFixed(1);
@@ -1874,13 +1893,29 @@
             lastActiveDisplay = formatTimeAgo(eng.lastActive);
           }
           
-          return [
+          const baseRow = [
             idx + 1,
             eng.initials || '',
             erasures,
             lastActiveDisplay,
             avgPerHour
           ];
+          
+          // Add KPI data if available (today only)
+          if (!isYesterday && engineerKPIs[eng.initials]) {
+            const kpi = engineerKPIs[eng.initials];
+            return [
+              ...baseRow,
+              kpi.avg7Day,
+              kpi.avg30Day,
+              kpi.trend,
+              kpi.personalBest,
+              kpi.consistencyScore,
+              kpi.daysActiveMonth
+            ];
+          }
+          
+          return baseRow;
         });
       }
     } catch (err) {
@@ -2019,15 +2054,55 @@
       csv.push([]);
     }
 
-    csv.push([isYesterday ? 'ALL ENGINEERS (YESTERDAY)' : 'ALL ENGINEERS - DETAILED LEADERBOARD']);
-    csv.push(['Rank', 'Engineer', 'Total Erasures', 'Finished At', 'Per Hour', '% of Daily Target']);
-    csv.push(...(allEngineersRows.length > 0 ? allEngineersRows.map(row => {
-      const erasures = parseInt(row[2]);
-      const pct = parseInt(target) > 0 ? Math.round((erasures / parseInt(target)) * 100) : 0;
-      // Return in order: rank, engineer, erasures, lastActive, avgPerHour, targetPercent
-      return [row[0], row[1], row[2], row[3], row[4], `${pct}%`];
-    }) : [['No data available']]));
+    csv.push([isYesterday ? 'ALL ENGINEERS (YESTERDAY)' : 'ALL ENGINEERS - DETAILED LEADERBOARD WITH KPIs']);
+    
+    // Different headers for today (with KPIs) vs yesterday
+    if (!isYesterday) {
+      csv.push(['Rank', 'Engineer', 'Today Total', 'Last Active', 'Per Hour', '% Target', '7-Day Avg', '30-Day Avg', 'Trend', 'Personal Best', 'Consistency', 'Days Active']);
+      csv.push(...(allEngineersRows.length > 0 ? allEngineersRows.map(row => {
+        const erasures = parseInt(row[2]);
+        const pct = parseInt(target) > 0 ? Math.round((erasures / parseInt(target)) * 100) : 0;
+        
+        // If row has KPI data (length > 5), include it
+        if (row.length > 5) {
+          return [row[0], row[1], row[2], row[3], row[4], `${pct}%`, row[5], row[6], row[7], row[8], row[9], row[10]];
+        } else {
+          // Fallback if no KPI data
+          return [row[0], row[1], row[2], row[3], row[4], `${pct}%`, '-', '-', '-', '-', '-', '-'];
+        }
+      }) : [['No data available']]));
+    } else {
+      // Yesterday export - simpler format without KPIs
+      csv.push(['Rank', 'Engineer', 'Total Erasures', 'Finished At', 'Per Hour', '% of Daily Target']);
+      csv.push(...(allEngineersRows.length > 0 ? allEngineersRows.map(row => {
+        const erasures = parseInt(row[2]);
+        const pct = parseInt(target) > 0 ? Math.round((erasures / parseInt(target)) * 100) : 0;
+        return [row[0], row[1], row[2], row[3], row[4], `${pct}%`];
+      }) : [['No data available']]));
+    }
+    
     csv.push([]);
+    
+    // Add device breakdown for each engineer (only for today)
+    if (!isYesterday && Object.keys(engineerKPIs).length > 0) {
+      csv.push(['ENGINEER DEVICE SPECIALIZATION (Last 30 Days)']);
+      csv.push(['Engineer', 'Device Type', 'Total Count', 'Avg Per Day', 'Notes']);
+      
+      Object.values(engineerKPIs).forEach(kpi => {
+        if (kpi.deviceBreakdown && kpi.deviceBreakdown.length > 0) {
+          kpi.deviceBreakdown.forEach((device, idx) => {
+            const deviceName = device.deviceType === 'laptops_desktops' ? 'Laptops/Desktops' :
+                              device.deviceType === 'servers' ? 'Servers' :
+                              device.deviceType === 'macs' ? 'Macs' :
+                              device.deviceType === 'mobiles' ? 'Mobiles' :
+                              device.deviceType;
+            const note = idx === 0 ? 'Primary focus' : idx === 1 ? 'Secondary' : '';
+            csv.push([kpi.initials, deviceName, device.total, device.avgPerDay, note]);
+          });
+        }
+      });
+      csv.push([]);
+    }
     
     if (categoryRows.length > 0) {
       csv.push(['BREAKDOWN BY CATEGORY']);
@@ -2164,6 +2239,13 @@
     csv.push(['Status Indicator', 'ON TARGET (100%+) | APPROACHING (80-99%) | BELOW TARGET (<80%)']);
     csv.push(['On Pace', 'Engineer is performing at expected rate to meet daily target']);
     csv.push(['Exceeding Target', 'Engineer has already completed more than daily target']);
+    csv.push(['7-Day Avg', 'Average daily erasures over the last 7 days']);
+    csv.push(['30-Day Avg', 'Average daily erasures over the last 30 days (reflects device mix)']);
+    csv.push(['Trend', '↑ Improving (>10% increase) | ↓ Declining (>10% decrease) | → Stable']);
+    csv.push(['Personal Best', 'Highest single-day erasure count achieved']);
+    csv.push(['Consistency Score', 'Standard deviation of daily output (lower = more predictable)']);
+    csv.push(['Days Active', 'Number of days with recorded activity this month']);
+    csv.push(['Device Specialization', 'Shows which device types each engineer primarily works on']);
     csv.push(['Avg Gap', 'Average time between consecutive erasures (minutes)']);
     csv.push(['Std Dev', 'Standard Deviation - measure of consistency (lower is more consistent)']);
     csv.push(['Week Total', 'Sum of all erasures across 7-day period']);
