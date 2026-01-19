@@ -76,8 +76,9 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
                         cell = ws.cell(row=row, column=col)
                         cell.fill = logo_bg_fill
 
-                # Add some space for logo
-                ws.row_dimensions[1].height = 40
+                # Set row heights to properly accommodate logo
+                ws.row_dimensions[1].height = 30
+                ws.row_dimensions[2].height = 30
                 if not first_sheet_processed:
                     first_sheet_processed = True
             except Exception as e:
