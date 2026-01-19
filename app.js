@@ -1807,7 +1807,10 @@
     // Calculate date for display and API calls
     const targetDate = new Date();
     if (isYesterday) {
-      targetDate.setDate(targetDate.getDate() - 1);
+      // If today is Monday (1), go back to Friday (3 days ago)
+      // Otherwise, go back 1 day
+      const daysBack = targetDate.getDay() === 1 ? 3 : 1;
+      targetDate.setDate(targetDate.getDate() - daysBack);
     }
     const dateStr = targetDate.toLocaleDateString('en-GB');
     const time = new Date().toLocaleTimeString('en-GB');

@@ -80,9 +80,13 @@ def get_today_str() -> str:
     return date.today().isoformat()
 
 def get_yesterday_str() -> str:
-    """Get yesterday's date as string"""
+    """Get yesterday's date as string (Friday if today is Monday)"""
     from datetime import timedelta
-    return (date.today() - timedelta(days=1)).isoformat()
+    today = date.today()
+    # If today is Monday (0), go back to Friday (3 days)
+    # Otherwise, go back 1 day
+    days_back = 3 if today.weekday() == 0 else 1
+    return (today - timedelta(days=days_back)).isoformat()
 
 def delete_event_by_job(job_id: str) -> int:
     """Delete erasure events and seen_id by job_id. Returns rows deleted from erasures."""
