@@ -68,6 +68,14 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
                 # Place in top right corner (column E or F)
                 ws.add_image(img, 'E1')
                 print(f"Logo added successfully to {sheet_name}")
+                
+                # Add colored background behind logo to make it visible
+                logo_bg_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+                for row in range(1, 4):  # Rows 1-3
+                    for col in range(5, 8):  # Columns E-G
+                        cell = ws.cell(row=row, column=col)
+                        cell.fill = logo_bg_fill
+                
                 # Add some space for logo
                 ws.row_dimensions[1].height = 50
                 ws.row_dimensions[2].height = 25
