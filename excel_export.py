@@ -39,38 +39,45 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
     has_logo = os.path.exists(logo_path)
     
     # Create sheets
+    first_sheet_processed = False
     for sheet_idx, (sheet_name, data) in enumerate(sheets_data.items()):
         ws = wb.create_sheet(title=sheet_name)
         
-        # Add logo to first sheet (Summary/Executive Summary) in top left
-        if sheet_idx == 0 and has_logo:
+        # Add logo to first sheet and Executive Summary/Summary sheet
+        add_logo = (not first_sheet_processed) or ('Summary' in sheet_name or 'SUMMARY' in sheet_name)
+        
+        if add_logo and has_logo:
             try:
                 img = ExcelImage(logo_path)
-                # Resize logo to reasonable size (about 2 rows height)
-                img.width = 100
-                img.height = 50
-                # Place in cell A1
-                ws.add_image(img, 'A1')
-                # Add some space after logo
-                ws.row_dimensions[1].height = 40
-                ws.row_dimensions[2].height = 20
+                # Resize logo to reasonable size
+                img.width = 120
+                img.height = 60
+                # Place in top right corner (column E or F)
+                ws.add_image(img, 'E1')
+                # Add some space for logo
+                ws.row_dimensions[1].height = 50
+                ws.row_dimensions[2].height = 25
+                if not first_sheet_processed:
+                    first_sheet_processed = True
             except Exception as e:
                 print(f"Warning: Could not add logo: {e}")
         
         # Write data
-        for row_idx, row_data in enumerate(data, 1):
+        start_row = 1
+        for row_idx, row_data in enumerate(data, start_row):
             for col_idx, cell_value in enumerate(row_data, 1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=cell_value)
                 cell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
                 cell.border = border
                 
-                # Style first row (headers) - skip if logo is present and it's row 1
-                if row_idx == 1 and not (sheet_idx == 0 and has_logo):
+                # Style first row (title row) specially if it contains report title
+                if row_idx == 1 and isinstance(cell_value, str) and 'REPORT' in cell_value.upper():
+                    cell.font = Font(bold=True, size=16, color="1F4E78")
+                    cell.alignment = Alignment(wrap_text=True, vertical='center', horizontal='left')
+                # Style headers
+                elif row_idx > 1 and any(isinstance(cell_value, str) and cell_value in ['Key Metric', 'Metric', 'Rank', 'Engineer'] for cell_value in row_data):
                     cell.fill = header_fill
                     cell.font = header_font
-                # Make the title row larger and bold if it's the first data row with logo
-                elif row_idx == 1 and sheet_idx == 0 and has_logo:
-                    cell.font = Font(bold=True, size=14, color="1F4E78")
                 # Style section headers (rows with single merged cell or key column)
                 elif isinstance(cell_value, str) and cell_value.isupper() and len(str(cell_value)) > 3:
                     # Check if it's a section header (all caps, longer than 3 chars)
@@ -90,10 +97,6 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
                     pass
             adjusted_width = min(max_length + 2, 50)  # Cap at 50
             ws.column_dimensions[col_letter].width = adjusted_width
-        
-        # Set row heights for headers
-        if not (sheet_idx == 0 and has_logo):
-            ws.row_dimensions[1].height = 25
     
     # Save to BytesIO
     output = BytesIO()
