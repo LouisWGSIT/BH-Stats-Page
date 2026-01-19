@@ -1959,6 +1959,42 @@
       [],
     ];
 
+    // Fetch performance trends and target achievement data (only for today)
+    if (!isYesterday) {
+      try {
+        const [perfTrends, targetAchievement] = await Promise.all([
+          fetch(`/metrics/performance-trends?target=${target}`).then(r => r.ok ? r.json() : null),
+          fetch(`/metrics/target-achievement?target=${target}`).then(r => r.ok ? r.json() : null)
+        ]);
+
+        // Performance Trends Section
+        if (perfTrends) {
+          csv.push(['PERFORMANCE TRENDS']);
+          csv.push(['Metric', 'Value', 'Indicator', 'Notes']);
+          csv.push(['Week-over-Week Change', `${perfTrends.wowChange > 0 ? '+' : ''}${perfTrends.wowChange}%`, perfTrends.trend, `Current: ${perfTrends.currentWeekTotal}, Previous: ${perfTrends.previousWeekTotal}`]);
+          csv.push(['Month-over-Month Change', `${perfTrends.momChange > 0 ? '+' : ''}${perfTrends.momChange}%`, perfTrends.momChange > 0 ? 'Growth' : perfTrends.momChange < 0 ? 'Decline' : 'Flat', `Current: ${perfTrends.currentMonthTotal}, Previous: ${perfTrends.previousMonthTotal}`]);
+          csv.push(['Rolling 7-Day Average', perfTrends.rolling7DayAvg, `${perfTrends.vsTargetPct}% of target`, `Target: ${target}/day`]);
+          csv.push(['Trend Direction', perfTrends.trend, '', 'Based on last 7 days vs previous 7 days']);
+          csv.push([]);
+        }
+
+        // Target Achievement Section
+        if (targetAchievement) {
+          csv.push(['TARGET ACHIEVEMENT METRICS']);
+          csv.push(['Metric', 'Value', 'Details', 'Status']);
+          csv.push(['Days Hitting Target', `${targetAchievement.daysHittingTarget} of ${targetAchievement.totalDaysThisMonth}`, `${targetAchievement.hitRatePct}% success rate`, targetAchievement.hitRatePct >= 80 ? 'Excellent' : targetAchievement.hitRatePct >= 60 ? 'Good' : 'Needs Improvement']);
+          csv.push(['Current Streak', `${targetAchievement.currentStreak} days ${targetAchievement.streakType} target`, '', targetAchievement.streakType === 'above' ? '🔥 Hot Streak!' : '⚠️ Below Target']);
+          csv.push(['Projected Month Total', targetAchievement.projectedMonthTotal, `Based on ${dailyAvg}/day average`, targetAchievement.projectedMonthTotal >= targetAchievement.monthlyTarget ? 'On Track' : 'Below Pace']);
+          csv.push(['Gap to Monthly Target', Math.abs(targetAchievement.gapToTarget), targetAchievement.gapToTarget <= 0 ? 'Target Exceeded!' : `${targetAchievement.daysRemaining} days remaining`, '']);
+          csv.push(['Daily Rate Needed', targetAchievement.gapToTarget > 0 ? targetAchievement.dailyNeeded : 0, `to hit ${targetAchievement.monthlyTarget} target`, targetAchievement.dailyNeeded <= target ? 'Achievable' : 'Challenging']);
+          csv.push([]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch KPI metrics:', err);
+      }
+    }
+
+
     if (!isYesterday && leaderboardRows.length > 0) {
       csv.push(['TOP 3 ENGINEERS (Daily Leaders)']);
       csv.push(['Rank', 'Engineer', 'Erasures', 'Last Active', 'Status']);

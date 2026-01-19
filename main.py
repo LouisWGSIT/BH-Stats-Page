@@ -372,5 +372,17 @@ async def get_weekly():
     weekly = db.get_weekly_stats()
     return weekly
 
+@app.get("/metrics/performance-trends")
+async def get_performance_trends(target: int = 500):
+    """Get performance trends: WoW, MoM, rolling averages"""
+    trends = db.get_performance_trends(target=target)
+    return trends
+
+@app.get("/metrics/target-achievement")
+async def get_target_achievement(target: int = 500):
+    """Get target achievement metrics: days hitting target, streaks, projections"""
+    achievement = db.get_target_achievement(target=target)
+    return achievement
+
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")

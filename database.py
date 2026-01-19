@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import List, Dict, Tuple
 from pathlib import Path
 import os
@@ -727,6 +727,159 @@ def get_weekly_stats(date_str: str = None) -> Dict:
         "bestDayOfWeek": {"date": best_day[0], "count": best_day[1]},
         "weekAverage": week_average,
         "daysActive": days_active
+    }
+
+def get_performance_trends(target: int = 500) -> Dict:
+    """Get performance trends: WoW, MoM, rolling averages, and trend indicators"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    today = date.today()
+    
+    # Get current week total (last 7 days)
+    cursor.execute("""
+        SELECT COALESCE(SUM(erased), 0)
+        FROM daily_stats
+        WHERE date >= date('now', '-7 days')
+    """)
+    current_week_total = cursor.fetchone()[0]
+    
+    # Get previous week total (8-14 days ago)
+    cursor.execute("""
+        SELECT COALESCE(SUM(erased), 0)
+        FROM daily_stats
+        WHERE date >= date('now', '-14 days') AND date < date('now', '-7 days')
+    """)
+    previous_week_total = cursor.fetchone()[0]
+    
+    # Calculate WoW % change
+    wow_change = 0
+    if previous_week_total > 0:
+        wow_change = round(((current_week_total - previous_week_total) / previous_week_total) * 100, 1)
+    
+    # Get current month total
+    current_month = today.strftime('%Y-%m')
+    cursor.execute("""
+        SELECT COALESCE(SUM(erased), 0)
+        FROM daily_stats
+        WHERE date LIKE ?
+    """, (f"{current_month}%",))
+    current_month_total = cursor.fetchone()[0]
+    
+    # Get previous month total
+    from datetime import timedelta
+    first_of_month = today.replace(day=1)
+    last_month = first_of_month - timedelta(days=1)
+    previous_month = last_month.strftime('%Y-%m')
+    cursor.execute("""
+        SELECT COALESCE(SUM(erased), 0)
+        FROM daily_stats
+        WHERE date LIKE ?
+    """, (f"{previous_month}%",))
+    previous_month_total = cursor.fetchone()[0]
+    
+    # Calculate MoM % change
+    mom_change = 0
+    if previous_month_total > 0:
+        mom_change = round(((current_month_total - previous_month_total) / previous_month_total) * 100, 1)
+    
+    # Get rolling 7-day average
+    cursor.execute("""
+        SELECT COALESCE(AVG(erased), 0)
+        FROM daily_stats
+        WHERE date >= date('now', '-7 days')
+    """)
+    rolling_7day_avg = round(cursor.fetchone()[0], 1)
+    
+    # Determine trend indicator
+    trend = "→ Stable"
+    if wow_change > 5:
+        trend = "↑ Improving"
+    elif wow_change < -5:
+        trend = "↓ Declining"
+    
+    # Calculate vs target
+    vs_target_pct = round((rolling_7day_avg / target) * 100, 1) if target > 0 else 0
+    
+    conn.close()
+    
+    return {
+        "wowChange": wow_change,
+        "momChange": mom_change,
+        "rolling7DayAvg": rolling_7day_avg,
+        "trend": trend,
+        "vsTargetPct": vs_target_pct,
+        "currentWeekTotal": current_week_total,
+        "previousWeekTotal": previous_week_total,
+        "currentMonthTotal": current_month_total,
+        "previousMonthTotal": previous_month_total
+    }
+
+def get_target_achievement(target: int = 500) -> Dict:
+    """Get target achievement metrics: days hitting target, streaks, projections"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    today = date.today()
+    current_month = today.strftime('%Y-%m')
+    
+    # Get all days this month with their totals
+    cursor.execute("""
+        SELECT date, erased
+        FROM daily_stats
+        WHERE date LIKE ?
+        ORDER BY date
+    """, (f"{current_month}%",))
+    daily_totals = cursor.fetchall()
+    
+    # Days hitting target this month
+    days_hitting_target = len([d for d in daily_totals if d[1] >= target])
+    total_days_this_month = len(daily_totals)
+    hit_rate_pct = round((days_hitting_target / total_days_this_month) * 100, 1) if total_days_this_month > 0 else 0
+    
+    # Calculate current streak
+    current_streak = 0
+    streak_type = "above"
+    for date_str, total in reversed(daily_totals):
+        if total >= target:
+            current_streak += 1
+        else:
+            if current_streak == 0:
+                # We're in a below-target streak
+                streak_type = "below"
+                current_streak = 1
+            else:
+                break
+    
+    # Get month total and calculate projection
+    month_total = sum(d[1] for d in daily_totals)
+    days_in_month = (today.replace(month=today.month % 12 + 1, day=1) - timedelta(days=1)).day if today.month < 12 else 31
+    current_day = today.day
+    
+    daily_avg = round(month_total / current_day, 1) if current_day > 0 else 0
+    projected_month_total = round(daily_avg * days_in_month)
+    
+    # Calculate gap to monthly target
+    monthly_target = target * days_in_month
+    days_remaining = days_in_month - current_day
+    gap_to_target = monthly_target - month_total
+    daily_needed = round(gap_to_target / days_remaining, 1) if days_remaining > 0 else 0
+    
+    conn.close()
+    
+    return {
+        "daysHittingTarget": days_hitting_target,
+        "totalDaysThisMonth": total_days_this_month,
+        "hitRatePct": hit_rate_pct,
+        "currentStreak": current_streak,
+        "streakType": streak_type,
+        "projectedMonthTotal": projected_month_total,
+        "monthTotal": month_total,
+        "monthlyTarget": monthly_target,
+        "gapToTarget": gap_to_target,
+        "daysRemaining": days_remaining,
+        "dailyNeeded": daily_needed,
+        "daysInMonth": days_in_month
     }
 
 # Initialize DB on import
