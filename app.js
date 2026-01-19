@@ -1975,7 +1975,7 @@
     const monthProgressPercent = Math.round((parseInt(monthTotal) / (parseInt(target) * currentDay)) * 100);
     
     // Build professional CSV report
-    const reportTitle = isYesterday ? 'WAREHOUSE ERASURE STATS REPORT (Yesterday)' : 'WAREHOUSE ERASURE STATS REPORT';
+    const reportTitle = isYesterday ? 'BH WAREHOUSE ERASURE STATS REPORT (Yesterday)' : 'BH WAREHOUSE ERASURE STATS REPORT';
     const reportSubtitle = isYesterday ? `Data for: ${dateStr}` : `Current Status - ${dateStr}`;
     
     const csv = [

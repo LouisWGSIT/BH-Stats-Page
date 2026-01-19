@@ -2,8 +2,10 @@
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.drawing.image import Image as ExcelImage
 from typing import List, Dict, Tuple
 from io import BytesIO
+import os
 
 def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
     """
@@ -32,9 +34,28 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
         bottom=Side(style='thin')
     )
     
+    # Check if logo exists
+    logo_path = os.path.join(os.path.dirname(__file__), 'assets', 'logo_gsit.png')
+    has_logo = os.path.exists(logo_path)
+    
     # Create sheets
-    for sheet_name, data in sheets_data.items():
+    for sheet_idx, (sheet_name, data) in enumerate(sheets_data.items()):
         ws = wb.create_sheet(title=sheet_name)
+        
+        # Add logo to first sheet (Summary/Executive Summary) in top left
+        if sheet_idx == 0 and has_logo:
+            try:
+                img = ExcelImage(logo_path)
+                # Resize logo to reasonable size (about 2 rows height)
+                img.width = 100
+                img.height = 50
+                # Place in cell A1
+                ws.add_image(img, 'A1')
+                # Add some space after logo
+                ws.row_dimensions[1].height = 40
+                ws.row_dimensions[2].height = 20
+            except Exception as e:
+                print(f"Warning: Could not add logo: {e}")
         
         # Write data
         for row_idx, row_data in enumerate(data, 1):
@@ -43,10 +64,13 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
                 cell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
                 cell.border = border
                 
-                # Style first row (headers)
-                if row_idx == 1:
+                # Style first row (headers) - skip if logo is present and it's row 1
+                if row_idx == 1 and not (sheet_idx == 0 and has_logo):
                     cell.fill = header_fill
                     cell.font = header_font
+                # Make the title row larger and bold if it's the first data row with logo
+                elif row_idx == 1 and sheet_idx == 0 and has_logo:
+                    cell.font = Font(bold=True, size=14, color="1F4E78")
                 # Style section headers (rows with single merged cell or key column)
                 elif isinstance(cell_value, str) and cell_value.isupper() and len(str(cell_value)) > 3:
                     # Check if it's a section header (all caps, longer than 3 chars)
@@ -68,7 +92,8 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
             ws.column_dimensions[col_letter].width = adjusted_width
         
         # Set row heights for headers
-        ws.row_dimensions[1].height = 25
+        if not (sheet_idx == 0 and has_logo):
+            ws.row_dimensions[1].height = 25
     
     # Save to BytesIO
     output = BytesIO()
