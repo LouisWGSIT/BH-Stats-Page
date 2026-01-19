@@ -291,18 +291,20 @@ def top_engineers(scope: str = 'today', device_type: str = None, limit: int = 3)
     conn.close()
     return [{"initials": r[0], "count": r[1]} for r in rows]
 
-def leaderboard(scope: str = 'today', limit: int = 6):
+def leaderboard(scope: str = 'today', limit: int = 6, date_str: str = None):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    if scope == 'month':
+    if date_str:
+        # Explicit date provided
+        key_col = 'date'
+        key_val = date_str
+    elif scope == 'month':
         key_col = 'month'
         key_val = get_today_str()[:7]
     elif scope == 'yesterday':
-        from datetime import timedelta
         key_col = 'date'
-        yesterday = datetime.now() - timedelta(days=1)
-        key_val = yesterday.strftime('%Y-%m-%d')
+        key_val = get_yesterday_str()  # Use helper that handles Monday->Friday
     else:  # today
         key_col = 'date'
         key_val = get_today_str()

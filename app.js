@@ -1857,7 +1857,8 @@
     let allEngineersRows = [];
     try {
       const apiScope = isYesterday ? 'yesterday' : 'today';
-      const res = await fetch(`/metrics/engineers/leaderboard?scope=${apiScope}&limit=50`);
+      const dateParam = isYesterday ? `&date=${targetDate.toISOString().split('T')[0]}` : '';
+      const res = await fetch(`/metrics/engineers/leaderboard?scope=${apiScope}&limit=50${dateParam}`);
       if (res.ok) {
         const data = await res.json();
         allEngineersRows = (data.items || []).map((eng, idx) => {

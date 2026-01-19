@@ -204,8 +204,8 @@ async def metrics_engineers_top(scope: str = "today", type: str | None = None, l
     return {"engineers": db.top_engineers(scope=scope, device_type=type, limit=limit)}
 
 @app.get("/metrics/engineers/leaderboard")
-async def metrics_engineers_leaderboard(scope: str = "today", limit: int = 6):
-    return {"items": db.leaderboard(scope=scope, limit=limit)}
+async def metrics_engineers_leaderboard(scope: str = "today", limit: int = 6, date: str = None):
+    return {"items": db.leaderboard(scope=scope, limit=limit, date_str=date)}
 
 # Admin: delete an ingested event by jobId (secured by API key)
 @app.post("/admin/delete-event")
