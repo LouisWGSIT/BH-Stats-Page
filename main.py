@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -7,6 +7,7 @@ from typing import Any, Dict
 from datetime import datetime
 import asyncio
 import database as db
+import excel_export
 
 app = FastAPI(title="Warehouse Stats Service")
 
@@ -395,6 +396,24 @@ async def get_all_engineers_kpis():
     """Get KPI metrics for all engineers"""
     kpis = db.get_all_engineers_kpis()
     return {"engineers": kpis}
+
+@app.post("/export/excel")
+async def export_excel(req: Request):
+    """Generate multi-sheet Excel export of warehouse stats"""
+    try:
+        body = await req.json()
+        sheets_data = body.get("sheetsData", {})
+        
+        excel_file = excel_export.create_excel_report(sheets_data)
+        
+        return StreamingResponse(
+            iter([excel_file.getvalue()]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=warehouse-stats.xlsx"}
+        )
+    except Exception as e:
+        print(f"Excel export error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")

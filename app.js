@@ -2018,7 +2018,7 @@
           csv.push(['TARGET ACHIEVEMENT METRICS']);
           csv.push(['Metric', 'Value', 'Details', 'Status']);
           csv.push(['Days Hitting Target', `${targetAchievement.daysHittingTarget} of ${targetAchievement.totalDaysThisMonth}`, `${targetAchievement.hitRatePct}% success rate`, targetAchievement.hitRatePct >= 80 ? 'Excellent' : targetAchievement.hitRatePct >= 60 ? 'Good' : 'Needs Improvement']);
-          csv.push(['Current Streak', `${targetAchievement.currentStreak} days ${targetAchievement.streakType} target`, '', targetAchievement.streakType === 'above' ? '🔥 Hot Streak!' : '⚠️ Below Target']);
+          csv.push(['Current Streak', `${targetAchievement.currentStreak} days ${targetAchievement.streakType} target`, '', targetAchievement.streakType === 'above' ? '[HOT STREAK]' : '[BELOW TARGET]']);
           csv.push(['Projected Month Total', targetAchievement.projectedMonthTotal, `Based on ${dailyAvg}/day average`, targetAchievement.projectedMonthTotal >= targetAchievement.monthlyTarget ? 'On Track' : 'Below Pace']);
           csv.push(['Gap to Monthly Target', Math.abs(targetAchievement.gapToTarget), targetAchievement.gapToTarget <= 0 ? 'Target Exceeded!' : `${targetAchievement.daysRemaining} days remaining`, '']);
           csv.push(['Daily Rate Needed', targetAchievement.gapToTarget > 0 ? targetAchievement.dailyNeeded : 0, `to hit ${targetAchievement.monthlyTarget} target`, targetAchievement.dailyNeeded <= target ? 'Achievable' : 'Challenging']);
@@ -2254,27 +2254,115 @@
     return csv.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
   }
 
-  async function downloadCSV() {
+  async function downloadExcel() {
     const dateScope = document.getElementById('dateSelector')?.value || 'today';
     const csv = await generateCSV();
-    const dateSuffix = dateScope === 'yesterday' ? 'yesterday' : new Date().toISOString().split('T')[0];
-    const filename = `warehouse-stats-${dateSuffix}.csv`;
     
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
+    // Parse CSV into rows
+    const rows = csv.split('\n').map(line => {
+      // Simple CSV parsing - handle quoted fields
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.replace(/^"|"$/g, ''));
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      if (current) {
+        result.push(current.replace(/^"|"$/g, ''));
+      }
+      return result;
+    }).filter(row => row.some(cell => cell));  // Remove empty rows
     
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
+    // Organize into sheets based on section headers
+    const sheets = {};
+    let currentSheet = 'Summary';
+    let currentSheetData = [];
     
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const sheetMappings = {
+      'EXECUTIVE SUMMARY': 'Executive Summary',
+      'PERFORMANCE TRENDS': 'Performance Trends',
+      'TARGET ACHIEVEMENT': 'Target Achievement',
+      'TOP 3 ENGINEERS': 'Top Engineers',
+      'ALL ENGINEERS': 'Engineer Details',
+      'ENGINEER DEVICE': 'Device Specialization',
+      'BREAKDOWN BY CATEGORY': 'Category Breakdown',
+      'TOP PERFORMERS': 'Category Leaders',
+      'HISTORICAL RECORDS': 'Records & Milestones',
+      'WEEKLY PERFORMANCE': 'Weekly Stats',
+      'SPEED CHALLENGE': 'Speed Challenges',
+      'CATEGORY SPECIALISTS': 'Category Specialists',
+      'CONSISTENCY': 'Consistency Kings',
+      'REPORT INFORMATION': 'Report Info',
+      'GLOSSARY': 'Glossary'
+    };
+    
+    rows.forEach(row => {
+      if (row.length > 0) {
+        const firstCell = row[0].trim();
+        
+        // Check if this is a section header
+        for (const [key, sheetName] of Object.entries(sheetMappings)) {
+          if (firstCell.includes(key)) {
+            // Save current sheet if it has data
+            if (currentSheetData.length > 0) {
+              sheets[currentSheet] = currentSheetData;
+            }
+            currentSheet = sheetName;
+            currentSheetData = [];
+            break;
+          }
+        }
+        
+        currentSheetData.push(row);
+      }
+    });
+    
+    // Save last sheet
+    if (currentSheetData.length > 0) {
+      sheets[currentSheet] = currentSheetData;
+    }
+    
+    // Send to backend for Excel generation
+    try {
+      const response = await fetch('/export/excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetsData: sheets })
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        const dateSuffix = dateScope === 'yesterday' ? 'yesterday' : new Date().toISOString().split('T')[0];
+        link.setAttribute('href', url);
+        link.setAttribute('download', `warehouse-stats-${dateSuffix}.xlsx`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        console.error('Failed to generate Excel file');
+        alert('Failed to generate Excel file. Please try again.');
+      }
+    } catch (err) {
+      console.error('Excel export error:', err);
+      alert('Error generating Excel file');
+    }
   }
 
   // Add button listener
-  document.getElementById('downloadBtn')?.addEventListener('click', downloadCSV);
+  document.getElementById('downloadBtn')?.addEventListener('click', downloadExcel);
 
   // ==================== INITIALIZATION ====================
   // Kick off refresh loops (after all functions are defined)
