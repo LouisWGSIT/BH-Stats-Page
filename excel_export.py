@@ -71,14 +71,14 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
                 
                 # Add colored background behind logo to make it visible
                 logo_bg_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-                for row in range(1, 4):  # Rows 1-3
-                    for col in range(8, 11):  # Columns H-J
+                for row in range(1, 5):  # Rows 1-4
+                    for col in range(8, 13):  # Columns H-L
                         cell = ws.cell(row=row, column=col)
                         cell.fill = logo_bg_fill
-                
+
                 # Add some space for logo
-                ws.row_dimensions[1].height = 60
-                ws.row_dimensions[2].height = 25
+                ws.row_dimensions[1].height = 65
+                ws.row_dimensions[2].height = 28
                 if not first_sheet_processed:
                     first_sheet_processed = True
             except Exception as e:
