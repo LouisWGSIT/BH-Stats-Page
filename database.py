@@ -792,11 +792,11 @@ def get_performance_trends(target: int = 500) -> Dict:
     rolling_7day_avg = round(cursor.fetchone()[0], 1)
     
     # Determine trend indicator
-    trend = "→ Stable"
+    trend = "STABLE"
     if wow_change > 5:
-        trend = "↑ Improving"
+        trend = "IMPROVING"
     elif wow_change < -5:
-        trend = "↓ Declining"
+        trend = "DECLINING"
     
     # Calculate vs target
     vs_target_pct = round((rolling_7day_avg / target) * 100, 1) if target > 0 else 0
@@ -915,14 +915,14 @@ def get_individual_engineer_kpis(initials: str) -> Dict:
     prev_7day = round(cursor.fetchone()[0], 1)
     
     # Calculate trend
-    trend = "→ Stable"
+    trend = "STABLE"
     trend_pct = 0
     if prev_7day > 0:
         trend_pct = round(((avg_7day - prev_7day) / prev_7day) * 100, 1)
         if trend_pct > 10:
-            trend = "↑ Improving"
+            trend = "IMPROVING"
         elif trend_pct < -10:
-            trend = "↓ Declining"
+            trend = "DECLINING"
     
     # Get personal best (highest single day)
     cursor.execute("""

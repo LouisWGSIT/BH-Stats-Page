@@ -2241,7 +2241,7 @@
     csv.push(['Exceeding Target', 'Engineer has already completed more than daily target']);
     csv.push(['7-Day Avg', 'Average daily erasures over the last 7 days']);
     csv.push(['30-Day Avg', 'Average daily erasures over the last 30 days (reflects device mix)']);
-    csv.push(['Trend', '↑ Improving (>10% increase) | ↓ Declining (>10% decrease) | → Stable']);
+    csv.push(['Trend', 'IMPROVING (>10% increase) | DECLINING (>10% decrease) | STABLE']);
     csv.push(['Personal Best', 'Highest single-day erasure count achieved']);
     csv.push(['Consistency Score', 'Standard deviation of daily output (lower = more predictable)']);
     csv.push(['Days Active', 'Number of days with recorded activity this month']);
