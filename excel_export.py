@@ -2,10 +2,17 @@
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.drawing.image import Image as ExcelImage
 from typing import List, Dict, Tuple
 from io import BytesIO
 import os
+
+# Try to import image support
+try:
+    from openpyxl.drawing.image import Image as ExcelImage
+    IMAGE_SUPPORT = True
+except ImportError:
+    IMAGE_SUPPORT = False
+    print("Warning: Image support not available in openpyxl")
 
 def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
     """
@@ -36,7 +43,12 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
     
     # Check if logo exists
     logo_path = os.path.join(os.path.dirname(__file__), 'assets', 'logo_gsit.png')
-    has_logo = os.path.exists(logo_path)
+    has_logo = IMAGE_SUPPORT and os.path.exists(logo_path)
+    
+    if not IMAGE_SUPPORT:
+        print("Warning: PIL/Pillow not installed - images disabled")
+    if not os.path.exists(logo_path):
+        print(f"Warning: Logo file not found at {logo_path}")
     
     # Create sheets
     first_sheet_processed = False
@@ -48,19 +60,23 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
         
         if add_logo and has_logo:
             try:
+                print(f"Adding logo to sheet: {sheet_name}")
                 img = ExcelImage(logo_path)
                 # Resize logo to reasonable size
                 img.width = 120
                 img.height = 60
                 # Place in top right corner (column E or F)
                 ws.add_image(img, 'E1')
+                print(f"Logo added successfully to {sheet_name}")
                 # Add some space for logo
                 ws.row_dimensions[1].height = 50
                 ws.row_dimensions[2].height = 25
                 if not first_sheet_processed:
                     first_sheet_processed = True
             except Exception as e:
-                print(f"Warning: Could not add logo: {e}")
+                print(f"Error adding logo to {sheet_name}: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Write data
         start_row = 1
