@@ -4,15 +4,6 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from typing import List, Dict, Tuple
 from io import BytesIO
-import os
-
-# Try to import image support
-try:
-    from openpyxl.drawing.image import Image as ExcelImage
-    IMAGE_SUPPORT = True
-except ImportError:
-    IMAGE_SUPPORT = False
-    print("Warning: Image support not available in openpyxl")
 
 def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
     """
@@ -41,50 +32,9 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
         bottom=Side(style='thin')
     )
     
-    # Check if logo exists
-    logo_path = os.path.join(os.path.dirname(__file__), 'assets', 'logo_gsit.png')
-    has_logo = IMAGE_SUPPORT and os.path.exists(logo_path)
-    
-    if not IMAGE_SUPPORT:
-        print("Warning: PIL/Pillow not installed - images disabled")
-    if not os.path.exists(logo_path):
-        print(f"Warning: Logo file not found at {logo_path}")
-    
     # Create sheets
-    first_sheet_processed = False
     for sheet_idx, (sheet_name, data) in enumerate(sheets_data.items()):
         ws = wb.create_sheet(title=sheet_name)
-        
-        # Add logo to first sheet and Executive Summary/Summary sheet
-        add_logo = (not first_sheet_processed) or ('Summary' in sheet_name or 'SUMMARY' in sheet_name)
-        
-        if add_logo and has_logo:
-            try:
-                print(f"Adding logo to sheet: {sheet_name}")
-                img = ExcelImage(logo_path)
-                # Resize logo to compact size
-                img.width = 100
-                img.height = 50
-                # Place at E1 with compact background
-                ws.add_image(img, 'E1')
-                print(f"Logo added successfully to {sheet_name}")
-                
-                # Add colored background behind logo to make it visible
-                logo_bg_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-                for row in range(1, 3):  # Rows 1-2 only (compact)
-                    for col in range(5, 8):  # Columns E-G
-                        cell = ws.cell(row=row, column=col)
-                        cell.fill = logo_bg_fill
-
-                # Set row heights to properly accommodate logo
-                ws.row_dimensions[1].height = 30
-                ws.row_dimensions[2].height = 30
-                if not first_sheet_processed:
-                    first_sheet_processed = True
-            except Exception as e:
-                print(f"Error adding logo to {sheet_name}: {e}")
-                import traceback
-                traceback.print_exc()
         
         # Write data
         start_row = 1
