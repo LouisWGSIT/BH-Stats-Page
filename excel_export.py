@@ -62,23 +62,22 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
             try:
                 print(f"Adding logo to sheet: {sheet_name}")
                 img = ExcelImage(logo_path)
-                # Resize logo to reasonable size
-                img.width = 140
-                img.height = 80
-                # Place in far right corner (column N) to avoid content overlap
-                ws.add_image(img, 'N1')
+                # Resize logo to compact size
+                img.width = 100
+                img.height = 50
+                # Place at E1 with compact background
+                ws.add_image(img, 'E1')
                 print(f"Logo added successfully to {sheet_name}")
                 
                 # Add colored background behind logo to make it visible
                 logo_bg_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-                for row in range(1, 5):  # Rows 1-4
-                    for col in range(14, 17):  # Columns N-P
+                for row in range(1, 3):  # Rows 1-2 only (compact)
+                    for col in range(5, 8):  # Columns E-G
                         cell = ws.cell(row=row, column=col)
                         cell.fill = logo_bg_fill
 
                 # Add some space for logo
-                ws.row_dimensions[1].height = 50
-                ws.row_dimensions[2].height = 25
+                ws.row_dimensions[1].height = 40
                 if not first_sheet_processed:
                     first_sheet_processed = True
             except Exception as e:
