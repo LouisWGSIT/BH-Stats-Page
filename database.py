@@ -1007,5 +1007,93 @@ def get_all_engineers_kpis() -> List[Dict]:
     
     return [get_individual_engineer_kpis(eng) for eng in engineers]
 
+# ===== Power BI Integration Functions =====
+def get_stats_range(start_date: str, end_date: str) -> List[Dict]:
+    """Get daily stats for a date range in Power BI-friendly format"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT date, booked_in, erased, qa
+        FROM daily_stats
+        WHERE date >= ? AND date <= ?
+        ORDER BY date
+    """, (start_date, end_date))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [
+        {
+            "date": row[0],
+            "booked_in": row[1],
+            "erased": row[2],
+            "qa": row[3]
+        }
+        for row in rows
+    ]
+
+def get_erasure_events_range(start_date: str, end_date: str, device_type: str = None) -> List[Dict]:
+    """Get detailed erasure events for a date range in Power BI-friendly format"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    if device_type:
+        cursor.execute("""
+            SELECT ts, date, month, event, device_type, initials, duration_sec, error_type, job_id
+            FROM erasures
+            WHERE date >= ? AND date <= ? AND device_type = ?
+            ORDER BY ts DESC
+        """, (start_date, end_date, device_type.lower()))
+    else:
+        cursor.execute("""
+            SELECT ts, date, month, event, device_type, initials, duration_sec, error_type, job_id
+            FROM erasures
+            WHERE date >= ? AND date <= ?
+            ORDER BY ts DESC
+        """, (start_date, end_date))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [
+        {
+            "timestamp": row[0],
+            "date": row[1],
+            "month": row[2],
+            "event": row[3],
+            "device_type": row[4],
+            "initials": row[5],
+            "duration_seconds": row[6],
+            "error_type": row[7],
+            "job_id": row[8]
+        }
+        for row in rows
+    ]
+
+def get_engineer_stats_range(start_date: str, end_date: str) -> List[Dict]:
+    """Get engineer stats for a date range in Power BI-friendly format"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT date, initials, count
+        FROM engineer_stats
+        WHERE date >= ? AND date <= ?
+        ORDER BY date DESC, count DESC
+    """, (start_date, end_date))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [
+        {
+            "date": row[0],
+            "initials": row[1],
+            "count": row[2]
+        }
+        for row in rows
+    ]
+
 # Initialize DB on import
 init_db()

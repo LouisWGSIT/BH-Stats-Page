@@ -91,6 +91,62 @@ async def get_metrics():
 async def get_yesterday_metrics():
     return db.get_daily_stats(db.get_yesterday_str())
 
+# ===== Power BI Integration Endpoints =====
+@app.get("/api/powerbi/daily-stats")
+async def powerbi_daily_stats(start_date: str = None, end_date: str = None):
+    """
+    Power BI endpoint: Returns daily stats in a table format
+    Parameters:
+    - start_date: YYYY-MM-DD (optional, defaults to 30 days ago)
+    - end_date: YYYY-MM-DD (optional, defaults to today)
+    """
+    from datetime import datetime, timedelta
+    
+    if not end_date:
+        end_date = datetime.now().date().isoformat()
+    if not start_date:
+        start_date = (datetime.now().date() - timedelta(days=30)).isoformat()
+    
+    data = db.get_stats_range(start_date, end_date)
+    return {"data": data}
+
+@app.get("/api/powerbi/erasure-events")
+async def powerbi_erasure_events(start_date: str = None, end_date: str = None, device_type: str = None):
+    """
+    Power BI endpoint: Returns detailed erasure events
+    Parameters:
+    - start_date: YYYY-MM-DD (optional)
+    - end_date: YYYY-MM-DD (optional)
+    - device_type: filter by device type (optional)
+    """
+    from datetime import datetime, timedelta
+    
+    if not end_date:
+        end_date = datetime.now().date().isoformat()
+    if not start_date:
+        start_date = (datetime.now().date() - timedelta(days=30)).isoformat()
+    
+    events = db.get_erasure_events_range(start_date, end_date, device_type)
+    return {"data": events}
+
+@app.get("/api/powerbi/engineer-stats")
+async def powerbi_engineer_stats(start_date: str = None, end_date: str = None):
+    """
+    Power BI endpoint: Returns engineer statistics
+    Parameters:
+    - start_date: YYYY-MM-DD (optional)
+    - end_date: YYYY-MM-DD (optional)
+    """
+    from datetime import datetime, timedelta
+    
+    if not end_date:
+        end_date = datetime.now().date().isoformat()
+    if not start_date:
+        start_date = (datetime.now().date() - timedelta(days=30)).isoformat()
+    
+    stats = db.get_engineer_stats_range(start_date, end_date)
+    return {"data": stats}
+
 # New: detailed erasure webhook for richer dashboard (accept GET/POST, robust parsing)
 @app.api_route("/hooks/erasure-detail", methods=["GET", "POST"])
 async def erasure_detail(req: Request):
