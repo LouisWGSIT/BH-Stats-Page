@@ -1,3 +1,41 @@
+/* --- Weekly Category Trends Card Tweaks --- */
+.panel[data-panel="weekly-trends"] {
+  padding-top: 18px;
+}
+
+.panel[data-panel="weekly-trends"] h2 {
+  margin-bottom: 6px;
+}
+
+#chartWeeklyCategoryTrends {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 8px;
+  margin-top: 2px;
+}
+.chart-legend span {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  padding-right: 6px;
+}
+.chart-legend .legend-color {
+  width: 18px;
+  height: 8px;
+  border-radius: 4px;
+  margin-right: 6px;
+  display: inline-block;
+}
 :root {
   --bg: #0a2a4a;
   --text: #ffffff;
