@@ -2077,29 +2077,31 @@
       }
     }) : [['No data available']]));
     
-    csv.push([]);
-    
-    // Add device breakdown for each engineer (only for today)
-    if (!isYesterday && Object.keys(engineerKPIs).length > 0) {
+    // Device Specialization sheet if there is data
+    let hasDeviceRows = false;
+    let deviceRows = [];
+    Object.values(engineerKPIs).forEach(kpi => {
+      if (kpi.deviceBreakdown && kpi.deviceBreakdown.length > 0) {
+        kpi.deviceBreakdown.forEach((device, idx) => {
+          const deviceName = device.deviceType === 'laptops_desktops' ? 'Laptops/Desktops' :
+                            device.deviceType === 'servers' ? 'Servers' :
+                            device.deviceType === 'macs' ? 'Macs' :
+                            device.deviceType === 'mobiles' ? 'Mobiles' :
+                            device.deviceType;
+          const note = idx === 0 ? 'Primary focus' : idx === 1 ? 'Secondary' : '';
+          deviceRows.push([kpi.initials, deviceName, device.total, device.avgPerDay, note]);
+          hasDeviceRows = true;
+        });
+      }
+    });
+    if (hasDeviceRows) {
       csv.push(['ENGINEER DEVICE SPECIALIZATION (Last 30 Days)']);
       csv.push(['Engineer', 'Device Type', 'Total Count', 'Avg Per Day', 'Notes']);
-      
-      Object.values(engineerKPIs).forEach(kpi => {
-        if (kpi.deviceBreakdown && kpi.deviceBreakdown.length > 0) {
-          kpi.deviceBreakdown.forEach((device, idx) => {
-            const deviceName = device.deviceType === 'laptops_desktops' ? 'Laptops/Desktops' :
-                              device.deviceType === 'servers' ? 'Servers' :
-                              device.deviceType === 'macs' ? 'Macs' :
-                              device.deviceType === 'mobiles' ? 'Mobiles' :
-                              device.deviceType;
-            const note = idx === 0 ? 'Primary focus' : idx === 1 ? 'Secondary' : '';
-            csv.push([kpi.initials, deviceName, device.total, device.avgPerDay, note]);
-          });
-        }
-      });
+      csv.push(...deviceRows);
       csv.push([]);
     }
-    
+
+    // Category Breakdown sheet if there is data
     if (categoryRows.length > 0) {
       csv.push(['BREAKDOWN BY CATEGORY']);
       csv.push(['Category', 'Count']);
@@ -2107,6 +2109,7 @@
       csv.push([]);
     }
 
+    // Category Leaders sheet if there is data
     if (categoryTopPerformers.length > 0) {
       csv.push(['TOP PERFORMERS BY CATEGORY']);
       csv.push(['Category', 'Engineer', 'Count']);
