@@ -1,10 +1,14 @@
 /* --- Weekly Category Trends Card Tweaks --- */
 .panel[data-panel="weekly-trends"] {
-  padding-top: -3;
+  padding-top: 0;
 }
 
 .panel[data-panel="weekly-trends"] h2 {
-  margin-bottom: -10;
+  margin-bottom: -5px;
+}
+
+.chart-legend {
+  margin-top: -6px;
 }
 
 #chartWeeklyCategoryTrends {
