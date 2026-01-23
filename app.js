@@ -1866,34 +1866,34 @@
     // Fetch full engineer list from API
     let allEngineersRows = [];
     let engineerKPIs = {};
-    
     try {
       const apiScope = isYesterday ? 'yesterday' : 'today';
       const dateParam = isYesterday ? `&date=${targetDate.toISOString().split('T')[0]}` : '';
       const res = await fetch(`/metrics/engineers/leaderboard?scope=${apiScope}&limit=50${dateParam}`);
       if (res.ok) {
         const data = await res.json();
-        
-        // Fetch KPI data for all engineers (only for today)
-        if (!isYesterday) {
-          try {
-            const kpiRes = await fetch('/metrics/engineers/kpis/all');
-            if (kpiRes.ok) {
-              const kpiData = await kpiRes.json();
-              engineerKPIs = (kpiData.engineers || []).reduce((acc, kpi) => {
-                acc[kpi.initials] = kpi;
-                return acc;
-              }, {});
-            }
-          } catch (err) {
-            console.error('Failed to fetch engineer KPIs:', err);
+        // Fetch KPI data for all engineers (try for both today and yesterday)
+        try {
+          // Try to fetch KPIs for the target date if supported, fallback to all
+          let kpiUrl = '/metrics/engineers/kpis/all';
+          if (isYesterday) {
+            // If backend supports date param for KPIs, use it (otherwise fallback)
+            kpiUrl = `/metrics/engineers/kpis/all?date=${targetDate.toISOString().split('T')[0]}`;
           }
+          const kpiRes = await fetch(kpiUrl);
+          if (kpiRes.ok) {
+            const kpiData = await kpiRes.json();
+            engineerKPIs = (kpiData.engineers || []).reduce((acc, kpi) => {
+              acc[kpi.initials] = kpi;
+              return acc;
+            }, {});
+          }
+        } catch (err) {
+          console.error('Failed to fetch engineer KPIs:', err);
         }
-        
         allEngineersRows = (data.items || []).map((eng, idx) => {
           const erasures = eng.erasures || 0;
           const avgPerHour = (erasures / SHIFT_HOURS).toFixed(1);
-          
           // For yesterday, show absolute time instead of "x ago"
           let lastActiveDisplay;
           if (isYesterday && eng.lastActive) {
@@ -1902,7 +1902,6 @@
           } else {
             lastActiveDisplay = formatTimeAgo(eng.lastActive);
           }
-          
           const baseRow = [
             idx + 1,
             eng.initials || '',
@@ -1910,9 +1909,8 @@
             lastActiveDisplay,
             avgPerHour
           ];
-          
-          // Add KPI data if available (today only)
-          if (!isYesterday && engineerKPIs[eng.initials]) {
+          // Add KPI data if available (now for both today and yesterday)
+          if (engineerKPIs[eng.initials]) {
             const kpi = engineerKPIs[eng.initials];
             return [
               ...baseRow,
@@ -1924,7 +1922,6 @@
               kpi.daysActiveMonth
             ];
           }
-          
           return baseRow;
         });
       }
@@ -2066,30 +2063,19 @@
 
     csv.push([isYesterday ? 'ALL ENGINEERS (YESTERDAY)' : 'ALL ENGINEERS - DETAILED LEADERBOARD WITH KPIs']);
     
-    // Different headers for today (with KPIs) vs yesterday
-    if (!isYesterday) {
-      csv.push(['Rank', 'Engineer', 'Today Total', 'Last Active', 'Per Hour', '% Target', '7-Day Avg', '30-Day Avg', 'Trend', 'Personal Best', 'Consistency', 'Days Active']);
-      csv.push(...(allEngineersRows.length > 0 ? allEngineersRows.map(row => {
-        const erasures = parseInt(row[2]);
-        const pct = parseInt(target) > 0 ? Math.round((erasures / parseInt(target)) * 100) : 0;
-        
-        // If row has KPI data (length > 5), include it
-        if (row.length > 5) {
-          return [row[0], row[1], row[2], row[3], row[4], `${pct}%`, row[5], row[6], row[7], row[8], row[9], row[10]];
-        } else {
-          // Fallback if no KPI data
-          return [row[0], row[1], row[2], row[3], row[4], `${pct}%`, '-', '-', '-', '-', '-', '-'];
-        }
-      }) : [['No data available']]));
-    } else {
-      // Yesterday export - simpler format without KPIs
-      csv.push(['Rank', 'Engineer', 'Total Erasures', 'Finished At', 'Per Hour', '% of Daily Target']);
-      csv.push(...(allEngineersRows.length > 0 ? allEngineersRows.map(row => {
-        const erasures = parseInt(row[2]);
-        const pct = parseInt(target) > 0 ? Math.round((erasures / parseInt(target)) * 100) : 0;
-        return [row[0], row[1], row[2], row[3], row[4], `${pct}%`];
-      }) : [['No data available']]));
-    }
+    // Use the same headers and row structure for both today and yesterday if KPIs are available
+    csv.push(['Rank', 'Engineer', isYesterday ? 'Total Erasures' : 'Today Total', 'Last Active', 'Per Hour', '% Target', '7-Day Avg', '30-Day Avg', 'Trend', 'Personal Best', 'Consistency', 'Days Active']);
+    csv.push(...(allEngineersRows.length > 0 ? allEngineersRows.map(row => {
+      const erasures = parseInt(row[2]);
+      const pct = parseInt(target) > 0 ? Math.round((erasures / parseInt(target)) * 100) : 0;
+      // If row has KPI data (length > 5), include it
+      if (row.length > 5) {
+        return [row[0], row[1], row[2], row[3], row[4], `${pct}%`, row[5], row[6], row[7], row[8], row[9], row[10]];
+      } else {
+        // Fallback if no KPI data
+        return [row[0], row[1], row[2], row[3], row[4], `${pct}%`, '-', '-', '-', '-', '-', '-'];
+      }
+    }) : [['No data available']]));
     
     csv.push([]);
     
