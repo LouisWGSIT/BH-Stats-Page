@@ -46,7 +46,14 @@ async def check_daily_reset():
 
 @app.on_event("startup")
 async def startup_event():
-    """Start the background reset task"""
+    """Start the background reset task and sync engineer stats"""
+    print("[Startup] Syncing engineer stats from erasures table...")
+    try:
+        synced = db.sync_engineer_stats_from_erasures()
+        print(f"[Startup] Engineer stats sync complete: {synced} records")
+    except Exception as e:
+        print(f"[Startup] Error syncing engineer stats: {e}")
+    
     asyncio.create_task(check_daily_reset())
 
 @app.post("/hooks/erasure")

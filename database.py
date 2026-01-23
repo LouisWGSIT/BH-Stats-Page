@@ -1095,5 +1095,64 @@ def get_engineer_stats_range(start_date: str, end_date: str) -> List[Dict]:
         for row in rows
     ]
 
+def sync_engineer_stats_from_erasures(date_str: str = None):
+    """
+    Populate engineer_stats table from erasures table.
+    If date_str is provided, sync only that date.
+    If None, sync all dates from the last 30 days.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    if date_str:
+        # Just one specific date
+        cursor.execute("""
+            SELECT DISTINCT initials 
+            FROM erasures 
+            WHERE date = ? AND initials IS NOT NULL
+        """, (date_str,))
+        records = [(date_str, row[0]) for row in cursor.fetchall()]
+    else:
+        # All recent dates with data (last 30 days)
+        cursor.execute("""
+            SELECT DISTINCT date, initials 
+            FROM erasures 
+            WHERE initials IS NOT NULL 
+            AND date >= date('now', '-30 days')
+        """)
+        records = cursor.fetchall()
+    
+    synced_count = 0
+    for record in records:
+        if date_str:
+            target_date = record[0]
+            initials = record[1]
+        else:
+            target_date, initials = record
+        
+        # Count successful erasures for this date+engineer
+        cursor.execute("""
+            SELECT COUNT(1) 
+            FROM erasures 
+            WHERE date = ? AND initials = ? AND event = 'success'
+        """, (target_date, initials))
+        
+        count = cursor.fetchone()[0]
+        
+        # Insert or replace in engineer_stats
+        cursor.execute("""
+            INSERT OR REPLACE INTO engineer_stats (date, initials, count)
+            VALUES (?, ?, ?)
+        """, (target_date, initials, count))
+        synced_count += 1
+    
+    conn.commit()
+    conn.close()
+    
+    if synced_count > 0:
+        print(f"[DB Sync] Synced {synced_count} engineer_stats records")
+    
+    return synced_count
+
 # Initialize DB on import
 init_db()
