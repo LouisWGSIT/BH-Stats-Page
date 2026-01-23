@@ -1581,7 +1581,7 @@
     if (targetEl) targetEl.textContent = target;
   }
 
-  function createMonthlyMomentumChart() {
+  async function createMonthlyMomentumChart() {
     const canvas = document.getElementById('chartMonthlyMomentum');
     if (!canvas) return;
 
@@ -1589,8 +1589,18 @@
       analyticsCharts.monthlyMomentum.destroy();
     }
 
-    // Mock weekly data - replace with real API
-    const weeklyData = [180, 245, 310, 380];
+    // Fetch real monthly data from API
+    let weeklyData = [0, 0, 0, 0];
+    try {
+      const response = await fetch('/metrics/monthly-momentum');
+      const data = await response.json();
+      if (data && data.weeklyTotals) {
+        weeklyData = data.weeklyTotals;
+      }
+    } catch (error) {
+      console.warn('Failed to fetch monthly momentum:', error);
+      weeklyData = [180, 245, 310, 380]; // Fallback mock data
+    }
     
     const ctx = canvas.getContext('2d');
     analyticsCharts.monthlyMomentum = new Chart(ctx, {
