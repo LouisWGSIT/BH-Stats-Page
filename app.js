@@ -1258,7 +1258,8 @@
             display: true,
             text: 'Last 7 Days',
             color: cfg.theme.text,
-            font: { size: 14 }
+            font: { size: 14 },
+            padding: { top: -8, bottom: 10 }
           }
         },
         scales: {
