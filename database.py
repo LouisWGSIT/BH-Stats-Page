@@ -1,3 +1,45 @@
+# --- SYNC FUNCTION: Populate engineer_stats_type from erasures ---
+def sync_engineer_stats_type_from_erasures(date_str: str = None):
+    """Populate engineer_stats_type from erasures for a date (or all recent dates if None)"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    if date_str:
+        # Just one date
+        cursor.execute("""
+            SELECT DISTINCT initials, device_type FROM erasures WHERE date = ? AND initials IS NOT NULL AND device_type IS NOT NULL
+        """, (date_str,))
+        records = [(date_str, row[0], row[1]) for row in cursor.fetchall()]
+    else:
+        # All recent dates with data (last 30 days)
+        cursor.execute("""
+            SELECT DISTINCT date, initials, device_type FROM erasures 
+            WHERE initials IS NOT NULL AND device_type IS NOT NULL AND date >= date('now', '-30 days')
+        """)
+        records = cursor.fetchall()
+    synced_count = 0
+    for record in records:
+        if date_str:
+            target_date, initials, device_type = record
+        else:
+            target_date, initials, device_type = record
+        # Count successful erasures for this date+engineer+device_type
+        cursor.execute("""
+            SELECT COUNT(1)
+            FROM erasures
+            WHERE date = ? AND initials = ? AND device_type = ? AND event = 'success'
+        """, (target_date, initials, device_type))
+        count = cursor.fetchone()[0]
+        # Insert or replace in engineer_stats_type
+        cursor.execute("""
+            INSERT OR REPLACE INTO engineer_stats_type (date, device_type, initials, count)
+            VALUES (?, ?, ?, ?)
+        """, (target_date, device_type, initials, count))
+        synced_count += 1
+    conn.commit()
+    conn.close()
+    if synced_count > 0:
+        print(f"[DB Sync] Synced {synced_count} engineer_stats_type records")
+    return synced_count
 import sqlite3
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Tuple

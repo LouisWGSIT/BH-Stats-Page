@@ -53,7 +53,13 @@ async def startup_event():
         print(f"[Startup] Engineer stats sync complete: {synced} records")
     except Exception as e:
         print(f"[Startup] Error syncing engineer stats: {e}")
-    
+
+    try:
+        synced_type = db.sync_engineer_stats_type_from_erasures()
+        print(f"[Startup] Engineer stats by device type sync complete: {synced_type} records")
+    except Exception as e:
+        print(f"[Startup] Error syncing engineer stats by device type: {e}")
+
     asyncio.create_task(check_daily_reset())
 
 @app.post("/hooks/erasure")
