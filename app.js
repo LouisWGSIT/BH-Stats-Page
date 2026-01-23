@@ -509,7 +509,7 @@
           <span class="speed-name">${row.initials || '—'}</span>
           <div class="consistency-stats">
             <span class="speed-count">${row.erasures || 0} erasures</span>
-            <span class="gap">avg pace every ${row.avgGapMinutes || 0}m • consistency ${row.consistencyScore || 0}</span>
+            <span class="gap">avg time between actions: ${row.avgGapMinutes || 0} min • consistency (lower is steadier): ${row.consistencyScore || 0}</span>
           </div>
         `;
         list.appendChild(li);
