@@ -1,27 +1,28 @@
 /* Tracker List (for Target Tracker & Monthly Progress Tracker) */
 .tracker-list {
   list-style: none;
-  margin: 0 0 4px 0;
-  padding: 0 8px;
-  font-size: 12px;
+  margin: 0 0 2px 0;
+  padding: 0 4px;
+  font-size: 11px;
   color: var(--muted);
   display: flex;
   flex-direction: row;
-  gap: 16px;
+  gap: 10px;
   justify-content: center;
 }
 .tracker-list li {
-  padding: 0 4px;
-  border-radius: 6px;
-  background: rgba(255,255,255,0.04);
-  font-weight: 600;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.03);
+  font-weight: 500;
 }
 
 /* Sparkline canvas tweaks */
 #trackerSparkline, #monthSparkline {
   display: block;
-  margin: 0 auto 2px auto;
-  max-width: 120px;
+  margin: 0 auto 0 auto;
+  max-width: 100px;
+  height: 24px !important;
   background: transparent;
 }
 /* Month Progress Bar */
@@ -1470,8 +1471,8 @@ body {
 .target-tracker {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 4px;
+  padding: 4px 6px 8px 6px;
 }
 
 .tracker-status {
@@ -1496,19 +1497,21 @@ body {
 
 .tracker-bar {
   width: 100%;
-  height: 24px;
+  height: 12px;
   background: rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 2px;
+  margin-bottom: 2px;
 }
 
 .tracker-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--ring-secondary), var(--ring-primary));
-  border-radius: 16px;
+  background: linear-gradient(90deg, var(--ring-secondary), var(--ring-primary), rgba(140,240,74,0));
+  border-radius: 8px;
   transition: width 0.5s ease;
-  box-shadow: 0 0 12px rgba(140, 240, 74, 0.4);
+  box-shadow: 0 0 8px rgba(140, 240, 74, 0.25);
 }
 
 .tracker-labels {
@@ -1517,6 +1520,14 @@ body {
   font-size: 11px;
   color: var(--muted);
   padding: 0 8px;
+}
+
+/* Divider for stat list and bar */
+.tracker-divider {
+  width: 80%;
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin: 2px auto 2px auto;
 }
 
 /* Responsive for smaller screens - keep 3 columns for TV */

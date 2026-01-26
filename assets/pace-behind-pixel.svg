@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" shape-rendering="crispEdges">
+  <!-- Pixel art warning triangle for Behind Pace -->
+  <rect x="0" y="0" width="18" height="18" fill="none"/>
+  <polygon points="9,4 15,14 3,14" fill="#ff1ea3" stroke="#ffeb3b" stroke-width="2"/>
+  <rect x="8" y="8" width="2" height="4" fill="#ffeb3b"/>
+  <rect x="8" y="13" width="2" height="2" fill="#ffeb3b"/>
+</svg>

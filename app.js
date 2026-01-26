@@ -1641,14 +1641,25 @@
     const target = parseInt(cfg.targets.daily) || 500;
     const percentage = target > 0 ? Math.min((todayTotal / target) * 100, 100) : 0;
 
-    // Pace indicator
-    const now = new Date();
-    const hoursPassed = Math.max(1, now.getHours());
-    const requiredPace = target / 16; // Assume 16-hour workday
-    const currentPace = todayTotal / hoursPassed;
-    const paceStatus = currentPace >= requiredPace ? '✅ On Pace' : '⚠️ Behind Pace';
-    const statusEl = document.getElementById('trackerStatus');
-    if (statusEl) statusEl.textContent = paceStatus;
+    // Pace indicator (pixel art icon)
+    if (statusEl) {
+      statusEl.innerHTML = '';
+      const icon = document.createElement('img');
+      icon.className = 'pixel pace-icon';
+      icon.width = 18;
+      icon.height = 18;
+      if (currentPace >= requiredPace) {
+        icon.src = 'assets/pace-on-pixel.svg';
+        icon.alt = 'On Pace';
+        statusEl.appendChild(icon);
+        statusEl.appendChild(document.createTextNode(' On Pace'));
+      } else {
+        icon.src = 'assets/pace-behind-pixel.svg';
+        icon.alt = 'Behind Pace';
+        statusEl.appendChild(icon);
+        statusEl.appendChild(document.createTextNode(' Behind Pace'));
+      }
+    }
 
     // Projected end
     const projectedEnd = Math.round(currentPace * 16);
