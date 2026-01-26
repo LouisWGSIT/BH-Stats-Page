@@ -1,0 +1,41 @@
+/* Pixel art icons for Today's Highlights */
+.pixel-art-icon {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+  display: block;
+  margin: 0 auto 4px auto;
+}
+
+/* Horizontal layout for Today's Highlights */
+.todays-highlights-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 18px;
+  padding: 0 8px 8px 8px;
+}
+
+.todays-highlights-row .record-item {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 110px;
+  box-sizing: border-box;
+}
+
+.todays-highlights-row .record-label {
+  margin-bottom: 2px;
+}
+
+.todays-highlights-row .record-value {
+  margin: 2px 0 0 0;
+}
+
+.todays-highlights-row .record-date {
+  margin-top: 2px;
+}

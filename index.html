@@ -8,6 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="icon" type="image/png" href="assets/logo_gsit.png" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="assets/todays_highlights.css" />
 </head>
 <body>
   <div id="app">
@@ -309,18 +310,21 @@
           </div>
           <div class="panel" data-panel="today-stats">
             <h2>Today's Highlights</h2>
-            <div class="records-grid">
+            <div class="todays-highlights-row">
               <div class="record-item">
+                <img src="assets/clock-pixel.png" class="pixel-art-icon" alt="Most Productive Hour">
                 <div class="record-label">Most Productive Hour</div>
                 <div class="record-value" id="topHour">—</div>
                 <div class="record-date" id="topHourCount">—</div>
               </div>
               <div class="record-item">
+                <img src="assets/engineer-pixel.png" class="pixel-art-icon" alt="Active Engineers">
                 <div class="record-label">Active Engineers</div>
                 <div class="record-value" id="activeEngineers">—</div>
                 <div class="record-date">working today</div>
               </div>
               <div class="record-item">
+                <img src="assets/average-pixel.png" class="pixel-art-icon" alt="Avg per Engineer">
                 <div class="record-label">Avg per Engineer</div>
                 <div class="record-value" id="avgPerEngineer">—</div>
                 <div class="record-date">erasures each</div>

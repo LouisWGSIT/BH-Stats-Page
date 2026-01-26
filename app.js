@@ -1820,6 +1820,13 @@
     await initializeAnalytics();
     setupFlipCards();
     setupRotatorCards();
+    // Ensure donut and rotator cards keep rotating after dynamic changes
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        setupFlipCards();
+        setupRotatorCards();
+      }
+    });
   }, 500);
 
   // Periodic competition refresh
