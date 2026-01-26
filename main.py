@@ -19,6 +19,11 @@ app = FastAPI(title="Warehouse Stats Service")
 # Initialize database tables on startup
 db.init_db()
 
+# Place the endpoint here, after app is defined
+@app.get("/analytics/daily-totals")
+async def analytics_daily_totals():
+    return {"days": db.get_daily_totals()}
+
 @app.get("/metrics/monthly-momentum")
 async def get_monthly_momentum():
     """Get weekly totals for the current month for monthly momentum chart"""
