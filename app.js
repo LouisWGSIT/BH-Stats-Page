@@ -1490,20 +1490,38 @@
     const statList = document.getElementById('monthStatList');
     if (statList) {
       statList.innerHTML = '';
-      const li1 = document.createElement('li');
-      li1.textContent = `So far: ${monthTotal}`;
-      const li2 = document.createElement('li');
-      li2.textContent = `Days above target: --`;
-      fetch('/analytics/daily-totals').then(r => r.json()).then(data => {
-        const days = data.days || [];
-        const above = days.filter(d => d.count >= (targetMonthly/daysInMonth)).length;
-        li2.textContent = `Days above target: ${above}`;
-      });
-      const li3 = document.createElement('li');
-      li3.textContent = `Avg: ${dailyAvg}`;
-      statList.appendChild(li1);
-      statList.appendChild(li2);
-      statList.appendChild(li3);
+      // Fetch top engineers for the month and display with avatars
+      fetch('/metrics/engineers/leaderboard?scope=month&limit=5')
+        .then(r => r.json())
+        .then(data => {
+          (data.items || []).forEach((row, idx) => {
+            const li = document.createElement('li');
+            const color = getEngineerColor(row.initials || '');
+            const avatar = getAvatarDataUri(row.initials || '');
+            li.innerHTML = `
+              <span class="engineer-chip">
+                <span class="engineer-avatar" style="background-image: url(${avatar}); border-color: ${color}"></span>
+                <span class="engineer-name">${row.initials}</span>
+              </span>
+              <span class="value">${row.erasures || 0}</span>`;
+            statList.appendChild(li);
+          });
+          // Add summary stats below avatars
+          const li1 = document.createElement('li');
+          li1.textContent = `So far: ${monthTotal}`;
+          const li2 = document.createElement('li');
+          li2.textContent = `Days above target: --`;
+          fetch('/analytics/daily-totals').then(r => r.json()).then(data2 => {
+            const days = data2.days || [];
+            const above = days.filter(d => d.count >= (targetMonthly/daysInMonth)).length;
+            li2.textContent = `Days above target: ${above}`;
+          });
+          const li3 = document.createElement('li');
+          li3.textContent = `Avg: ${dailyAvg}`;
+          statList.appendChild(li1);
+          statList.appendChild(li2);
+          statList.appendChild(li3);
+        });
     }
 
     // Progress bar and labels
