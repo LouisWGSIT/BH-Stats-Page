@@ -1442,29 +1442,81 @@
     const monthTotal = parseInt(document.getElementById('monthTotalValue')?.textContent) || 0;
     const today = new Date().getDate();
     const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-
-    const dailyAvg = Math.round(monthTotal / today);
-    const avgEl = document.getElementById('monthlyAverage');
-    if (avgEl) avgEl.textContent = dailyAvg;
-
     const targetMonthly = parseInt(cfg.targets.month);
+    const dailyAvg = Math.round(monthTotal / today);
     const projectedTotal = Math.round(dailyAvg * daysInMonth);
-    const paceStatus = projectedTotal >= targetMonthly ? '✅ On Pace' : '⚠️ Behind';
-    const paceEl = document.getElementById('paceIndicator');
+    const paceStatus = projectedTotal >= targetMonthly ? '✅ On Pace' : '⚠️ Behind Pace';
+    const paceEl = document.getElementById('monthPaceStatus');
     if (paceEl) paceEl.textContent = paceStatus;
+    const projEl = document.getElementById('monthProjection');
+    if (projEl) projEl.textContent = `Projected: ${projectedTotal} by end of month`;
 
-    const daysEl = document.getElementById('daysRemaining');
-    if (daysEl) daysEl.textContent = daysInMonth - today;
+    // Sparkline (daily erasures for the month)
+    if (window.analyticsCharts?.monthSparkline) window.analyticsCharts.monthSparkline.destroy();
+    const sparkCanvas = document.getElementById('monthSparkline');
+    if (sparkCanvas) {
+      fetch('/analytics/daily-totals')
+        .then(r => r.json())
+        .then(data => {
+          const days = data.days || Array.from({length: daysInMonth}, (_, i) => ({day: i+1, count: 0}));
+          const ctx = sparkCanvas.getContext('2d');
+          window.analyticsCharts = window.analyticsCharts || {};
+          window.analyticsCharts.monthSparkline = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: days.map(d => d.day),
+              datasets: [{
+                data: days.map(d => d.count),
+                borderColor: '#8cf04a',
+                backgroundColor: 'rgba(140,240,74,0.15)',
+                tension: 0.4,
+                pointRadius: 0,
+                borderWidth: 2,
+                fill: true
+              }]
+            },
+            options: {
+              plugins: { legend: { display: false } },
+              scales: { x: { display: false }, y: { display: false } },
+              elements: { line: { borderJoinStyle: 'round' } },
+              responsive: false,
+              maintainAspectRatio: false
+            }
+          });
+        });
+    }
 
-    // Update progress bar at bottom
-    const progressBar = document.getElementById('monthProgressBar');
-    const progressTarget = document.getElementById('monthProgressTarget');
+    // Stat list (unique monthly stats)
+    const statList = document.getElementById('monthStatList');
+    if (statList) {
+      statList.innerHTML = '';
+      const li1 = document.createElement('li');
+      li1.textContent = `So far: ${monthTotal}`;
+      const li2 = document.createElement('li');
+      li2.textContent = `Days above target: --`;
+      fetch('/analytics/daily-totals').then(r => r.json()).then(data => {
+        const days = data.days || [];
+        const above = days.filter(d => d.count >= (targetMonthly/daysInMonth)).length;
+        li2.textContent = `Days above target: ${above}`;
+      });
+      const li3 = document.createElement('li');
+      li3.textContent = `Avg: ${dailyAvg}`;
+      statList.appendChild(li1);
+      statList.appendChild(li2);
+      statList.appendChild(li3);
+    }
+
+    // Progress bar and labels
+    const fillEl = document.getElementById('monthTrackerFill');
     let percent = 0;
     if (targetMonthly > 0) {
       percent = Math.min(100, Math.round((monthTotal / targetMonthly) * 100));
     }
-    if (progressBar) progressBar.style.width = percent + '%';
-    if (progressTarget) progressTarget.textContent = targetMonthly;
+    if (fillEl) fillEl.style.width = percent + '%';
+    const currentEl = document.getElementById('monthTrackerCurrent');
+    if (currentEl) currentEl.textContent = monthTotal;
+    const targetEl = document.getElementById('monthTrackerTarget');
+    if (targetEl) targetEl.textContent = targetMonthly;
   }
 
   function updateRaceUpdates() {
@@ -1588,28 +1640,81 @@
     const todayTotal = parseInt(document.getElementById('totalTodayValue')?.textContent) || 0;
     const target = parseInt(cfg.targets.daily) || 500;
     const percentage = target > 0 ? Math.min((todayTotal / target) * 100, 100) : 0;
-    
+
+    // Pace indicator
+    const now = new Date();
+    const hoursPassed = Math.max(1, now.getHours());
+    const requiredPace = target / 16; // Assume 16-hour workday
+    const currentPace = todayTotal / hoursPassed;
+    const paceStatus = currentPace >= requiredPace ? '✅ On Pace' : '⚠️ Behind Pace';
     const statusEl = document.getElementById('trackerStatus');
-    if (statusEl) {
-      if (todayTotal >= target) {
-        statusEl.textContent = '🎯 TARGET ACHIEVED!';
-      } else if (todayTotal >= target * 0.8) {
-        statusEl.textContent = `${target - todayTotal} away from target`;
-      } else {
-        statusEl.textContent = `${Math.round(percentage)}% to target`;
-      }
-    }
-    
-    const projectedEnd = Math.round((todayTotal / (new Date().getHours() || 1)) * 16);
+    if (statusEl) statusEl.textContent = paceStatus;
+
+    // Projected end
+    const projectedEnd = Math.round(currentPace * 16);
     const projEl = document.getElementById('trackerProjection');
     if (projEl) projEl.textContent = `Projected: ${projectedEnd} by end of day`;
-    
+
+    // Sparkline (erasures per hour)
+    if (window.analyticsCharts?.trackerSparkline) window.analyticsCharts.trackerSparkline.destroy();
+    const sparkCanvas = document.getElementById('trackerSparkline');
+    if (sparkCanvas) {
+      fetch('/analytics/hourly-totals')
+        .then(r => r.json())
+        .then(data => {
+          const hours = data.hours || Array.from({length: 16}, (_, i) => ({hour: i+7, count: 0}));
+          const ctx = sparkCanvas.getContext('2d');
+          window.analyticsCharts = window.analyticsCharts || {};
+          window.analyticsCharts.trackerSparkline = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: hours.map(h => h.hour),
+              datasets: [{
+                data: hours.map(h => h.count),
+                borderColor: '#8cf04a',
+                backgroundColor: 'rgba(140,240,74,0.15)',
+                tension: 0.4,
+                pointRadius: 0,
+                borderWidth: 2,
+                fill: true
+              }]
+            },
+            options: {
+              plugins: { legend: { display: false } },
+              scales: { x: { display: false }, y: { display: false } },
+              elements: { line: { borderJoinStyle: 'round' } },
+              responsive: false,
+              maintainAspectRatio: false
+            }
+          });
+        });
+    }
+
+    // Stat list (unique daily stats)
+    const statList = document.getElementById('trackerStatList');
+    if (statList) {
+      statList.innerHTML = '';
+      const li1 = document.createElement('li');
+      li1.textContent = `So far: ${todayTotal}`;
+      const li2 = document.createElement('li');
+      li2.textContent = `Best hour: --`;
+      // Optionally fetch and fill best hour
+      fetch('/analytics/peak-hours').then(r => r.json()).then(data => {
+        const hours = Array.isArray(data) ? data : (data?.hours || []);
+        if (hours.length > 0) {
+          const peak = hours.reduce((max, curr) => curr.count > max.count ? curr : max, hours[0]);
+          li2.textContent = `Best hour: ${peak.hour}:00 (${peak.count})`;
+        }
+      });
+      statList.appendChild(li1);
+      statList.appendChild(li2);
+    }
+
+    // Progress bar and labels
     const fillEl = document.getElementById('trackerFill');
     if (fillEl) fillEl.style.width = `${percentage}%`;
-    
     const currentEl = document.getElementById('trackerCurrent');
     if (currentEl) currentEl.textContent = todayTotal;
-    
     const targetEl = document.getElementById('trackerTarget');
     if (targetEl) targetEl.textContent = target;
   }

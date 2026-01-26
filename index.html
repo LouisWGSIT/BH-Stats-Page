@@ -221,28 +221,22 @@
       <div class="grid bottom-row rotating-row">
         <section class="card rotator-card" data-interval="25000">
           <div class="panel active" data-panel="monthly-progress">
-            <h2>This Month's Progress</h2>
-            <div class="progress-stats">
-              <div class="progress-item">
-                <div class="progress-label">Daily Average</div>
-                <div class="progress-value" id="monthlyAverage">—</div>
-              </div>
-              <div class="progress-item">
-                <div class="progress-label">Pace to Target</div>
-                <div class="progress-value" id="paceIndicator">—</div>
-              </div>
-              <div class="progress-item">
-                <div class="progress-label">Days Remaining</div>
-                <div class="progress-value" id="daysRemaining">—</div>
-              </div>
-            </div>
-            <div class="month-progress-bar-container">
-              <div class="month-progress-bar-bg">
-                <div class="month-progress-bar-fill" id="monthProgressBar"></div>
-              </div>
-              <div class="month-progress-bar-labels">
-                <span>0</span>
-                <span id="monthProgressTarget">Target</span>
+            <h2>Monthly Progress Tracker</h2>
+            <div class="target-tracker">
+              <div class="tracker-status" id="monthPaceStatus">—</div>
+              <div class="tracker-projection" id="monthProjection">—</div>
+              <canvas id="monthSparkline" height="32" style="margin-bottom: 4px;"></canvas>
+              <ul class="tracker-list" id="monthStatList">
+                <!-- Populated by JS: total so far, days above target, projected end-of-month -->
+              </ul>
+              <div class="tracker-visual">
+                <div class="tracker-bar">
+                  <div class="tracker-fill" id="monthTrackerFill"></div>
+                </div>
+                <div class="tracker-labels">
+                  <span id="monthTrackerCurrent">—</span>
+                  <span id="monthTrackerTarget">—</span>
+                </div>
               </div>
             </div>
           </div>
@@ -389,10 +383,14 @@
             </table>
           </div>
           <div class="panel" data-panel="target-tracker">
-            <h2>Target Tracker</h2>
+            <h2>Today's Target Tracker</h2>
             <div class="target-tracker">
               <div class="tracker-status" id="trackerStatus">—</div>
               <div class="tracker-projection" id="trackerProjection">—</div>
+              <canvas id="trackerSparkline" height="32" style="margin-bottom: 4px;"></canvas>
+              <ul class="tracker-list" id="trackerStatList">
+                <!-- Populated by JS: unique daily stats -->
+              </ul>
               <div class="tracker-visual">
                 <div class="tracker-bar">
                   <div class="tracker-fill" id="trackerFill"></div>
