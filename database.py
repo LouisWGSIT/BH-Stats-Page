@@ -68,6 +68,8 @@ from typing import List, Dict, Tuple
 from pathlib import Path
 import os
 
+
+from typing import Dict
 # Use env var for persistent disk path on Render, fall back to local for dev
 DB_PATH = os.getenv("STATS_DB_PATH", str(Path(__file__).parent / "warehouse_stats.db"))
 
