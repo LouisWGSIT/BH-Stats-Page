@@ -64,7 +64,8 @@ def sync_engineer_stats_type_from_erasures(date_str: str = None):
     return synced_count
 import sqlite3
 from datetime import datetime, date, timedelta
-from typing import List, Dict, Tuple
+from typing import List, Tuple
+from typing import Dict
 from pathlib import Path
 import os
 
