@@ -1,3 +1,10 @@
+import sqlite3
+from datetime import datetime, date, timedelta
+from typing import List, Tuple, Dict
+from pathlib import Path
+import os
+from collections import defaultdict
+
 def get_monthly_momentum() -> Dict:
     """Return weekly totals for the current month for monthly momentum chart"""
     conn = sqlite3.connect(DB_PATH)
@@ -10,7 +17,6 @@ def get_monthly_momentum() -> Dict:
     """, (f"{current_month}%",))
     rows = cursor.fetchall()
     # Group by week number
-    from collections import defaultdict
     weekly_totals = defaultdict(int)
     for row in rows:
         week = datetime.strptime(row[0], '%Y-%m-%d').isocalendar()[1]
@@ -62,15 +68,7 @@ def sync_engineer_stats_type_from_erasures(date_str: str = None):
     if synced_count > 0:
         print(f"[DB Sync] Synced {synced_count} engineer_stats_type records")
     return synced_count
-import sqlite3
-from datetime import datetime, date, timedelta
-from typing import List, Tuple
-from typing import Dict
-from pathlib import Path
-import os
 
-
-from typing import Dict
 # Use env var for persistent disk path on Render, fall back to local for dev
 DB_PATH = os.getenv("STATS_DB_PATH", str(Path(__file__).parent / "warehouse_stats.db"))
 
