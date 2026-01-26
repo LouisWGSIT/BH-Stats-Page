@@ -1218,10 +1218,10 @@
 
     const datasets = Object.keys(trends).map((category, idx) => {
       const colorMap = {
-        'laptops_desktops': cfg.theme.ringPrimary,
-        'servers': cfg.theme.ringSecondary,
-        'macs': '#ffcc00',
-        'mobiles': cfg.theme.ringSecondary
+        'laptops_desktops': '#4caf50', // green
+        'servers': '#ffeb3b', // yellow
+        'macs': '#2196f3', // blue
+        'mobiles': '#ff1ea3' // pink
       };
       
       return {
