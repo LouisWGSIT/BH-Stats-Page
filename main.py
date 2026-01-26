@@ -1,8 +1,3 @@
-@app.get("/metrics/monthly-momentum")
-async def get_monthly_momentum():
-    """Get weekly totals for the current month for monthly momentum chart"""
-    from database import get_monthly_momentum
-    return get_monthly_momentum()
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +13,11 @@ app = FastAPI(title="Warehouse Stats Service")
 
 # Initialize database tables on startup
 db.init_db()
+
+@app.get("/metrics/monthly-momentum")
+async def get_monthly_momentum():
+    """Get weekly totals for the current month for monthly momentum chart"""
+    return db.get_monthly_momentum()
 
 # Enable CORS for TV access from network
 app.add_middleware(
