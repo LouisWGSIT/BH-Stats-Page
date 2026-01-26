@@ -1305,31 +1305,60 @@
   // ==================== NEW FLIP CARDS DATA ====================
 
   function updateRecordsMilestones() {
+    const overallEl = document.getElementById('recordOverallErasures');
     const bestDayEl = document.getElementById('recordBestDay');
     const bestDateEl = document.getElementById('recordBestDayDate');
     const topEngEl = document.getElementById('recordTopEngineer');
     const topCountEl = document.getElementById('recordTopEngineerCount');
     const streakEl = document.getElementById('currentStreak');
+    const mostHourEl = document.getElementById('recordMostHour');
+    const mostHourDateEl = document.getElementById('recordMostHourDate');
+    const mostWeekEl = document.getElementById('recordMostWeek');
+    const mostWeekDateEl = document.getElementById('recordMostWeekDate');
 
     fetch('/metrics/records')
       .then(r => r.json())
       .then(data => {
         console.log('Records data:', data); // Debug log
-        
+
+        // Overall Erasures (all-time)
+        if (overallEl && typeof data.overallErasures === 'number') {
+          overallEl.textContent = data.overallErasures;
+        }
+
+        // Best Day Ever
         if (data.bestDay && data.bestDay.count) {
           if (bestDayEl) bestDayEl.textContent = data.bestDay.count;
           if (bestDateEl && data.bestDay.date) {
             bestDateEl.textContent = new Date(data.bestDay.date).toLocaleDateString();
           }
         }
-        
+
+        // Top Engineer (All-Time)
         if (data.topEngineer && data.topEngineer.initials) {
           if (topEngEl) topEngEl.textContent = data.topEngineer.initials;
           if (topCountEl) topCountEl.textContent = `${data.topEngineer.totalCount || 0} erasures`;
         }
-        
+
+        // Current Streak
         if (typeof data.currentStreak === 'number' && data.currentStreak > 0) {
           if (streakEl) streakEl.textContent = data.currentStreak;
+        }
+
+        // Most Erased in 1 Hour
+        if (data.mostHour && typeof data.mostHour.count === 'number') {
+          if (mostHourEl) mostHourEl.textContent = data.mostHour.count;
+          if (mostHourDateEl && data.mostHour.date) {
+            mostHourDateEl.textContent = new Date(data.mostHour.date).toLocaleDateString();
+          }
+        }
+
+        // Most Erased in 1 Week
+        if (data.mostWeek && typeof data.mostWeek.count === 'number') {
+          if (mostWeekEl) mostWeekEl.textContent = data.mostWeek.count;
+          if (mostWeekDateEl && data.mostWeek.date) {
+            mostWeekDateEl.textContent = new Date(data.mostWeek.date).toLocaleDateString();
+          }
         }
       })
       .catch(err => {
