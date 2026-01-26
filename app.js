@@ -1494,7 +1494,8 @@
       fetch('/metrics/engineers/leaderboard?scope=month&limit=5')
         .then(r => r.json())
         .then(data => {
-          (data.items || []).forEach((row, idx) => {
+          // Only show top 3 engineers for clarity
+          (data.items || []).slice(0, 3).forEach((row, idx) => {
             const li = document.createElement('li');
             const color = getEngineerColor(row.initials || '');
             const avatar = getAvatarDataUri(row.initials || '');
@@ -1502,25 +1503,11 @@
               <span class="engineer-chip">
                 <span class="engineer-avatar" style="background-image: url(${avatar}); border-color: ${color}"></span>
                 <span class="engineer-name">${row.initials}</span>
-              </span>
-              <span class="value">${row.erasures || 0}</span>`;
+                <span class="engineer-count">${row.erasures || 0}</span>
+              </span>`;
             statList.appendChild(li);
           });
-          // Add summary stats below avatars
-          const li1 = document.createElement('li');
-          li1.textContent = `So far: ${monthTotal}`;
-          const li2 = document.createElement('li');
-          li2.textContent = `Days above target: --`;
-          fetch('/analytics/daily-totals').then(r => r.json()).then(data2 => {
-            const days = data2.days || [];
-            const above = days.filter(d => d.count >= (targetMonthly/daysInMonth)).length;
-            li2.textContent = `Days above target: ${above}`;
-          });
-          const li3 = document.createElement('li');
-          li3.textContent = `Avg: ${dailyAvg}`;
-          statList.appendChild(li1);
-          statList.appendChild(li2);
-          statList.appendChild(li3);
+          // Remove summary stats for less clutter
         });
     }
 
@@ -1535,6 +1522,9 @@
     if (currentEl) currentEl.textContent = monthTotal;
     const targetEl = document.getElementById('monthTrackerTarget');
     if (targetEl) targetEl.textContent = targetMonthly;
+    // Hide days above target if present
+    const daysAboveTarget = document.getElementById('monthDaysAboveTarget');
+    if (daysAboveTarget) daysAboveTarget.style.display = 'none';
   }
 
   function updateRaceUpdates() {
