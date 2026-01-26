@@ -1253,13 +1253,6 @@
             display: true,
             position: 'top',
             labels: { color: cfg.theme.text, font: { size: 11 } }
-          },
-          title: {
-            display: true,
-            text: 'Last 7 Days',
-            color: cfg.theme.text,
-            font: { size: 14 },
-            padding: { top: -8, bottom: 10 }
           }
         },
         scales: {
@@ -1420,19 +1413,29 @@
     const monthTotal = parseInt(document.getElementById('monthTotalValue')?.textContent) || 0;
     const today = new Date().getDate();
     const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-    
+
     const dailyAvg = Math.round(monthTotal / today);
     const avgEl = document.getElementById('monthlyAverage');
     if (avgEl) avgEl.textContent = dailyAvg;
-    
+
     const targetMonthly = parseInt(cfg.targets.month);
     const projectedTotal = Math.round(dailyAvg * daysInMonth);
     const paceStatus = projectedTotal >= targetMonthly ? '✅ On Pace' : '⚠️ Behind';
     const paceEl = document.getElementById('paceIndicator');
     if (paceEl) paceEl.textContent = paceStatus;
-    
+
     const daysEl = document.getElementById('daysRemaining');
     if (daysEl) daysEl.textContent = daysInMonth - today;
+
+    // Update progress bar at bottom
+    const progressBar = document.getElementById('monthProgressBar');
+    const progressTarget = document.getElementById('monthProgressTarget');
+    let percent = 0;
+    if (targetMonthly > 0) {
+      percent = Math.min(100, Math.round((monthTotal / targetMonthly) * 100));
+    }
+    if (progressBar) progressBar.style.width = percent + '%';
+    if (progressTarget) progressTarget.textContent = targetMonthly;
   }
 
   function updateRaceUpdates() {
