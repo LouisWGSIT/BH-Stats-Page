@@ -1,3 +1,4 @@
+This file is being deleted as it is unnecessary.
 # Power BI Quick Start Checklist
 
 ## ✅ What's Been Set Up

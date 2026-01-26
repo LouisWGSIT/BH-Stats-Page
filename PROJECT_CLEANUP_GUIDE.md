@@ -14,29 +14,12 @@ Your project has accumulated documentation. Here's what to keep, archive, or del
 ## 🗑️ SAFE TO DELETE (No Longer Needed)
 
 ### 1. **POWERBI_DOCUMENTATION_INDEX.md**
-- **Reason:** Index/table of contents is now outdated
-- **Replacement:** Use this guide's structure instead
-- **Safety:** Low risk - just a reference document
-- **Action:** DELETE
 
 ### 2. **POWERBI_EXAMPLES.md**
-- **Reason:** Contains M Query examples that aren't your immediate focus
-- **When to Use:** Month 2+ when you master basic Power BI
-- **Safety:** Low risk - can be recovered from git history
-- **Action:** ARCHIVE (keep in a subfolder `archived-docs/` instead of deleting)
-- **Why Not Delete:** Might need DAX formula examples later
 
 ### 3. **app-refactored.js**
-- **Reason:** Old refactoring attempt, `app.js` is the current version
-- **Status:** Superseded by `app.js`
-- **Safety:** Low risk if `app.js` is working
-- **Action:** DELETE (keep backup in git)
 
 ### 4. **REFACTORING_NOTES.md**
-- **Reason:** Historical analysis of code optimization decisions
-- **Use Case:** Reference only if you're refactoring again
-- **Safety:** Low risk - descriptive only
-- **Action:** ARCHIVE (same as POWERBI_EXAMPLES.md)
 
 ---
 
@@ -148,9 +131,9 @@ Run this to clean up:
 cd "c:\Users\Louisw\Documents\BH Stats Page"
 
 # Option 1: Delete files (one by one, confirm each)
-rm app-refactored.js
-rm POWERBI_DOCUMENTATION_INDEX.md
 
+rm POWERBI_DOCUMENTATION_INDEX.md
+rm app-refactored.js
 # Option 2: Create archive folder and move files
 mkdir archived-docs
 move POWERBI_EXAMPLES.md archived-docs/

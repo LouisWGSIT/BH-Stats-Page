@@ -1,3 +1,4 @@
+This file is being deleted as it is unnecessary.
 # Power BI Integration Guide
 
 This guide explains how to connect your Warehouse Stats application to Microsoft Power BI.
