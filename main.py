@@ -1,18 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-import os
-from typing import Any, Dict
-from datetime import datetime
-import asyncio
-import database as db
-import excel_export
 
-app = FastAPI(title="Warehouse Stats Service")
-
-# Initialize database tables on startup
-db.init_db()
 
 @app.get("/analytics/daily-totals")
 async def analytics_daily_totals():
