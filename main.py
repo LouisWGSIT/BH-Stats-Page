@@ -1,3 +1,8 @@
+@app.get("/metrics/monthly-momentum")
+async def get_monthly_momentum():
+    """Get weekly totals for the current month for monthly momentum chart"""
+    from database import get_monthly_momentum
+    return get_monthly_momentum()
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles

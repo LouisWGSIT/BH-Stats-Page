@@ -1,3 +1,25 @@
+def get_monthly_momentum() -> Dict:
+    """Return weekly totals for the current month for monthly momentum chart"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    today = date.today()
+    current_month = today.strftime('%Y-%m')
+    # Get all days in current month
+    cursor.execute("""
+        SELECT date, erased FROM daily_stats WHERE date LIKE ? ORDER BY date ASC
+    """, (f"{current_month}%",))
+    rows = cursor.fetchall()
+    # Group by week number
+    from collections import defaultdict
+    weekly_totals = defaultdict(int)
+    for row in rows:
+        week = datetime.strptime(row[0], '%Y-%m-%d').isocalendar()[1]
+        weekly_totals[week] += row[1]
+    # Sort by week and return as list
+    sorted_weeks = sorted(weekly_totals.keys())
+    result = [weekly_totals[w] for w in sorted_weeks]
+    conn.close()
+    return {"weeklyTotals": result, "weeks": sorted_weeks}
 # --- SYNC FUNCTION: Populate engineer_stats_type from erasures ---
 def sync_engineer_stats_type_from_erasures(date_str: str = None):
     """Populate engineer_stats_type from erasures for a date (or all recent dates if None)"""
@@ -677,8 +699,47 @@ def get_records_and_milestones() -> Dict:
         else:
             break
     
+    # Overall erasures (all-time)
+    conn2 = sqlite3.connect(DB_PATH)
+    cursor2 = conn2.cursor()
+    cursor2.execute("SELECT COUNT(1) FROM erasures WHERE event = 'success'")
+    overall_erasures = cursor2.fetchone()[0]
+
+    # Most erased in 1 hour
+    cursor2.execute("""
+        SELECT date, strftime('%H', ts) as hour, COUNT(1) as count
+        FROM erasures
+        WHERE event = 'success'
+        GROUP BY date, hour
+        ORDER BY count DESC
+        LIMIT 1
+    """)
+    most_hour_row = cursor2.fetchone()
+    most_hour = {
+        "count": most_hour_row[2] if most_hour_row else 0,
+        "date": most_hour_row[0] if most_hour_row else None,
+        "hour": most_hour_row[1] if most_hour_row else None
+    }
+
+    # Most erased in 1 week
+    cursor2.execute("""
+        SELECT week, MAX(count) FROM (
+            SELECT strftime('%Y-%W', date) as week, COUNT(1) as count
+            FROM erasures
+            WHERE event = 'success'
+            GROUP BY week
+        )
+    """)
+    most_week_row = cursor2.fetchone()
+    most_week = {
+        "count": most_week_row[1] if most_week_row else 0,
+        "week": most_week_row[0] if most_week_row else None
+        # Optionally, you can add a representative date for the week
+    }
+
+    conn2.close()
+
     conn.close()
-    
     return {
         "bestDay": {
             "date": best_day[0] if best_day else None,
@@ -688,7 +749,10 @@ def get_records_and_milestones() -> Dict:
             "initials": top_engineer[0] if top_engineer else None,
             "totalCount": top_engineer[1] if top_engineer else 0
         },
-        "currentStreak": streak
+        "currentStreak": streak,
+        "overallErasures": overall_erasures,
+        "mostHour": most_hour,
+        "mostWeek": most_week
     }
 
 
