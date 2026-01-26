@@ -1641,6 +1641,17 @@
     const target = parseInt(cfg.targets.daily) || 500;
     const percentage = target > 0 ? Math.min((todayTotal / target) * 100, 100) : 0;
 
+    // Fix: define statusEl for tracker status
+    const statusEl = document.getElementById('trackerStatus');
+    // Calculate pace (ensure currentPace and requiredPace are defined)
+    // If not already defined, estimate based on available data
+    const now = new Date();
+    const hour = now.getHours();
+    const startHour = 7; // Assume workday starts at 7am
+    const hoursElapsed = Math.max(1, hour - startHour + 1);
+    const currentPace = todayTotal / hoursElapsed;
+    const requiredPace = target / 16; // Assume 16-hour workday
+
     // Pace indicator (pixel art icon)
     if (statusEl) {
       statusEl.innerHTML = '';

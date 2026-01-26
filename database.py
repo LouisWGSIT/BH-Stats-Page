@@ -1,3 +1,21 @@
+def get_daily_totals() -> list:
+    """Return daily erasure totals for the current month as a list of {day, count}"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    today = date.today()
+    current_month = today.strftime('%Y-%m')
+    # Get all days in current month
+    cursor.execute("""
+        SELECT date, erased FROM daily_stats WHERE date LIKE ? ORDER BY date ASC
+    """, (f"{current_month}%",))
+    rows = cursor.fetchall()
+    # Map to {day, count}
+    result = []
+    for row in rows:
+        day = int(row[0].split('-')[2])
+        result.append({"day": day, "count": row[1]})
+    conn.close()
+    return result
 import sqlite3
 from datetime import datetime, date, timedelta
 from typing import List, Tuple, Dict
@@ -21,11 +39,21 @@ def get_monthly_momentum() -> Dict:
     for row in rows:
         week = datetime.strptime(row[0], '%Y-%m-%d').isocalendar()[1]
         weekly_totals[week] += row[1]
-    # Sort by week and return as list
-    sorted_weeks = sorted(weekly_totals.keys())
-    result = [weekly_totals[w] for w in sorted_weeks]
+
+    # Find the first week number for this month
+    if rows:
+        first_week = datetime.strptime(rows[0][0], '%Y-%m-%d').isocalendar()[1]
+    else:
+        # fallback: get week number for the 1st of the month
+        first_week = date(today.year, today.month, 1).isocalendar()[1]
+
+    # Always return 4 weeks (pad with zeros if missing)
+    result = []
+    week_numbers = [first_week + i for i in range(4)]
+    for w in week_numbers:
+        result.append(weekly_totals.get(w, 0))
     conn.close()
-    return {"weeklyTotals": result, "weeks": sorted_weeks}
+    return {"weeklyTotals": result, "weeks": week_numbers}
 # --- SYNC FUNCTION: Populate engineer_stats_type from erasures ---
 def sync_engineer_stats_type_from_erasures(date_str: str = None):
     """Populate engineer_stats_type from erasures for a date (or all recent dates if None)"""

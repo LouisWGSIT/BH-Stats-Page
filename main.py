@@ -1,3 +1,6 @@
+@app.get("/analytics/daily-totals")
+async def analytics_daily_totals():
+    return {"days": db.get_daily_totals()}
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
