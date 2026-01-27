@@ -38,8 +38,8 @@
 .tracker-sparkline-unified {
   display: block;
   margin: 8px auto 8px auto;
+  width: 320px;
   max-width: 100%;
-  width: 100%;
   height: 48px;
   image-rendering: crisp-edges;
 }
