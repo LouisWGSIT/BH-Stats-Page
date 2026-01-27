@@ -539,12 +539,13 @@ def get_peak_hours() -> List[Dict]:
     rows = cursor.fetchall()
     conn.close()
     
-    # Fill in missing hours with 0
-    hourly_data = {i: 0 for i in range(24)}
+    # Only return shift hours (8:00–15:00)
+    shift_hours = list(range(8, 16))
+    hourly_data = {i: 0 for i in shift_hours}
     for row in rows:
-        hourly_data[row[0]] = row[1]
-    
-    return [{"hour": h, "count": c} for h, c in hourly_data.items()]
+        if row[0] in hourly_data:
+            hourly_data[row[0]] = row[1]
+    return [{"hour": h, "count": hourly_data[h]} for h in shift_hours]
 
 def get_day_of_week_patterns() -> List[Dict]:
     """Get average erasures by day of week over last 4 weeks"""

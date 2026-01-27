@@ -1681,22 +1681,26 @@
   }
 
   function updateTargetTracker() {
+
     const todayTotal = parseInt(document.getElementById('totalTodayValue')?.textContent) || 0;
     const target = parseInt(cfg.targets.daily) || 500;
     const percentage = target > 0 ? Math.min((todayTotal / target) * 100, 100) : 0;
 
-    // Fix: define statusEl for tracker status
-    const statusEl = document.getElementById('trackerStatus');
-    // Calculate pace (ensure currentPace and requiredPace are defined)
-    // If not already defined, estimate based on available data
+    // Shift hours: 8:00–16:00 (8 hours)
+    const SHIFT_START = 8;
+    const SHIFT_END = 16;
+    const SHIFT_HOURS = SHIFT_END - SHIFT_START;
     const now = new Date();
-    const hour = now.getHours();
-    const startHour = 7; // Assume workday starts at 7am
-    const hoursElapsed = Math.max(1, hour - startHour + 1);
+    let hour = now.getHours();
+    // Clamp hour to shift range
+    if (hour < SHIFT_START) hour = SHIFT_START;
+    if (hour > SHIFT_END) hour = SHIFT_END;
+    const hoursElapsed = Math.max(1, hour - SHIFT_START + 1);
     const currentPace = todayTotal / hoursElapsed;
-    const requiredPace = target / 16; // Assume 16-hour workday
+    const requiredPace = target / SHIFT_HOURS;
 
     // Pace indicator (pixel art icon)
+    const statusEl = document.getElementById('trackerStatus');
     if (statusEl) {
       statusEl.innerHTML = '';
       const icon = document.createElement('img');
@@ -1717,7 +1721,7 @@
     }
 
     // Projected end
-    const projectedEnd = Math.round(currentPace * 16);
+    const projectedEnd = Math.round(currentPace * SHIFT_HOURS);
     const projEl = document.getElementById('trackerProjection');
     if (projEl) projEl.textContent = `Projected: ${projectedEnd} by end of day`;
 
@@ -1728,15 +1732,19 @@
       fetch('/analytics/hourly-totals')
         .then(r => r.json())
         .then(data => {
-          const hours = data.hours || Array.from({length: 16}, (_, i) => ({hour: i+7, count: 0}));
+          // Only use shift hours (8:00–15:00)
+          const hours = (data.hours || [])
+            .filter(h => h.hour >= SHIFT_START && h.hour < SHIFT_END);
+          // If backend returns all 24, fallback to 8 zeros if empty
+          const filled = hours.length === SHIFT_HOURS ? hours : Array.from({length: SHIFT_HOURS}, (_, i) => ({hour: SHIFT_START + i, count: 0}));
           const ctx = sparkCanvas.getContext('2d');
           window.analyticsCharts = window.analyticsCharts || {};
           window.analyticsCharts.trackerSparkline = new Chart(ctx, {
             type: 'line',
             data: {
-              labels: hours.map(h => h.hour),
+              labels: filled.map(h => h.hour),
               datasets: [{
-                data: hours.map(h => h.count),
+                data: filled.map(h => h.count),
                 borderColor: '#8cf04a',
                 backgroundColor: 'rgba(140,240,74,0.15)',
                 tension: 0.4,
