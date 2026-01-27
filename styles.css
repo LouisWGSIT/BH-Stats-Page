@@ -10,6 +10,33 @@
   gap: 6px;
   justify-content: center;
 }
+.tracker-list.vertical {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  justify-content: flex-start;
+}
+.monthly-flex-row {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: flex-start;
+}
+.monthly-left {
+  min-width: 90px;
+  flex: 0 0 90px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.monthly-right {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+}
 .tracker-list li {
   padding: 0 2px;
   border-radius: 4px;
@@ -21,8 +48,9 @@
 #trackerSparkline, #monthSparkline {
   display: block;
   margin: 0 auto 0 auto;
-  max-width: 100px;
-  height: 24px !important;
+  max-width: 140px;
+  width: 120px !important;
+  height: 32px !important;
   background: transparent;
 }
 /* Month Progress Bar */
@@ -1476,7 +1504,7 @@ body {
 .target-tracker {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   padding: 4px 6px 8px 6px;
 }
   .target-tracker {
@@ -1489,14 +1517,14 @@ body {
 
 .tracker-status {
   text-align: center;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--ring-primary);
 }
 
 .tracker-projection {
   text-align: center;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
   margin-bottom: 2px;
 }
@@ -1504,7 +1532,7 @@ body {
 .tracker-visual {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
   .tracker-visual {
     display: flex;
