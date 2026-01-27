@@ -38,7 +38,7 @@
 .tracker-sparkline-unified {
   display: block;
   margin: 8px auto 8px auto;
-  width: 320px;
+  width: 400px;
   max-width: 100%;
   height: 48px;
   image-rendering: crisp-edges;
@@ -52,7 +52,7 @@
 }
 .tracker-bar-unified {
   width: 100%;
-  max-width: 320px;
+  max-width: 400px;
   margin: 0 auto;
   height: 12px;
 }
@@ -60,7 +60,7 @@
   display: flex;
   justify-content: space-between;
   width: 100%;
-  max-width: 320px;
+  max-width: 400px;
   font-size: 11px;
   color: var(--muted);
   padding: 0 4px;
