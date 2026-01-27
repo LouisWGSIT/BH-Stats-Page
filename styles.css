@@ -16,9 +16,6 @@
   gap: 8px;
   justify-content: flex-start;
 }
-.monthly-flex-row {
-  /* No longer used, replaced by .monthly-progress-center */
-}
 
 .monthly-progress-center {
   display: flex;
@@ -28,7 +25,6 @@
   gap: 10px;
   width: 100%;
   padding: 12px 10px 16px 10px;
-}
 
 .tracker-card-unified {
   display: flex;
