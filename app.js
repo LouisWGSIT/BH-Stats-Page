@@ -1445,9 +1445,25 @@
     const targetMonthly = parseInt(cfg.targets.month);
     const dailyAvg = Math.round(monthTotal / today);
     const projectedTotal = Math.round(dailyAvg * daysInMonth);
-    const paceStatus = projectedTotal >= targetMonthly ? '✅ On Pace' : '⚠️ Behind Pace';
     const paceEl = document.getElementById('monthPaceStatus');
-    if (paceEl) paceEl.textContent = paceStatus;
+    if (paceEl) {
+      paceEl.innerHTML = '';
+      const icon = document.createElement('img');
+      icon.className = 'pixel pace-icon';
+      icon.width = 18;
+      icon.height = 18;
+      if (projectedTotal >= targetMonthly) {
+        icon.src = 'assets/pace-on-pixel.svg';
+        icon.alt = 'On Pace';
+        paceEl.appendChild(icon);
+        paceEl.appendChild(document.createTextNode(' On Pace'));
+      } else {
+        icon.src = 'assets/pace-behind-pixel.svg';
+        icon.alt = 'Behind Pace';
+        paceEl.appendChild(icon);
+        paceEl.appendChild(document.createTextNode(' Behind Pace'));
+      }
+    }
     const projEl = document.getElementById('monthProjection');
     if (projEl) projEl.textContent = `Projected: ${projectedTotal} by end of month`;
 

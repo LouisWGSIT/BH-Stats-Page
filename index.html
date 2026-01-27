@@ -222,22 +222,17 @@
         <section class="card rotator-card" data-interval="25000">
           <div class="panel active" data-panel="monthly-progress">
             <h2>Monthly Progress Tracker</h2>
-            <div class="target-tracker monthly-flex-row">
-              <div class="monthly-left">
-                <div class="tracker-status" id="monthPaceStatus">—</div>
-                <div class="tracker-projection" id="monthProjection">—</div>
-                <!-- Engineer list removed for compactness -->
-              </div>
-              <div class="monthly-right">
-                <canvas id="monthSparkline" width="140" height="48" style="margin: 8px 0 8px 0;"></canvas>
-                <div class="tracker-visual">
-                  <div class="tracker-bar">
-                    <div class="tracker-fill" id="monthTrackerFill"></div>
-                  </div>
-                  <div class="tracker-labels">
-                    <span id="monthTrackerCurrent">—</span>
-                    <span id="monthTrackerTarget">—</span>
-                  </div>
+            <div class="target-tracker monthly-progress-center">
+              <div class="tracker-status" id="monthPaceStatus">—</div>
+              <div class="tracker-projection" id="monthProjection">—</div>
+              <canvas id="monthSparkline" width="180" height="48" class="month-sparkline-centered"></canvas>
+              <div class="tracker-visual month-tracker-visual-centered">
+                <div class="tracker-bar month-tracker-bar-centered">
+                  <div class="tracker-fill" id="monthTrackerFill"></div>
+                </div>
+                <div class="tracker-labels month-tracker-labels-centered">
+                  <span id="monthTrackerCurrent">—</span>
+                  <span id="monthTrackerTarget">—</span>
                 </div>
               </div>
             </div>
@@ -389,7 +384,7 @@
             <div class="target-tracker">
               <div class="tracker-status" id="trackerStatus">—</div>
               <div class="tracker-projection" id="trackerProjection">—</div>
-              <canvas id="trackerSparkline" height="28" style="margin: 6px 0 6px 0;"></canvas>
+              <canvas id="trackerSparkline" height="32" class="tracker-sparkline-centered"></canvas>
               <ul class="tracker-list" id="trackerStatList" style="margin: 0 0 2px 0;"></ul>
               <div class="tracker-divider" style="margin: 2px 0;"></div>
               <div class="tracker-visual" style="gap: 2px;">

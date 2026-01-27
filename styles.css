@@ -17,11 +17,49 @@
   justify-content: flex-start;
 }
 .monthly-flex-row {
+  /* No longer used, replaced by .monthly-progress-center */
+}
+
+.monthly-progress-center {
   display: flex;
-  flex-direction: row;
-  gap: 14px;
-  align-items: flex-start;
-  padding: 8px 10px 10px 10px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 10px 16px 10px;
+}
+
+.month-sparkline-centered {
+  display: block;
+  margin: 0 auto 0 auto;
+  max-width: 180px;
+  width: 100% !important;
+  height: 48px !important;
+}
+
+.month-tracker-visual-centered {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.month-tracker-bar-centered {
+  width: 100%;
+  max-width: 220px;
+  margin: 0 auto;
+}
+
+.month-tracker-labels-centered {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 220px;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 4px;
 }
 .monthly-left {
   min-width: 90px;
@@ -49,10 +87,15 @@
 #trackerSparkline, #monthSparkline {
   display: block;
   margin: 0 auto 0 auto;
-  max-width: 140px;
-  width: 120px !important;
-  height: 32px !important;
   background: transparent;
+}
+
+.tracker-sparkline-centered {
+  display: block;
+  margin: 8px auto 8px auto;
+  max-width: 180px;
+  width: 100% !important;
+  height: 32px !important;
 }
 /* Month Progress Bar */
 .month-progress-bar-container {
