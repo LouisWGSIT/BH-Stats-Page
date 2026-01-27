@@ -1211,10 +1211,26 @@
       analyticsCharts.categoryTrends.destroy();
     }
 
+
     const trends = data.trends;
-    const allDates = [...new Set(
+    // Get today's date in YYYY-MM-DD
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+
+    // Get live stat card values for each category
+    const liveValues = {
+      laptops_desktops: parseInt(document.getElementById('countLD')?.textContent) || 0,
+      servers: parseInt(document.getElementById('countServers')?.textContent) || 0,
+      macs: parseInt(document.getElementById('countMacs')?.textContent) || 0,
+      mobiles: parseInt(document.getElementById('countMobiles')?.textContent) || 0,
+    };
+
+    // Build all unique dates, and ensure today is included
+    let allDates = [...new Set(
       Object.values(trends).flatMap(arr => arr.map(d => d.date))
-    )].sort();
+    )];
+    if (!allDates.includes(todayStr)) allDates.push(todayStr);
+    allDates = allDates.sort();
 
     const datasets = Object.keys(trends).map((category, idx) => {
       const colorMap = {
@@ -1223,13 +1239,17 @@
         'macs': '#2196f3', // blue
         'mobiles': '#ff1ea3' // pink
       };
-      
+      // Build data array, replacing or appending today's value with live stat card value
+      const dataArr = allDates.map(date => {
+        if (date === todayStr) {
+          return liveValues[category] || 0;
+        }
+        const entry = trends[category].find(d => d.date === date);
+        return entry ? entry.count : 0;
+      });
       return {
         label: category.replace('_', ' / ').toUpperCase(),
-        data: allDates.map(date => {
-          const entry = trends[category].find(d => d.date === date);
-          return entry ? entry.count : 0;
-        }),
+        data: dataArr,
         borderColor: colorMap[category] || cfg.theme.ringPrimary,
         backgroundColor: colorMap[category] || cfg.theme.ringPrimary,
         tension: 0.3,
