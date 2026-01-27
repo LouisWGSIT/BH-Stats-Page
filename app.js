@@ -1491,6 +1491,8 @@
     if (window.analyticsCharts?.monthSparkline) window.analyticsCharts.monthSparkline.destroy();
     const sparkCanvas = document.getElementById('monthSparkline');
     if (sparkCanvas) {
+      sparkCanvas.width = 400;
+      sparkCanvas.height = 48;
       fetch('/analytics/daily-totals')
         .then(r => r.json())
         .then(data => {
@@ -1729,6 +1731,8 @@
     if (window.analyticsCharts?.trackerSparkline) window.analyticsCharts.trackerSparkline.destroy();
     const sparkCanvas = document.getElementById('trackerSparkline');
     if (sparkCanvas) {
+      sparkCanvas.width = 400;
+      sparkCanvas.height = 48;
       fetch('/analytics/hourly-totals')
         .then(r => r.json())
         .then(data => {
