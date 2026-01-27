@@ -226,7 +226,7 @@
               <div class="monthly-left">
                 <div class="tracker-status" id="monthPaceStatus">—</div>
                 <div class="tracker-projection" id="monthProjection">—</div>
-                <ul class="tracker-list vertical" id="monthStatList"></ul>
+                <!-- Engineer list removed for compactness -->
               </div>
               <div class="monthly-right">
                 <canvas id="monthSparkline" width="120" height="32" style="margin-bottom: 4px;"></canvas>
@@ -389,14 +389,14 @@
             <div class="target-tracker">
               <div class="tracker-status" id="trackerStatus">—</div>
               <div class="tracker-projection" id="trackerProjection">—</div>
-              <canvas id="trackerSparkline" height="24" style="margin-bottom: 2px;"></canvas>
-              <ul class="tracker-list" id="trackerStatList"></ul>
-              <div class="tracker-divider"></div>
-              <div class="tracker-visual">
-                <div class="tracker-bar">
+              <canvas id="trackerSparkline" height="24" style="margin-bottom: 0;"></canvas>
+              <ul class="tracker-list" id="trackerStatList" style="margin: 0 0 2px 0;"></ul>
+              <div class="tracker-divider" style="margin: 2px 0;"></div>
+              <div class="tracker-visual" style="gap: 2px;">
+                <div class="tracker-bar" style="margin: 2px 0 0 0; height: 10px;">
                   <div class="tracker-fill" id="trackerFill"></div>
                 </div>
-                <div class="tracker-labels">
+                <div class="tracker-labels" style="padding: 0 4px; font-size: 10px;">
                   <span id="trackerCurrent">—</span>
                   <span id="trackerTarget">—</span>
                 </div>

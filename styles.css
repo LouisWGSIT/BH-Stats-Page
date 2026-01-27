@@ -19,15 +19,15 @@
 .monthly-flex-row {
   display: flex;
   flex-direction: row;
-  gap: 12px;
+  gap: 6px;
   align-items: flex-start;
 }
 .monthly-left {
-  min-width: 90px;
-  flex: 0 0 90px;
+  min-width: 80px;
+  flex: 0 0 80px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .monthly-right {
   flex: 1 1 0;
@@ -1505,15 +1505,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px 6px 8px 6px;
+  padding: 2px 4px 4px 4px;
+  min-width: 0;
 }
-  .target-tracker {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 8px 10px 12px 10px;
-    min-width: 0;
-  }
 
 .tracker-status {
   text-align: center;
