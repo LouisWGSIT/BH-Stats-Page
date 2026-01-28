@@ -423,13 +423,15 @@ function renderSVGSparkline(svgElem, data) {
     }
   }
 
+  // Make truncateInitials available globally
+  function truncateInitials(name) {
+    if (!name) return '';
+    return name.length > 4 ? name.slice(0, 4) + '…' : name;
+  }
+
   function renderTopList(listId, engineers) {
     const el = document.getElementById(listId);
     el.innerHTML = '';
-    function truncateInitials(name) {
-      if (!name) return '';
-      return name.length > 4 ? name.slice(0, 4) + '…' : name;
-    }
     if (engineers && engineers.length > 0) {
       engineers.forEach((eng) => {
         const name = truncateInitials((eng.initials || '').toString().trim());
