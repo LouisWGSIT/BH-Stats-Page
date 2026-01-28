@@ -1,3 +1,9 @@
+/* Reduce Mon-Fri breakdown number font size for large screens/TVs */
+@media (min-width: 1600px) {
+  .weekdays-breakdown-numbers .weekday-val {
+    font-size: 20px;
+  }
+}
 /* Make Mon-Fri breakdown span all columns and center, stat cards above retain original size */
 .record-item--monfri {
   grid-column: 1 / span 3;
