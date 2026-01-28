@@ -1747,8 +1747,9 @@ function renderSVGSparkline(svgElem, data) {
           }
         }
       }
+
     });
-          <span class="speed-name">${displayInitials}</span>
+  }
 
   function updateTargetTracker() {
 
