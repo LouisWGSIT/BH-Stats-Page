@@ -49,7 +49,7 @@
     border: var(--card-border);
     overflow: hidden;
   height: 48px;
-  image-rendering: crisp-edges;
+    /* SVG is always sharp, no image-rendering needed */
 }
 .tracker-visual-unified {
   width: 100%;
@@ -90,11 +90,7 @@
 }
 
 /* Sparkline canvas tweaks */
-#trackerSparkline, #monthSparkline {
-  display: block;
-  margin: 0 auto 0 auto;
-  background: transparent;
-}
+
 
 /* Month Progress Bar */
 .month-progress-bar-container {
