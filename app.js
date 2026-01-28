@@ -1494,7 +1494,9 @@
         .then(r => r.json())
         .then(data => {
           const days = data.days || Array.from({length: daysInMonth}, (_, i) => ({day: i+1, count: 0}));
-          renderSVGSparkline(monthSparkSVG, days.map(d => d.count));
+          const values = days.map(d => d.count);
+          console.log('[SVG Sparkline] Monthly data:', values);
+          renderSVGSparkline(monthSparkSVG, values);
         });
     }
 
@@ -1712,7 +1714,9 @@
             .filter(h => h.hour >= SHIFT_START && h.hour < SHIFT_END);
           // If backend returns all 24, fallback to 8 zeros if empty
           const filled = hours.length === SHIFT_HOURS ? hours : Array.from({length: SHIFT_HOURS}, (_, i) => ({hour: SHIFT_START + i, count: 0}));
-          renderSVGSparkline(trackerSparkSVG, filled.map(h => h.count));
+          const values = filled.map(h => h.count);
+          console.log('[SVG Sparkline] Today tracker data:', values);
+          renderSVGSparkline(trackerSparkSVG, values);
         });
     }
 
@@ -1722,7 +1726,19 @@ function renderSVGSparkline(svgElem, data) {
   const height = 48;
   if (!svgElem) return;
   svgElem.innerHTML = '';
-  if (!data || data.length < 2) return;
+  if (!data || data.length < 1) return;
+  // If only one point or all values are the same, draw a flat line
+  const allSame = data.every(v => v === data[0]);
+  if (data.length === 1 || allSame) {
+    const y = height / 2;
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', `M0,${y} L${width},${y}`);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#8cf04a');
+    path.setAttribute('stroke-width', '2');
+    svgElem.appendChild(path);
+    return;
+  }
   // Find min/max for scaling
   const min = Math.min(...data);
   const max = Math.max(...data);
