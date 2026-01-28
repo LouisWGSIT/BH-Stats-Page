@@ -2717,4 +2717,6 @@ function renderSVGSparkline(svgElem, data) {
     updateTargetTracker();
   }, cfg.refreshSeconds * 1000);
 
+})();
+
 
