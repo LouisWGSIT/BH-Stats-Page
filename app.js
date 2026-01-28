@@ -426,9 +426,13 @@ function renderSVGSparkline(svgElem, data) {
   function renderTopList(listId, engineers) {
     const el = document.getElementById(listId);
     el.innerHTML = '';
+    function truncateInitials(name) {
+      if (!name) return '';
+      return name.length > 4 ? name.slice(0, 4) + '…' : name;
+    }
     if (engineers && engineers.length > 0) {
       engineers.forEach((eng) => {
-        const name = (eng.initials || '').toString().trim();
+        const name = truncateInitials((eng.initials || '').toString().trim());
         if (!name) return;
         const li = document.createElement('li');
         const avatar = getAvatarDataUri(name);
@@ -1343,11 +1347,12 @@ function renderSVGSparkline(svgElem, data) {
 
     tbody.innerHTML = data.stats.slice(0, 10).map(eng => {
       const avatar = getAvatarDataUri(eng.initials || '');
+      const displayInitials = truncateInitials(eng.initials || '');
       return `
       <tr>
         <td>
           <span class="engineer-avatar" style="background-image: url(${avatar})"></span>
-          <span class="engineer-name">${eng.initials}</span>
+          <span class="engineer-name">${displayInitials}</span>
         </td>
         <td>${eng.weeklyTotal}</td>
         <td>${eng.daysActive}/7</td>
@@ -1743,7 +1748,7 @@ function renderSVGSparkline(svgElem, data) {
         }
       }
     });
-  }
+          <span class="speed-name">${displayInitials}</span>
 
   function updateTargetTracker() {
 
