@@ -1554,11 +1554,10 @@ function renderSVGSparkline(svgElem, data) {
     const statList = document.getElementById('monthStatList');
     if (statList) {
       statList.innerHTML = '';
-      // Fetch top engineers for the month and display with avatars
+      // Fetch top engineers for the month and display horizontally
       fetch('/metrics/engineers/leaderboard?scope=month&limit=5')
         .then(r => r.json())
         .then(data => {
-          // Only show top 3 engineers for clarity
           (data.items || []).slice(0, 3).forEach((row, idx) => {
             const li = document.createElement('li');
             const color = getEngineerColor(row.initials || '');
@@ -1571,7 +1570,6 @@ function renderSVGSparkline(svgElem, data) {
               </span>`;
             statList.appendChild(li);
           });
-          // Remove summary stats for less clutter
         });
     }
 

@@ -14,6 +14,12 @@ app = FastAPI(title="Warehouse Stats Service")
 # Initialize database tables on startup
 db.init_db()
 
+# For sparkline compatibility: hourly-totals endpoint
+@app.get("/analytics/hourly-totals")
+async def analytics_hourly_totals():
+    """Get hourly erasure totals for today (shift hours)"""
+    return {"hours": db.get_peak_hours()}
+
 # Place the endpoint here, after app is defined
 @app.get("/analytics/daily-totals")
 async def analytics_daily_totals():
