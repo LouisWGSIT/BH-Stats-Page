@@ -33,13 +33,21 @@
   justify-content: center;
   gap: 8px;
   width: 100%;
+  max-width: 480px;
+  min-width: 400px;
   padding: 10px 10px 14px 10px;
 }
 .tracker-sparkline-unified {
   display: block;
   margin: 8px auto 8px auto;
-  width: 400px;
-  max-width: 100%;
+  width: 100%;
+  min-width: 400px;
+  max-width: 480px;
+    background: var(--card-bg);
+    border-radius: 14px;
+    box-shadow: var(--card-shadow);
+    border: var(--card-border);
+    overflow: hidden;
   height: 48px;
   image-rendering: crisp-edges;
 }
@@ -1099,7 +1107,7 @@ body {
   min-height: 0;
   border: var(--card-border);
   box-shadow: var(--card-shadow);
-  overflow: visible;
+  overflow: hidden;
 }
 
 .card:not(.flip-card) {
