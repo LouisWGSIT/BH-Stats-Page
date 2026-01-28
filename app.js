@@ -2698,6 +2698,7 @@ function renderSVGSparkline(svgElem, data) {
   updateTargetTracker();
   createMonthlyMomentumChart();
 
+
   setInterval(() => {
     refreshSummary();
     refreshAllTopLists();
@@ -2705,7 +2706,6 @@ function renderSVGSparkline(svgElem, data) {
     refreshLeaderboard();
     checkAndTriggerWinner();
     checkGreenieTime();
-    
     // Update new flip cards
     updateRecordsMilestones();
     updateWeeklyRecords();
@@ -2716,4 +2716,4 @@ function renderSVGSparkline(svgElem, data) {
     updateTargetTracker();
   }, cfg.refreshSeconds * 1000);
 
-})();
+
