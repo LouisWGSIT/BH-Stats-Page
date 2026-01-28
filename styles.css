@@ -1,3 +1,11 @@
+/* Make Mon-Fri breakdown span all columns and center, stat cards above retain original size */
+.record-item--monfri {
+  grid-column: 1 / span 3;
+  background: none;
+  border: none;
+  padding-top: 10px;
+  padding-bottom: 0;
+}
 /* Mon-Fri breakdown row in weekly achievements */
 
 #weekdaysBreakdownRow {
