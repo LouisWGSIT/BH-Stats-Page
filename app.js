@@ -1553,23 +1553,39 @@ function renderSVGSparkline(svgElem, data) {
     // Stat list (unique monthly stats)
     const statList = document.getElementById('monthStatList');
     if (statList) {
-      statList.innerHTML = '';
-      // Fetch top 4 engineers for the month and display horizontally, with erasure number below
+      // Fetch top 4 engineers for the month and update chips efficiently to avoid flicker
       fetch('/metrics/engineers/leaderboard?scope=month&limit=4')
         .then(r => r.json())
         .then(data => {
-          (data.items || []).slice(0, 4).forEach((row, idx) => {
-            const li = document.createElement('li');
-            const color = getEngineerColor(row.initials || '');
-            const avatar = getAvatarDataUri(row.initials || '');
-            li.innerHTML = `
-              <span class="engineer-chip engineer-chip-vertical">
-                <span class="engineer-avatar" style="background-image: url(${avatar}); border-color: ${color}"></span>
-                <span class="engineer-name">${row.initials}</span>
-                <span class="engineer-count engineer-count-below">${row.erasures || 0}</span>
-              </span>`;
-            statList.appendChild(li);
-          });
+          const engineers = (data.items || []).slice(0, 4);
+          // If number of chips changed, rebuild; else update contents only
+          if (statList.children.length !== engineers.length) {
+            statList.innerHTML = '';
+            engineers.forEach((row, idx) => {
+              const li = document.createElement('li');
+              const color = getEngineerColor(row.initials || '');
+              const avatar = getAvatarDataUri(row.initials || '');
+              li.innerHTML = `
+                <span class=\"engineer-chip engineer-chip-vertical\">
+                  <span class=\"engineer-avatar\" style=\"background-image: url(${avatar}); border-color: ${color}\"></span>
+                  <span class=\"engineer-name\">${row.initials}</span>
+                  <span class=\"engineer-count engineer-count-below\">${row.erasures || 0}</span>
+                </span>`;
+              statList.appendChild(li);
+            });
+          } else {
+            engineers.forEach((row, idx) => {
+              const li = statList.children[idx];
+              const chip = li.querySelector('.engineer-chip');
+              const avatarEl = chip.querySelector('.engineer-avatar');
+              const nameEl = chip.querySelector('.engineer-name');
+              const countEl = chip.querySelector('.engineer-count');
+              avatarEl.style.backgroundImage = `url(${getAvatarDataUri(row.initials || '')})`;
+              avatarEl.style.borderColor = getEngineerColor(row.initials || '');
+              nameEl.textContent = row.initials;
+              countEl.textContent = row.erasures || 0;
+            });
+          }
         });
     }
 
