@@ -1554,11 +1554,11 @@ function renderSVGSparkline(svgElem, data) {
     const statList = document.getElementById('monthStatList');
     if (statList) {
       statList.innerHTML = '';
-      // Fetch top engineers for the month and display horizontally, with erasure number below
+      // Fetch top 5 engineers for the month and display horizontally, with erasure number below
       fetch('/metrics/engineers/leaderboard?scope=month&limit=5')
         .then(r => r.json())
         .then(data => {
-          (data.items || []).slice(0, 3).forEach((row, idx) => {
+          (data.items || []).slice(0, 5).forEach((row, idx) => {
             const li = document.createElement('li');
             const color = getEngineerColor(row.initials || '');
             const avatar = getAvatarDataUri(row.initials || '');
