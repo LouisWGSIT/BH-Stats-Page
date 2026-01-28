@@ -1488,39 +1488,13 @@
     if (projEl) projEl.textContent = `Projected: ${projectedTotal} by end of month`;
 
     // Sparkline (daily erasures for the month)
-    if (window.analyticsCharts?.monthSparkline) window.analyticsCharts.monthSparkline.destroy();
-    const sparkCanvas = document.getElementById('monthSparkline');
-    if (sparkCanvas) {
-      sparkCanvas.width = 400;
-      sparkCanvas.height = 48;
+    const monthSparkSVG = document.getElementById('monthSparklineSVG');
+    if (monthSparkSVG) {
       fetch('/analytics/daily-totals')
         .then(r => r.json())
         .then(data => {
           const days = data.days || Array.from({length: daysInMonth}, (_, i) => ({day: i+1, count: 0}));
-          const ctx = sparkCanvas.getContext('2d');
-          window.analyticsCharts = window.analyticsCharts || {};
-          window.analyticsCharts.monthSparkline = new Chart(ctx, {
-            type: 'line',
-            data: {
-              labels: days.map(d => d.day),
-              datasets: [{
-                data: days.map(d => d.count),
-                borderColor: '#8cf04a',
-                backgroundColor: 'rgba(140,240,74,0.15)',
-                tension: 0.4,
-                pointRadius: 0,
-                borderWidth: 2,
-                fill: true
-              }]
-            },
-            options: {
-              plugins: { legend: { display: false } },
-              scales: { x: { display: false }, y: { display: false } },
-              elements: { line: { borderJoinStyle: 'round' } },
-              responsive: false,
-              maintainAspectRatio: false
-            }
-          });
+          renderSVGSparkline(monthSparkSVG, days.map(d => d.count));
         });
     }
 
@@ -1728,11 +1702,8 @@
     if (projEl) projEl.textContent = `Projected: ${projectedEnd} by end of day`;
 
     // Sparkline (erasures per hour)
-    if (window.analyticsCharts?.trackerSparkline) window.analyticsCharts.trackerSparkline.destroy();
-    const sparkCanvas = document.getElementById('trackerSparkline');
-    if (sparkCanvas) {
-      sparkCanvas.width = 400;
-      sparkCanvas.height = 48;
+    const trackerSparkSVG = document.getElementById('trackerSparklineSVG');
+    if (trackerSparkSVG) {
       fetch('/analytics/hourly-totals')
         .then(r => r.json())
         .then(data => {
@@ -1741,32 +1712,45 @@
             .filter(h => h.hour >= SHIFT_START && h.hour < SHIFT_END);
           // If backend returns all 24, fallback to 8 zeros if empty
           const filled = hours.length === SHIFT_HOURS ? hours : Array.from({length: SHIFT_HOURS}, (_, i) => ({hour: SHIFT_START + i, count: 0}));
-          const ctx = sparkCanvas.getContext('2d');
-          window.analyticsCharts = window.analyticsCharts || {};
-          window.analyticsCharts.trackerSparkline = new Chart(ctx, {
-            type: 'line',
-            data: {
-              labels: filled.map(h => h.hour),
-              datasets: [{
-                data: filled.map(h => h.count),
-                borderColor: '#8cf04a',
-                backgroundColor: 'rgba(140,240,74,0.15)',
-                tension: 0.4,
-                pointRadius: 0,
-                borderWidth: 2,
-                fill: true
-              }]
-            },
-            options: {
-              plugins: { legend: { display: false } },
-              scales: { x: { display: false }, y: { display: false } },
-              elements: { line: { borderJoinStyle: 'round' } },
-              responsive: false,
-              maintainAspectRatio: false
-            }
-          });
+          renderSVGSparkline(trackerSparkSVG, filled.map(h => h.count));
         });
     }
+
+// --- SVG Sparkline Renderer ---
+function renderSVGSparkline(svgElem, data) {
+  const width = 400;
+  const height = 48;
+  if (!svgElem) return;
+  svgElem.innerHTML = '';
+  if (!data || data.length < 2) return;
+  // Find min/max for scaling
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  // Build path
+  const step = width / (data.length - 1);
+  let d = '';
+  data.forEach((val, i) => {
+    const x = i * step;
+    // Invert y (SVG origin is top-left)
+    const y = height - ((val - min) / range) * (height - 6) - 3;
+    d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2) + ' ';
+  });
+  // Draw filled area
+  let fillD = d + `L ${width},${height} L 0,${height} Z`;
+  const fill = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  fill.setAttribute('d', fillD);
+  fill.setAttribute('fill', 'rgba(140,240,74,0.15)');
+  svgElem.appendChild(fill);
+  // Draw line
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', '#8cf04a');
+  path.setAttribute('stroke-width', '2');
+  path.setAttribute('stroke-linejoin', 'round');
+  svgElem.appendChild(path);
+}
 
     // Stat list (unique daily stats)
     const statList = document.getElementById('trackerStatList');
