@@ -30,6 +30,32 @@ async def get_monthly_momentum():
     """Get weekly totals for the current month for monthly momentum chart"""
     return db.get_monthly_momentum()
 
+
+# Endpoint: Mon-Fri daily erasure totals for current week
+@app.get("/analytics/weekly-daily-totals")
+async def analytics_weekly_daily_totals():
+    """Return Mon-Fri daily erasure totals for the current week (Monday to Friday)."""
+    from datetime import date, timedelta
+    import calendar
+    today = date.today()
+    # Find this week's Monday
+    monday = today - timedelta(days=today.weekday())
+    days = []
+    for i in range(5):  # Mon-Fri
+        d = monday + timedelta(days=i)
+        days.append(d)
+    # Query DB for each day
+    import database as db
+    result = []
+    for d in days:
+        stats = db.get_daily_stats(d.isoformat())
+        result.append({
+            "date": d.isoformat(),
+            "weekday": calendar.day_abbr[d.weekday()],
+            "count": stats.get("erased", 0)
+        })
+    return {"days": result}
+
 # Enable CORS for TV access from network
 app.add_middleware(
     CORSMiddleware,

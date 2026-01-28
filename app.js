@@ -1452,6 +1452,29 @@ function renderSVGSparkline(svgElem, data) {
       .catch(err => {
         console.error('Weekly stats fetch error:', err);
       });
+
+    // Fetch Mon-Fri breakdown for this week
+    fetch('/analytics/weekly-daily-totals')
+      .then(r => r.json())
+      .then(data => {
+        const days = (data.days || []);
+        // Map: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri
+        const ids = ['monVal', 'tueVal', 'wedVal', 'thuVal', 'friVal'];
+        for (let i = 0; i < 5; i++) {
+          const el = document.getElementById(ids[i]);
+          if (el) {
+            el.textContent = days[i] ? days[i].count : '—';
+          }
+        }
+      })
+      .catch(err => {
+        console.error('Weekly Mon-Fri breakdown fetch error:', err);
+        // fallback: clear values
+        ['monVal','tueVal','wedVal','thuVal','friVal'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = '—';
+        });
+      });
   }
 
   function updateTodayStats() {
