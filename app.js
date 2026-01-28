@@ -1554,7 +1554,7 @@ function renderSVGSparkline(svgElem, data) {
     const statList = document.getElementById('monthStatList');
     if (statList) {
       statList.innerHTML = '';
-      // Fetch top engineers for the month and display horizontally
+      // Fetch top engineers for the month and display horizontally, with erasure number below
       fetch('/metrics/engineers/leaderboard?scope=month&limit=5')
         .then(r => r.json())
         .then(data => {
@@ -1563,10 +1563,10 @@ function renderSVGSparkline(svgElem, data) {
             const color = getEngineerColor(row.initials || '');
             const avatar = getAvatarDataUri(row.initials || '');
             li.innerHTML = `
-              <span class="engineer-chip">
+              <span class="engineer-chip engineer-chip-vertical">
                 <span class="engineer-avatar" style="background-image: url(${avatar}); border-color: ${color}"></span>
                 <span class="engineer-name">${row.initials}</span>
-                <span class="engineer-count">${row.erasures || 0}</span>
+                <span class="engineer-count engineer-count-below">${row.erasures || 0}</span>
               </span>`;
             statList.appendChild(li);
           });

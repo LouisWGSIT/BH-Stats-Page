@@ -1,3 +1,20 @@
+.engineer-chip-vertical {
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 48px;
+  max-width: 64px;
+  padding: 4px 4px 2px 4px;
+}
+.engineer-count-below {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ring-primary);
+  margin-top: 2px;
+  margin-bottom: 0;
+  text-align: center;
+}
 /* Tracker List (for Target Tracker & Monthly Progress Tracker) */
 .tracker-list {
   list-style: none;
@@ -1079,10 +1096,10 @@ body {
   display: flex;
   flex-direction: row;
   justify-content: center;
-  align-items: stretch;
+  align-items: flex-end;
   gap: 10px;
   list-style: none;
-  margin: 8px 0 0 0;
+  margin: 12px 0 0 0;
   padding: 0;
   flex-wrap: wrap;
 }
@@ -1098,7 +1115,8 @@ body {
   .engineer-list-horizontal {
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 10px;
+    margin-top: 8px;
   }
 }
 
