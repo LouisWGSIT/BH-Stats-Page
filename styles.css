@@ -952,11 +952,11 @@ body {
   max-height: 170px;
 }
 .bottom-row {
+.bottom-row {
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: auto;
   min-height: 265px;
   max-height: 280px;
-  margin-top: 120px; /* Move the row down by 120px, adjust as needed */
 }
 .bottom-row-extra {
   display: none;
@@ -1548,9 +1548,10 @@ body {
 /* Records & Milestones Card */
 .records-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  padding: 8px 4px;
+.categories-row {
+  grid-template-columns: repeat(4, 1fr);
+  min-height: 290px;
+  max-height: 290px;
 }
 
 .record-item {
