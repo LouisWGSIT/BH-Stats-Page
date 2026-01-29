@@ -270,14 +270,11 @@
 
 * { box-sizing: border-box; }
 
-html, body { 
-  height: 100vh; 
+html, body {
   width: 100vw;
-  margin: 0; 
-  overflow: hidden;
-  position: fixed;
-  top: 0;
-  left: 0;
+  margin: 0;
+  overflow-x: hidden;
+  position: static;
 }
 
 body {
@@ -292,7 +289,6 @@ body {
 #app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
   width: 100vw;
 }
 
