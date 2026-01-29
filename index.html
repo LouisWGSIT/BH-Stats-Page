@@ -452,5 +452,23 @@
       <p id="winnerSubtext"></p>
     </div>
   </div>
+
+  <script>
+    function syncRaceSectionHeight() {
+      var mainContent = document.querySelector('.main-content');
+      var raceSection = document.querySelector('.race-section');
+      if (mainContent && raceSection) {
+        // Reset height to auto to get natural content height
+        raceSection.style.height = 'auto';
+        // Set height to match right column
+        var rightHeight = mainContent.offsetHeight;
+        raceSection.style.height = rightHeight + 'px';
+      }
+    }
+    window.addEventListener('DOMContentLoaded', syncRaceSectionHeight);
+    window.addEventListener('resize', syncRaceSectionHeight);
+    // Optional: re-sync on zoom (using interval as zoom events are not directly available)
+    setInterval(syncRaceSectionHeight, 500);
+  </script>
 </body>
 </html>
