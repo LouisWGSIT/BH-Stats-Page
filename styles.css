@@ -1547,7 +1547,14 @@ body {
 /* Records & Milestones Card */
   .records-grid {
     display: grid;
-    /* ...existing code... */
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 12px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 8px 0 0 0;
+    align-items: stretch;
+    justify-items: stretch;
   }
 
 .categories-row {
