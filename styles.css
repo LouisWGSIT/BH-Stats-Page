@@ -951,11 +951,12 @@ body {
   min-height: 170px;
   max-height: 170px;
 }
-.bottom-row { 
-  grid-template-columns: repeat(3, 1fr); 
+.bottom-row {
+  grid-template-columns: repeat(3, 1fr);
   grid-template-rows: auto;
   min-height: 265px;
   max-height: 280px;
+  margin-top: 120px; /* Move the row down by 120px, adjust as needed */
 }
 .bottom-row-extra {
   display: none;
