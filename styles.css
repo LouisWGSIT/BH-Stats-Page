@@ -401,7 +401,6 @@ body {
   overflow: hidden;
   min-height: 0;
   align-items: stretch;
-  height: 100%;
 }
 
 .main-content {
@@ -411,12 +410,10 @@ body {
   flex: 1 1 0;
   overflow: hidden;
   min-height: 0;
-  height: 100%;
 }
 
 .race-section {
   width: 380px;
-  height: 100%;
   background: linear-gradient(145deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
   border-radius: 14px;
   padding: 0;
