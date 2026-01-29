@@ -944,19 +944,18 @@ body {
 .top-row { 
   grid-template-columns: repeat(2, 1fr); 
   min-height: 180px;
-  max-height: 180px;
+  max-height: 200px;
 }
 .categories-row { 
   grid-template-columns: repeat(4, 1fr);
-  min-height: 170px;
-  max-height: 170px;
+  min-height: 190px;
+  max-height: 290px;
 }
-.bottom-row {
 .bottom-row {
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: auto;
   min-height: 265px;
-  max-height: 280px;
+  max-height: 300px;
 }
 .bottom-row-extra {
   display: none;
@@ -1546,8 +1545,11 @@ body {
 }
 
 /* Records & Milestones Card */
-.records-grid {
-  display: grid;
+  .records-grid {
+    display: grid;
+    /* ...existing code... */
+  }
+
 .categories-row {
   grid-template-columns: repeat(4, 1fr);
   min-height: 290px;
