@@ -61,11 +61,7 @@ function renderSVGSparkline(svgElem, data) {
         allTimeEl.textContent = allTime;
         animateNumberUpdate('allTimeValue');
       }
-      // Update pip at top right of each card (if pip element exists)
-      const pipEls = document.querySelectorAll('.card-pip-total');
-      pipEls.forEach(el => {
-        el.textContent = allTime;
-      });
+      // (Removed global pip update. Pip is now updated per card/period in renderTopListWithLabel)
     } catch (err) {
       console.error('All Time totals fetch error:', err);
     }
@@ -496,10 +492,10 @@ function renderSVGSparkline(svgElem, data) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       const counts = {
-        laptops_desktops: data['laptops_desktops'] || 0,
-        servers: data['servers'] || 0,
-        macs: data['macs'] || 0,
-        mobiles: data['mobiles'] || 0,
+          laptops_desktops: data.laptops_desktops || 0,
+          servers: data.servers || 0,
+          macs: data.macs || 0,
+          mobiles: data.mobiles || 0,
       };
       categories.forEach(c => {
         const el = document.getElementById(c.countId);
@@ -1502,11 +1498,7 @@ function renderSVGSparkline(svgElem, data) {
       })
       .catch(err => {
         console.error('Weekly Mon-Fri breakdown fetch error:', err);
-        // fallback: clear values
-        ['monVal','tueVal','wedVal','thuVal','friVal'].forEach(id => {
-          const el = document.getElementById(id);
-          if (el) el.textContent = '—';
-        });
+        // No fallback: leave values as-is if backend fails
       });
   }
 
@@ -1535,7 +1527,7 @@ function renderSVGSparkline(svgElem, data) {
     fetch('/analytics/peak-hours')
       .then(r => r.json())
       .then(data => {
-        // API returns { hours: [...] }; fallback to array for backwards compatibility
+        // Only use backend-provided hours
         const hours = Array.isArray(data) ? data : (data?.hours || []);
         if (hours.length > 0) {
           // Find hour with highest count
@@ -1833,9 +1825,8 @@ function renderSVGSparkline(svgElem, data) {
           // Only use shift hours (8:00–15:00)
           const hours = (data.hours || [])
             .filter(h => h.hour >= SHIFT_START && h.hour < SHIFT_END);
-          // If backend returns all 24, fallback to 8 zeros if empty
-          const filled = hours.length === SHIFT_HOURS ? hours : Array.from({length: SHIFT_HOURS}, (_, i) => ({hour: SHIFT_START + i, count: 0}));
-          const values = filled.map(h => h.count);
+          // Only use backend-provided hours
+          const values = hours.map(h => h.count);
           console.log('[SVG Sparkline] Today tracker data:', values);
           renderSVGSparkline(trackerSparkSVG, values);
         })
@@ -1939,7 +1930,7 @@ function renderSVGSparkline(svgElem, data) {
       }
     } catch (error) {
       console.warn('Failed to fetch monthly momentum:', error);
-      weeklyData = [180, 245, 310, 380]; // Fallback mock data
+      // No fallback: leave chart empty if backend fails
     }
     
     const ctx = canvas.getContext('2d');
@@ -2415,14 +2406,14 @@ function renderSVGSparkline(svgElem, data) {
     csv.push(...(allEngineersRows.length > 0 ? allEngineersRows.map(row => {
       const erasures = parseInt(row[2]);
       const pct = parseInt(target) > 0 ? Math.round((erasures / parseInt(target)) * 100) : 0;
-      // If row has KPI data (length > 5), include it
+      // Only include rows with full KPI data
       if (row.length > 5) {
         return [row[0], row[1], row[2], row[3], row[4], `${pct}%`, row[5], row[6], row[7], row[8], row[9], row[10]];
       } else {
-        // Fallback if no KPI data
-        return [row[0], row[1], row[2], row[3], row[4], `${pct}%`, '-', '-', '-', '-', '-', '-'];
+        // If no KPI data, skip row (or could show 'No data available')
+        return null;
       }
-    }) : [['No data available']]));
+    }).filter(Boolean) : [['No data available']]));
     
     // Device Specialization sheet if there is data
     let hasDeviceRows = false;
@@ -2774,33 +2765,29 @@ function renderSVGSparkline(svgElem, data) {
         li.innerHTML = `<span class="no-data">No data yet</span>`;
         el.appendChild(li);
       }
-      // Optionally update a label for the face (e.g., Today, Month, All Time)
+      // Always update label for the face (e.g., Today, Month, All Time)
       if (label) {
-        // Always ensure label is in the header, left of the pip (pill)
-        const header = el.parentElement.querySelector('.stat-card__header');
-        if (header) {
-          let labelEl = header.querySelector('.category-period-label');
-          if (!labelEl) {
-            labelEl = document.createElement('span');
-            labelEl.className = 'category-period-label';
-            labelEl.style = 'font-size:0.95em;color:var(--muted);margin-right:8px;vertical-align:middle;';
-            // Insert before pip (pill) if present, else at start
-            const pip = header.querySelector('.pill');
-            if (pip) {
-              header.insertBefore(labelEl, pip);
-            } else {
-              header.insertBefore(labelEl, header.firstChild);
-            }
+        // Ensure label is in the header, left of the pip (pill)
+        const header = el.parentElement.querySelector('.stat-card__header, .card-header, .category-header, .top-row, .card-title-row') || el.parentElement;
+        let labelEl = header.querySelector('.category-period-label');
+        if (!labelEl) {
+          labelEl = document.createElement('span');
+          labelEl.className = 'category-period-label';
+          labelEl.style = 'font-size:0.95em;color:var(--muted);margin-right:8px;vertical-align:middle;';
+          // Insert before pip if possible
+          const pip = header.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
+          if (pip) {
+            header.insertBefore(labelEl, pip);
+          } else {
+            header.appendChild(labelEl);
           }
-          labelEl.textContent = label;
         }
+        labelEl.textContent = label;
       }
-      // Update pip number for this card
+      // Update pip number for this card/period only (no fallback)
       const pip = el.parentElement.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
-      // Try common class names, fallback to .pip
       let pipEl = pip || el.parentElement.querySelector('[class*="pip"]');
       if (pipEl && typeof total === 'number') pipEl.textContent = total;
-      // Fade in
       setTimeout(() => { el.style.opacity = 1; }, 200);
     }, 200);
   }
@@ -2823,11 +2810,7 @@ function renderSVGSparkline(svgElem, data) {
         let data = await res.json();
         if (scope.key === 'month') monthData = data.engineers;
         if (scope.key === 'all') allTimeData = data.engineers;
-        // Fallback for all-time if not supported
-        if (scope.key === 'all' && (!data.engineers || data.engineers.length === 0)) {
-          // Use month data for all-time if no historical data
-          data.engineers = monthData || [];
-        }
+        // No fallback: if all-time is empty, show empty state (no data yet)
         results[scope.key] = { engineers: data.engineers, label: scope.label };
       } catch (err) {
         results[scope.key] = { engineers: [], label: scope.label };
