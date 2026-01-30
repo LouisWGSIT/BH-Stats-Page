@@ -2750,8 +2750,24 @@ function renderSVGSparkline(svgElem, data) {
       }
       // Optionally update a label for the face (e.g., Today, Month, All Time)
       if (label) {
-        const labelEl = el.parentElement.querySelector('.category-period-label');
-        if (labelEl) labelEl.textContent = label;
+        // Always ensure label is in the header, left of the pip (pill)
+        const header = el.parentElement.querySelector('.stat-card__header');
+        if (header) {
+          let labelEl = header.querySelector('.category-period-label');
+          if (!labelEl) {
+            labelEl = document.createElement('span');
+            labelEl.className = 'category-period-label';
+            labelEl.style = 'font-size:0.95em;color:var(--muted);margin-right:8px;vertical-align:middle;';
+            // Insert before pip (pill) if present, else at start
+            const pip = header.querySelector('.pill');
+            if (pip) {
+              header.insertBefore(labelEl, pip);
+            } else {
+              header.insertBefore(labelEl, header.firstChild);
+            }
+          }
+          labelEl.textContent = label;
+        }
       }
       // Update pip number for this card
       const pip = el.parentElement.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
