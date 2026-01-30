@@ -2722,34 +2722,45 @@ function renderSVGSparkline(svgElem, data) {
 
   // --- Middle Row Flip Mechanic ---
   // Enhanced: renderTopList now supports multiple faces for flip/rotation
-  function renderTopListWithLabel(listId, engineers, label) {
+  function renderTopListWithLabel(listId, engineers, label, total) {
     const el = document.getElementById(listId);
-    el.innerHTML = '';
-    if (engineers && engineers.length > 0) {
-      engineers.forEach((eng) => {
-        const name = truncateInitials((eng.initials || '').toString().trim());
-        if (!name) return;
+    // Fade out for smooth transition
+    el.style.opacity = 0;
+    setTimeout(() => {
+      el.innerHTML = '';
+      if (engineers && engineers.length > 0) {
+        engineers.forEach((eng) => {
+          const name = truncateInitials((eng.initials || '').toString().trim());
+          if (!name) return;
+          const li = document.createElement('li');
+          const avatar = getAvatarDataUri(name);
+          li.innerHTML = `
+            <span class="engineer-chip">
+              <span class="engineer-avatar" style="background-image: url(${avatar})"></span>
+              <span class="engineer-name">${name}</span>
+            </span>
+            <span class="value">${eng.count}</span>`;
+          el.appendChild(li);
+        });
+      } else {
+        // Show 'No data yet' if empty
         const li = document.createElement('li');
-        const avatar = getAvatarDataUri(name);
-        li.innerHTML = `
-          <span class="engineer-chip">
-            <span class="engineer-avatar" style="background-image: url(${avatar})"></span>
-            <span class="engineer-name">${name}</span>
-          </span>
-          <span class="value">${eng.count}</span>`;
+        li.innerHTML = `<span class="no-data">No data yet</span>`;
         el.appendChild(li);
-      });
-    } else {
-      // Show 'No data yet' if empty
-      const li = document.createElement('li');
-      li.innerHTML = `<span class="no-data">No data yet</span>`;
-      el.appendChild(li);
-    }
-    // Optionally update a label for the face (e.g., Today, Month, All Time)
-    if (label) {
-      const labelEl = el.parentElement.querySelector('.category-period-label');
-      if (labelEl) labelEl.textContent = label;
-    }
+      }
+      // Optionally update a label for the face (e.g., Today, Month, All Time)
+      if (label) {
+        const labelEl = el.parentElement.querySelector('.category-period-label');
+        if (labelEl) labelEl.textContent = label;
+      }
+      // Update pip number for this card
+      const pip = el.parentElement.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
+      // Try common class names, fallback to .pip
+      let pipEl = pip || el.parentElement.querySelector('[class*="pip"]');
+      if (pipEl && typeof total === 'number') pipEl.textContent = total;
+      // Fade in
+      setTimeout(() => { el.style.opacity = 1; }, 200);
+    }, 200);
   }
 
   // Enhanced: fetches for today, month, all-time for flip faces
@@ -2762,10 +2773,17 @@ function renderSVGSparkline(svgElem, data) {
     const results = {};
     for (const scope of scopes) {
       try {
-        const url = `/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}${scope.key !== 'today' ? `&scope=${scope.key}` : ''}`;
+        let url = `/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}`;
+        if (scope.key !== 'today') url += `&scope=${scope.key}`;
         const res = await fetch(url);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
+        let data = await res.json();
+        // Fallback for all-time if not supported
+        if (scope.key === 'all' && (!data.engineers || data.engineers.length === 0)) {
+          // Try without scope param or fallback to month
+          const fallbackRes = await fetch(`/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}`);
+          const fallbackData = await fallbackRes.json();
+          data.engineers = fallbackData.engineers || [];
+        }
         results[scope.key] = { engineers: data.engineers, label: scope.label };
       } catch (err) {
         results[scope.key] = { engineers: [], label: scope.label };
@@ -2776,7 +2794,8 @@ function renderSVGSparkline(svgElem, data) {
     window._categoryFlipData = window._categoryFlipData || {};
     window._categoryFlipData[listId] = results;
     // Render initial (today)
-    renderTopListWithLabel(listId, results.today.engineers, results.today.label);
+    const total = (results.today.engineers || []).reduce((sum, e) => sum + (e.count || 0), 0);
+    renderTopListWithLabel(listId, results.today.engineers, results.today.label, total);
   }
 
   // Enhanced: fetch all scopes for each category
@@ -2791,11 +2810,20 @@ function renderSVGSparkline(svgElem, data) {
       const el = document.getElementById(listId);
       if (!el) return;
       // Add label if not present
-      if (!el.parentElement.querySelector('.category-period-label')) {
-        const label = document.createElement('div');
+      // Move label to header row, left of pip
+      const header = el.parentElement.querySelector('.card-header, .category-header, .top-row, .card-title-row') || el.parentElement;
+      let label = header.querySelector('.category-period-label');
+      if (!label) {
+        label = document.createElement('span');
         label.className = 'category-period-label';
-        label.style = 'text-align:right;font-size:0.9em;color:var(--muted);margin-bottom:2px;';
-        el.parentElement.insertBefore(label, el);
+        label.style = 'font-size:0.95em;color:var(--muted);margin-right:8px;vertical-align:middle;';
+        // Insert before pip if possible
+        const pip = header.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
+        if (pip) {
+          header.insertBefore(label, pip);
+        } else {
+          header.appendChild(label);
+        }
       }
       // Flip logic
       let flipIndex = 0;
@@ -2803,10 +2831,8 @@ function renderSVGSparkline(svgElem, data) {
       setInterval(() => {
         flipIndex = (flipIndex + 1) % scopes.length;
         const data = window._categoryFlipData[listId][scopes[flipIndex]];
-        renderTopListWithLabel(listId, data.engineers, data.label);
-        // Optionally add flip animation
-        el.classList.add('flipping');
-        setTimeout(() => el.classList.remove('flipping'), 600);
+        const total = (data.engineers || []).reduce((sum, e) => sum + (e.count || 0), 0);
+        renderTopListWithLabel(listId, data.engineers, data.label, total);
       }, 12000); // 12s per face
     });
   }

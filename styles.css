@@ -1,3 +1,18 @@
+/* Middle row card header: period label left of pip */
+.category-period-label {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 0.95em;
+  color: var(--muted);
+  vertical-align: middle;
+}
+/* Ensure pip stays right-aligned */
+.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number {
+  float: right;
+  margin-left: 4px;
+  font-weight: bold;
+  font-size: 1.1em;
+}
 @media (min-width: 1600px) {
   .weekdays-breakdown-numbers .weekday-val {
     font-size: 20px !important;
