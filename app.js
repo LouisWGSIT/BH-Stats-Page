@@ -2719,6 +2719,106 @@ function renderSVGSparkline(svgElem, data) {
     updateTargetTracker();
   }, cfg.refreshSeconds * 1000);
 
+
+  // --- Middle Row Flip Mechanic ---
+  // Enhanced: renderTopList now supports multiple faces for flip/rotation
+  function renderTopListWithLabel(listId, engineers, label) {
+    const el = document.getElementById(listId);
+    el.innerHTML = '';
+    if (engineers && engineers.length > 0) {
+      engineers.forEach((eng) => {
+        const name = truncateInitials((eng.initials || '').toString().trim());
+        if (!name) return;
+        const li = document.createElement('li');
+        const avatar = getAvatarDataUri(name);
+        li.innerHTML = `
+          <span class="engineer-chip">
+            <span class="engineer-avatar" style="background-image: url(${avatar})"></span>
+            <span class="engineer-name">${name}</span>
+          </span>
+          <span class="value">${eng.count}</span>`;
+        el.appendChild(li);
+      });
+    } else {
+      // Show 'No data yet' if empty
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="no-data">No data yet</span>`;
+      el.appendChild(li);
+    }
+    // Optionally update a label for the face (e.g., Today, Month, All Time)
+    if (label) {
+      const labelEl = el.parentElement.querySelector('.category-period-label');
+      if (labelEl) labelEl.textContent = label;
+    }
+  }
+
+  // Enhanced: fetches for today, month, all-time for flip faces
+  async function refreshTopByTypeAllScopes(type, listId) {
+    const scopes = [
+      { key: 'today', label: "Today's Erasures" },
+      { key: 'month', label: "This Month" },
+      { key: 'all', label: "All Time" }
+    ];
+    const results = {};
+    for (const scope of scopes) {
+      try {
+        const url = `/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}${scope.key !== 'today' ? `&scope=${scope.key}` : ''}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        results[scope.key] = { engineers: data.engineers, label: scope.label };
+      } catch (err) {
+        results[scope.key] = { engineers: [], label: scope.label };
+        console.error('Top-by-type refresh error:', type, scope.key, err);
+      }
+    }
+    // Store for flip logic
+    window._categoryFlipData = window._categoryFlipData || {};
+    window._categoryFlipData[listId] = results;
+    // Render initial (today)
+    renderTopListWithLabel(listId, results.today.engineers, results.today.label);
+  }
+
+  // Enhanced: fetch all scopes for each category
+  function refreshAllTopListsWithFlip() {
+    categories.forEach(c => refreshTopByTypeAllScopes(c.key, c.listId));
+  }
+
+  function setupCategoryFlipCards() {
+    if (!window._categoryFlipData) return;
+    categories.forEach(c => {
+      const listId = c.listId;
+      const el = document.getElementById(listId);
+      if (!el) return;
+      // Add label if not present
+      if (!el.parentElement.querySelector('.category-period-label')) {
+        const label = document.createElement('div');
+        label.className = 'category-period-label';
+        label.style = 'text-align:right;font-size:0.9em;color:var(--muted);margin-bottom:2px;';
+        el.parentElement.insertBefore(label, el);
+      }
+      // Flip logic
+      let flipIndex = 0;
+      const scopes = ['today', 'month', 'all'];
+      setInterval(() => {
+        flipIndex = (flipIndex + 1) % scopes.length;
+        const data = window._categoryFlipData[listId][scopes[flipIndex]];
+        renderTopListWithLabel(listId, data.engineers, data.label);
+        // Optionally add flip animation
+        el.classList.add('flipping');
+        setTimeout(() => el.classList.remove('flipping'), 600);
+      }, 12000); // 12s per face
+    });
+  }
+
+  // Replace original refreshAllTopLists with the new one
+  window.refreshAllTopLists = refreshAllTopListsWithFlip;
+
+  // On load, refresh all lists with flip support
+  refreshAllTopListsWithFlip();
+  // After a short delay (to allow data fetch), setup flip mechanic
+  setTimeout(setupCategoryFlipCards, 2000);
+
 })();
 
 
