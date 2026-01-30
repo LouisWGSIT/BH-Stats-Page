@@ -2788,6 +2788,7 @@ function renderSVGSparkline(svgElem, data) {
     ];
     const results = {};
     let monthData = null;
+    let allTimeData = null;
     for (const scope of scopes) {
       try {
         let url = `/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}`;
@@ -2795,14 +2796,11 @@ function renderSVGSparkline(svgElem, data) {
         const res = await fetch(url);
         let data = await res.json();
         if (scope.key === 'month') monthData = data.engineers;
+        if (scope.key === 'all') allTimeData = data.engineers;
         // Fallback for all-time if not supported
         if (scope.key === 'all' && (!data.engineers || data.engineers.length === 0)) {
           // Use month data for all-time if no historical data
           data.engineers = monthData || [];
-        }
-        // If all-time is still empty, but month has data, use month for all-time
-        if (scope.key === 'all' && (!data.engineers || data.engineers.length === 0) && monthData && monthData.length > 0) {
-          data.engineers = monthData;
         }
         results[scope.key] = { engineers: data.engineers, label: scope.label };
       } catch (err) {
@@ -2810,6 +2808,10 @@ function renderSVGSparkline(svgElem, data) {
         console.error('Top-by-type refresh error:', type, scope.key, err);
       }
     }
+    // Determine if all time data is present and non-empty
+    const hasAllTime = Array.isArray(allTimeData) && allTimeData.length > 0;
+    window._categoryFlipData = window._categoryFlipData || {};
+    window._categoryFlipData[listId] = { ...results, _hasAllTime: hasAllTime };
     // Store for flip logic
     window._categoryFlipData = window._categoryFlipData || {};
     window._categoryFlipData[listId] = results;
@@ -2851,15 +2853,17 @@ function renderSVGSparkline(svgElem, data) {
       }
       // Flip logic
       let flipIndex = 0;
-      const scopes = ['today', 'month', 'all'];
-      // Only show one card at a time, and slow down rotation
+      const flipData = window._categoryFlipData[listId];
+      // Only rotate between available scopes
+      const scopes = ['today', 'month'];
+      if (flipData._hasAllTime) scopes.push('all');
       setInterval(() => {
         flipIndex = (flipIndex + 1) % scopes.length;
         // Hide all period cards before showing the next
         const el = document.getElementById(listId);
         if (el) el.style.opacity = 0;
         setTimeout(() => {
-          const data = window._categoryFlipData[listId][scopes[flipIndex]];
+          const data = flipData[scopes[flipIndex]];
           const total = (data.engineers || []).reduce((sum, e) => sum + (e.count || 0), 0);
           renderTopListWithLabel(listId, data.engineers, data.label, total);
         }, 600); // fade out before next card
