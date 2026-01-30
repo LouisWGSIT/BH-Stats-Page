@@ -2837,13 +2837,30 @@ function renderSVGSparkline(svgElem, data) {
     });
   }
 
-  // Replace original refreshAllTopLists with the new one
-  window.refreshAllTopLists = refreshAllTopListsWithFlip;
+
+  // DEBUG: Add visible marker to confirm app.js is running
+  try {
+    const debugBanner = document.createElement('div');
+    debugBanner.textContent = 'DEBUG: app.js loaded at ' + new Date().toLocaleTimeString();
+    debugBanner.style = 'position:fixed;top:0;left:0;z-index:9999;background:#ff1ea3;color:#fff;padding:4px 12px;font-size:14px;font-weight:bold;box-shadow:0 2px 8px #0006;';
+    document.body.appendChild(debugBanner);
+    setTimeout(() => debugBanner.remove(), 8000);
+  } catch(e) { console.warn('Debug banner error', e); }
+
+  // Replace original refreshAllTopLists with the new one, with debug log
+  window.refreshAllTopLists = function() {
+    console.log('[DEBUG] refreshAllTopListsWithFlip called');
+    return refreshAllTopListsWithFlip();
+  };
 
   // On load, refresh all lists with flip support
+  console.log('[DEBUG] Calling refreshAllTopListsWithFlip on load');
   refreshAllTopListsWithFlip();
   // After a short delay (to allow data fetch), setup flip mechanic
-  setTimeout(setupCategoryFlipCards, 2000);
+  setTimeout(() => {
+    console.log('[DEBUG] Calling setupCategoryFlipCards');
+    setupCategoryFlipCards();
+  }, 2000);
 
 })();
 
