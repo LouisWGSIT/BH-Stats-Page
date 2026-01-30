@@ -1003,10 +1003,8 @@ body {
   box-shadow: var(--card-shadow);
   opacity: 0;
   pointer-events: none;
-  transform: rotateY(90deg) translate3d(0, 0, 0);
-  transition: transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.3s ease;
-  backface-visibility: hidden;
-  will-change: transform, opacity;
+  transition: opacity 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.3s ease;
+  will-change: opacity;
   visibility: hidden;
 }
 
@@ -1018,20 +1016,17 @@ body {
   opacity: 1;
   pointer-events: auto;
   z-index: 2;
-  transform: rotateY(0deg) translate3d(0, 0, 0);
   visibility: visible;
 }
 
 .rotator-card .panel.exiting {
   opacity: 0;
-  transform: rotateY(-90deg) translate3d(0, 0, 0);
   z-index: 1;
   visibility: visible;
 }
 
 .rotator-card .panel.entering {
   opacity: 0;
-  transform: rotateY(90deg);
   z-index: 2;
   visibility: visible;
 }
