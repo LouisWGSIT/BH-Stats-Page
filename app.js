@@ -2787,18 +2787,18 @@ function renderSVGSparkline(svgElem, data) {
       { key: 'all', label: "All Time" }
     ];
     const results = {};
+    let monthData = null;
     for (const scope of scopes) {
       try {
         let url = `/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}`;
         if (scope.key !== 'today') url += `&scope=${scope.key}`;
         const res = await fetch(url);
         let data = await res.json();
+        if (scope.key === 'month') monthData = data.engineers;
         // Fallback for all-time if not supported
         if (scope.key === 'all' && (!data.engineers || data.engineers.length === 0)) {
-          // Try without scope param or fallback to month
-          const fallbackRes = await fetch(`/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}`);
-          const fallbackData = await fallbackRes.json();
-          data.engineers = fallbackData.engineers || [];
+          // Use month data for all-time if no historical data
+          data.engineers = monthData || [];
         }
         results[scope.key] = { engineers: data.engineers, label: scope.label };
       } catch (err) {
@@ -2867,13 +2867,19 @@ function renderSVGSparkline(svgElem, data) {
       // Flip logic
       let flipIndex = 0;
       const scopes = ['today', 'month', 'all'];
+      // Only show one card at a time, and slow down rotation
       setInterval(() => {
         flipIndex = (flipIndex + 1) % scopes.length;
-        const data = window._categoryFlipData[listId][scopes[flipIndex]];
-        const total = (data.engineers || []).reduce((sum, e) => sum + (e.count || 0), 0);
-        console.log(`[DEBUG] Rotating ${listId} to`, scopes[flipIndex], data);
-        renderTopListWithLabel(listId, data.engineers, data.label, total);
-      }, 12000); // 12s per face
+        // Hide all period cards before showing the next
+        const el = document.getElementById(listId);
+        if (el) el.style.opacity = 0;
+        setTimeout(() => {
+          const data = window._categoryFlipData[listId][scopes[flipIndex]];
+          const total = (data.engineers || []).reduce((sum, e) => sum + (e.count || 0), 0);
+          console.log(`[DEBUG] Rotating ${listId} to`, scopes[flipIndex], data);
+          renderTopListWithLabel(listId, data.engineers, data.label, total);
+        }, 600); // fade out before next card
+      }, 20000); // 20s per face (slower)
     });
   }
 
