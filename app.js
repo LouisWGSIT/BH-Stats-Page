@@ -2808,6 +2808,7 @@ function renderSVGSparkline(svgElem, data) {
         // Fetch the true total for this category/period
         let total = 0;
         try {
+          // Correct endpoint and query string
           let totalUrl = `/metrics/total-by-type?type=${encodeURIComponent(type)}&scope=${scope.key}`;
           const totalRes = await fetch(totalUrl);
           const totalData = await totalRes.json();
