@@ -396,12 +396,17 @@ def top_engineers(scope: str = 'today', device_type: str = None, limit: int = 3)
     if scope == 'month':
         key_col = 'month'
         key_val = get_today_str()[:7]
+        where = f"{key_col} = ? AND event = 'success'"
+        params = [key_val]
+    elif scope == 'all':
+        where = "event = 'success'"
+        params = []
     else:
         key_col = 'date'
         key_val = get_today_str()
+        where = f"{key_col} = ? AND event = 'success'"
+        params = [key_val]
 
-    where = f"{key_col} = ? AND event = 'success'"
-    params = [key_val]
     if device_type:
         where += " AND device_type = ?"
         params.append(device_type)

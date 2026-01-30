@@ -2767,22 +2767,22 @@ function renderSVGSparkline(svgElem, data) {
       }
       // Always update label for the face (e.g., Today, Month, All Time)
       if (label) {
-        // Ensure label is in the header, left of the pip (pill)
         const header = el.parentElement.querySelector('.stat-card__header, .card-header, .category-header, .top-row, .card-title-row') || el.parentElement;
         let labelEl = header.querySelector('.category-period-label');
         if (!labelEl) {
           labelEl = document.createElement('span');
           labelEl.className = 'category-period-label';
           labelEl.style = 'font-size:0.95em;color:var(--muted);margin-right:8px;vertical-align:middle;';
-          // Insert before pip if possible
-          const pip = header.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
-          if (pip) {
-            header.insertBefore(labelEl, pip);
-          } else {
-            header.appendChild(labelEl);
-          }
+          header.insertBefore(labelEl, header.firstChild);
         }
+        // Always set label text, including for All Time
         labelEl.textContent = label;
+      }
+      // Ensure pip is always at the end of the header
+      const header = el.parentElement.querySelector('.stat-card__header, .card-header, .category-header, .top-row, .card-title-row') || el.parentElement;
+      const pip = header.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
+      if (pip && pip.nextSibling) {
+        header.appendChild(pip); // Move pip to end if not already
       }
       // Update pip number for this card/period only (no fallback)
       const pip = el.parentElement.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
@@ -2817,11 +2817,10 @@ function renderSVGSparkline(svgElem, data) {
         console.error('Top-by-type refresh error:', type, scope.key, err);
       }
     }
-    // Determine if all time data is present and non-empty
-    const hasAllTime = Array.isArray(allTimeData) && allTimeData.length > 0;
-    window._categoryFlipData = window._categoryFlipData || {};
-    window._categoryFlipData[listId] = { ...results, _hasAllTime: hasAllTime };
-    // Store for flip logic
+    // Always provide all three periods in flip data, even if empty
+    if (!results.all) {
+      results.all = { engineers: [], label: 'All Time' };
+    }
     window._categoryFlipData = window._categoryFlipData || {};
     window._categoryFlipData[listId] = results;
     // Render initial (today)
@@ -2863,9 +2862,8 @@ function renderSVGSparkline(svgElem, data) {
       // Flip logic
       let flipIndex = 0;
       const flipData = window._categoryFlipData[listId];
-      // Only rotate between available scopes
-      const scopes = ['today', 'month'];
-      if (flipData._hasAllTime) scopes.push('all');
+      // Always rotate through all three periods: Today, Month, All Time
+      const scopes = ['today', 'month', 'all'];
       setInterval(() => {
         flipIndex = (flipIndex + 1) % scopes.length;
         // Hide all period cards before showing the next
