@@ -2784,11 +2784,13 @@ function renderSVGSparkline(svgElem, data) {
       if (pipNode && pipNode.nextSibling) {
         header.appendChild(pipNode); // Move pip to end if not already
       }
-      // Update pip number for this card/period only (no fallback)
-      const pipForValue = el.parentElement.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
-      let pipEl = pipForValue || el.parentElement.querySelector('[class*="pip"]');
-      if (pipEl && typeof total === 'number') pipEl.textContent = total;
-      setTimeout(() => { el.style.opacity = 1; }, 200);
+      setTimeout(() => {
+        el.style.opacity = 1;
+        // Update pip number for this card/period only (no fallback)
+        const pipForValue = el.parentElement.querySelector('.pip, .card-pip-total, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
+        let pipEl = pipForValue || el.parentElement.querySelector('[class*="pip"]');
+        if (pipEl && typeof total === 'number') pipEl.textContent = total;
+      }, 200);
     }, 200);
   }
 
