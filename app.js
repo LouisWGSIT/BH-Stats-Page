@@ -2807,6 +2807,7 @@ function renderSVGSparkline(svgElem, data) {
       try {
         let url = `/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}`;
         if (scope.key !== 'today') url += `&scope=${scope.key}`;
+        console.log('[refreshTopByTypeAllScopes] Fetching engineers:', { type, url });
         const res = await fetch(url);
         let data = await res.json();
         // Fetch the true total for this category/period
@@ -2814,6 +2815,7 @@ function renderSVGSparkline(svgElem, data) {
         try {
           // Always use the full category key for type
           let totalUrl = `/metrics/total-by-type?type=${encodeURIComponent(type)}&scope=${scope.key}`;
+          console.log('[refreshTopByTypeAllScopes] Fetching total:', { type, totalUrl });
           const totalRes = await fetch(totalUrl);
           const totalData = await totalRes.json();
           total = typeof totalData.total === 'number' ? totalData.total : 0;
