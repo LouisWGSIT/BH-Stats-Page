@@ -2741,6 +2741,8 @@ function renderSVGSparkline(svgElem, data) {
   // Enhanced: renderTopList now supports multiple faces for flip/rotation
   function renderTopListWithLabel(listId, engineers, label, total) {
     const el = document.getElementById(listId);
+    // Track current face/period for each card
+    el.dataset.currentPeriod = label;
     // Fade out for smooth transition
     el.style.opacity = 0;
     setTimeout(() => {
@@ -2778,11 +2780,13 @@ function renderSVGSparkline(svgElem, data) {
         // Always set label text, including for All Time
         labelEl.textContent = label;
       }
-      // Update the pip (total) using the .pill element for this card/category
+      // Update the pip (total) ONLY if this is the currently visible face
       const header = el.parentElement.querySelector('.stat-card__header, .card-header, .category-header, .top-row, .card-title-row') || el.parentElement;
-      // Find the .pill element (pip) for this card/category
       const pill = header.querySelector('.pill');
-      if (pill && typeof total === 'number') pill.textContent = total;
+      if (pill && typeof total === 'number') {
+        // Only update pip if this face is currently visible
+        if (el.dataset.currentPeriod === label) pill.textContent = total;
+      }
       setTimeout(() => {
         el.style.opacity = 1;
       }, 200);
