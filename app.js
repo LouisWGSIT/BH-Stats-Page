@@ -48,6 +48,32 @@ function renderSVGSparkline(svgElem, data) {
 (async function () {
   const cfg = await fetch('config.json').then(r => r.json());
 
+  // ==================== ALL TIME TOTALS ====================
+  async function refreshAllTimeTotals() {
+    try {
+      const res = await fetch('/metrics/all-time-totals');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const allTime = data.allTimeTotal || 0;
+      // Update All Time card value
+      const allTimeEl = document.getElementById('allTimeValue');
+      if (allTimeEl) {
+        allTimeEl.textContent = allTime;
+        animateNumberUpdate('allTimeValue');
+      }
+      // Update pip at top right of each card (if pip element exists)
+      const pipEls = document.querySelectorAll('.card-pip-total');
+      pipEls.forEach(el => {
+        el.textContent = allTime;
+      });
+    } catch (err) {
+      console.error('All Time totals fetch error:', err);
+    }
+  }
+
+  // Call on load
+  refreshAllTimeTotals();
+
   // ==================== CHART PLUGINS ====================
 
   // Depth/gloss plugin to give donuts a subtle 3D feel (optimized for TV performance)

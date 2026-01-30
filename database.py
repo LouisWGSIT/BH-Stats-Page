@@ -23,6 +23,33 @@ from pathlib import Path
 import os
 from collections import defaultdict
 
+# --- ALL TIME AGGREGATION ---
+def get_all_time_totals(group_by: str = None):
+    """
+    Return the total number of erasures across all time.
+    Optionally group by 'device_type' or 'initials'.
+    group_by: None | 'device_type' | 'initials'
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    if group_by == 'device_type':
+        cursor.execute("""
+            SELECT device_type, COUNT(1) FROM erasures WHERE event = 'success' GROUP BY device_type
+        """)
+        rows = cursor.fetchall()
+        result = {k or 'unknown': v for (k, v) in rows}
+    elif group_by == 'initials':
+        cursor.execute("""
+            SELECT initials, COUNT(1) FROM erasures WHERE event = 'success' AND initials IS NOT NULL GROUP BY initials
+        """)
+        rows = cursor.fetchall()
+        result = {k: v for (k, v) in rows}
+    else:
+        cursor.execute("SELECT COUNT(1) FROM erasures WHERE event = 'success'")
+        result = cursor.fetchone()[0]
+    conn.close()
+    return result
+
 def get_monthly_momentum() -> Dict:
     """Return weekly totals for the current month for monthly momentum chart"""
     conn = sqlite3.connect(DB_PATH)

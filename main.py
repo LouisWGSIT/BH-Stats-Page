@@ -11,6 +11,25 @@ import excel_export
 
 app = FastAPI(title="Warehouse Stats Service")
 
+# --- ALL TIME TOTALS ENDPOINT ---
+@app.get("/metrics/all-time-totals")
+async def get_all_time_totals(group_by: str = None):
+    """Get all-time erasure totals. Optionally group by device_type or initials."""
+    result = db.get_all_time_totals(group_by=group_by)
+    return {"allTimeTotal": result} if not group_by else result
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+import os
+from typing import Any, Dict
+from datetime import datetime
+import asyncio
+import database as db
+import excel_export
+
+app = FastAPI(title="Warehouse Stats Service")
+
 # Initialize database tables on startup
 db.init_db()
 
