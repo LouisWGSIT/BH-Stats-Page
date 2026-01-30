@@ -2809,26 +2809,9 @@ function renderSVGSparkline(svgElem, data) {
     // Store for flip logic
     window._categoryFlipData = window._categoryFlipData || {};
     window._categoryFlipData[listId] = results;
-    // DEBUG: Log the fetched data for this card
-    console.log('[DEBUG] _categoryFlipData for', listId, JSON.parse(JSON.stringify(results)));
     // Render initial (today)
     const total = (results.today.engineers || []).reduce((sum, e) => sum + (e.count || 0), 0);
     renderTopListWithLabel(listId, results.today.engineers, results.today.label, total);
-    // DEBUG: Force label update for first card to confirm DOM manipulation
-    if (listId === 'topLD') {
-      const el = document.getElementById(listId);
-      const header = el?.parentElement?.querySelector('.card-header, .category-header, .top-row, .card-title-row') || el?.parentElement;
-      if (header) {
-        let label = header.querySelector('.category-period-label');
-        if (!label) {
-          label = document.createElement('span');
-          label.className = 'category-period-label';
-          label.style = 'font-size:0.95em;color:#ff1ea3;margin-right:8px;vertical-align:middle;';
-          header.insertBefore(label, header.firstChild);
-        }
-        label.textContent = '[DEBUG] Label injected';
-      }
-    }
   }
 
   // Enhanced: fetch all scopes for each category
@@ -2838,14 +2821,12 @@ function renderSVGSparkline(svgElem, data) {
 
   function setupCategoryFlipCards() {
     if (!window._categoryFlipData) {
-      console.log('[DEBUG] No _categoryFlipData, skipping flip setup');
       return;
     }
     categories.forEach(c => {
       const listId = c.listId;
       const el = document.getElementById(listId);
       if (!el) {
-        console.log('[DEBUG] No element for', listId);
         return;
       }
       // Add label if not present
@@ -2876,7 +2857,6 @@ function renderSVGSparkline(svgElem, data) {
         setTimeout(() => {
           const data = window._categoryFlipData[listId][scopes[flipIndex]];
           const total = (data.engineers || []).reduce((sum, e) => sum + (e.count || 0), 0);
-          console.log(`[DEBUG] Rotating ${listId} to`, scopes[flipIndex], data);
           renderTopListWithLabel(listId, data.engineers, data.label, total);
         }, 600); // fade out before next card
       }, 20000); // 20s per face (slower)
@@ -2884,27 +2864,16 @@ function renderSVGSparkline(svgElem, data) {
   }
 
 
-  // DEBUG: Add visible marker to confirm app.js is running
-  try {
-    const debugBanner = document.createElement('div');
-    debugBanner.textContent = 'DEBUG: app.js loaded at ' + new Date().toLocaleTimeString();
-    debugBanner.style = 'position:fixed;top:0;left:0;z-index:9999;background:#ff1ea3;color:#fff;padding:4px 12px;font-size:14px;font-weight:bold;box-shadow:0 2px 8px #0006;';
-    document.body.appendChild(debugBanner);
-    setTimeout(() => debugBanner.remove(), 8000);
-  } catch(e) { console.warn('Debug banner error', e); }
 
   // Replace original refreshAllTopLists with the new one, with debug log
   window.refreshAllTopLists = function() {
-    console.log('[DEBUG] refreshAllTopListsWithFlip called');
     return refreshAllTopListsWithFlip();
   };
 
   // On load, refresh all lists with flip support
-  console.log('[DEBUG] Calling refreshAllTopListsWithFlip on load');
   refreshAllTopListsWithFlip();
   // After a short delay (to allow data fetch), setup flip mechanic
   setTimeout(() => {
-    console.log('[DEBUG] Calling setupCategoryFlipCards');
     setupCategoryFlipCards();
   }, 2000);
 
