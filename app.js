@@ -2782,7 +2782,7 @@ function renderSVGSparkline(svgElem, data) {
   // Enhanced: fetches for today, month, all-time for flip faces
   async function refreshTopByTypeAllScopes(type, listId) {
     const scopes = [
-      { key: 'today', label: "Today's Erasures" },
+      { key: 'today', label: "Today" },
       { key: 'month', label: "This Month" },
       { key: 'all', label: "All Time" }
     ];
@@ -2799,6 +2799,10 @@ function renderSVGSparkline(svgElem, data) {
         if (scope.key === 'all' && (!data.engineers || data.engineers.length === 0)) {
           // Use month data for all-time if no historical data
           data.engineers = monthData || [];
+        }
+        // If all-time is still empty, but month has data, use month for all-time
+        if (scope.key === 'all' && (!data.engineers || data.engineers.length === 0) && monthData && monthData.length > 0) {
+          data.engineers = monthData;
         }
         results[scope.key] = { engineers: data.engineers, label: scope.label };
       } catch (err) {
