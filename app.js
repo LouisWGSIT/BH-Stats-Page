@@ -2780,13 +2780,13 @@ function renderSVGSparkline(svgElem, data) {
       }
       // Ensure pip is always at the end of the header
       const header = el.parentElement.querySelector('.stat-card__header, .card-header, .category-header, .top-row, .card-title-row') || el.parentElement;
-      const pip = header.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
-      if (pip && pip.nextSibling) {
-        header.appendChild(pip); // Move pip to end if not already
+      const pipNode = header.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
+      if (pipNode && pipNode.nextSibling) {
+        header.appendChild(pipNode); // Move pip to end if not already
       }
       // Update pip number for this card/period only (no fallback)
-      const pip = el.parentElement.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
-      let pipEl = pip || el.parentElement.querySelector('[class*="pip"]');
+      const pipForValue = el.parentElement.querySelector('.pip, .pip-count, .pip-value, .pip-number, .pipNum, .pipnum, .pipnumtop, .pipnum-top, .pip-number-top, .pip-number');
+      let pipEl = pipForValue || el.parentElement.querySelector('[class*="pip"]');
       if (pipEl && typeof total === 'number') pipEl.textContent = total;
       setTimeout(() => { el.style.opacity = 1; }, 200);
     }, 200);
