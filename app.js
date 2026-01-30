@@ -2805,24 +2805,31 @@ function renderSVGSparkline(svgElem, data) {
         if (scope.key !== 'today') url += `&scope=${scope.key}`;
         const res = await fetch(url);
         let data = await res.json();
+        // Fetch the true total for this category/period
+        let total = 0;
+        try {
+          let totalUrl = `/metrics/total-by-type?type=${encodeURIComponent(type)}&scope=${scope.key}`;
+          const totalRes = await fetch(totalUrl);
+          const totalData = await totalRes.json();
+          total = typeof totalData.total === 'number' ? totalData.total : 0;
+        } catch (err) {
+          total = (data.engineers || []).reduce((sum, e) => sum + (e.count || 0), 0);
+        }
         if (scope.key === 'month') monthData = data.engineers;
         if (scope.key === 'all') allTimeData = data.engineers;
-        // No fallback: if all-time is empty, show empty state (no data yet)
-        results[scope.key] = { engineers: data.engineers, label: scope.label };
+        results[scope.key] = { engineers: data.engineers, label: scope.label, total };
       } catch (err) {
-        results[scope.key] = { engineers: [], label: scope.label };
+        results[scope.key] = { engineers: [], label: scope.label, total: 0 };
         console.error('Top-by-type refresh error:', type, scope.key, err);
       }
     }
-    // Always provide all three periods in flip data, even if empty
     if (!results.all) {
-      results.all = { engineers: [], label: 'All Time' };
+      results.all = { engineers: [], label: 'All Time', total: 0 };
     }
     window._categoryFlipData = window._categoryFlipData || {};
     window._categoryFlipData[listId] = results;
-    // Render initial (today)
-    const total = (results.today.engineers || []).reduce((sum, e) => sum + (e.count || 0), 0);
-    renderTopListWithLabel(listId, results.today.engineers, results.today.label, total);
+    // Render initial (today) with backend total
+    renderTopListWithLabel(listId, results.today.engineers, results.today.label, results.today.total);
   }
 
   // Enhanced: fetch all scopes for each category
@@ -2868,8 +2875,7 @@ function renderSVGSparkline(svgElem, data) {
         if (el) el.style.opacity = 0;
         setTimeout(() => {
           const data = flipData[scopes[flipIndex]];
-          const total = (data.engineers || []).reduce((sum, e) => sum + (e.count || 0), 0);
-          renderTopListWithLabel(listId, data.engineers, data.label, total);
+          renderTopListWithLabel(listId, data.engineers, data.label, data.total);
         }, 600); // fade out before next card
       }, 20000); // 20s per face (slower)
     });

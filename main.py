@@ -10,6 +10,42 @@ import database as db
 import excel_export
 
 app = FastAPI(title="Warehouse Stats Service")
+# New endpoint: Get total erasures for a device type and period
+@app.get("/metrics/total-by-type")
+async def get_total_by_type(type: str = "laptops_desktops", scope: str = "today"):
+    """Return the total erasures for a given device type and period (today, month, all)."""
+    from datetime import date
+    conn = db.sqlite3.connect(db.DB_PATH)
+    cursor = conn.cursor()
+    if scope == "month":
+        key_col = "month"
+        key_val = date.today().strftime('%Y-%m')
+        where = f"{key_col} = ? AND event = 'success' AND device_type = ?"
+        params = [key_val, type]
+    elif scope == "all":
+        where = "event = 'success' AND device_type = ?"
+        params = [type]
+    else:
+        key_col = "date"
+        key_val = date.today().isoformat()
+        where = f"{key_col} = ? AND event = 'success' AND device_type = ?"
+        params = [key_val, type]
+    cursor.execute(f"SELECT COUNT(1) FROM erasures WHERE {where}", params)
+    total = cursor.fetchone()[0]
+    conn.close()
+    return {"total": total, "type": type, "scope": scope}
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+import os
+from typing import Any, Dict
+from datetime import datetime
+import asyncio
+import database as db
+import excel_export
+
+app = FastAPI(title="Warehouse Stats Service")
 
 # --- ALL TIME TOTALS ENDPOINT ---
 @app.get("/metrics/all-time-totals")
