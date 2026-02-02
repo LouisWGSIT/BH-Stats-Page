@@ -424,26 +424,85 @@ def leaderboard(scope: str = 'today', limit: int = 6, date_str: str = None):
         # Explicit date provided
         key_col = 'date'
         key_val = date_str
+    elif scope == 'this-month':
+        # Get first and last day of current month
+        today = get_today_str()
+        year = int(today[:4])
+        month = int(today[5:7])
+        first_day = f"{year:04d}-{month:02d}-01"
+        last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
+        # Use date range query
+        cursor.execute("""
+            SELECT initials,
+                   COUNT(1) AS total,
+                   MAX(ts) AS last_active
+            FROM erasures
+            WHERE date >= ? AND date <= ? AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY total DESC
+            LIMIT ?
+        """, (first_day, last_day, limit))
+    elif scope == 'last-month':
+        # Get first and last day of last month
+        today = get_today_str()
+        year = int(today[:4])
+        month = int(today[5:7]) - 1
+        if month < 1:
+            month = 12
+            year -= 1
+        first_day = f"{year:04d}-{month:02d}-01"
+        last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
+        # Use date range query
+        cursor.execute("""
+            SELECT initials,
+                   COUNT(1) AS total,
+                   MAX(ts) AS last_active
+            FROM erasures
+            WHERE date >= ? AND date <= ? AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY total DESC
+            LIMIT ?
+        """, (first_day, last_day, limit))
     elif scope == 'month':
         key_col = 'month'
         key_val = get_today_str()[:7]
+        cursor.execute(f"""
+            SELECT initials,
+                   COUNT(1) AS total,
+                   MAX(ts) AS last_active
+            FROM erasures
+            WHERE {key_col} = ? AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY total DESC
+            LIMIT ?
+        """, (key_val, limit))
     elif scope == 'yesterday':
         key_col = 'date'
         key_val = get_yesterday_str()  # Use helper that handles Monday->Friday
+        cursor.execute("""
+            SELECT initials,
+                   COUNT(1) AS total,
+                   MAX(ts) AS last_active
+            FROM erasures
+            WHERE date = ? AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY total DESC
+            LIMIT ?
+        """, (key_val, limit))
     else:  # today
         key_col = 'date'
         key_val = get_today_str()
-
-    cursor.execute(f"""
-        SELECT initials,
-               COUNT(1) AS total,
-               MAX(ts) AS last_active
-        FROM erasures
-        WHERE {key_col} = ? AND initials IS NOT NULL
-        GROUP BY initials
-        ORDER BY total DESC
-        LIMIT ?
-    """, (key_val, limit))
+        cursor.execute("""
+            SELECT initials,
+                   COUNT(1) AS total,
+                   MAX(ts) AS last_active
+            FROM erasures
+            WHERE date = ? AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY total DESC
+            LIMIT ?
+        """, (key_val, limit))
+    
     rows = cursor.fetchall()
     conn.close()
     return [
