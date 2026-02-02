@@ -2422,22 +2422,13 @@ function renderSVGSparkline(svgElem, data) {
             (data.categories || []).forEach(cat => {
               categoryRows.push([cat.name, cat.count]);
             });
+          } else {
+            console.warn('Category breakdown endpoint not available for yesterday');
           }
         }
       } else {
-        // For monthly reports, fetch category stats for the month
-        const monthDate = new Date(targetDate);
-        const year = monthDate.getFullYear();
-        const month = monthDate.getMonth();
-        const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
-        const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
-        const res = await fetch(`/analytics/category-breakdown?startDate=${firstDay}&endDate=${lastDay}`);
-        if (res.ok) {
-          const data = await res.json();
-          (data.categories || []).forEach(cat => {
-            categoryRows.push([cat.name, cat.count]);
-          });
-        }
+        // For monthly reports, category breakdown endpoint not available - skip
+        console.log('Skipping category breakdown for monthly reports (endpoint not available)');
       }
     } catch (err) {
       console.error('Failed to fetch category data:', err);
