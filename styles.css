@@ -132,7 +132,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 10px;
   width: 100%;
   padding: 12px 10px 16px 10px;
@@ -142,7 +142,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
   width: 100%;
   max-width: 480px;
@@ -1055,8 +1055,8 @@ body {
 .bottom-row {
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: auto;
-  min-height: 265px;
-  max-height: 300px;
+  min-height: auto;
+  max-height: none;
 }
 .bottom-row-extra {
   display: none;
@@ -1070,14 +1070,15 @@ body {
   position: relative;
   overflow: hidden;
   padding: 0;
-  min-height: 265px;
+  min-height: auto;
+  height: auto;
   perspective: 1000px;
   border-radius: 14px;
 }
 
 .rotator-card .panel {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  inset: auto;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -1088,10 +1089,19 @@ body {
   border-radius: 14px;
   border: var(--card-border);
   box-shadow: var(--card-shadow);
-  opacity: 0;
-  pointer-events: none;
+  opacity: 1;
+  pointer-events: auto;
   transition: opacity 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.3s ease;
   will-change: opacity;
+  visibility: visible;
+  width: 100%;
+  height: auto;
+}
+
+.rotator-card .panel.hidden-panel {
+  display: none;
+  opacity: 0;
+  pointer-events: none;
   visibility: hidden;
 }
 
@@ -1388,12 +1398,13 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   text-align: center;
-  min-height: 0;
+  min-height: auto;
+  height: auto;
   border: var(--card-border);
   box-shadow: var(--card-shadow);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .card:not(.flip-card) {
