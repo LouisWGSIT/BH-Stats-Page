@@ -49,19 +49,17 @@ function renderSVGSparkline(svgElem, data) {
   // ==================== AUTHENTICATION ====================
   
   function setupAuthHeaders(token) {
-    // Intercept all fetch calls to add auth token
+    // Store token globally and wrap fetch
+    window.__authToken = token;
     const originalFetch = window.fetch;
-    window.fetch = function(...args) {
-      let url = args[0];
-      let options = args[1] || {};
-      
-      // Only add auth to API calls
-      if (typeof url === 'string' && (url.startsWith('/') || url.startsWith('http'))) {
-        options.headers = options.headers || {};
-        options.headers['Authorization'] = 'Bearer ' + token;
+    
+    window.fetch = function(resource, config = {}) {
+      // Add auth header to all API requests
+      if (typeof resource === 'string' && (resource.startsWith('/') || resource.startsWith('http'))) {
+        config.headers = config.headers || {};
+        config.headers['Authorization'] = 'Bearer ' + window.__authToken;
       }
-      
-      return originalFetch.apply(this, arguments);
+      return originalFetch.call(this, resource, config);
     };
   }
 
@@ -169,23 +167,6 @@ function renderSVGSparkline(svgElem, data) {
     
     // Focus password input
     passwordInput.focus();
-  }
-
-  function setupAuthHeaders(token) {
-    // Intercept all fetch calls to add auth token
-    const originalFetch = window.fetch;
-    window.fetch = function(...args) {
-      let url = args[0];
-      let options = args[1] || {};
-      
-      // Only add auth to API calls
-      if (typeof url === 'string' && (url.startsWith('/') || url.startsWith('http'))) {
-        options.headers = options.headers || {};
-        options.headers['Authorization'] = 'Bearer ' + token;
-      }
-      
-      return originalFetch.apply(this, arguments);
-    };
   }
 
   // Check auth before proceeding
