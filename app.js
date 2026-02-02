@@ -637,6 +637,14 @@ function renderSVGSparkline(svgElem, data) {
           <span class="value">${eng.count}</span>`;
         el.appendChild(li);
       });
+    } else {
+      // Show "No data yet" message
+      const li = document.createElement('li');
+      li.style.color = 'var(--muted)';
+      li.style.textAlign = 'center';
+      li.style.padding = '12px 0';
+      li.textContent = 'No data yet';
+      el.appendChild(li);
     }
   }
 
@@ -2274,7 +2282,6 @@ function renderSVGSparkline(svgElem, data) {
   
   async function generateCSV() {
     const dateScope = document.getElementById('dateSelector')?.value || 'today';
-    console.log(`[DEBUG] generateCSV called with dateScope='${dateScope}'`);
     const isYesterday = dateScope === 'yesterday';
     const isThisMonth = dateScope === 'this-month';
     const isLastMonth = dateScope === 'last-month';
@@ -2333,12 +2340,10 @@ function renderSVGSparkline(svgElem, data) {
           const month = monthDate.getMonth();
           const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
           const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
-          console.log(`[DEBUG] Fetching summary for monthly report: year=${year}, month=${month}, firstDay=${firstDay}, lastDay=${lastDay}`);
           const res = await fetch(`/metrics/summary?startDate=${firstDay}&endDate=${lastDay}`);
           if (res.ok) {
             const data = await res.json();
             monthTotal = data.monthTotal || '0';
-            console.log(`[DEBUG] Monthly total from API: ${monthTotal}`);
           }
         } else {
           const res = await fetch(`/metrics/summary?date=${targetDate.toISOString().split('T')[0]}`);
@@ -2358,7 +2363,6 @@ function renderSVGSparkline(svgElem, data) {
     let engineerKPIs = {};
     try {
       let apiEndpoint = `/metrics/engineers/leaderboard?scope=${dateScope}&limit=50`;
-      console.log(`[DEBUG] Fetching engineer data from: ${apiEndpoint}`);
       const res = await fetch(apiEndpoint);
       if (res.ok) {
         const data = await res.json();
@@ -2737,6 +2741,53 @@ function renderSVGSparkline(svgElem, data) {
       } catch (err) {
         console.error('Failed to fetch engineer weekly stats:', err);
       }
+      
+      // Month-over-month comparison (only for last-month reports)
+      if (isLastMonth) {
+        try {
+          const currentMonth = new Date(targetDate);
+          const year = currentMonth.getFullYear();
+          const month = currentMonth.getMonth();
+          const currentStart = new Date(year, month, 1).toISOString().split('T')[0];
+          const currentEnd = new Date(year, month + 1, 0).toISOString().split('T')[0];
+          
+          // Previous month
+          const prevMonth = new Date(year, month - 1, 1);
+          const prevStart = prevMonth.toISOString().split('T')[0];
+          const prevEnd = new Date(prevMonth.getFullYear(), prevMonth.getMonth() + 1, 0).toISOString().split('T')[0];
+          
+          const res = await fetch(`/metrics/month-comparison?currentStart=${currentStart}&currentEnd=${currentEnd}&previousStart=${prevStart}&previousEnd=${prevEnd}`);
+          if (res.ok) {
+            const data = await res.json();
+            csv.push([]);
+            csv.push(['MONTH-OVER-MONTH COMPARISON']);
+            csv.push(['Metric', 'Current Month', 'Previous Month', 'Change', 'Trend']);
+            csv.push([
+              'Total Erasures',
+              data.current_month.total,
+              data.previous_month.total,
+              `${data.comparison.change > 0 ? '+' : ''}${data.comparison.change} (${data.comparison.change_percent}%)`,
+              data.comparison.trend
+            ]);
+            csv.push([]);
+            csv.push(['Top Engineers Comparison']);
+            csv.push(['Rank', 'Current Month', 'Erasures', 'Previous Month', 'Erasures']);
+            for (let i = 0; i < 5; i++) {
+              const current = data.current_month.top_engineers[i];
+              const previous = data.previous_month.top_engineers[i];
+              csv.push([
+                i + 1,
+                current ? current.initials : '',
+                current ? current.erasures : '',
+                previous ? previous.initials : '',
+                previous ? previous.erasures : ''
+              ]);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch month comparison:', err);
+        }
+      }
     }
 
     // Add footer with notes and context
@@ -2809,6 +2860,8 @@ function renderSVGSparkline(svgElem, data) {
       'TOP 3 ENGINEERS': 'Top Engineers',
       'ALL ENGINEERS': 'Engineer Details',
       'ENGINEER DEVICE': 'Device Specialization',
+      'ENGINEER WEEKLY BREAKDOWN': 'Engineer Weekly Stats',
+      'MONTH-OVER-MONTH COMPARISON': 'Month Comparison',
       'BREAKDOWN BY CATEGORY': 'Category Breakdown',
       'TOP PERFORMERS': 'Category Leaders',
       'HISTORICAL RECORDS': 'Records & Milestones',

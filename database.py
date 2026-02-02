@@ -184,13 +184,40 @@ def init_db():
             initials TEXT,
             duration_sec INTEGER,
             error_type TEXT,
-            job_id TEXT
+            job_id TEXT,
+            manufacturer TEXT,      -- Device manufacturer (e.g., HP, Dell, Apple)
+            model TEXT,             -- Device model (e.g., EliteBook 840 G5)
+            drive_size INTEGER,     -- Total drive capacity in GB
+            drive_count INTEGER,    -- Number of drives
+            drive_type TEXT         -- HDD, SSD, or NVMe
         )
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_date ON erasures(date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_month ON erasures(month)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_type ON erasures(device_type)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_initials ON erasures(initials)")
+    
+    # Add new columns if they don't exist (migration)
+    try:
+        cursor.execute("ALTER TABLE erasures ADD COLUMN manufacturer TEXT")
+    except:
+        pass
+    try:
+        cursor.execute("ALTER TABLE erasures ADD COLUMN model TEXT")
+    except:
+        pass
+    try:
+        cursor.execute("ALTER TABLE erasures ADD COLUMN drive_size INTEGER")
+    except:
+        pass
+    try:
+        cursor.execute("ALTER TABLE erasures ADD COLUMN drive_count INTEGER")
+    except:
+        pass
+    try:
+        cursor.execute("ALTER TABLE erasures ADD COLUMN drive_type TEXT")
+    except:
+        pass
     
     conn.commit()
     conn.close()
@@ -319,7 +346,9 @@ def increment_engineer_type_count(device_type: str, initials: str, amount: int =
     conn.close()
 
 def add_erasure_event(*, event: str, device_type: str, initials: str = None, duration_sec: int = None,
-                      error_type: str = None, job_id: str = None, ts: str = None):
+                      error_type: str = None, job_id: str = None, ts: str = None,
+                      manufacturer: str = None, model: str = None, drive_size: int = None,
+                      drive_count: int = None, drive_type: str = None):
     """Insert a detailed erasure event"""
     from datetime import datetime
     if ts is None:
@@ -331,10 +360,12 @@ def add_erasure_event(*, event: str, device_type: str, initials: str = None, dur
     cursor = conn.cursor()
     cursor.execute(
         """
-        INSERT INTO erasures (ts, date, month, event, device_type, initials, duration_sec, error_type, job_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO erasures (ts, date, month, event, device_type, initials, duration_sec, error_type, job_id,
+                             manufacturer, model, drive_size, drive_count, drive_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (ts, d, month, event, device_type, (initials or None), duration_sec, (error_type or None), (job_id or None))
+        (ts, d, month, event, device_type, (initials or None), duration_sec, (error_type or None), (job_id or None),
+         (manufacturer or None), (model or None), drive_size, drive_count, (drive_type or None))
     )
     conn.commit()
     conn.close()
@@ -368,7 +399,6 @@ def get_summary_today_month(date_str: str = None):
 
 def get_summary_date_range(start_date: str, end_date: str):
     """Return totals for a date range (used for monthly reports)"""
-    print(f"[DEBUG] get_summary_date_range called with start_date={start_date}, end_date={end_date}")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
@@ -384,12 +414,88 @@ def get_summary_date_range(start_date: str, end_date: str):
     conn.close()
     
     success_rate = (success / total * 100.0) if total else 0.0
-    print(f"[DEBUG] get_summary_date_range returning monthTotal={total}")
     return {
         "todayTotal": 0,  # Not applicable for date range
         "monthTotal": total,
         "successRate": round(success_rate, 1),
         "avgDurationSec": int(avg_dur) if avg_dur is not None else None
+    }
+
+def get_month_over_month_comparison(current_start: str, current_end: str, previous_start: str, previous_end: str):
+    """Compare two months of data"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Current month totals
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date >= ? AND date <= ?", (current_start, current_end))
+    current_total = cursor.fetchone()[0] or 0
+    
+    # Previous month totals
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date >= ? AND date <= ?", (previous_start, previous_end))
+    previous_total = cursor.fetchone()[0] or 0
+    
+    # Top engineers current month
+    cursor.execute("""
+        SELECT initials, COUNT(1) as total
+        FROM erasures 
+        WHERE date >= ? AND date <= ? AND initials IS NOT NULL
+        GROUP BY initials 
+        ORDER BY total DESC 
+        LIMIT 5
+    """, (current_start, current_end))
+    current_top = cursor.fetchall()
+    
+    # Top engineers previous month
+    cursor.execute("""
+        SELECT initials, COUNT(1) as total
+        FROM erasures 
+        WHERE date >= ? AND date <= ? AND initials IS NOT NULL
+        GROUP BY initials 
+        ORDER BY total DESC 
+        LIMIT 5
+    """, (previous_start, previous_end))
+    previous_top = cursor.fetchall()
+    
+    # Category breakdown current month
+    cursor.execute("""
+        SELECT device_type, COUNT(1) as total
+        FROM erasures 
+        WHERE date >= ? AND date <= ?
+        GROUP BY device_type
+    """, (current_start, current_end))
+    current_categories = {row[0] or 'Unknown': row[1] for row in cursor.fetchall()}
+    
+    # Category breakdown previous month
+    cursor.execute("""
+        SELECT device_type, COUNT(1) as total
+        FROM erasures 
+        WHERE date >= ? AND date <= ?
+        GROUP BY device_type
+    """, (previous_start, previous_end))
+    previous_categories = {row[0] or 'Unknown': row[1] for row in cursor.fetchall()}
+    
+    conn.close()
+    
+    # Calculate change
+    change = current_total - previous_total
+    change_percent = ((change / previous_total) * 100) if previous_total > 0 else 0
+    
+    return {
+        "current_month": {
+            "total": current_total,
+            "top_engineers": [{"initials": r[0], "erasures": r[1]} for r in current_top],
+            "categories": current_categories
+        },
+        "previous_month": {
+            "total": previous_total,
+            "top_engineers": [{"initials": r[0], "erasures": r[1]} for r in previous_top],
+            "categories": previous_categories
+        },
+        "comparison": {
+            "change": change,
+            "change_percent": round(change_percent, 1),
+            "trend": "Improving" if change > 0 else "Declining" if change < 0 else "Stable"
+        }
     }
 
 def get_counts_by_type_today():
@@ -443,7 +549,6 @@ def top_engineers(scope: str = 'today', device_type: str = None, limit: int = 3)
     return [{"initials": r[0], "count": r[1]} for r in rows]
 
 def leaderboard(scope: str = 'today', limit: int = 6, date_str: str = None):
-    print(f"[DEBUG] leaderboard called with scope='{scope}', limit={limit}, date_str={date_str}")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
@@ -479,7 +584,6 @@ def leaderboard(scope: str = 'today', limit: int = 6, date_str: str = None):
             year -= 1
         first_day = f"{year:04d}-{month:02d}-01"
         last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
-        print(f"[DEBUG] last-month: today={today}, calculating for year={year}, month={month}, first_day={first_day}, last_day={last_day}")
         # Use date range query
         cursor.execute("""
             SELECT initials,
@@ -533,8 +637,6 @@ def leaderboard(scope: str = 'today', limit: int = 6, date_str: str = None):
     
     rows = cursor.fetchall()
     conn.close()
-    total_erasures = sum(r[1] for r in rows)
-    print(f"[DEBUG] leaderboard returning {len(rows)} engineers with {total_erasures} total erasures")
     return [
         {
             "initials": r[0],

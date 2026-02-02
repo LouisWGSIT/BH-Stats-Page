@@ -456,8 +456,28 @@ async def erasure_detail(req: Request):
     if job_id and db.is_job_seen(job_id):
         return {"status": "ignored", "reason": "duplicate"}
 
+    # Extract device details from payload
+    device_details = payload.get("deviceDetails", {})
+    manufacturer = device_details.get("manufacturer") if isinstance(device_details, dict) else None
+    model = device_details.get("model") if isinstance(device_details, dict) else None
+    drive_size = device_details.get("driveSize") if isinstance(device_details, dict) else None
+    drive_count = device_details.get("driveCount") if isinstance(device_details, dict) else None
+    drive_type = device_details.get("driveType") if isinstance(device_details, dict) else None
+    
+    # Convert drive_size and drive_count to int if present
+    try:
+        drive_size = int(drive_size) if drive_size is not None else None
+    except:
+        drive_size = None
+    try:
+        drive_count = int(drive_count) if drive_count is not None else None
+    except:
+        drive_count = None
+
     db.add_erasure_event(event=event, device_type=device_type, initials=initials,
-                         duration_sec=duration_sec, error_type=error_type, job_id=job_id, ts=ts)
+                         duration_sec=duration_sec, error_type=error_type, job_id=job_id, ts=ts,
+                         manufacturer=manufacturer, model=model, drive_size=drive_size,
+                         drive_count=drive_count, drive_type=drive_type)
     try:
         dbg = db.get_summary_today_month()
         print(f"erasure-detail wrote event={event} type={device_type} jobId={job_id} -> todayTotal={dbg.get('todayTotal')} avg={dbg.get('avgDurationSec')}")
@@ -476,7 +496,6 @@ async def erasure_detail(req: Request):
 @app.get("/metrics/summary")
 async def metrics_summary(date: str = None, startDate: str = None, endDate: str = None):
     """Get summary for a specific date (YYYY-MM-DD), date range, or today if not provided"""
-    print(f"[DEBUG] /metrics/summary called with date={date}, startDate={startDate}, endDate={endDate}")
     if startDate and endDate:
         return db.get_summary_date_range(startDate, endDate)
     return db.get_summary_today_month(date)
@@ -495,13 +514,17 @@ async def metrics_engineers_top(scope: str = "today", type: str | None = None, l
 
 @app.get("/metrics/engineers/leaderboard")
 async def metrics_engineers_leaderboard(scope: str = "today", limit: int = 6, date: str = None):
-    print(f"[DEBUG] /metrics/engineers/leaderboard endpoint called with scope='{scope}', limit={limit}, date={date}")
     return {"items": db.leaderboard(scope=scope, limit=limit, date_str=date)}
 
 @app.get("/metrics/engineers/weekly-stats")
 async def metrics_engineers_weekly_stats(startDate: str, endDate: str):
     """Get weekly breakdown of erasures by engineer for a date range"""
     return {"engineers": db.get_engineer_weekly_stats(startDate, endDate)}
+
+@app.get("/metrics/month-comparison")
+async def metrics_month_comparison(currentStart: str, currentEnd: str, previousStart: str, previousEnd: str):
+    """Get month-over-month comparison"""
+    return db.get_month_over_month_comparison(currentStart, currentEnd, previousStart, previousEnd)
 
 # Admin: delete an ingested event by jobId (secured by API key)
 @app.post("/admin/delete-event")
