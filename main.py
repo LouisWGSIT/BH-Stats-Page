@@ -501,9 +501,10 @@ async def erasure_detail(req: Request):
         return {"status": "ignored", "reason": "duplicate"}
 
     # Extract device details from payload (try multiple possible field names)
+    # Based on actual Blancco report headers
     device_details = payload.get("deviceDetails", {}) or payload.get("hardwareDetails", {}) or {}
     
-    # Try to extract from various possible Blancco field names
+    # Manufacturer (from "Manufacturer:" field in Blancco report)
     manufacturer = (
         device_details.get("manufacturer") if isinstance(device_details, dict) else None
         or payload.get("manufacturer")
@@ -511,26 +512,41 @@ async def erasure_detail(req: Request):
         or payload.get("hardwareManufacturer")
     )
     
+    # Model (from "Model:" field in Blancco report)
     model = (
         device_details.get("model") if isinstance(device_details, dict) else None
         or payload.get("model")
         or payload.get("Model")
-        or payload.get("chassisType")
-        or payload.get("ChassisType")
     )
     
-    # Try to extract drive information from Blancco fields
+    # Chassis Type can help identify device type (laptop, desktop, server, etc.)
+    chassis_type = (
+        payload.get("chassisType")
+        or payload.get("ChassisType")
+        or payload.get("Chassis Type")
+    )
+    
+    # Use chassis type as model if model is empty
+    if not model and chassis_type:
+        model = chassis_type
+    
+    # Try to extract drive/disk information from Blancco fields
+    # Blancco reports show "Disk: 1 (L:1)", "Storage Controller: 1", etc.
     drive_size = (
         device_details.get("driveSize") if isinstance(device_details, dict) else None
         or payload.get("driveSize")
         or payload.get("totalDriveCapacity")
         or payload.get("storageCapacity")
+        or payload.get("Disk")
+        or payload.get("diskSize")
     )
     
     drive_count = (
         device_details.get("driveCount") if isinstance(device_details, dict) else None
         or payload.get("driveCount")
         or payload.get("numberOfDrives")
+        or payload.get("storageController")
+        or payload.get("Storage Controller")
     )
     
     drive_type = (
@@ -538,11 +554,16 @@ async def erasure_detail(req: Request):
         or payload.get("driveType")
         or payload.get("storageType")
         or payload.get("mediaType")
+        or payload.get("diskType")
     )
+    
+    # Additional useful fields from Blancco that we might want to capture
+    serial = payload.get("serial") or payload.get("Serial")
+    asset_tag = payload.get("assetTag") or payload.get("Asset Tag") or payload.get("jobId")
     
     # Log what we found
     if manufacturer or model or drive_size or drive_count or drive_type:
-        print(f"[DEVICE DETAILS] Captured from payload: manufacturer={manufacturer}, model={model}, driveSize={drive_size}, driveCount={drive_count}, driveType={drive_type}")
+        print(f"[DEVICE DETAILS] Captured from payload: manufacturer={manufacturer}, model={model}, chassis={chassis_type}, driveSize={drive_size}, driveCount={drive_count}, driveType={drive_type}, serial={serial}")
     else:
         print(f"[DEVICE DETAILS] No hardware details found in payload, attempting API fetch...")
         # Try to fetch from Blancco API if available

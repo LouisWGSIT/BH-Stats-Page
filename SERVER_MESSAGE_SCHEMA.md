@@ -33,24 +33,69 @@ Send POST requests to `/hooks/erasure-detail` with the following JSON payload:
 
 ### Automatic Field Detection
 
-The system automatically checks for device details using these field names (case-insensitive):
+The system automatically checks for device details using these field names based on Blancco report structure:
 
 **Manufacturer:**
 - `manufacturer`, `Manufacturer`, `hardwareManufacturer`
+- Maps to "Manufacturer:" field in Blancco reports
 
 **Model:**
-- `model`, `Model`, `chassisType`, `ChassisType`
+- `model`, `Model`
+- Maps to "Model:" field in Blancco reports
+
+**Chassis Type:**
+- `chassisType`, `ChassisType`, `Chassis Type`
+- Maps to "Chassis Type:" field in Blancco reports
+- Used as fallback for model if model is empty
+- Examples: "Laptop", "Desktop", "Server", "Notebook"
 
 **Drive Size (in GB):**
-- `driveSize`, `totalDriveCapacity`, `storageCapacity`
+- `driveSize`, `totalDriveCapacity`, `storageCapacity`, `Disk`, `diskSize`
+- Extracted from "Disk: 1 (L:1)" or similar fields
 
 **Drive Count:**
-- `driveCount`, `numberOfDrives`
+- `driveCount`, `numberOfDrives`, `storageController`, `Storage Controller`
+- Extracted from "Storage Controller: 1" or similar fields
 
 **Drive Type:**
-- `driveType`, `storageType`, `mediaType` (HDD, SSD, NVMe)
+- `driveType`, `storageType`, `mediaType`, `diskType`
+- Determines if HDD, SSD, or NVMe
 
-If Blancco's webhook already includes any of these fields, they'll be captured automatically!
+**Additional Fields Captured:**
+- `serial`, `Serial` - Device serial number
+- `assetTag`, `Asset Tag` - Asset tag/Job ID
+
+### Blancco Report Fields Available
+
+From your Blancco reports, these fields are available:
+```
+Hardware Details:
+- Manufacturer
+- Chassis Type  
+- Model
+- Serial
+- UUID
+- Asset Tag
+- System Version
+- System SKU Number
+
+Storage Information:
+- Storage Controller: 1
+- Disk: 1 (L:1)
+
+Other Hardware:
+- Processor
+- Memory Bank
+- Total Memory
+- Graphics Card
+- Network Adapter
+- Wi-Fi Adapter
+- USB Device
+- BIOS
+- TPM
+```
+
+If Blancco's webhook includes any of these fields in the JSON payload, they'll be captured automatically!
 
 ### Blancco API Integration (Optional)
 
