@@ -1037,9 +1037,9 @@ body {
   display: grid;
   gap: 6px;
   width: 100%;
-  flex: 1;
-  overflow: hidden;
-  min-height: 0;
+  flex: 1 1 auto;
+  overflow: visible;
+  min-height: auto;
 }
 
 .top-row { 

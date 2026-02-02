@@ -2285,12 +2285,16 @@ function renderSVGSparkline(svgElem, data) {
       targetDate.setMonth(targetDate.getMonth() - 1);
       const year = targetDate.getFullYear();
       const month = targetDate.getMonth();
+      // Set to first day of last month for consistency
+      targetDate.setDate(1);
       monthYearStr = targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
       dateRangeStr = monthYearStr;
     } else if (isThisMonth) {
       // Get this month
       const year = targetDate.getFullYear();
       const month = targetDate.getMonth();
+      // Set to first day of this month for consistency
+      targetDate.setDate(1);
       monthYearStr = targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
       dateRangeStr = monthYearStr;
     } else {
