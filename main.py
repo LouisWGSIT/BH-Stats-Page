@@ -12,8 +12,49 @@ import ipaddress
 import json
 import hashlib
 import secrets
+import httpx  # For making API calls to Blancco
 
 app = FastAPI(title="Warehouse Stats Service")
+
+# ============= BLANCCO API CONFIG =============
+BLANCCO_API_URL = os.getenv("BLANCCO_API_URL", "")  # Set this if Blancco has an API
+BLANCCO_API_KEY = os.getenv("BLANCCO_API_KEY", "")
+
+async def fetch_blancco_device_details(job_id: str):
+    """
+    Fetch device details from Blancco API using job ID.
+    Returns dict with manufacturer, model, drive info, or None if unavailable.
+    """
+    if not BLANCCO_API_URL or not job_id:
+        return None
+    
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            headers = {}
+            if BLANCCO_API_KEY:
+                headers["Authorization"] = f"Bearer {BLANCCO_API_KEY}"
+            
+            # Adjust this endpoint to match Blancco's actual API
+            response = await client.get(
+                f"{BLANCCO_API_URL}/reports/{job_id}",
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                # Extract hardware details from Blancco response
+                # Adjust field names based on actual Blancco API response
+                return {
+                    "manufacturer": data.get("hardware", {}).get("manufacturer"),
+                    "model": data.get("hardware", {}).get("model"),
+                    "drive_size": data.get("storage", {}).get("totalCapacity"),
+                    "drive_count": data.get("storage", {}).get("driveCount"),
+                    "drive_type": data.get("storage", {}).get("type")
+                }
+    except Exception as e:
+        print(f"[BLANCCO API] Failed to fetch device details for job {job_id}: {e}")
+    
+    return None
 
 # ============= SECURITY CONFIG =============
 # Local network subnet(s) that don't require auth (e.g., 192.168.x.x, 10.x.x.x)
@@ -409,8 +450,11 @@ async def erasure_detail(req: Request):
     if req.query_params:
         payload = {**payload, **dict(req.query_params)}
 
-    # Minimal debug print (sanitized)
-    print(f"erasure-detail headers={{'Content-Type': '{req.headers.get('content-type', '')}'}} payload_keys={list(payload.keys())}")
+    # Debug: Log full payload to see what Blancco is sending
+    print(f"[WEBHOOK DEBUG] Full payload received:")
+    print(f"  Headers: Content-Type={req.headers.get('content-type', '')}")
+    print(f"  Payload keys: {list(payload.keys())}")
+    print(f"  Full payload: {payload}")
 
     event = (payload.get("event") or "success").strip().lower()
     job_id = payload.get("jobId") or payload.get("assetTag") or payload.get("id")
@@ -456,13 +500,61 @@ async def erasure_detail(req: Request):
     if job_id and db.is_job_seen(job_id):
         return {"status": "ignored", "reason": "duplicate"}
 
-    # Extract device details from payload
-    device_details = payload.get("deviceDetails", {})
-    manufacturer = device_details.get("manufacturer") if isinstance(device_details, dict) else None
-    model = device_details.get("model") if isinstance(device_details, dict) else None
-    drive_size = device_details.get("driveSize") if isinstance(device_details, dict) else None
-    drive_count = device_details.get("driveCount") if isinstance(device_details, dict) else None
-    drive_type = device_details.get("driveType") if isinstance(device_details, dict) else None
+    # Extract device details from payload (try multiple possible field names)
+    device_details = payload.get("deviceDetails", {}) or payload.get("hardwareDetails", {}) or {}
+    
+    # Try to extract from various possible Blancco field names
+    manufacturer = (
+        device_details.get("manufacturer") if isinstance(device_details, dict) else None
+        or payload.get("manufacturer")
+        or payload.get("Manufacturer")
+        or payload.get("hardwareManufacturer")
+    )
+    
+    model = (
+        device_details.get("model") if isinstance(device_details, dict) else None
+        or payload.get("model")
+        or payload.get("Model")
+        or payload.get("chassisType")
+        or payload.get("ChassisType")
+    )
+    
+    # Try to extract drive information from Blancco fields
+    drive_size = (
+        device_details.get("driveSize") if isinstance(device_details, dict) else None
+        or payload.get("driveSize")
+        or payload.get("totalDriveCapacity")
+        or payload.get("storageCapacity")
+    )
+    
+    drive_count = (
+        device_details.get("driveCount") if isinstance(device_details, dict) else None
+        or payload.get("driveCount")
+        or payload.get("numberOfDrives")
+    )
+    
+    drive_type = (
+        device_details.get("driveType") if isinstance(device_details, dict) else None
+        or payload.get("driveType")
+        or payload.get("storageType")
+        or payload.get("mediaType")
+    )
+    
+    # Log what we found
+    if manufacturer or model or drive_size or drive_count or drive_type:
+        print(f"[DEVICE DETAILS] Captured from payload: manufacturer={manufacturer}, model={model}, driveSize={drive_size}, driveCount={drive_count}, driveType={drive_type}")
+    else:
+        print(f"[DEVICE DETAILS] No hardware details found in payload, attempting API fetch...")
+        # Try to fetch from Blancco API if available
+        if job_id:
+            api_details = await fetch_blancco_device_details(job_id)
+            if api_details:
+                manufacturer = manufacturer or api_details.get("manufacturer")
+                model = model or api_details.get("model")
+                drive_size = drive_size or api_details.get("drive_size")
+                drive_count = drive_count or api_details.get("drive_count")
+                drive_type = drive_type or api_details.get("drive_type")
+                print(f"[DEVICE DETAILS] Fetched from API: manufacturer={manufacturer}, model={model}")
     
     # Convert drive_size and drive_count to int if present
     try:

@@ -1,6 +1,15 @@
 # Server Message Schema
 
-## Current Schema (Enhanced with Device Details)
+## Automatic Device Details Capture
+
+The dashboard automatically captures device details from Blancco in two ways:
+
+1. **From Webhook Payload**: Extracts hardware details if Blancco includes them in the webhook
+2. **From Blancco API**: Falls back to querying Blancco API using the jobId if details aren't in payload
+
+**No manual configuration needed!** The system will automatically try multiple field names that Blancco commonly uses.
+
+## Webhook Payload Format
 
 Send POST requests to `/hooks/erasure-detail` with the following JSON payload:
 
@@ -21,6 +30,39 @@ Send POST requests to `/hooks/erasure-detail` with the following JSON payload:
   }
 }
 ```
+
+### Automatic Field Detection
+
+The system automatically checks for device details using these field names (case-insensitive):
+
+**Manufacturer:**
+- `manufacturer`, `Manufacturer`, `hardwareManufacturer`
+
+**Model:**
+- `model`, `Model`, `chassisType`, `ChassisType`
+
+**Drive Size (in GB):**
+- `driveSize`, `totalDriveCapacity`, `storageCapacity`
+
+**Drive Count:**
+- `driveCount`, `numberOfDrives`
+
+**Drive Type:**
+- `driveType`, `storageType`, `mediaType` (HDD, SSD, NVMe)
+
+If Blancco's webhook already includes any of these fields, they'll be captured automatically!
+
+### Blancco API Integration (Optional)
+
+If device details aren't in the webhook payload, the system can query Blancco's API:
+
+Set these environment variables on Render:
+```
+BLANCCO_API_URL=https://your-blancco-api-url.com
+BLANCCO_API_KEY=your-api-key-here
+```
+
+The system will automatically fetch device details using the jobId.
 
 ### Field Descriptions
 
