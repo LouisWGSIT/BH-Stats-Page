@@ -2706,6 +2706,39 @@ function renderSVGSparkline(svgElem, data) {
       csv.push(...categoryTopPerformers);
     }
 
+    // Engineer weekly breakdown (for monthly reports only)
+    if (isMonthlyReport) {
+      try {
+        const monthDate = new Date(targetDate);
+        const year = monthDate.getFullYear();
+        const month = monthDate.getMonth();
+        const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
+        const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
+        
+        const res = await fetch(`/metrics/engineers/weekly-stats?startDate=${firstDay}&endDate=${lastDay}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.engineers && data.engineers.length > 0) {
+            csv.push([]);
+            csv.push(['ENGINEER WEEKLY BREAKDOWN']);
+            csv.push(['Engineer', 'Device Type', 'Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5', 'Monthly Total']);
+            
+            data.engineers.forEach(eng => {
+              const row = [eng.initials, eng.device_type];
+              // Add each week's count (weeks 1-5)
+              for (let week = 1; week <= 5; week++) {
+                row.push(eng.weekly_breakdown[week] || 0);
+              }
+              row.push(eng.total);
+              csv.push(row);
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch engineer weekly stats:', err);
+      }
+    }
+
     // Add footer with notes and context
     csv.push([]);
     csv.push(['REPORT INFORMATION']);

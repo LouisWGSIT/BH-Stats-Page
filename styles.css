@@ -1072,22 +1072,25 @@ body {
   right: 0;
   height: 3px;
   opacity: 0.9;
+  z-index: 2;
 }
 .categories-row .stat-card:nth-child(1)::before { background: #4caf50; }
 .categories-row .stat-card:nth-child(2)::before { background: #ffeb3b; }
 .categories-row .stat-card:nth-child(3)::before { background: #2196f3; }
 .categories-row .stat-card:nth-child(4)::before { background: #ff1ea3; }
+
+/* Use simpler solid color backgrounds with tint for better Silk browser compatibility */
 .categories-row .stat-card:nth-child(1) {
-  background: linear-gradient(180deg, rgba(76, 175, 80, 0.08), rgba(0, 0, 0, 0.35) 55%);
+  background: rgba(76, 175, 80, 0.05);
 }
 .categories-row .stat-card:nth-child(2) {
-  background: linear-gradient(180deg, rgba(255, 235, 59, 0.08), rgba(0, 0, 0, 0.35) 55%);
+  background: rgba(255, 235, 59, 0.05);
 }
 .categories-row .stat-card:nth-child(3) {
-  background: linear-gradient(180deg, rgba(33, 150, 243, 0.08), rgba(0, 0, 0, 0.35) 55%);
+  background: rgba(33, 150, 243, 0.05);
 }
 .categories-row .stat-card:nth-child(4) {
-  background: linear-gradient(180deg, rgba(255, 30, 163, 0.08), rgba(0, 0, 0, 0.35) 55%);
+  background: rgba(255, 30, 163, 0.05);
 }
 .bottom-row {
   grid-template-columns: repeat(3, 1fr);

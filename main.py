@@ -498,6 +498,11 @@ async def metrics_engineers_leaderboard(scope: str = "today", limit: int = 6, da
     print(f"[DEBUG] /metrics/engineers/leaderboard endpoint called with scope='{scope}', limit={limit}, date={date}")
     return {"items": db.leaderboard(scope=scope, limit=limit, date_str=date)}
 
+@app.get("/metrics/engineers/weekly-stats")
+async def metrics_engineers_weekly_stats(startDate: str, endDate: str):
+    """Get weekly breakdown of erasures by engineer for a date range"""
+    return {"engineers": db.get_engineer_weekly_stats(startDate, endDate)}
+
 # Admin: delete an ingested event by jobId (secured by API key)
 @app.post("/admin/delete-event")
 async def admin_delete_event(req: Request):

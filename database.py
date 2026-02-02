@@ -544,6 +544,58 @@ def leaderboard(scope: str = 'today', limit: int = 6, date_str: str = None):
         for r in rows
     ]
 
+def get_engineer_weekly_stats(start_date: str, end_date: str):
+    """Get weekly breakdown of erasures by engineer for a date range"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get all engineers active in this date range with their primary device type
+    cursor.execute("""
+        SELECT DISTINCT 
+            initials,
+            device_type,
+            COUNT(1) as total_erasures
+        FROM erasures
+        WHERE date >= ? AND date <= ? AND initials IS NOT NULL
+        GROUP BY initials, device_type
+        ORDER BY total_erasures DESC
+    """, (start_date, end_date))
+    
+    engineers_data = cursor.fetchall()
+    
+    result = []
+    for eng_initials, device_type, total in engineers_data:
+        # Get week-by-week breakdown for this engineer
+        cursor.execute("""
+            SELECT 
+                strftime('%W', date) as week,
+                COUNT(1) as count
+            FROM erasures
+            WHERE date >= ? AND date <= ? AND initials = ?
+            GROUP BY week
+            ORDER BY week
+        """, (start_date, end_date, eng_initials))
+        
+        weekly_counts = cursor.fetchall()
+        week_dict = {int(week): count for week, count in weekly_counts}
+        
+        # Get all weeks in range
+        all_weeks = set()
+        for week, _ in weekly_counts:
+            all_weeks.add(int(week))
+        
+        result.append({
+            "initials": eng_initials,
+            "device_type": device_type or "Unknown",
+            "weekly_breakdown": week_dict,
+            "all_weeks": sorted(all_weeks),
+            "total": total
+        })
+    
+    conn.close()
+    return result
+
+
 def get_top_engineers(limit: int = 3, date_str: str = None) -> List[Dict[str, any]]:
     """Get top engineers by erasure count"""
     if date_str is None:
