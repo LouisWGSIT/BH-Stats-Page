@@ -38,7 +38,12 @@ async def auth_middleware(request: Request, call_next):
     Local network = automatic access.
     External = requires password.
     """
-    client_ip = request.client.host if request.client else "0.0.0.0"
+    # Get real client IP from X-Forwarded-For header (set by reverse proxies like Render)
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    else:
+        client_ip = request.client.host if request.client else "0.0.0.0"
     
     # Allow static assets without auth
     if request.url.path.startswith(("/styles.css", "/assets/", "/vendor/")):
@@ -621,11 +626,17 @@ async def get_all_engineers_kpis():
 @app.get("/auth/status")
 async def auth_status(request: Request):
     """Check auth status for current client"""
-    client_ip = request.client.host if request.client else "0.0.0.0"
+    # Get real client IP from X-Forwarded-For header (set by reverse proxies like Render)
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    else:
+        client_ip = request.client.host if request.client else "0.0.0.0"
+    
     is_local = is_local_network(client_ip)
     
     # Log for debugging
-    print(f"Auth check - Client IP: {client_ip}, Is Local: {is_local}")
+    print(f"Auth check - Client IP: {client_ip}, Is Local: {is_local}, X-Forwarded-For: {forwarded_for}")
     
     return {
         "authenticated": is_local,
