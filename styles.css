@@ -1055,7 +1055,7 @@ body {
 .bottom-row {
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: auto;
-  min-height: auto;
+  min-height: 200px;
   max-height: none;
 }
 .bottom-row-extra {
@@ -1068,17 +1068,17 @@ body {
 
 .rotator-card {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   padding: 0;
-  min-height: auto;
+  min-height: 200px;
   height: auto;
   perspective: 1000px;
   border-radius: 14px;
 }
 
 .rotator-card .panel {
-  position: relative;
-  inset: auto;
+  position: absolute;
+  inset: 0;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -1089,20 +1089,18 @@ body {
   border-radius: 14px;
   border: var(--card-border);
   box-shadow: var(--card-shadow);
-  opacity: 1;
-  pointer-events: auto;
+  opacity: 0;
+  pointer-events: none;
   transition: opacity 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.3s ease;
   will-change: opacity;
-  visibility: visible;
+  visibility: hidden;
   width: 100%;
   height: auto;
+  min-height: 200px;
 }
 
 .rotator-card .panel.hidden-panel {
   display: none;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
 }
 
 .rotator-card .panel.about-to-rotate {
