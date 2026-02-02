@@ -416,7 +416,7 @@ body {
   flex: 1 1 0;
   overflow: hidden;
   min-height: 0;
-  align-items: stretch;
+  align-items: flex-start;
 }
 
 .main-content {
@@ -984,10 +984,11 @@ body {
 
 .rotator-card {
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   padding: 0;
   min-height: 265px;
   perspective: 1000px;
+  border-radius: 14px;
 }
 
 .rotator-card .panel {
@@ -1005,7 +1006,7 @@ body {
   box-shadow: var(--card-shadow);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.3s ease;
+  transition: opacity 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.3s ease;
   will-change: opacity;
   visibility: hidden;
 }
@@ -1104,6 +1105,63 @@ body {
   font-weight: 700;
 }
 
+.rotator-card .leaderboard tbody {
+  max-height: calc(265px - 100px);
+  overflow-y: auto;
+  display: block;
+}
+
+.rotator-card .leaderboard tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.rotator-card .leaderboard tbody {
+  display: block;
+  max-height: 180px;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.rotator-card .leaderboard thead tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.rotator-card .leaderboard tbody tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.rotator-card .leaderboard {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.rotator-card .leaderboard thead {
+  display: block;
+  width: 100%;
+}
+
+.rotator-card .leaderboard tbody {
+  display: block;
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.rotator-card .leaderboard tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
 .leaderboard {
   width: 100%;
   border-collapse: collapse;
@@ -1157,19 +1215,22 @@ body {
   display: inline-block;
   width: 22px;
   height: 22px;
-  min-width: 18px;
-  min-height: 18px;
+  min-width: 22px;
+  min-height: 22px;
   background-size: cover;
   background-repeat: no-repeat;
   background-position: center;
   border-radius: 3px;
   border: 1px solid rgba(255,255,255,0.15);
   margin-right: 8px;
-  vertical-align: middle;
+  vertical-align: center;
   box-shadow: 0 2px 4px rgba(0,0,0,0.3);
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .engineer-name {
@@ -1367,12 +1428,14 @@ body {
 
 .top-list {
   margin: 0;
-  padding: 0 12px 0 0;
+  padding: 0 8px 0 0;
   list-style-type: none;
   counter-reset: item;
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   line-height: 1.5;
+  max-height: 100%;
 }
 
 .top-list li {

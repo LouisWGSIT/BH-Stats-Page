@@ -2103,73 +2103,88 @@ function renderSVGSparkline(svgElem, data) {
   async function generateCSV() {
     const dateScope = document.getElementById('dateSelector')?.value || 'today';
     const isYesterday = dateScope === 'yesterday';
+    const isThisMonth = dateScope === 'this-month';
+    const isLastMonth = dateScope === 'last-month';
+    const isMonthlyReport = isThisMonth || isLastMonth;
     
-    // Calculate date for display and API calls
-    const targetDate = new Date();
+    // Calculate date range for display and API calls
+    let targetDate = new Date();
+    let dateRangeStr = '';
+    let monthYearStr = '';
+    
     if (isYesterday) {
       // If today is Monday (1), go back to Friday (3 days ago)
       // Otherwise, go back 1 day
       const daysBack = targetDate.getDay() === 1 ? 3 : 1;
       targetDate.setDate(targetDate.getDate() - daysBack);
+      dateRangeStr = targetDate.toLocaleDateString('en-GB');
+    } else if (isLastMonth) {
+      // Get last month
+      targetDate.setMonth(targetDate.getMonth() - 1);
+      const year = targetDate.getFullYear();
+      const month = targetDate.getMonth();
+      monthYearStr = targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      dateRangeStr = monthYearStr;
+    } else if (isThisMonth) {
+      // Get this month
+      const year = targetDate.getFullYear();
+      const month = targetDate.getMonth();
+      monthYearStr = targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      dateRangeStr = monthYearStr;
+    } else {
+      dateRangeStr = targetDate.toLocaleDateString('en-GB');
     }
-    const dateStr = targetDate.toLocaleDateString('en-GB');
+    
     const time = new Date().toLocaleTimeString('en-GB');
     
     // Get current displayed values (only valid for "today")
     let todayTotal, monthTotal, target;
-    if (!isYesterday) {
+    if (!isYesterday && !isMonthlyReport) {
       todayTotal = document.getElementById('totalTodayValue')?.textContent || '0';
       monthTotal = document.getElementById('monthTotalValue')?.textContent || '0';
       target = document.getElementById('erasedTarget')?.textContent || '500';
     } else {
-      // For yesterday, fetch from API
+      // For other scopes, fetch from API
       todayTotal = '0';
       monthTotal = '0';
       target = '500';
       try {
-        const res = await fetch(`/metrics/summary?date=${targetDate.toISOString().split('T')[0]}`);
-        if (res.ok) {
-          const data = await res.json();
-          todayTotal = data.todayTotal || '0';
-          monthTotal = data.monthTotal || '0';
+        if (isMonthlyReport) {
+          // For monthly reports, get the month totals
+          const monthDate = new Date(targetDate);
+          const year = monthDate.getFullYear();
+          const month = monthDate.getMonth();
+          const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
+          const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
+          const res = await fetch(`/metrics/summary?startDate=${firstDay}&endDate=${lastDay}`);
+          if (res.ok) {
+            const data = await res.json();
+            monthTotal = data.monthTotal || '0';
+          }
+        } else {
+          const res = await fetch(`/metrics/summary?date=${targetDate.toISOString().split('T')[0]}`);
+          if (res.ok) {
+            const data = await res.json();
+            todayTotal = data.todayTotal || '0';
+            monthTotal = data.monthTotal || '0';
+          }
         }
       } catch (err) {
-        console.error('Failed to fetch summary for yesterday:', err);
+        console.error('Failed to fetch summary:', err);
       }
     }
     
-    // Get leaderboard data (top 3 displayed) - only for today
-    const leaderboardRows = [];
-    if (!isYesterday) {
-      const rows = document.getElementById('leaderboardBody')?.querySelectorAll('tr') || [];
-      rows.forEach((row, idx) => {
-        const cells = row.querySelectorAll('td');
-        if (cells.length >= 2) {
-          const engineer = cells[0].textContent.trim();
-          const erasures = cells[1].textContent.trim();
-          const lastActive = cells[2]?.textContent.trim() || '';
-          leaderboardRows.push([idx + 1, engineer, erasures, lastActive]);
-        }
-      });
-    }
-
-    // Fetch full engineer list from API
+    // For monthly reports, fetch engineer breakdown data
     let allEngineersRows = [];
     let engineerKPIs = {};
     try {
-      const apiScope = isYesterday ? 'yesterday' : 'today';
-      const dateParam = isYesterday ? `&date=${targetDate.toISOString().split('T')[0]}` : '';
-      const res = await fetch(`/metrics/engineers/leaderboard?scope=${apiScope}&limit=50${dateParam}`);
+      let apiEndpoint = `/metrics/engineers/leaderboard?scope=${dateScope}&limit=50`;
+      const res = await fetch(apiEndpoint);
       if (res.ok) {
         const data = await res.json();
-        // Fetch KPI data for all engineers (try for both today and yesterday)
+        // Fetch KPI data for all engineers
         try {
-          // Try to fetch KPIs for the target date if supported, fallback to all
           let kpiUrl = '/metrics/engineers/kpis/all';
-          if (isYesterday) {
-            // If backend supports date param for KPIs, use it (otherwise fallback)
-            kpiUrl = `/metrics/engineers/kpis/all?date=${targetDate.toISOString().split('T')[0]}`;
-          }
           const kpiRes = await fetch(kpiUrl);
           if (kpiRes.ok) {
             const kpiData = await kpiRes.json();
@@ -2182,16 +2197,9 @@ function renderSVGSparkline(svgElem, data) {
           console.error('Failed to fetch engineer KPIs:', err);
         }
         allEngineersRows = (data.items || []).map((eng, idx) => {
-          const erasures = eng.erasures || 0;
-          const avgPerHour = (erasures / SHIFT_HOURS).toFixed(1);
-          // For yesterday, show absolute time instead of "x ago"
-          let lastActiveDisplay;
-          if (isYesterday && eng.lastActive) {
-            const timestamp = new Date(eng.lastActive);
-            lastActiveDisplay = timestamp.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-          } else {
-            lastActiveDisplay = formatTimeAgo(eng.lastActive);
-          }
+          let erasures = eng.erasures || 0;
+          let avgPerHour = isMonthlyReport ? (erasures / (targetDate.getDate() * SHIFT_HOURS)).toFixed(1) : (erasures / SHIFT_HOURS).toFixed(1);
+          let lastActiveDisplay = isMonthlyReport ? 'N/A' : formatTimeAgo(eng.lastActive);
           const baseRow = [
             idx + 1,
             eng.initials || '',
@@ -2199,7 +2207,7 @@ function renderSVGSparkline(svgElem, data) {
             lastActiveDisplay,
             avgPerHour
           ];
-          // Add KPI data if available (now for both today and yesterday)
+          // Add KPI data if available
           if (engineerKPIs[eng.initials]) {
             const kpi = engineerKPIs[eng.initials];
             return [
@@ -2216,34 +2224,36 @@ function renderSVGSparkline(svgElem, data) {
         });
       }
     } catch (err) {
-      console.error('Failed to fetch full engineer list:', err);
+      console.error('Failed to fetch engineer data:', err);
     }
 
-    // Get category data - only for today
+    // Get category data
     const categoryRows = [];
-    if (!isYesterday) {
-      categories.forEach(cat => {
-        const count = document.getElementById(cat.countId)?.textContent || '0';
-        categoryRows.push([cat.label, count]);
-      });
-    } else {
-      // For yesterday, fetch from API
-      try {
-        const res = await fetch(`/analytics/category-breakdown?date=${targetDate.toISOString().split('T')[0]}`);
-        if (res.ok) {
-          const data = await res.json();
-          (data.categories || []).forEach(cat => {
-            categoryRows.push([cat.name, cat.count]);
-          });
+    if (!isMonthlyReport) {
+      if (!isYesterday) {
+        categories.forEach(cat => {
+          const count = document.getElementById(cat.countId)?.textContent || '0';
+          categoryRows.push([cat.label, count]);
+        });
+      } else {
+        // For yesterday, fetch from API
+        try {
+          const res = await fetch(`/analytics/category-breakdown?date=${targetDate.toISOString().split('T')[0]}`);
+          if (res.ok) {
+            const data = await res.json();
+            (data.categories || []).forEach(cat => {
+              categoryRows.push([cat.name, cat.count]);
+            });
+          }
+        } catch (err) {
+          console.error('Failed to fetch category data:', err);
         }
-      } catch (err) {
-        console.error('Failed to fetch category data:', err);
       }
     }
 
-    // Get top performers per category - only for today
+    // Get top performers per category
     const categoryTopPerformers = [];
-    if (!isYesterday) {
+    if (!isYesterday && !isMonthlyReport) {
       categories.forEach(cat => {
         const listEl = document.getElementById(cat.listId);
         if (listEl) {
@@ -2261,19 +2271,42 @@ function renderSVGSparkline(svgElem, data) {
       });
     }
 
-    // Calculate monthly progress metrics (use targetDate for correct day calculations)
-    const currentDay = targetDate.getDate();
-    const daysInMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
-    const dailyAvg = Math.round(parseInt(monthTotal) / currentDay);
-    const projectedTotal = Math.round(dailyAvg * daysInMonth);
-    const daysRemaining = daysInMonth - currentDay;
-    const progressPercent = Math.round((parseInt(todayTotal) / parseInt(target)) * 100);
-    const statusIndicator = progressPercent >= 100 ? 'ON TARGET' : progressPercent >= 80 ? 'APPROACHING' : 'BELOW TARGET';
-    const monthProgressPercent = Math.round((parseInt(monthTotal) / (parseInt(target) * currentDay)) * 100);
+    // Calculate progress metrics
+    let currentDay, daysInMonth, dailyAvg, projectedTotal, daysRemaining, progressPercent, statusIndicator, monthProgressPercent;
+    if (isMonthlyReport) {
+      daysInMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
+      dailyAvg = Math.round(parseInt(monthTotal) / daysInMonth);
+      projectedTotal = dailyAvg * daysInMonth;
+      daysRemaining = isThisMonth ? daysInMonth - targetDate.getDate() : 0;
+      progressPercent = Math.round((parseInt(monthTotal) / (parseInt(target) * daysInMonth)) * 100);
+      statusIndicator = progressPercent >= 100 ? 'ON PACE' : progressPercent >= 80 ? 'GOOD PACE' : 'BELOW PACE';
+      monthProgressPercent = progressPercent;
+    } else {
+      currentDay = targetDate.getDate();
+      daysInMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
+      dailyAvg = Math.round(parseInt(monthTotal) / currentDay);
+      projectedTotal = Math.round(dailyAvg * daysInMonth);
+      daysRemaining = daysInMonth - currentDay;
+      progressPercent = Math.round((parseInt(todayTotal) / parseInt(target)) * 100);
+      statusIndicator = progressPercent >= 100 ? 'ON TARGET' : progressPercent >= 80 ? 'APPROACHING' : 'BELOW TARGET';
+      monthProgressPercent = Math.round((parseInt(monthTotal) / (parseInt(target) * currentDay)) * 100);
+    }
     
-    // Build professional CSV report
-    const reportTitle = isYesterday ? 'BH WAREHOUSE ERASURE STATS REPORT (Yesterday)' : 'BH WAREHOUSE ERASURE STATS REPORT';
-    const reportSubtitle = isYesterday ? `Data for: ${dateStr}` : `Current Status - ${dateStr}`;
+    // Build professional report title
+    let reportTitle, reportSubtitle;
+    if (isThisMonth) {
+      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT - THIS MONTH';
+      reportSubtitle = `Monthly Report for: ${dateRangeStr}`;
+    } else if (isLastMonth) {
+      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT - LAST MONTH';
+      reportSubtitle = `Monthly Report for: ${dateRangeStr}`;
+    } else if (isYesterday) {
+      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT (Yesterday)';
+      reportSubtitle = `Data for: ${dateRangeStr}`;
+    } else {
+      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT';
+      reportSubtitle = `Current Status - ${dateRangeStr}`;
+    }
     
     const csv = [
       [reportTitle],
@@ -2283,16 +2316,25 @@ function renderSVGSparkline(svgElem, data) {
       [],
       ['EXECUTIVE SUMMARY'],
       ['Key Metric', 'Value', 'Status/Target', 'Performance'],
-      [isYesterday ? 'Daily Total' : 'Today\'s Total', todayTotal, `Target: ${target}`, statusIndicator],
-      ['Month Total', monthTotal, `Avg ${target}/day`, `${monthProgressPercent}% of pace`],
-      ['Daily Average', dailyAvg, 'Per day', `${dailyAvg > parseInt(target) ? 'Above' : 'Below'} target`],
-      ['Projected Month', projectedTotal, `of ~${parseInt(target) * daysInMonth} max`, `${Math.round((projectedTotal / (parseInt(target) * daysInMonth)) * 100)}% utilization`],
-      ['Days Remaining', daysRemaining, `in ${targetDate.toLocaleDateString('en-US', { month: 'long' })}`, ''],
-      [],
     ];
+    
+    if (isMonthlyReport) {
+      csv.push(['Monthly Total', monthTotal, `Expected: ~${parseInt(target) * daysInMonth}`, statusIndicator]);
+      csv.push(['Daily Average', dailyAvg, `Per day`, `vs ${target} target`]);
+      csv.push(['Days in Month', daysInMonth, `Total days`, isThisMonth ? `${daysRemaining} remaining` : 'Complete']);
+      csv.push(['Achievement Rate', `${progressPercent}%`, `of monthly expectation`, progressPercent >= 100 ? 'Exceeded Target' : 'Below Target']);
+      csv.push(['Days Active', Object.values(engineerKPIs).reduce((sum, kpi) => sum + (kpi.daysActiveMonth || 0), 0), 'Across all engineers', 'Utilization metric']);
+    } else {
+      csv.push([isYesterday ? 'Daily Total' : 'Today\'s Total', todayTotal, `Target: ${target}`, statusIndicator]);
+      csv.push(['Month Total', monthTotal, `Avg ${target}/day`, `${monthProgressPercent}% of pace`]);
+      csv.push(['Daily Average', dailyAvg, 'Per day', `${dailyAvg > parseInt(target) ? 'Above' : 'Below'} target`]);
+      csv.push(['Projected Month', projectedTotal, `of ~${parseInt(target) * daysInMonth} max`, `${Math.round((projectedTotal / (parseInt(target) * daysInMonth)) * 100)}% utilization`]);
+      csv.push(['Days Remaining', daysRemaining, `in ${targetDate.toLocaleDateString('en-US', { month: 'long' })}`, '']);
+    }
+    csv.push([]);
 
-    // Fetch performance trends and target achievement data (only for today)
-    if (!isYesterday) {
+    // Additional analysis sections (only for current day)
+    if (!isYesterday && !isMonthlyReport) {
       try {
         const [perfTrends, targetAchievement] = await Promise.all([
           fetch(`/metrics/performance-trends?target=${target}`).then(r => r.ok ? r.json() : null),
@@ -2326,48 +2368,45 @@ function renderSVGSparkline(svgElem, data) {
       }
     }
 
-
-    if (!isYesterday && leaderboardRows.length > 0) {
+    // Engineer leaderboard section
+    if (!isMonthlyReport && !isYesterday && allEngineersRows.length > 0) {
       csv.push(['TOP 3 ENGINEERS (Daily Leaders)']);
       csv.push(['Rank', 'Engineer', 'Erasures', 'Last Active', 'Status']);
-      leaderboardRows.forEach((row, idx) => {
+      allEngineersRows.slice(0, 3).forEach((row, idx) => {
         const erasures = parseInt(row[2]);
         let status = erasures >= parseInt(target) ? 'Exceeding Target' : 'On Pace';
         csv.push([row[0], row[1], row[2], row[3], status]);
       });
       
       // Add race analysis
-      if (leaderboardRows.length >= 2) {
-        const lead = parseInt(leaderboardRows[0][2]);
-        const second = parseInt(leaderboardRows[1][2]);
+      if (allEngineersRows.length >= 2) {
+        const lead = parseInt(allEngineersRows[0][2]);
+        const second = parseInt(allEngineersRows[1][2]);
         const gap = lead - second;
         const gapPercent = Math.round((gap / second) * 100);
         csv.push([]);
         csv.push(['RACE ANALYSIS']);
-        csv.push(['Leader', leaderboardRows[0][1]]);
+        csv.push(['Leader', allEngineersRows[0][1]]);
         csv.push(['Lead Margin', `${gap} erasures (${gapPercent}% ahead)`]);
-        csv.push(['Second Place', leaderboardRows[1][1]]);
+        csv.push(['Second Place', allEngineersRows[1][1]]);
       }
       csv.push([]);
     }
 
-    csv.push([isYesterday ? 'ALL ENGINEERS (YESTERDAY)' : 'ALL ENGINEERS - DETAILED LEADERBOARD WITH KPIs']);
-    
-    // Use the same headers and row structure for both today and yesterday if KPIs are available
-    csv.push(['Rank', 'Engineer', isYesterday ? 'Total Erasures' : 'Today Total', 'Last Active', 'Per Hour', '% Target', '7-Day Avg', '30-Day Avg', 'Trend', 'Personal Best', 'Consistency', 'Days Active']);
+    // All engineers section
+    csv.push([isMonthlyReport ? 'ENGINEER PERFORMANCE - MONTHLY SUMMARY' : (isYesterday ? 'ALL ENGINEERS (YESTERDAY)' : 'ALL ENGINEERS - DETAILED LEADERBOARD WITH KPIs')]);
+    csv.push(['Rank', 'Engineer', isMonthlyReport ? 'Month Total' : (isYesterday ? 'Total Erasures' : 'Today Total'), 'Last Active', 'Per Hour', '% Target', '7-Day Avg', '30-Day Avg', 'Trend', 'Personal Best', 'Consistency', 'Days Active']);
     csv.push(...(allEngineersRows.length > 0 ? allEngineersRows.map(row => {
       const erasures = parseInt(row[2]);
       const pct = parseInt(target) > 0 ? Math.round((erasures / parseInt(target)) * 100) : 0;
-      // Only include rows with full KPI data
       if (row.length > 5) {
         return [row[0], row[1], row[2], row[3], row[4], `${pct}%`, row[5], row[6], row[7], row[8], row[9], row[10]];
       } else {
-        // If no KPI data, skip row (or could show 'No data available')
         return null;
       }
     }).filter(Boolean) : [['No data available']]));
     
-    // Device Specialization sheet if there is data
+    // Device Specialization sheet
     let hasDeviceRows = false;
     let deviceRows = [];
     Object.values(engineerKPIs).forEach(kpi => {
@@ -2391,7 +2430,7 @@ function renderSVGSparkline(svgElem, data) {
       csv.push([]);
     }
 
-    // Category Breakdown sheet if there is data
+    // Category Breakdown sheet
     if (categoryRows.length > 0) {
       csv.push(['BREAKDOWN BY CATEGORY']);
       csv.push(['Category', 'Count']);
@@ -2399,15 +2438,15 @@ function renderSVGSparkline(svgElem, data) {
       csv.push([]);
     }
 
-    // Category Leaders sheet if there is data
+    // Category Leaders sheet
     if (categoryTopPerformers.length > 0) {
       csv.push(['TOP PERFORMERS BY CATEGORY']);
       csv.push(['Category', 'Engineer', 'Count']);
       csv.push(...categoryTopPerformers);
     }
 
-    // Fetch competition data for richer report (only for today)
-    if (!isYesterday) {
+    // Fetch competition data (only for current day)
+    if (!isYesterday && !isMonthlyReport) {
       try {
         const [speedAm, speedPm, specialists, consistency, records, weekly] = await Promise.all([
           fetch('/competitions/speed-challenge?window=am').then(r => r.ok ? r.json() : {}),
@@ -2418,107 +2457,106 @@ function renderSVGSparkline(svgElem, data) {
           fetch('/metrics/weekly').then(r => r.ok ? r.json() : {})
         ]);
 
-      // Add records & milestones with better formatting
-      if (records?.bestDay || records?.topEngineer || records?.currentStreak !== undefined) {
-        csv.push(['HISTORICAL RECORDS & ACHIEVEMENTS']);
-        csv.push(['Metric', 'Value', 'Details']);
-        if (records.bestDay) {
-          csv.push(['Best Day Ever', records.bestDay.count || 0, `Achieved on ${records.bestDay.date || 'N/A'}`]);
+        // Add records & milestones
+        if (records?.bestDay || records?.topEngineer || records?.currentStreak !== undefined) {
+          csv.push(['HISTORICAL RECORDS & ACHIEVEMENTS']);
+          csv.push(['Metric', 'Value', 'Details']);
+          if (records.bestDay) {
+            csv.push(['Best Day Ever', records.bestDay.count || 0, `Achieved on ${records.bestDay.date || 'N/A'}`]);
+          }
+          if (records.topEngineer) {
+            csv.push(['Top Engineer (All-Time)', records.topEngineer.initials || '—', `${records.topEngineer.totalCount || 0} total erasures`]);
+          }
+          if (records.currentStreak !== undefined) {
+            csv.push(['Current Streak', `${records.currentStreak || 0} days`, 'above daily target']);
+          }
+          csv.push([]);
         }
-        if (records.topEngineer) {
-          csv.push(['Top Engineer (All-Time)', records.topEngineer.initials || '—', `${records.topEngineer.totalCount || 0} total erasures`]);
+
+        // Add weekly statistics
+        if (weekly?.weekTotal || weekly?.daysActive) {
+          csv.push(['WEEKLY PERFORMANCE (Past 7 Days)']);
+          csv.push(['Metric', 'Value', 'Comparison', 'Notes']);
+          csv.push(['Week Total', weekly.weekTotal || 0, `${Math.round((weekly.weekTotal / (parseInt(target) * 7)) * 100)}% of weekly goal`, '']);
+          csv.push(['Best Day', weekly.bestDayOfWeek?.count || 0, `(${weekly.bestDayOfWeek?.date || 'N/A'})`, weekly.bestDayOfWeek?.count >= parseInt(target) ? 'On Target' : 'Below Target']);
+          csv.push(['Daily Average', weekly.weekAverage || 0, `vs ${target} target`, weekly.weekAverage >= parseInt(target) ? 'Above Target' : 'Below Target']);
+          csv.push(['Days Active', weekly.daysActive || 0, `out of 7 days`, '']);
+          csv.push([]);
         }
-        if (records.currentStreak !== undefined) {
-          csv.push(['Current Streak', `${records.currentStreak || 0} days`, 'above daily target']);
+
+        // Speed challenges
+        if (speedAm?.leaderboard?.length) {
+          csv.push([]);
+          csv.push(['SPEED CHALLENGE (AM)', `${speedAm.status?.startTime || ''}-${speedAm.status?.endTime || ''}`]);
+          csv.push(['Rank', 'Engineer', 'Erasures', 'Status']);
+          csv.push(...speedAm.leaderboard.map((row, idx) => [
+            idx + 1,
+            row.initials || '',
+            row.erasures || 0,
+            speedAm.status?.isActive ? `${speedAm.status.timeRemainingMinutes}m remaining` : 'Closed'
+          ]));
         }
-        csv.push([]);
-      }
 
-      // Add weekly statistics with comparison
-      if (weekly?.weekTotal || weekly?.daysActive) {
-        csv.push(['WEEKLY PERFORMANCE (Past 7 Days)']);
-        csv.push(['Metric', 'Value', 'Comparison', 'Notes']);
-        csv.push(['Week Total', weekly.weekTotal || 0, `${Math.round((weekly.weekTotal / (parseInt(target) * 7)) * 100)}% of weekly goal`, '']);
-        csv.push(['Best Day', weekly.bestDayOfWeek?.count || 0, `(${weekly.bestDayOfWeek?.date || 'N/A'})`, weekly.bestDayOfWeek?.count >= parseInt(target) ? 'On Target' : 'Below Target']);
-        csv.push(['Daily Average', weekly.weekAverage || 0, `vs ${target} target`, weekly.weekAverage >= parseInt(target) ? 'Above Target' : 'Below Target']);
-        csv.push(['Days Active', weekly.daysActive || 0, `out of 7 days`, '']);
-        csv.push([]);
-      }
+        if (speedPm?.leaderboard?.length) {
+          csv.push([]);
+          csv.push(['SPEED CHALLENGE (PM)', `${speedPm.status?.startTime || ''}-${speedPm.status?.endTime || ''}`]);
+          csv.push(['Rank', 'Engineer', 'Erasures', 'Status']);
+          csv.push(...speedPm.leaderboard.map((row, idx) => [
+            idx + 1,
+            row.initials || '',
+            row.erasures || 0,
+            speedPm.status?.isActive ? `${speedPm.status.timeRemainingMinutes}m remaining` : 'Closed'
+          ]));
+        }
 
-      // Speed challenges
-      if (speedAm?.leaderboard?.length) {
-        csv.push([]);
-        csv.push(['SPEED CHALLENGE (AM)', `${speedAm.status?.startTime || ''}-${speedAm.status?.endTime || ''}`]);
-        csv.push(['Rank', 'Engineer', 'Erasures', 'Status']);
-        csv.push(...speedAm.leaderboard.map((row, idx) => [
-          idx + 1,
-          row.initials || '',
-          row.erasures || 0,
-          speedAm.status?.isActive ? `${speedAm.status.timeRemainingMinutes}m remaining` : 'Closed'
-        ]));
-      }
-
-      if (speedPm?.leaderboard?.length) {
-        csv.push([]);
-        csv.push(['SPEED CHALLENGE (PM)', `${speedPm.status?.startTime || ''}-${speedPm.status?.endTime || ''}`]);
-        csv.push(['Rank', 'Engineer', 'Erasures', 'Status']);
-        csv.push(...speedPm.leaderboard.map((row, idx) => [
-          idx + 1,
-          row.initials || '',
-          row.erasures || 0,
-          speedPm.status?.isActive ? `${speedPm.status.timeRemainingMinutes}m remaining` : 'Closed'
-        ]));
-      }
-
-      // Category specialists
-      if (specialists?.specialists) {
-        csv.push([]);
-        csv.push(['CATEGORY SPECIALISTS (Top 3 per category)']);
-        csv.push(['Category', 'Rank', 'Engineer', 'Count']);
-        const catOrder = ['laptops_desktops', 'servers', 'macs', 'mobiles'];
-        const catNames = {
-          laptops_desktops: 'Laptops/Desktops',
-          servers: 'Servers',
-          macs: 'Macs',
-          mobiles: 'Mobiles'
-        };
-        catOrder.forEach(cat => {
-          (specialists.specialists[cat] || []).forEach((row, idx) => {
-            csv.push([catNames[cat], idx + 1, row.initials || '', row.count || 0]);
+        // Category specialists
+        if (specialists?.specialists) {
+          csv.push([]);
+          csv.push(['CATEGORY SPECIALISTS (Top 3 per category)']);
+          csv.push(['Category', 'Rank', 'Engineer', 'Count']);
+          const catOrder = ['laptops_desktops', 'servers', 'macs', 'mobiles'];
+          const catNames = {
+            laptops_desktops: 'Laptops/Desktops',
+            servers: 'Servers',
+            macs: 'Macs',
+            mobiles: 'Mobiles'
+          };
+          catOrder.forEach(cat => {
+            (specialists.specialists[cat] || []).forEach((row, idx) => {
+              csv.push([catNames[cat], idx + 1, row.initials || '', row.count || 0]);
+            });
           });
-        });
-      }
+        }
 
-      // Consistency
-      if (consistency?.leaderboard?.length) {
-        csv.push([]);
-        csv.push(['CONSISTENCY KINGS/QUEENS', 'Steadiest pace - lowest variability']);
-        csv.push(['Rank', 'Engineer', 'Erasures', 'Avg Pace (min)', 'Consistency Score']);
-        csv.push(...consistency.leaderboard.map((row, idx) => [
-          idx + 1,
-          row.initials || '',
-          row.erasures || 0,
-          row.avgGapMinutes || 0,
-          row.consistencyScore || 0
-        ]));
+        // Consistency
+        if (consistency?.leaderboard?.length) {
+          csv.push([]);
+          csv.push(['CONSISTENCY KINGS/QUEENS', 'Steadiest pace - lowest variability']);
+          csv.push(['Rank', 'Engineer', 'Erasures', 'Avg Pace (min)', 'Consistency Score']);
+          csv.push(...consistency.leaderboard.map((row, idx) => [
+            idx + 1,
+            row.initials || '',
+            row.erasures || 0,
+            row.avgGapMinutes || 0,
+            row.consistencyScore || 0
+          ]));
+        }
+      } catch (err) {
+        console.error('CSV competition enrichment failed:', err);
       }
-    } catch (err) {
-      console.error('CSV competition enrichment failed:', err);
-    }
-    } else {
-      // For yesterday's report, add note about competitions
+    } else if (isYesterday || isMonthlyReport) {
+      // For other reports, add note about competitions
       csv.push([]);
       csv.push(['COMPETITION DATA NOT AVAILABLE']);
       csv.push(['Note', 'Competition data (Speed Challenges, Category Specialists, Consistency) is only available for current day reports.']);
-      csv.push(['', 'Historical competition data is not stored in the system.']);
     }
 
     // Add footer with notes and context
     csv.push([]);
     csv.push(['REPORT INFORMATION']);
-    csv.push(['Report Type', 'Daily Warehouse Erasure Statistics']);
+    csv.push(['Report Type', isMonthlyReport ? 'Monthly Warehouse Erasure Statistics' : 'Daily Warehouse Erasure Statistics']);
     csv.push(['Target', `${target} erasures per day`]);
-    csv.push(['Scope', isYesterday ? 'Yesterday\'s performance' : 'Current day (real-time)']);
+    csv.push(['Scope', isThisMonth ? 'Current month (to date)' : isLastMonth ? 'Previous month' : isYesterday ? 'Yesterday\'s performance' : 'Current day (real-time)']);
     csv.push(['Data Freshness', 'Real-time updates every 30 seconds']);
     csv.push(['Competitions', 'Speed Challenge (AM: 8-12, PM: 13:30-15:45) | Category Specialists | Consistency Kings/Queens']);
     
@@ -2539,6 +2577,7 @@ function renderSVGSparkline(svgElem, data) {
     csv.push(['Std Dev', 'Standard Deviation - measure of consistency (lower is more consistent)']);
     csv.push(['Week Total', 'Sum of all erasures across 7-day period']);
     csv.push(['Daily Average', 'Total divided by number of days active']);
+    csv.push(['Achievement Rate', 'Percentage of days hitting or exceeding daily target']);
 
     return csv.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
   }
