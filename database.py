@@ -366,6 +366,32 @@ def get_summary_today_month(date_str: str = None):
         "avgDurationSec": int(avg_dur) if avg_dur is not None else None
     }
 
+def get_summary_date_range(start_date: str, end_date: str):
+    """Return totals for a date range (used for monthly reports)"""
+    print(f"[DEBUG] get_summary_date_range called with start_date={start_date}, end_date={end_date}")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date >= ? AND date <= ?", (start_date, end_date))
+    total = cursor.fetchone()[0] or 0
+    
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date >= ? AND date <= ? AND event = 'success'", (start_date, end_date))
+    success = cursor.fetchone()[0] or 0
+    
+    cursor.execute("SELECT AVG(duration_sec) FROM erasures WHERE date >= ? AND date <= ? AND duration_sec IS NOT NULL", (start_date, end_date))
+    avg_dur = cursor.fetchone()[0]
+    
+    conn.close()
+    
+    success_rate = (success / total * 100.0) if total else 0.0
+    print(f"[DEBUG] get_summary_date_range returning monthTotal={total}")
+    return {
+        "todayTotal": 0,  # Not applicable for date range
+        "monthTotal": total,
+        "successRate": round(success_rate, 1),
+        "avgDurationSec": int(avg_dur) if avg_dur is not None else None
+    }
+
 def get_counts_by_type_today():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()

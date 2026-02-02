@@ -474,8 +474,11 @@ async def erasure_detail(req: Request):
 
 # Summary metrics powering the new dashboard
 @app.get("/metrics/summary")
-async def metrics_summary(date: str = None):
-    """Get summary for a specific date (YYYY-MM-DD) or today if not provided"""
+async def metrics_summary(date: str = None, startDate: str = None, endDate: str = None):
+    """Get summary for a specific date (YYYY-MM-DD), date range, or today if not provided"""
+    print(f"[DEBUG] /metrics/summary called with date={date}, startDate={startDate}, endDate={endDate}")
+    if startDate and endDate:
+        return db.get_summary_date_range(startDate, endDate)
     return db.get_summary_today_month(date)
 
 @app.get("/metrics/by-type")

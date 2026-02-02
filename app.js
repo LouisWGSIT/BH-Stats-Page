@@ -2333,10 +2333,12 @@ function renderSVGSparkline(svgElem, data) {
           const month = monthDate.getMonth();
           const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
           const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
+          console.log(`[DEBUG] Fetching summary for monthly report: year=${year}, month=${month}, firstDay=${firstDay}, lastDay=${lastDay}`);
           const res = await fetch(`/metrics/summary?startDate=${firstDay}&endDate=${lastDay}`);
           if (res.ok) {
             const data = await res.json();
             monthTotal = data.monthTotal || '0';
+            console.log(`[DEBUG] Monthly total from API: ${monthTotal}`);
           }
         } else {
           const res = await fetch(`/metrics/summary?date=${targetDate.toISOString().split('T')[0]}`);
@@ -2992,6 +2994,13 @@ function renderSVGSparkline(svgElem, data) {
     if (!window._categoryFlipData) {
       return;
     }
+    
+    // Clear any existing intervals
+    if (window._categoryFlipIntervals) {
+      window._categoryFlipIntervals.forEach(id => clearInterval(id));
+    }
+    window._categoryFlipIntervals = [];
+    
     categories.forEach(c => {
       const listId = c.listId;
       const el = document.getElementById(listId);
@@ -3053,11 +3062,24 @@ function renderSVGSparkline(svgElem, data) {
         }, 600);
       }
       
-      // Start rotation after short delay
+      // Start rotation after short delay and store interval ID
       setTimeout(() => {
-        setInterval(performFlip, 20000);
+        const intervalId = setInterval(performFlip, 20000);
+        window._categoryFlipIntervals.push(intervalId);
+        console.log(`[TV Rotation] Started interval for ${listId}`);
       }, 2000);
     });
+    
+    // Add visibility change listener to restart intervals if page becomes visible
+    if (!window._categoryFlipVisibilityHandler) {
+      window._categoryFlipVisibilityHandler = function() {
+        if (!document.hidden) {
+          console.log('[TV Rotation] Page visible, ensuring intervals are running');
+          // Don't restart immediately, just log
+        }
+      };
+      document.addEventListener('visibilitychange', window._categoryFlipVisibilityHandler);
+    }
   }
 
 
