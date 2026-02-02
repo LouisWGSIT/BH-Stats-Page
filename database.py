@@ -453,6 +453,7 @@ def leaderboard(scope: str = 'today', limit: int = 6, date_str: str = None):
             year -= 1
         first_day = f"{year:04d}-{month:02d}-01"
         last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
+        print(f"[DEBUG] last-month: today={today}, calculating for year={year}, month={month}, first_day={first_day}, last_day={last_day}")
         # Use date range query
         cursor.execute("""
             SELECT initials,
@@ -506,6 +507,8 @@ def leaderboard(scope: str = 'today', limit: int = 6, date_str: str = None):
     
     rows = cursor.fetchall()
     conn.close()
+    total_erasures = sum(r[1] for r in rows)
+    print(f"[DEBUG] leaderboard returning {len(rows)} engineers with {total_erasures} total erasures")
     return [
         {
             "initials": r[0],
