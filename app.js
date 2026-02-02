@@ -3026,16 +3026,44 @@ function renderSVGSparkline(svgElem, data) {
       const flipData = window._categoryFlipData[listId];
       // Always rotate through all three periods: Today, Month, All Time
       const scopes = ['today', 'month', 'all'];
-      setInterval(() => {
+      
+      // Function to perform the flip
+      function performFlip() {
         flipIndex = (flipIndex + 1) % scopes.length;
-        // Hide all period cards before showing the next
-        const el = document.getElementById(listId);
-        if (el) el.style.opacity = 0;
+        const currentEl = document.getElementById(listId);
+        if (!currentEl) return;
+        
+        // Set opacity to 0 (initiates transition)
+        currentEl.style.opacity = '0';
+        
+        // Wait for fade out
         setTimeout(() => {
           const data = flipData[scopes[flipIndex]];
+          if (!data) {
+            flipIndex = 0;
+            data = flipData[scopes[0]];
+          }
+          
+          // Force DOM update
           renderTopListWithLabel(listId, data.engineers, data.label, data.total);
-        }, 600); // fade out before next card
-      }, 20000); // 20s per face (slower)
+          
+          // Force reflow to ensure opacity transition is visible
+          void document.body.offsetHeight;
+          
+          // Fade back in
+          const elAfterUpdate = document.getElementById(listId);
+          if (elAfterUpdate) {
+            setTimeout(() => {
+              elAfterUpdate.style.opacity = '1';
+            }, 50);
+          }
+        }, 600);
+      }
+      
+      // Start rotation after short delay
+      setTimeout(() => {
+        setInterval(performFlip, 20000);
+      }, 2000);
     });
   }
 

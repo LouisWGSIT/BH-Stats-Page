@@ -147,7 +147,8 @@
   width: 100%;
   max-width: 480px;
   min-width: 400px;
-  padding: 10px 10px 14px 10px;
+  padding: 12px 14px 14px 14px;
+  box-sizing: border-box;
 }
 .tracker-sparkline-unified {
   display: block;
@@ -317,11 +318,12 @@ body {
   display: flex;
   justify-content: flex-start;
   align-items: center;
-  padding: 10px 20px;
+  padding: 12px 20px;
   flex-shrink: 0;
   position: relative;
   width: 100%;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 16px;
 }
 
 .brand { 
@@ -1543,6 +1545,9 @@ body {
   line-height: 1.5;
   max-height: 100%;
   transition: opacity 0.6s ease-in-out;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: opacity;
 }
 
 .top-list li {
