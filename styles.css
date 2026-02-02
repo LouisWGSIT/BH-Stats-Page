@@ -136,6 +136,7 @@
   gap: 10px;
   width: 100%;
   padding: 12px 10px 16px 10px;
+}
 
 .tracker-card-unified {
   display: flex;
@@ -184,7 +185,7 @@
   color: var(--muted);
   padding: 0 4px;
 }
-}
+
 .monthly-right {
   flex: 1 1 0;
   display: flex;
@@ -442,7 +443,8 @@ body {
   overflow: hidden;
   position: relative;
   perspective: 1000px;
-  align-self: stretch;
+  align-self: flex-start;
+  height: fit-content;
 }
 
 .race-section .panel {

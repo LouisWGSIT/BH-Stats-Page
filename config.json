@@ -10,6 +10,7 @@
   "targets": {
     "bookedIn": 150,
     "erased": 500,
+    "daily": 500,
     "month": 10000,
     "qa": 180
   },
