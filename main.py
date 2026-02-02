@@ -4,11 +4,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from typing import Any, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import database as db
 import excel_export
 import ipaddress
+import json
+import hashlib
+import secrets
 
 app = FastAPI(title="Warehouse Stats Service")
 
@@ -22,6 +25,49 @@ LOCAL_NETWORKS = [
 
 # Admin password for external access (set via environment or use default)
 ADMIN_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "Gr33n5af3!")
+
+# Device token storage (persistent across redeployments)
+DEVICE_TOKENS_FILE = "device_tokens.json"
+DEVICE_TOKEN_EXPIRY_DAYS = 7  # Remember device for 7 days
+
+def load_device_tokens():
+    """Load device tokens from persistent storage."""
+    try:
+        if os.path.exists(DEVICE_TOKENS_FILE):
+            with open(DEVICE_TOKENS_FILE, 'r') as f:
+                return json.load(f)
+    except:
+        pass
+    return {}
+
+def save_device_tokens(tokens):
+    """Save device tokens to persistent storage."""
+    try:
+        with open(DEVICE_TOKENS_FILE, 'w') as f:
+            json.dump(tokens, f)
+    except Exception as e:
+        print(f"Error saving device tokens: {e}")
+
+def generate_device_token(user_agent: str, client_ip: str) -> str:
+    """Generate a unique device token based on device fingerprint."""
+    # Create fingerprint from user agent + IP
+    fingerprint = f"{user_agent}:{client_ip}"
+    # Add randomness to make it more secure
+    token = secrets.token_urlsafe(32) + ":" + hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
+    return token
+
+def is_device_token_valid(token: str) -> bool:
+    """Check if a device token is valid and not expired."""
+    tokens = load_device_tokens()
+    if token in tokens:
+        expiry = datetime.fromisoformat(tokens[token]['expiry'])
+        if datetime.now() < expiry:
+            return True
+        else:
+            # Token expired, remove it
+            del tokens[token]
+            save_device_tokens(tokens)
+    return False
 
 def is_local_network(client_ip: str) -> bool:
     """Check if client IP is on local network (no auth needed)."""
@@ -57,9 +103,15 @@ async def auth_middleware(request: Request, call_next):
     if is_local_network(client_ip):
         return await call_next(request)
     
-    # External access: check for password
-    # Check Authorization header (Bearer token format)
+    # Check for valid device token (remembered device)
     auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        if is_device_token_valid(token):
+            return await call_next(request)
+    
+    # External access: check for password
+    # Check Authorization header with password
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
         if token == ADMIN_PASSWORD:
@@ -652,7 +704,12 @@ async def login(request: Request):
         body = await request.json()
         password = body.get("password", "")
         
-        client_ip = request.client.host if request.client else "0.0.0.0"
+        # Get real client IP
+        forwarded_for = request.headers.get("X-Forwarded-For", "")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+        else:
+            client_ip = request.client.host if request.client else "0.0.0.0"
         
         # Local network users are always authenticated
         if is_local_network(client_ip):
@@ -660,7 +717,28 @@ async def login(request: Request):
         
         # Check password for external users
         if password == ADMIN_PASSWORD:
-            return {"authenticated": True, "token": ADMIN_PASSWORD, "message": "Password accepted"}
+            # Generate device token for future auto-login
+            user_agent = request.headers.get("User-Agent", "Unknown")
+            device_token = generate_device_token(user_agent, client_ip)
+            
+            # Store token with expiry
+            tokens = load_device_tokens()
+            tokens[device_token] = {
+                "created": datetime.now().isoformat(),
+                "expiry": (datetime.now() + timedelta(days=DEVICE_TOKEN_EXPIRY_DAYS)).isoformat(),
+                "user_agent": user_agent,
+                "client_ip": client_ip
+            }
+            save_device_tokens(tokens)
+            
+            print(f"Device token created for {client_ip} - expires in {DEVICE_TOKEN_EXPIRY_DAYS} days")
+            
+            return {
+                "authenticated": True,
+                "device_token": device_token,
+                "token": ADMIN_PASSWORD,
+                "message": "Password accepted"
+            }
         else:
             raise HTTPException(status_code=401, detail="Invalid password")
     except HTTPException:

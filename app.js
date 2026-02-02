@@ -65,18 +65,34 @@ function renderSVGSparkline(svgElem, data) {
 
   async function checkAuth() {
     try {
+      // Check for device token first (remembered device)
+      const deviceToken = localStorage.getItem('deviceToken');
+      if (deviceToken) {
+        setupAuthHeaders(deviceToken);
+        try {
+          const verifyRes = await fetch('/metrics/all-time-totals');
+          if (verifyRes.ok) {
+            console.log('Device token still valid - auto-login');
+            return true;
+          }
+        } catch (verifyErr) {
+          console.warn('Device token verification failed:', verifyErr);
+        }
+        localStorage.removeItem('deviceToken');
+      }
+
+      // Check for session token (from current login)
       const existingToken = sessionStorage.getItem('authToken');
       if (existingToken) {
-        // Set up auth headers BEFORE making any API calls
         setupAuthHeaders(existingToken);
         try {
           const verifyRes = await fetch('/metrics/all-time-totals');
           if (verifyRes.ok) {
-            console.log('Existing auth token accepted');
+            console.log('Session auth token accepted');
             return true;
           }
         } catch (verifyErr) {
-          console.warn('Auth token verification failed:', verifyErr);
+          console.warn('Session auth token verification failed:', verifyErr);
         }
         sessionStorage.removeItem('authToken');
       }
@@ -131,7 +147,12 @@ function renderSVGSparkline(svgElem, data) {
           
           if (loginRes.ok) {
             const loginData = await loginRes.json();
-            // Store token for future API calls
+            // Store device token for future auto-login (persists across refreshes)
+            if (loginData.device_token) {
+              localStorage.setItem('deviceToken', loginData.device_token);
+              console.log('Device remembered for future logins');
+            }
+            // Also store session token for this session
             sessionStorage.setItem('authToken', loginData.token);
             
             // Set auth header for future requests
