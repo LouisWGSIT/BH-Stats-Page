@@ -91,12 +91,21 @@ async def auth_middleware(request: Request, call_next):
     else:
         client_ip = request.client.host if request.client else "0.0.0.0"
     
+    # Get user agent to detect TV browsers (FireStick Silk)
+    user_agent = request.headers.get("User-Agent", "").lower()
+    is_tv_browser = "silk" in user_agent or "firetv" in user_agent or "aftt" in user_agent
+    
     # Allow static assets without auth
     if request.url.path.startswith(("/styles.css", "/assets/", "/vendor/")):
         return await call_next(request)
     
     # Allow auth endpoints without prior auth
     if request.url.path.startswith("/auth/"):
+        return await call_next(request)
+    
+    # Auto-allow TV browsers (FireStick Silk) - they're physically in the office
+    if is_tv_browser:
+        print(f"TV browser detected (User-Agent: {user_agent[:50]}...) - auto-allowing access")
         return await call_next(request)
     
     # Check if local network
@@ -685,16 +694,22 @@ async def auth_status(request: Request):
     else:
         client_ip = request.client.host if request.client else "0.0.0.0"
     
+    # Check for TV browser
+    user_agent = request.headers.get("User-Agent", "").lower()
+    is_tv_browser = "silk" in user_agent or "firetv" in user_agent or "aftt" in user_agent
+    
     is_local = is_local_network(client_ip)
+    is_authenticated = is_local or is_tv_browser
     
     # Log for debugging
-    print(f"Auth check - Client IP: {client_ip}, Is Local: {is_local}, X-Forwarded-For: {forwarded_for}")
+    print(f"Auth check - Client IP: {client_ip}, Is Local: {is_local}, Is TV: {is_tv_browser}, X-Forwarded-For: {forwarded_for}")
     
     return {
-        "authenticated": is_local,
+        "authenticated": is_authenticated,
         "client_ip": client_ip,
-        "access_type": "local" if is_local else "external",
-        "message": "Local network access granted automatically" if is_local else "External access requires password"
+        "is_tv_browser": is_tv_browser,
+        "access_type": "tv-browser" if is_tv_browser else ("local" if is_local else "external"),
+        "message": "TV browser auto-allowed" if is_tv_browser else ("Local network access granted automatically" if is_local else "External access requires password")
     }
 
 @app.post("/auth/login")
