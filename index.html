@@ -447,6 +447,24 @@
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.0/dist/confetti.browser.min.js"></script>
   <script src="app.js"></script>
   
+  <!-- Login Modal for External Access -->
+  <div id="loginModal" class="modal hidden">
+    <div class="modal-content login-modal">
+      <div class="login-content">
+        <h2>Dashboard Access</h2>
+        <p id="accessMessage">Checking access...</p>
+        <form id="loginForm" style="display: none;">
+          <input type="password" id="passwordInput" placeholder="Enter password" autocomplete="off" />
+          <button type="submit" class="btn-primary">Access Dashboard</button>
+        </form>
+        <div id="accessGranted" style="display: none;">
+          <p style="color: #4CAF50; font-weight: bold;">✓ Access Granted</p>
+          <p>Loading dashboard...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Winner announcement modal -->
   <div id="winnerModal" class="modal hidden">
     <div class="modal-content">

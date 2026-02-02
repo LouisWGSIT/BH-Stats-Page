@@ -1,15 +1,116 @@
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthCredentials
 import os
 from typing import Any, Dict
 from datetime import datetime
 import asyncio
 import database as db
 import excel_export
+import ipaddress
 
 app = FastAPI(title="Warehouse Stats Service")
+
+# ============= SECURITY CONFIG =============
+# Local network subnet(s) that don't require auth (e.g., 192.168.x.x, 10.x.x.x)
+LOCAL_NETWORKS = [
+    ipaddress.ip_network("192.168.0.0/16"),   # 192.168.x.x
+    ipaddress.ip_network("10.0.0.0/8"),       # 10.x.x.x
+    ipaddress.ip_network("172.16.0.0/12"),    # 172.16.x.x
+]
+
+# Admin password for external access (set via environment or use default)
+ADMIN_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "BHStats2024!")
+
+security = HTTPBearer(auto_error=False)
+
+def is_local_network(client_ip: str) -> bool:
+    """Check if client IP is on local network (no auth needed)."""
+    try:
+        ip = ipaddress.ip_address(client_ip)
+        return any(ip in network for network in LOCAL_NETWORKS)
+    except ValueError:
+        return False
+
+async def check_auth(request: Request, credentials: HTTPAuthCredentials = Depends(security)) -> bool:
+    """
+    Check if request should be allowed:
+    - Allow if on local network
+    - Allow if valid password provided
+    - Otherwise deny
+    """
+    client_ip = request.client.host if request.client else "0.0.0.0"
+    
+    # Local network users don't need auth
+    if is_local_network(client_ip):
+        return True
+    
+    # External users need password
+    if credentials and credentials.credentials == ADMIN_PASSWORD:
+        return True
+    
+    # For page loads (GET /), also accept query param for convenience
+    if request.method == "GET" and request.url.path == "/":
+        if request.query_params.get("auth") == ADMIN_PASSWORD:
+            return True
+    
+    return False
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """
+    Middleware to check authentication on API calls and page access.
+    Local network = automatic access.
+    External = requires password.
+    """
+    client_ip = request.client.host if request.client else "0.0.0.0"
+    
+    # Allow static assets without auth
+    if request.url.path.startswith(("/styles.css", "/assets/", "/vendor/")):
+        return await call_next(request)
+    
+    # Check if local network
+    if is_local_network(client_ip):
+        return await call_next(request)
+    
+    # External access: check for password
+    # Check Authorization header (Bearer token format)
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        if token == ADMIN_PASSWORD:
+            return await call_next(request)
+    
+    # Check query parameter (for page loads)
+    if request.query_params.get("auth") == ADMIN_PASSWORD:
+        return await call_next(request)
+    
+    # Check Basic Auth format
+    if auth_header.startswith("Basic "):
+        import base64
+        try:
+            decoded = base64.b64decode(auth_header[6:]).decode()
+            if ":" in decoded:
+                _, password = decoded.split(":", 1)
+                if password == ADMIN_PASSWORD:
+                    return await call_next(request)
+        except:
+            pass
+    
+    # For API requests, return 401
+    if request.url.path.startswith("/metrics") or request.url.path.startswith("/analytics") or request.url.path.startswith("/competitions") or request.url.path.startswith("/export"):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Unauthorized. External access requires password."}
+        )
+    
+    # For page load, redirect to login
+    if request.url.path == "/" or request.url.path == "/index.html":
+        return FileResponse("index.html")  # Will add login UI to index.html
+    
+    return await call_next(request)
 # New endpoint: Get total erasures for a device type and period
 @app.get("/metrics/total-by-type")
 async def get_total_by_type(type: str = "laptops_desktops", scope: str = "today"):
@@ -87,10 +188,10 @@ async def analytics_weekly_daily_totals():
         })
     return {"days": result}
 
-# Enable CORS for TV access from network
+# Enable CORS for TV access from network (more restricted now with auth middleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Still allow all origins, but auth middleware controls actual access
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -538,6 +639,42 @@ async def get_all_engineers_kpis():
     """Get KPI metrics for all engineers"""
     kpis = db.get_all_engineers_kpis()
     return {"engineers": kpis}
+
+# ============= AUTH ENDPOINTS =============
+@app.get("/auth/status")
+async def auth_status(request: Request):
+    """Check auth status for current client"""
+    client_ip = request.client.host if request.client else "0.0.0.0"
+    is_local = is_local_network(client_ip)
+    return {
+        "authenticated": is_local,
+        "client_ip": client_ip,
+        "access_type": "local" if is_local else "external",
+        "message": "Local network access granted automatically" if is_local else "External access requires password"
+    }
+
+@app.post("/auth/login")
+async def login(request: Request):
+    """External users can login with password"""
+    try:
+        body = await request.json()
+        password = body.get("password", "")
+        
+        client_ip = request.client.host if request.client else "0.0.0.0"
+        
+        # Local network users are always authenticated
+        if is_local_network(client_ip):
+            return {"authenticated": True, "message": "Local network access"}
+        
+        # Check password for external users
+        if password == ADMIN_PASSWORD:
+            return {"authenticated": True, "token": ADMIN_PASSWORD, "message": "Password accepted"}
+        else:
+            raise HTTPException(status_code=401, detail="Invalid password")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/export/excel")
 async def export_excel(req: Request):

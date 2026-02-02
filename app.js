@@ -46,6 +46,144 @@ function renderSVGSparkline(svgElem, data) {
   svgElem.appendChild(path);
 }
 (async function () {
+  // ==================== AUTHENTICATION ====================
+  async function checkAuth() {
+    try {
+      const existingToken = sessionStorage.getItem('authToken');
+      if (existingToken) {
+        setupAuthHeaders(existingToken);
+        try {
+          const verifyRes = await fetch('/metrics/all-time-totals');
+          if (verifyRes.ok) {
+            console.log('Existing auth token accepted');
+            return true;
+          }
+        } catch (verifyErr) {
+          console.warn('Auth token verification failed:', verifyErr);
+        }
+        sessionStorage.removeItem('authToken');
+      }
+
+      const authRes = await fetch('/auth/status');
+      const authData = await authRes.json();
+      
+      // If already authenticated (local network), proceed
+      if (authData.authenticated) {
+        console.log('Local network access granted');
+        return true;
+      }
+      
+      // External access - show login modal
+      console.log('External access requires password');
+      showLoginModal();
+      return false;
+    } catch (err) {
+      console.error('Auth check failed:', err);
+      // If check fails, show login anyway to be safe
+      showLoginModal();
+      return false;
+    }
+  }
+
+  function showLoginModal() {
+    const modal = document.getElementById('loginModal');
+    const form = document.getElementById('loginForm');
+    const accessMsg = document.getElementById('accessMessage');
+    const passwordInput = document.getElementById('passwordInput');
+    const accessGranted = document.getElementById('accessGranted');
+    
+    if (!modal) return;
+    
+    modal.classList.remove('hidden');
+    accessMsg.textContent = 'This dashboard is protected. External access requires a password.';
+    form.style.display = 'flex';
+    accessGranted.style.display = 'none';
+    
+    if (!form.dataset.bound) {
+      form.dataset.bound = 'true';
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const password = passwordInput.value;
+        
+        try {
+          const loginRes = await fetch('/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+          });
+          
+          if (loginRes.ok) {
+            const loginData = await loginRes.json();
+            // Store token for future API calls
+            sessionStorage.setItem('authToken', loginData.token);
+            
+            // Show success and continue
+            form.style.display = 'none';
+            accessGranted.style.display = 'block';
+            
+            // Set auth header for future requests
+            setupAuthHeaders(loginData.token);
+            
+            // Close modal after brief delay
+            setTimeout(() => {
+              modal.classList.add('hidden');
+            }, 1000);
+          } else {
+            passwordInput.style.borderColor = '#f44336';
+            passwordInput.value = '';
+            accessMsg.textContent = 'Invalid password. Please try again.';
+            accessMsg.style.color = '#f44336';
+            setTimeout(() => {
+              passwordInput.style.borderColor = 'var(--ring-secondary)';
+              accessMsg.style.color = 'var(--muted)';
+              accessMsg.textContent = 'This dashboard is protected. External access requires a password.';
+            }, 2000);
+          }
+        } catch (err) {
+          console.error('Login failed:', err);
+          accessMsg.textContent = 'Connection error. Please try again.';
+          accessMsg.style.color = '#f44336';
+        }
+      });
+    }
+    
+    // Focus password input
+    passwordInput.focus();
+  }
+
+  function setupAuthHeaders(token) {
+    // Intercept all fetch calls to add auth token
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+      let url = args[0];
+      let options = args[1] || {};
+      
+      // Only add auth to API calls
+      if (typeof url === 'string' && (url.startsWith('/') || url.startsWith('http'))) {
+        options.headers = options.headers || {};
+        options.headers['Authorization'] = 'Bearer ' + token;
+      }
+      
+      return originalFetch.apply(this, arguments);
+    };
+  }
+
+  // Check auth before proceeding
+  const isAuthenticated = await checkAuth();
+  
+  if (!isAuthenticated) {
+    // Wait for user to login
+    await new Promise(resolve => {
+      const checkInterval = setInterval(() => {
+        if (sessionStorage.getItem('authToken')) {
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 100);
+    });
+  }
+
+  // Now proceed with app initialization
   const cfg = await fetch('config.json').then(r => r.json());
 
   // ==================== ALL TIME TOTALS ====================
@@ -2227,17 +2365,17 @@ function renderSVGSparkline(svgElem, data) {
       console.error('Failed to fetch engineer data:', err);
     }
 
-    // Get category data
+    // Get category data - fetch for all report types
     const categoryRows = [];
-    if (!isMonthlyReport) {
-      if (!isYesterday) {
-        categories.forEach(cat => {
-          const count = document.getElementById(cat.countId)?.textContent || '0';
-          categoryRows.push([cat.label, count]);
-        });
-      } else {
-        // For yesterday, fetch from API
-        try {
+    try {
+      if (!isMonthlyReport) {
+        if (!isYesterday) {
+          categories.forEach(cat => {
+            const count = document.getElementById(cat.countId)?.textContent || '0';
+            categoryRows.push([cat.label, count]);
+          });
+        } else {
+          // For yesterday, fetch from API
           const res = await fetch(`/analytics/category-breakdown?date=${targetDate.toISOString().split('T')[0]}`);
           if (res.ok) {
             const data = await res.json();
@@ -2245,30 +2383,75 @@ function renderSVGSparkline(svgElem, data) {
               categoryRows.push([cat.name, cat.count]);
             });
           }
-        } catch (err) {
-          console.error('Failed to fetch category data:', err);
+        }
+      } else {
+        // For monthly reports, fetch category stats for the month
+        const monthDate = new Date(targetDate);
+        const year = monthDate.getFullYear();
+        const month = monthDate.getMonth();
+        const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
+        const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
+        const res = await fetch(`/analytics/category-breakdown?startDate=${firstDay}&endDate=${lastDay}`);
+        if (res.ok) {
+          const data = await res.json();
+          (data.categories || []).forEach(cat => {
+            categoryRows.push([cat.name, cat.count]);
+          });
         }
       }
+    } catch (err) {
+      console.error('Failed to fetch category data:', err);
     }
 
-    // Get top performers per category
+    // Get top performers per category - fetch for all report types
     const categoryTopPerformers = [];
-    if (!isYesterday && !isMonthlyReport) {
-      categories.forEach(cat => {
-        const listEl = document.getElementById(cat.listId);
-        if (listEl) {
-          const items = listEl.querySelectorAll('li');
-          if (items.length > 0) {
-            items.forEach(item => {
-              const text = item.textContent.trim();
-              const parts = text.match(/(.+?)\s+(\d+)$/);
-              if (parts) {
-                categoryTopPerformers.push([cat.label, parts[1], parts[2]]);
+    if (!isYesterday) {
+      try {
+        if (!isMonthlyReport) {
+          categories.forEach(cat => {
+            const listEl = document.getElementById(cat.listId);
+            if (listEl) {
+              const items = listEl.querySelectorAll('li');
+              if (items.length > 0) {
+                items.forEach(item => {
+                  const text = item.textContent.trim();
+                  const parts = text.match(/(.+?)\s+(\d+)$/);
+                  if (parts) {
+                    categoryTopPerformers.push([cat.label, parts[1], parts[2]]);
+                  }
+                });
               }
-            });
+            }
+          });
+        } else {
+          // For monthly reports, fetch top performers by category
+          const catOrder = ['laptops_desktops', 'servers', 'macs', 'mobiles'];
+          const catNames = {
+            laptops_desktops: 'Laptops/Desktops',
+            servers: 'Servers',
+            macs: 'Macs',
+            mobiles: 'Mobiles'
+          };
+          const monthDate = new Date(targetDate);
+          const year = monthDate.getFullYear();
+          const month = monthDate.getMonth();
+          const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
+          const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
+          const res = await fetch(`/competitions/category-specialists?startDate=${firstDay}&endDate=${lastDay}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.specialists) {
+              catOrder.forEach(cat => {
+                (data.specialists[cat] || []).slice(0, 1).forEach((row, idx) => {
+                  categoryTopPerformers.push([catNames[cat], row.initials || '', row.count || 0]);
+                });
+              });
+            }
           }
         }
-      });
+      } catch (err) {
+        console.error('Failed to fetch category top performers:', err);
+      }
     }
 
     // Calculate progress metrics
@@ -2333,12 +2516,16 @@ function renderSVGSparkline(svgElem, data) {
     }
     csv.push([]);
 
-    // Additional analysis sections (only for current day)
-    if (!isYesterday && !isMonthlyReport) {
+    // Additional analysis sections - fetch for all report types
+    if (true) {
       try {
-        const [perfTrends, targetAchievement] = await Promise.all([
+        const [perfTrends, targetAchievement, records, weekly, specialists, consistency] = await Promise.all([
           fetch(`/metrics/performance-trends?target=${target}`).then(r => r.ok ? r.json() : null),
-          fetch(`/metrics/target-achievement?target=${target}`).then(r => r.ok ? r.json() : null)
+          fetch(`/metrics/target-achievement?target=${target}`).then(r => r.ok ? r.json() : null),
+          fetch('/metrics/records').then(r => r.ok ? r.json() : null),
+          fetch('/metrics/weekly').then(r => r.ok ? r.json() : null),
+          fetch('/competitions/category-specialists').then(r => r.ok ? r.json() : null),
+          fetch('/competitions/consistency').then(r => r.ok ? r.json() : null)
         ]);
 
         // Performance Trends Section
@@ -2363,8 +2550,49 @@ function renderSVGSparkline(svgElem, data) {
           csv.push(['Daily Rate Needed', targetAchievement.gapToTarget > 0 ? targetAchievement.dailyNeeded : 0, `to hit ${targetAchievement.monthlyTarget} target`, targetAchievement.dailyNeeded <= target ? 'Achievable' : 'Challenging']);
           csv.push([]);
         }
+
+        // Add records & milestones
+        if (records?.bestDay || records?.topEngineer || records?.currentStreak !== undefined) {
+          csv.push(['HISTORICAL RECORDS & ACHIEVEMENTS']);
+          csv.push(['Metric', 'Value', 'Details']);
+          if (records.bestDay) {
+            csv.push(['Best Day Ever', records.bestDay.count || 0, `Achieved on ${records.bestDay.date || 'N/A'}`]);
+          }
+          if (records.topEngineer) {
+            csv.push(['Top Engineer (All-Time)', records.topEngineer.initials || '—', `${records.topEngineer.totalCount || 0} total erasures`]);
+          }
+          if (records.currentStreak !== undefined) {
+            csv.push(['Current Streak', `${records.currentStreak || 0} days`, 'above daily target']);
+          }
+          csv.push([]);
+        }
+
+        // Add weekly statistics
+        if (weekly?.weekTotal || weekly?.daysActive) {
+          csv.push(['WEEKLY PERFORMANCE (Past 7 Days)']);
+          csv.push(['Metric', 'Value', 'Comparison', 'Notes']);
+          csv.push(['Week Total', weekly.weekTotal || 0, `${Math.round((weekly.weekTotal / (parseInt(target) * 7)) * 100)}% of weekly goal`, '']);
+          csv.push(['Best Day', weekly.bestDayOfWeek?.count || 0, `(${weekly.bestDayOfWeek?.date || 'N/A'})`, weekly.bestDayOfWeek?.count >= parseInt(target) ? 'On Target' : 'Below Target']);
+          csv.push(['Daily Average', weekly.weekAverage || 0, `vs ${target} target`, weekly.weekAverage >= parseInt(target) ? 'Above Target' : 'Below Target']);
+          csv.push(['Days Active', weekly.daysActive || 0, `out of 7 days`, '']);
+          csv.push([]);
+        }
+
+        // Consistency
+        if (consistency?.leaderboard?.length) {
+          csv.push([]);
+          csv.push(['CONSISTENCY KINGS/QUEENS', 'Steadiest pace - lowest variability']);
+          csv.push(['Rank', 'Engineer', 'Erasures', 'Avg Pace (min)', 'Consistency Score']);
+          csv.push(...consistency.leaderboard.map((row, idx) => [
+            idx + 1,
+            row.initials || '',
+            row.erasures || 0,
+            row.avgGapMinutes || 0,
+            row.consistencyScore || 0
+          ]));
+        }
       } catch (err) {
-        console.error('Failed to fetch KPI metrics:', err);
+        console.error('Failed to fetch detailed metrics:', err);
       }
     }
 
@@ -2443,112 +2671,6 @@ function renderSVGSparkline(svgElem, data) {
       csv.push(['TOP PERFORMERS BY CATEGORY']);
       csv.push(['Category', 'Engineer', 'Count']);
       csv.push(...categoryTopPerformers);
-    }
-
-    // Fetch competition data (only for current day)
-    if (!isYesterday && !isMonthlyReport) {
-      try {
-        const [speedAm, speedPm, specialists, consistency, records, weekly] = await Promise.all([
-          fetch('/competitions/speed-challenge?window=am').then(r => r.ok ? r.json() : {}),
-          fetch('/competitions/speed-challenge?window=pm').then(r => r.ok ? r.json() : {}),
-          fetch('/competitions/category-specialists').then(r => r.ok ? r.json() : {}),
-          fetch('/competitions/consistency').then(r => r.ok ? r.json() : {}),
-          fetch('/metrics/records').then(r => r.ok ? r.json() : {}),
-          fetch('/metrics/weekly').then(r => r.ok ? r.json() : {})
-        ]);
-
-        // Add records & milestones
-        if (records?.bestDay || records?.topEngineer || records?.currentStreak !== undefined) {
-          csv.push(['HISTORICAL RECORDS & ACHIEVEMENTS']);
-          csv.push(['Metric', 'Value', 'Details']);
-          if (records.bestDay) {
-            csv.push(['Best Day Ever', records.bestDay.count || 0, `Achieved on ${records.bestDay.date || 'N/A'}`]);
-          }
-          if (records.topEngineer) {
-            csv.push(['Top Engineer (All-Time)', records.topEngineer.initials || '—', `${records.topEngineer.totalCount || 0} total erasures`]);
-          }
-          if (records.currentStreak !== undefined) {
-            csv.push(['Current Streak', `${records.currentStreak || 0} days`, 'above daily target']);
-          }
-          csv.push([]);
-        }
-
-        // Add weekly statistics
-        if (weekly?.weekTotal || weekly?.daysActive) {
-          csv.push(['WEEKLY PERFORMANCE (Past 7 Days)']);
-          csv.push(['Metric', 'Value', 'Comparison', 'Notes']);
-          csv.push(['Week Total', weekly.weekTotal || 0, `${Math.round((weekly.weekTotal / (parseInt(target) * 7)) * 100)}% of weekly goal`, '']);
-          csv.push(['Best Day', weekly.bestDayOfWeek?.count || 0, `(${weekly.bestDayOfWeek?.date || 'N/A'})`, weekly.bestDayOfWeek?.count >= parseInt(target) ? 'On Target' : 'Below Target']);
-          csv.push(['Daily Average', weekly.weekAverage || 0, `vs ${target} target`, weekly.weekAverage >= parseInt(target) ? 'Above Target' : 'Below Target']);
-          csv.push(['Days Active', weekly.daysActive || 0, `out of 7 days`, '']);
-          csv.push([]);
-        }
-
-        // Speed challenges
-        if (speedAm?.leaderboard?.length) {
-          csv.push([]);
-          csv.push(['SPEED CHALLENGE (AM)', `${speedAm.status?.startTime || ''}-${speedAm.status?.endTime || ''}`]);
-          csv.push(['Rank', 'Engineer', 'Erasures', 'Status']);
-          csv.push(...speedAm.leaderboard.map((row, idx) => [
-            idx + 1,
-            row.initials || '',
-            row.erasures || 0,
-            speedAm.status?.isActive ? `${speedAm.status.timeRemainingMinutes}m remaining` : 'Closed'
-          ]));
-        }
-
-        if (speedPm?.leaderboard?.length) {
-          csv.push([]);
-          csv.push(['SPEED CHALLENGE (PM)', `${speedPm.status?.startTime || ''}-${speedPm.status?.endTime || ''}`]);
-          csv.push(['Rank', 'Engineer', 'Erasures', 'Status']);
-          csv.push(...speedPm.leaderboard.map((row, idx) => [
-            idx + 1,
-            row.initials || '',
-            row.erasures || 0,
-            speedPm.status?.isActive ? `${speedPm.status.timeRemainingMinutes}m remaining` : 'Closed'
-          ]));
-        }
-
-        // Category specialists
-        if (specialists?.specialists) {
-          csv.push([]);
-          csv.push(['CATEGORY SPECIALISTS (Top 3 per category)']);
-          csv.push(['Category', 'Rank', 'Engineer', 'Count']);
-          const catOrder = ['laptops_desktops', 'servers', 'macs', 'mobiles'];
-          const catNames = {
-            laptops_desktops: 'Laptops/Desktops',
-            servers: 'Servers',
-            macs: 'Macs',
-            mobiles: 'Mobiles'
-          };
-          catOrder.forEach(cat => {
-            (specialists.specialists[cat] || []).forEach((row, idx) => {
-              csv.push([catNames[cat], idx + 1, row.initials || '', row.count || 0]);
-            });
-          });
-        }
-
-        // Consistency
-        if (consistency?.leaderboard?.length) {
-          csv.push([]);
-          csv.push(['CONSISTENCY KINGS/QUEENS', 'Steadiest pace - lowest variability']);
-          csv.push(['Rank', 'Engineer', 'Erasures', 'Avg Pace (min)', 'Consistency Score']);
-          csv.push(...consistency.leaderboard.map((row, idx) => [
-            idx + 1,
-            row.initials || '',
-            row.erasures || 0,
-            row.avgGapMinutes || 0,
-            row.consistencyScore || 0
-          ]));
-        }
-      } catch (err) {
-        console.error('CSV competition enrichment failed:', err);
-      }
-    } else if (isYesterday || isMonthlyReport) {
-      // For other reports, add note about competitions
-      csv.push([]);
-      csv.push(['COMPETITION DATA NOT AVAILABLE']);
-      csv.push(['Note', 'Competition data (Speed Challenges, Category Specialists, Consistency) is only available for current day reports.']);
     }
 
     // Add footer with notes and context

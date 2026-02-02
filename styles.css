@@ -287,11 +287,12 @@
 * { box-sizing: border-box; }
 
 html, body {
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
   margin: 0;
-  overflow: hidden;
-  position: fixed;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
   top: 0;
   left: 0;
 }
@@ -308,8 +309,8 @@ body {
 #app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  width: 100vw;
+  min-height: 100vh;
+  width: 100%;
 }
 
 .header {
@@ -413,8 +414,9 @@ body {
   flex-direction: row;
   gap: 10px;
   padding: 8px;
-  flex: 1 1 0;
-  overflow: hidden;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
   align-items: flex-start;
 }
@@ -423,8 +425,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1 1 0;
-  overflow: hidden;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
 }
 
@@ -674,6 +677,87 @@ body {
   font-size: 48px;
   font-weight: 900;
   color: var(--ring-secondary);
+}
+
+/* Login Modal Styling */
+.login-modal {
+  width: 100%;
+  max-width: 400px;
+  padding: 60px 40px;
+}
+
+.login-content h2 {
+  font-size: 32px;
+  margin-bottom: 20px;
+  color: var(--ring-primary);
+}
+
+.login-content p {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+#loginForm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+#passwordInput {
+  padding: 12px 16px;
+  border: 2px solid var(--ring-secondary);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 16px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+#passwordInput:focus {
+  outline: none;
+  border-color: var(--ring-primary);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+#passwordInput::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.btn-primary {
+  padding: 12px 24px;
+  background: var(--ring-primary);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-primary:hover {
+  background: var(--ring-secondary);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+#accessGranted {
+  text-align: center;
+}
+
+#accessGranted p:first-child {
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+
+#accessGranted p:last-child {
+  font-size: 14px;
+  color: var(--muted);
 }
 
 /* Removed pulse animation for TV performance */
