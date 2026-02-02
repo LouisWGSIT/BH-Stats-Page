@@ -47,10 +47,29 @@ function renderSVGSparkline(svgElem, data) {
 }
 (async function () {
   // ==================== AUTHENTICATION ====================
+  
+  function setupAuthHeaders(token) {
+    // Intercept all fetch calls to add auth token
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+      let url = args[0];
+      let options = args[1] || {};
+      
+      // Only add auth to API calls
+      if (typeof url === 'string' && (url.startsWith('/') || url.startsWith('http'))) {
+        options.headers = options.headers || {};
+        options.headers['Authorization'] = 'Bearer ' + token;
+      }
+      
+      return originalFetch.apply(this, arguments);
+    };
+  }
+
   async function checkAuth() {
     try {
       const existingToken = sessionStorage.getItem('authToken');
       if (existingToken) {
+        // Set up auth headers BEFORE making any API calls
         setupAuthHeaders(existingToken);
         try {
           const verifyRes = await fetch('/metrics/all-time-totals');
@@ -117,17 +136,17 @@ function renderSVGSparkline(svgElem, data) {
             // Store token for future API calls
             sessionStorage.setItem('authToken', loginData.token);
             
+            // Set auth header for future requests
+            setupAuthHeaders(loginData.token);
+            
             // Show success and continue
             form.style.display = 'none';
             accessGranted.style.display = 'block';
             
-            // Set auth header for future requests
-            setupAuthHeaders(loginData.token);
-            
             // Close modal after brief delay
             setTimeout(() => {
               modal.classList.add('hidden');
-              window.location.reload();
+              // Page will continue loading after modal closes
             }, 1000);
           } else {
             passwordInput.style.borderColor = '#f44336';
@@ -176,8 +195,10 @@ function renderSVGSparkline(svgElem, data) {
     // Wait for user to login
     await new Promise(resolve => {
       const checkInterval = setInterval(() => {
-        if (sessionStorage.getItem('authToken')) {
+        const token = sessionStorage.getItem('authToken');
+        if (token) {
           clearInterval(checkInterval);
+          setupAuthHeaders(token);
           resolve();
         }
       }, 100);
