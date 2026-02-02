@@ -44,6 +44,10 @@ async def auth_middleware(request: Request, call_next):
     if request.url.path.startswith(("/styles.css", "/assets/", "/vendor/")):
         return await call_next(request)
     
+    # Allow auth endpoints without prior auth
+    if request.url.path.startswith("/auth/"):
+        return await call_next(request)
+    
     # Check if local network
     if is_local_network(client_ip):
         return await call_next(request)
@@ -619,6 +623,10 @@ async def auth_status(request: Request):
     """Check auth status for current client"""
     client_ip = request.client.host if request.client else "0.0.0.0"
     is_local = is_local_network(client_ip)
+    
+    # Log for debugging
+    print(f"Auth check - Client IP: {client_ip}, Is Local: {is_local}")
+    
     return {
         "authenticated": is_local,
         "client_ip": client_ip,

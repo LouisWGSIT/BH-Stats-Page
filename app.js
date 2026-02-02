@@ -127,6 +127,7 @@ function renderSVGSparkline(svgElem, data) {
             // Close modal after brief delay
             setTimeout(() => {
               modal.classList.add('hidden');
+              window.location.reload();
             }, 1000);
           } else {
             passwordInput.style.borderColor = '#f44336';
