@@ -418,7 +418,7 @@ body {
   overflow: hidden;
   overflow-x: hidden;
   min-height: 0;
-  max-height: calc(100vh - 70px);
+  max-height: calc(100vh - 75px);
   align-items: flex-start;
 }
 
@@ -430,7 +430,7 @@ body {
   overflow: hidden;
   overflow-x: hidden;
   min-height: 0;
-  max-height: calc(100vh - 70px);
+  max-height: calc(100vh - 75px);
 }
 
 .race-section {
@@ -1048,20 +1048,20 @@ body {
   grid-template-columns: repeat(2, 1fr); 
   min-height: 180px;
   max-height: none;
-  flex: 0.9;
+  flex: 0.85;
 }
 .categories-row { 
   grid-template-columns: repeat(4, 1fr);
   min-height: 190px;
   max-height: none;
-  flex: 1.1;
+  flex: 1.05;
 }
 .bottom-row {
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: auto;
   min-height: 200px;
   max-height: none;
-  flex: 1;
+  flex: 0.95;
 }
 .bottom-row-extra {
   display: none;
@@ -1102,6 +1102,10 @@ body {
   width: 100%;
   height: auto;
   min-height: 200px;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .rotator-card .panel.hidden-panel {
@@ -1117,6 +1121,8 @@ body {
   pointer-events: auto;
   z-index: 2;
   visibility: visible;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 .rotator-card .panel.exiting {

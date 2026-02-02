@@ -2201,6 +2201,9 @@ function renderSVGSparkline(svgElem, data) {
           nextPanel.classList.add('entering');
           nextPanel.classList.add('active');
           
+          // Force repaint on TV browsers for better animation reliability
+          void nextPanel.offsetHeight;
+          
           // Wait for transition to complete before allowing next transition
           setTimeout(() => {
             panels[currentIndex].classList.remove('exiting');
