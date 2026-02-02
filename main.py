@@ -492,6 +492,7 @@ async def metrics_engineers_top(scope: str = "today", type: str | None = None, l
 
 @app.get("/metrics/engineers/leaderboard")
 async def metrics_engineers_leaderboard(scope: str = "today", limit: int = 6, date: str = None):
+    print(f"[DEBUG] /metrics/engineers/leaderboard endpoint called with scope='{scope}', limit={limit}, date={date}")
     return {"items": db.leaderboard(scope=scope, limit=limit, date_str=date)}
 
 # Admin: delete an ingested event by jobId (secured by API key)

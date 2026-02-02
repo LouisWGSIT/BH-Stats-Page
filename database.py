@@ -417,6 +417,7 @@ def top_engineers(scope: str = 'today', device_type: str = None, limit: int = 3)
     return [{"initials": r[0], "count": r[1]} for r in rows]
 
 def leaderboard(scope: str = 'today', limit: int = 6, date_str: str = None):
+    print(f"[DEBUG] leaderboard called with scope='{scope}', limit={limit}, date_str={date_str}")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     

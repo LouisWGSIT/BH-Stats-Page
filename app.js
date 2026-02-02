@@ -2274,6 +2274,7 @@ function renderSVGSparkline(svgElem, data) {
   
   async function generateCSV() {
     const dateScope = document.getElementById('dateSelector')?.value || 'today';
+    console.log(`[DEBUG] generateCSV called with dateScope='${dateScope}'`);
     const isYesterday = dateScope === 'yesterday';
     const isThisMonth = dateScope === 'this-month';
     const isLastMonth = dateScope === 'last-month';
@@ -2355,6 +2356,7 @@ function renderSVGSparkline(svgElem, data) {
     let engineerKPIs = {};
     try {
       let apiEndpoint = `/metrics/engineers/leaderboard?scope=${dateScope}&limit=50`;
+      console.log(`[DEBUG] Fetching engineer data from: ${apiEndpoint}`);
       const res = await fetch(apiEndpoint);
       if (res.ok) {
         const data = await res.json();
