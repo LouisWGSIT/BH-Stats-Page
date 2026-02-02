@@ -1,8 +1,7 @@
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
 import os
 from typing import Any, Dict
 from datetime import datetime
@@ -22,9 +21,7 @@ LOCAL_NETWORKS = [
 ]
 
 # Admin password for external access (set via environment or use default)
-ADMIN_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "BHStats2024!")
-
-security = HTTPBearer(auto_error=False)
+ADMIN_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "Gr33n5af3!")
 
 def is_local_network(client_ip: str) -> bool:
     """Check if client IP is on local network (no auth needed)."""
@@ -33,30 +30,6 @@ def is_local_network(client_ip: str) -> bool:
         return any(ip in network for network in LOCAL_NETWORKS)
     except ValueError:
         return False
-
-async def check_auth(request: Request, credentials: HTTPAuthCredentials = Depends(security)) -> bool:
-    """
-    Check if request should be allowed:
-    - Allow if on local network
-    - Allow if valid password provided
-    - Otherwise deny
-    """
-    client_ip = request.client.host if request.client else "0.0.0.0"
-    
-    # Local network users don't need auth
-    if is_local_network(client_ip):
-        return True
-    
-    # External users need password
-    if credentials and credentials.credentials == ADMIN_PASSWORD:
-        return True
-    
-    # For page loads (GET /), also accept query param for convenience
-    if request.method == "GET" and request.url.path == "/":
-        if request.query_params.get("auth") == ADMIN_PASSWORD:
-            return True
-    
-    return False
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
