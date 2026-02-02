@@ -119,15 +119,22 @@ function renderSVGSparkline(svgElem, data) {
   }
 
   function showLoginModal() {
+    console.log('showLoginModal called');
     const modal = document.getElementById('loginModal');
     const form = document.getElementById('loginForm');
     const accessMsg = document.getElementById('accessMessage');
     const passwordInput = document.getElementById('passwordInput');
     const accessGranted = document.getElementById('accessGranted');
     
-    if (!modal) return;
+    console.log('Modal element:', modal);
+    
+    if (!modal) {
+      console.error('Login modal element not found!');
+      return;
+    }
     
     modal.classList.remove('hidden');
+    console.log('Modal should now be visible');
     accessMsg.textContent = 'This dashboard is protected. External access requires a password.';
     form.style.display = 'flex';
     accessGranted.style.display = 'none';
