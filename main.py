@@ -668,34 +668,52 @@ async def admin_fix_initials(req: Request):
     except Exception:
         pass
     
-    from_initials = (body.get("from") if isinstance(body, dict) else None) or req.query_params.get("from")
+    from_initials = body.get("from") if isinstance(body, dict) else None
     to_initials = (body.get("to") if isinstance(body, dict) else None) or req.query_params.get("to")
     
-    if not from_initials or not isinstance(from_initials, str) or len(from_initials.strip()) == 0:
-        raise HTTPException(status_code=400, detail="'from' parameter required with engineer initials")
+    # from_initials can be empty string (for blank records), but to_initials must have a value
+    if from_initials is None:
+        raise HTTPException(status_code=400, detail="'from' parameter required")
     if not to_initials or not isinstance(to_initials, str) or len(to_initials.strip()) == 0:
         raise HTTPException(status_code=400, detail="'to' parameter required with engineer initials")
     
-    from_initials = from_initials.strip().upper()
     to_initials = to_initials.strip().upper()
     
-    if from_initials == to_initials:
-        return {"status": "error", "message": "from and to initials must be different"}
+    # Handle empty string "from" - means we're targeting blank/null records
+    if isinstance(from_initials, str):
+        from_initials = from_initials.strip().upper()
     
     # Execute the update
     conn = db.sqlite3.connect(db.DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("UPDATE erasures SET initials = ? WHERE initials = ?", (to_initials, from_initials))
+    
+    if from_initials == '' or from_initials is None:
+        # Target NULL or empty/whitespace records
+        cursor.execute("""
+            UPDATE erasures 
+            SET initials = ? 
+            WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
+        """, (to_initials,))
+        from_display = "(blank/unassigned)"
+    else:
+        # Target specific initials
+        if from_initials == to_initials:
+            conn.close()
+            return {"status": "error", "message": "from and to initials must be different"}
+        
+        cursor.execute("UPDATE erasures SET initials = ? WHERE initials = ?", (to_initials, from_initials))
+        from_display = from_initials
+    
     affected = cursor.rowcount
     conn.commit()
     conn.close()
     
-    print(f"[ADMIN] Fixed initials: {from_initials} -> {to_initials} ({affected} records)")
+    print(f"[ADMIN] Fixed initials: {from_display} -> {to_initials} ({affected} records)")
     
     return {
         "status": "ok",
         "action": "fix_initials",
-        "from_initials": from_initials,
+        "from_initials": from_display,
         "to_initials": to_initials,
         "affected_records": affected
     }

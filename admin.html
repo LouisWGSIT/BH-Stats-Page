@@ -260,7 +260,9 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="fixFrom">From (Wrong Initials):</label>
-                        <input type="text" id="fixFrom" placeholder="e.g., MSS" maxlength="3">
+                        <select id="fixFrom" style="max-width: 300px;">
+                            <option value="">-- Select initials to change --</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label for="fixTo">To (Correct Initials):</label>
@@ -340,13 +342,13 @@
         }
 
         async function fixInitials() {
-            const fromInitials = document.getElementById('fixFrom').value.trim().toUpperCase();
+            const fromInitials = document.getElementById('fixFrom').value;
             const toInitials = document.getElementById('fixTo').value.trim().toUpperCase();
             const resultDiv = document.getElementById('fixResult');
             const btn = document.getElementById('fixBtn');
 
             if (!fromInitials || !toInitials) {
-                showResult(resultDiv, 'error', 'Error', 'Please enter both from and to initials');
+                showResult(resultDiv, 'error', 'Error', 'Please select from initials and enter to initials');
                 return;
             }
 
@@ -359,22 +361,29 @@
             btn.innerHTML = '<span class="loading"></span> Processing...';
 
             try {
-                const response = await fetch('/admin/fix-initials?from=' + encodeURIComponent(fromInitials) + '&to=' + encodeURIComponent(toInitials), {
+                // Use the actual value from database (could be empty string or special value)
+                const response = await fetch('/admin/fix-initials', {
                     method: 'POST',
                     headers: {
                         'Authorization': 'Bearer ' + API_KEY,
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    body: JSON.stringify({
+                        from: fromInitials,
+                        to: toInitials
+                    })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
                     showResult(resultDiv, 'success', '✅ Success!', 
-                        `Fixed ${data.affected_records} erasures: ${data.from_initials} → ${data.to_initials}`);
+                        `Fixed ${data.affected_records} erasures: ${fromInitials || '(blank)'} → ${data.to_initials}`);
                     document.getElementById('fixFrom').value = '';
                     document.getElementById('fixTo').value = '';
                     loadStats();
+                    loadInitialsList();
+                    populateFromDropdown(); // Refresh the dropdown
                 } else {
                     showResult(resultDiv, 'error', '❌ Error', data.detail || data.message || 'Failed to fix records');
                 }
@@ -433,7 +442,44 @@
         window.addEventListener('load', () => {
             loadStats();
             loadInitialsList();
+            populateFromDropdown();
         });
+
+        async function populateFromDropdown() {
+            const dropdown = document.getElementById('fixFrom');
+            
+            try {
+                const response = await fetch('/admin/initials-list', {
+                    headers: {
+                        'Authorization': 'Bearer ' + API_KEY
+                    }
+                });
+
+                const data = await response.json();
+                const initials = data.initials || [];
+
+                // Clear existing options except the first one
+                dropdown.innerHTML = '<option value="">-- Select initials to change --</option>';
+
+                // Add all initials as options
+                initials.forEach(item => {
+                    const option = document.createElement('option');
+                    
+                    // Store the actual database value
+                    if (item.initials === '(unassigned)' || !item.initials || item.initials.trim() === '') {
+                        option.value = '';  // Empty string for database query
+                        option.textContent = `(No Initials) - ${item.count} erasures`;
+                    } else {
+                        option.value = item.initials;
+                        option.textContent = `${item.initials} - ${item.count} erasures`;
+                    }
+                    
+                    dropdown.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading initials dropdown:', error);
+            }
+        }
 
         async function loadInitialsList() {
             const container = document.getElementById('initialsContainer');
