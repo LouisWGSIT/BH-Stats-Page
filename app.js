@@ -2291,11 +2291,15 @@ function renderSVGSparkline(svgElem, data) {
   // Load QA dashboard data
   async function loadQADashboard(period = 'this_week') {
     try {
+      console.log('Loading QA dashboard with period:', period);
       const response = await fetch(`/api/qa-dashboard?period=${period}`);
       const data = await response.json();
       
+      console.log('QA data received:', data);
+      
       if (data.error) {
         console.error('QA data error:', data.error);
+        showQAError('Failed to load QA data: ' + data.error);
         return;
       }
       
@@ -2372,6 +2376,26 @@ function renderSVGSparkline(svgElem, data) {
       
     } catch (error) {
       console.error('Failed to load QA dashboard:', error);
+      showQAError('Connection error: ' + error.message);
+    }
+  }
+  
+  // Show error message on QA dashboard
+  function showQAError(message) {
+    const performersGrid = document.getElementById('qaTopPerformersGrid');
+    const techniciansGrid = document.getElementById('qaTechniciansGrid');
+    
+    if (performersGrid) {
+      performersGrid.innerHTML = `
+        <div style="grid-column: 1 / -1; padding: 40px; text-align: center; color: #ff6b6b;">
+          <h3>⚠️ ${message}</h3>
+          <p style="color: #999; margin-top: 10px;">Check console for details or try a different period.</p>
+        </div>
+      `;
+    }
+    
+    if (techniciansGrid) {
+      techniciansGrid.innerHTML = '';
     }
   }
   
@@ -2403,7 +2427,8 @@ function renderSVGSparkline(svgElem, data) {
       qaView.style.display = 'grid';
       titleElem.textContent = dashboardTitles.qa;
       // Load QA data when switching to QA dashboard
-      const period = document.getElementById('dateSelector')?.value || 'this_week';
+      const periodValue = document.getElementById('dateSelector')?.value || 'this-week';
+      const period = periodValue.replace(/-/g, '_');  // Convert "this-week" to "this_week"
       loadQADashboard(period);
     }
     
