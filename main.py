@@ -1015,5 +1015,37 @@ async def export_engineer_deepdive(period: str = "this_week"):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/export/qa-stats")
+async def export_qa_stats(period: str = "this_week"):
+    """Generate QA stats Excel export for a specific period from MariaDB"""
+    try:
+        import qa_export
+        
+        # Validate period
+        valid_periods = ["this_week", "last_week", "this_month", "last_month"]
+        if period not in valid_periods:
+            raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}")
+        
+        # Generate the analysis
+        sheets_data = qa_export.generate_qa_export(period)
+        
+        # Create Excel file
+        excel_file = excel_export.create_excel_report(sheets_data)
+        
+        # Format filename with period
+        period_label = period.replace("_", "-")
+        filename = f"qa-stats-{period_label}.xlsx"
+        
+        return StreamingResponse(
+            iter([excel_file.getvalue()]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        print(f"QA stats export error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")
