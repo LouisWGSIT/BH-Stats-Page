@@ -1569,18 +1569,25 @@ body {
   margin-bottom: 6px;
 }
 
+.stat-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .stat-card .time-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: 600;
-  margin-bottom: 8px;
-  padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.03);
+  letter-spacing: 0.8px;
+  font-weight: 700;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 6px;
-  display: inline-block;
-  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .stat-card h3 {
@@ -1625,6 +1632,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   counter-increment: item;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
@@ -1657,6 +1665,16 @@ body {
   font-weight: 700;
   margin-left: auto;
   padding-left: 12px;
+  flex-shrink: 0;
+}
+
+.top-list li .engineer-chip {
+  flex: 1;
+  min-width: 0;
+}
+
+.top-list li .engineer-name {
+  color: var(--text);
 }
 
 /* Flip Card Styles */
