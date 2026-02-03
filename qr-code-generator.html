@@ -240,7 +240,7 @@
                 <h2>Macs Workflow</h2>
                 <div class="qr-container" id="qr-macs"></div>
                 <div class="json-payload macs" id="payload-macs-display">
-                    {"event":"success","jobId":"&lt;DEVICECUSTOMFIELD AssetTag&gt;","deviceType":"macs","initials":"&lt;DEVICECUSTOMFIELD Engineer Initials&gt;","durationSec":"&lt;DURATION&gt;","timestamp":"&lt;COMPLETIONTIME&gt;","manufacturer":"&lt;SYSTEM MANUFACTURER&gt;","model":"&lt;SYSTEM MODEL&gt;","serial":"&lt;SYSTEM SERIAL&gt;","diskSerial":"&lt;DISK SERIAL&gt;","diskCapacity":"&lt;DISK CAPACITY&gt;"}
+                    {"event":"success","jobId":"&lt;DEVICECUSTOMFIELD AssetTag&gt;","deviceType":"macs","initials":"&lt;Engineer Initials&gt;","durationSec":"&lt;duration&gt;","timestamp":"&lt;Completion Time&gt;","manufacturer":"&lt;System manufacturer&gt;","model":"&lt;System model&gt;","serial":"&lt;System serial&gt;","diskSerial":"&lt;Disk serial&gt;","diskCapacity":"&lt;Disk capacity&gt;"}
                 </div>
                 <div class="button-group">
                     <button class="btn-copy" onclick="copyPayload('macs')">📋 Copy JSON</button>
@@ -254,7 +254,7 @@
                 <h2>Mobiles Workflow</h2>
                 <div class="qr-container" id="qr-mobiles"></div>
                 <div class="json-payload" id="payload-mobiles-display">
-                    {"event":"success","jobId":"&lt;DEVICECUSTOMFIELD AssetTag&gt;","deviceType":"mobiles","initials":"&lt;DEVICECUSTOMFIELD Engineer Initials&gt;","durationSec":"&lt;DURATION&gt;","timestamp":"&lt;COMPLETIONTIME&gt;","manufacturer":"&lt;SYSTEM MANUFACTURER&gt;","model":"&lt;SYSTEM MODEL&gt;","serial":"&lt;SYSTEM SERIAL&gt;","diskSerial":"&lt;DISK SERIAL&gt;","diskCapacity":"&lt;DISK CAPACITY&gt;"}
+                    {"event":"success","jobId":"&lt;DEVICECUSTOMFIELD AssetTag&gt;","deviceType":"mobiles","initials":"&lt;Engineer Initials&gt;","durationSec":"&lt;duration&gt;","timestamp":"&lt;Completion Time&gt;","manufacturer":"&lt;System manufacturer&gt;","model":"&lt;System model&gt;","serial":"&lt;System serial&gt;","diskSerial":"&lt;Disk serial&gt;","diskCapacity":"&lt;Disk capacity&gt;"}
                 </div>
                 <div class="button-group">
                     <button class="btn-copy" onclick="copyPayload('mobiles')">📋 Copy JSON</button>
@@ -280,8 +280,8 @@
     <script>
         // Payload data for both device types
         const payloads = {
-            macs: '{"event":"success","jobId":"<DEVICECUSTOMFIELD AssetTag>","deviceType":"macs","initials":"<DEVICECUSTOMFIELD Engineer Initials>","durationSec":"<DURATION>","timestamp":"<COMPLETIONTIME>","manufacturer":"<SYSTEM MANUFACTURER>","model":"<SYSTEM MODEL>","serial":"<SYSTEM SERIAL>","diskSerial":"<DISK SERIAL>","diskCapacity":"<DISK CAPACITY>"}',
-            mobiles: '{"event":"success","jobId":"<DEVICECUSTOMFIELD AssetTag>","deviceType":"mobiles","initials":"<DEVICECUSTOMFIELD Engineer Initials>","durationSec":"<DURATION>","timestamp":"<COMPLETIONTIME>","manufacturer":"<SYSTEM MANUFACTURER>","model":"<SYSTEM MODEL>","serial":"<SYSTEM SERIAL>","diskSerial":"<DISK SERIAL>","diskCapacity":"<DISK CAPACITY>"}'
+            macs: '{"event":"success","jobId":"<DEVICECUSTOMFIELD AssetTag>","deviceType":"macs","initials":"<Engineer Initials>","durationSec":"<duration>","timestamp":"<Completion Time>","manufacturer":"<System manufacturer>","model":"<System model>","serial":"<System serial>","diskSerial":"<Disk serial>","diskCapacity":"<Disk capacity>"}',
+            mobiles: '{"event":"success","jobId":"<DEVICECUSTOMFIELD AssetTag>","deviceType":"mobiles","initials":"<Engineer Initials>","durationSec":"<duration>","timestamp":"<Completion Time>","manufacturer":"<System manufacturer>","model":"<System model>","serial":"<System serial>","diskSerial":"<Disk serial>","diskCapacity":"<Disk capacity>"}'
         };
 
         // Generate QR codes
