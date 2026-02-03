@@ -3076,6 +3076,59 @@ function renderSVGSparkline(svgElem, data) {
     categories.forEach(c => refreshTopByTypeAllScopes(c.key, c.listId));
   }
 
+  // NEW: Refresh category rotator cards (Today, This Month, All Time panels)
+  async function refreshCategoryRotatorCards() {
+    const categoryMappings = [
+      { key: 'laptops_desktops', todayListId: 'topLD', monthListId: 'topLDMonth', allTimeListId: 'topLDAllTime', todayCountId: 'countLD', monthCountId: 'countLDMonth', allTimeCountId: 'countLDAllTime' },
+      { key: 'servers', todayListId: 'topServers', monthListId: 'topServersMonth', allTimeListId: 'topServersAllTime', todayCountId: 'countServers', monthCountId: 'countServersMonth', allTimeCountId: 'countServersAllTime' },
+      { key: 'macs', todayListId: 'topMacs', monthListId: 'topMacsMonth', allTimeListId: 'topMacsAllTime', todayCountId: 'countMacs', monthCountId: 'countMacsMonth', allTimeCountId: 'countMacsAllTime' },
+      { key: 'mobiles', todayListId: 'topMobiles', monthListId: 'topMobilesMonth', allTimeListId: 'topMobilesAllTime', todayCountId: 'countMobiles', monthCountId: 'countMobilesMonth', allTimeCountId: 'countMobilesAllTime' },
+    ];
+
+    for (const cat of categoryMappings) {
+      try {
+        // Fetch Today data
+        const todayRes = await fetch(`/metrics/engineers/top-by-type?type=${encodeURIComponent(cat.key)}`);
+        const todayData = await todayRes.json();
+        const todayTotalRes = await fetch(`/metrics/total-by-type?type=${encodeURIComponent(cat.key)}&scope=today`);
+        const todayTotalData = await todayTotalRes.json();
+        const todayTotal = todayTotalData.total || 0;
+
+        // Fetch Month data
+        const monthRes = await fetch(`/metrics/engineers/top-by-type?type=${encodeURIComponent(cat.key)}&scope=month`);
+        const monthData = await monthRes.json();
+        const monthTotalRes = await fetch(`/metrics/total-by-type?type=${encodeURIComponent(cat.key)}&scope=month`);
+        const monthTotalData = await monthTotalRes.json();
+        const monthTotal = monthTotalData.total || 0;
+
+        // Fetch All Time data
+        const allTimeRes = await fetch(`/metrics/engineers/top-by-type?type=${encodeURIComponent(cat.key)}&scope=all`);
+        const allTimeData = await allTimeRes.json();
+        const allTimeTotalRes = await fetch(`/metrics/total-by-type?type=${encodeURIComponent(cat.key)}&scope=all`);
+        const allTimeTotalData = await allTimeTotalRes.json();
+        const allTimeTotal = allTimeTotalData.total || 0;
+
+        // Render Today panel
+        renderTopList(cat.todayListId, todayData.engineers);
+        const todayCountEl = document.getElementById(cat.todayCountId);
+        if (todayCountEl) todayCountEl.textContent = todayTotal;
+
+        // Render Month panel
+        renderTopList(cat.monthListId, monthData.engineers);
+        const monthCountEl = document.getElementById(cat.monthCountId);
+        if (monthCountEl) monthCountEl.textContent = monthTotal;
+
+        // Render All Time panel
+        renderTopList(cat.allTimeListId, allTimeData.engineers);
+        const allTimeCountEl = document.getElementById(cat.allTimeCountId);
+        if (allTimeCountEl) allTimeCountEl.textContent = allTimeTotal;
+
+      } catch (err) {
+        console.error('Category rotator card refresh error:', cat.key, err);
+      }
+    }
+  }
+
   function setupCategoryFlipCards() {
     if (!window._categoryFlipData) {
       return;
@@ -3170,16 +3223,17 @@ function renderSVGSparkline(svgElem, data) {
 
 
 
-  // Replace original refreshAllTopLists with the new one, with debug log
+  // Replace original refreshAllTopLists with the new category rotator logic
   window.refreshAllTopLists = function() {
-    return refreshAllTopListsWithFlip();
+    return refreshCategoryRotatorCards();
   };
 
-  // On load, refresh all lists with flip support
-  refreshAllTopListsWithFlip();
-  // After a short delay (to allow data fetch), setup flip mechanic
+  // On load, refresh category rotator cards
+  refreshCategoryRotatorCards();
+
+  // Start rotation intervals
   setTimeout(() => {
-    setupCategoryFlipCards();
+    setupRotatorCards();
   }, 2000);
 
 })();
