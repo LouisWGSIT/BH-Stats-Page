@@ -565,6 +565,34 @@ async def metrics_month_comparison(currentStart: str, currentEnd: str, previousS
     """Get month-over-month comparison"""
     return db.get_month_over_month_comparison(currentStart, currentEnd, previousStart, previousEnd)
 
+@app.get("/admin/initials-list")
+async def admin_get_initials_list(req: Request):
+    """Get all unique initials in the database with their counts"""
+    hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
+    if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    conn = db.sqlite3.connect(db.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT 
+            COALESCE(NULLIF(TRIM(initials), ''), '(unassigned)') as initials_group,
+            COUNT(*) as count
+        FROM erasures 
+        GROUP BY COALESCE(NULLIF(TRIM(initials), ''), '(unassigned)')
+        ORDER BY count DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    
+    result = [{"initials": row[0], "count": row[1]} for row in rows]
+    
+    return {
+        "status": "ok",
+        "total_records": sum(r["count"] for r in result),
+        "initials": result
+    }
+
 # Admin: delete an ingested event by jobId (secured by API key)
 @app.post("/admin/delete-event")
 async def admin_delete_event(req: Request):

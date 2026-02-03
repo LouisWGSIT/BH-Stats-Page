@@ -271,9 +271,22 @@
                 <div id="fixResult" class="result"></div>
             </div>
 
-            <!-- Section 3: Stats -->
+            <!-- Section 3: Initials Breakdown -->
             <div class="section">
-                <h2>Current Statistics</h2>
+                <h2>Current Initials in Database</h2>
+                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+                    See all unique engineer initials and their counts. Use this to identify what initials to target for fixing.
+                </p>
+                <button onclick="loadInitialsList()">📋 Load Initials List</button>
+                <div id="initialsContainer" class="stats" style="display: none; margin-top: 20px;">
+                    <h3>Engineers & Unassigned Records</h3>
+                    <div id="initialsContent"></div>
+                </div>
+            </div>
+
+            <!-- Section 4: Stats -->
+            <div class="section">
+                <h2>Engineer Statistics</h2>
                 <button onclick="loadStats()">📊 Refresh Stats</button>
                 <div id="statsContainer" class="stats" style="display: none; margin-top: 20px;">
                     <h3>Engineer Breakdown</h3>
@@ -417,7 +430,54 @@
         }
 
         // Load stats on page load
-        window.addEventListener('load', loadStats);
+        window.addEventListener('load', () => {
+            loadStats();
+            loadInitialsList();
+        });
+
+        async function loadInitialsList() {
+            const container = document.getElementById('initialsContainer');
+            const content = document.getElementById('initialsContent');
+
+            try {
+                const response = await fetch('/admin/initials-list', {
+                    headers: {
+                        'Authorization': 'Bearer ' + API_KEY
+                    }
+                });
+
+                const data = await response.json();
+                const initials = data.initials || [];
+
+                if (initials.length === 0) {
+                    content.innerHTML = '<p style="color: #999;">No data available.</p>';
+                } else {
+                    let html = '<div class="stats-grid">';
+                    initials.forEach(item => {
+                        const displayName = item.initials === '(unassigned)' 
+                            ? '❌ No Name' 
+                            : item.initials;
+                        const bgColor = item.initials === '(unassigned)' 
+                            ? 'border-left-color: #ff6b6b;' 
+                            : '';
+                        
+                        html += `
+                            <div class="stat-card" style="${bgColor}">
+                                <div class="stat-value">${item.count}</div>
+                                <div class="stat-label">${displayName}</div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    content.innerHTML = html;
+                }
+
+                container.style.display = 'block';
+            } catch (error) {
+                content.innerHTML = '<p style="color: #c00;">Error loading initials: ' + error.message + '</p>';
+                container.style.display = 'block';
+            }
+        }
     </script>
 </body>
 </html>
