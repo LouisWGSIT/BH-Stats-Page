@@ -2300,7 +2300,7 @@ function renderSVGSparkline(svgElem, data) {
     const dashboard = dashboards[index];
     
     if (dashboard === 'erasure') {
-      erasureView.style.display = 'grid';
+      erasureView.style.display = '';
       qaView.style.display = 'none';
       titleElem.textContent = dashboardTitles.erasure;
     } else if (dashboard === 'qa') {
