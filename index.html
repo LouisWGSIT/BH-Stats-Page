@@ -19,11 +19,16 @@
       </div>
       <div class="meta">
         <select id="dateSelector" class="date-selector">
-          <option value="today">Today</option>
-          <option value="yesterday">Yesterday</option>
+          <option value="this-week">This Week</option>
+          <option value="last-week">Last Week</option>
           <option value="this-month">This Month</option>
           <option value="last-month">Last Month</option>
         </select>
+        <div class="dashboard-nav">
+          <button id="prevDashboard" class="nav-arrow" title="Previous dashboard">←</button>
+          <span id="dashboardTitle" class="dashboard-title">Erasure Stats</span>
+          <button id="nextDashboard" class="nav-arrow" title="Next dashboard">→</button>
+        </div>
         <button id="downloadBtn" class="download-btn" title="Download stats as CSV">📥 Export</button>
         <a href="admin.html" class="admin-btn" title="Admin panel">⚙️ Admin</a>
         <span id="last-updated">Last updated: --</span>
@@ -31,7 +36,7 @@
       </div>
     </header>
 
-    <main class="layout">
+    <main class="layout" id="erasureStatsView" style="display: grid;">
       <!-- Daily Race + Competitions Rotator -->
       <section class="race-section card rotator-card" data-interval="25000">
         <div class="panel active" data-panel="daily-race">
@@ -528,6 +533,19 @@
       </div>
 
       </div>
+      </div>
+    </main>
+
+    <!-- QA Stats View (Hidden by default) -->
+    <main class="layout qa-stats-view" id="qaStatsView" style="display: none;">
+      <div class="qa-placeholder" style="grid-column: 1 / -1; padding: 40px; text-align: center;">
+        <h2>📊 QA Stats Dashboard</h2>
+        <p style="color: #999; margin-top: 20px; font-size: 16px;">QA metrics integration coming soon...</p>
+        <p style="color: #666; margin-top: 30px;">Connected to MariaDB for real-time QA tracking data</p>
+        <div style="margin-top: 40px; padding: 20px; background: rgba(102, 126, 234, 0.1); border-radius: 8px; display: inline-block;">
+          <p style="color: #667eea; font-weight: 600;">Data Source: QA_asset_info</p>
+          <p style="color: #999; font-size: 14px; margin-top: 10px;">Categories, Conditions, Assessments, and more</p>
+        </div>
       </div>
     </main>
   </div>

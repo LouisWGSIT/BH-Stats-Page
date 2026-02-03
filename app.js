@@ -2278,26 +2278,99 @@ function renderSVGSparkline(svgElem, data) {
     initializeAnalytics();
   }, 300000);
 
+  // ==================== DASHBOARD SWITCHING ====================
+  
+  let currentDashboard = 0;
+  const dashboards = ['erasure', 'qa'];
+  const dashboardTitles = {
+    'erasure': 'Erasure Stats',
+    'qa': 'QA Stats'
+  };
+  
+  function switchDashboard(index) {
+    const erasureView = document.getElementById('erasureStatsView');
+    const qaView = document.getElementById('qaStatsView');
+    const titleElem = document.getElementById('dashboardTitle');
+    
+    if (index < 0 || index >= dashboards.length) {
+      return;
+    }
+    
+    currentDashboard = index;
+    const dashboard = dashboards[index];
+    
+    if (dashboard === 'erasure') {
+      erasureView.style.display = 'grid';
+      qaView.style.display = 'none';
+      titleElem.textContent = dashboardTitles.erasure;
+    } else if (dashboard === 'qa') {
+      erasureView.style.display = 'none';
+      qaView.style.display = 'grid';
+      titleElem.textContent = dashboardTitles.qa;
+    }
+    
+    // Store preference
+    localStorage.setItem('currentDashboard', index);
+  }
+  
+  // Dashboard navigation buttons
+  document.getElementById('prevDashboard').addEventListener('click', () => {
+    let newIndex = currentDashboard - 1;
+    if (newIndex < 0) {
+      newIndex = dashboards.length - 1;
+    }
+    switchDashboard(newIndex);
+  });
+  
+  document.getElementById('nextDashboard').addEventListener('click', () => {
+    let newIndex = currentDashboard + 1;
+    if (newIndex >= dashboards.length) {
+      newIndex = 0;
+    }
+    switchDashboard(newIndex);
+  });
+  
+  // Restore last dashboard view
+  const savedDashboard = parseInt(localStorage.getItem('currentDashboard') || '0');
+  switchDashboard(savedDashboard);
+
   // ==================== CSV EXPORT ====================
   
   async function generateCSV() {
-    const dateScope = document.getElementById('dateSelector')?.value || 'today';
-    const isYesterday = dateScope === 'yesterday';
+    const dateScope = document.getElementById('dateSelector')?.value || 'this-week';
+    const isThisWeek = dateScope === 'this-week';
+    const isLastWeek = dateScope === 'last-week';
     const isThisMonth = dateScope === 'this-month';
     const isLastMonth = dateScope === 'last-month';
     const isMonthlyReport = isThisMonth || isLastMonth;
+    const isWeeklyReport = isThisWeek || isLastWeek;
     
     // Calculate date range for display and API calls
     let targetDate = new Date();
     let dateRangeStr = '';
     let monthYearStr = '';
     
-    if (isYesterday) {
-      // If today is Monday (1), go back to Friday (3 days ago)
-      // Otherwise, go back 1 day
-      const daysBack = targetDate.getDay() === 1 ? 3 : 1;
-      targetDate.setDate(targetDate.getDate() - daysBack);
-      dateRangeStr = targetDate.toLocaleDateString('en-GB');
+    if (isLastWeek) {
+      // Get last week (Monday to Sunday)
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      // Go back to last Sunday
+      const daysToLastSunday = dayOfWeek === 0 ? 1 : dayOfWeek + 1;
+      targetDate.setDate(today.getDate() - daysToLastSunday);
+      // Go back to Monday of that week
+      targetDate.setDate(targetDate.getDate() - 6);
+      const startDate = new Date(targetDate);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 6); // Sunday
+      dateRangeStr = `${startDate.toLocaleDateString('en-GB')} - ${endDate.toLocaleDateString('en-GB')}`;
+    } else if (isThisWeek) {
+      // Get this week (Monday to today)
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - daysToMonday);
+      dateRangeStr = `${startDate.toLocaleDateString('en-GB')} - ${today.toLocaleDateString('en-GB')}`;
     } else if (isLastMonth) {
       // Get last month
       targetDate.setMonth(targetDate.getMonth() - 1);
@@ -2321,9 +2394,9 @@ function renderSVGSparkline(svgElem, data) {
     
     const time = new Date().toLocaleTimeString('en-GB');
     
-    // Get current displayed values (only valid for "today")
+    // Get current displayed values (only valid for "this-week")
     let todayTotal, monthTotal, target;
-    if (!isYesterday && !isMonthlyReport) {
+    if (!isWeeklyReport && !isMonthlyReport) {
       todayTotal = document.getElementById('totalTodayValue')?.textContent || '0';
       monthTotal = document.getElementById('monthTotalValue')?.textContent || '0';
       target = document.getElementById('erasedTarget')?.textContent || '500';
