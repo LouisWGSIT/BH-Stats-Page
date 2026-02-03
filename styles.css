@@ -316,7 +316,7 @@ body {
 
 .header {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
   padding: 12px 20px;
   flex-shrink: 0;
@@ -348,14 +348,13 @@ body {
 
 .meta { 
   display: flex; 
-  gap: 8px; 
+  gap: 12px; 
   font-weight: 600; 
   color: var(--muted); 
   font-size: 12px;
-  position: absolute;
-  right: 24px;
-  top: 50%;
-  transform: translateY(-50%);
+  align-items: center;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .stale { 
@@ -375,8 +374,8 @@ body {
   font-size: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
-  margin-right: 8px;
   outline: none;
+  white-space: nowrap;
 }
 
 .date-selector:hover {
@@ -394,7 +393,7 @@ body {
   font-size: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
-  margin-right: 20px;
+  white-space: nowrap;
 }
 
 .download-btn:hover {
@@ -410,10 +409,11 @@ body {
 .dashboard-nav {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 12px;
+  gap: 8px;
+  padding: 0 10px;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
 }
 
 .nav-arrow {
