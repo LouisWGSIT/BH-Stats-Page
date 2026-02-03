@@ -2504,50 +2504,49 @@ function renderSVGSparkline(svgElem, data) {
     const categoryTopPerformers = [];
     try {
       if (!isMonthlyReport && !isWeeklyReport) {
-          categories.forEach(cat => {
-            const listEl = document.getElementById(cat.listId);
-            if (listEl) {
-              const items = listEl.querySelectorAll('li');
-              if (items.length > 0) {
-                items.forEach(item => {
-                  const text = item.textContent.trim();
-                  const parts = text.match(/(.+?)\s+(\d+)$/);
-                  if (parts) {
-                    categoryTopPerformers.push([cat.label, parts[1], parts[2]]);
-                  }
-                });
-              }
-            }
-          });
-        } else {
-          // For monthly reports, fetch top performers by category
-          const catOrder = ['laptops_desktops', 'servers', 'macs', 'mobiles'];
-          const catNames = {
-            laptops_desktops: 'Laptops/Desktops',
-            servers: 'Servers',
-            macs: 'Macs',
-            mobiles: 'Mobiles'
-          };
-          const monthDate = new Date(targetDate);
-          const year = monthDate.getFullYear();
-          const month = monthDate.getMonth();
-          const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
-          const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
-          const res = await fetch(`/competitions/category-specialists?startDate=${firstDay}&endDate=${lastDay}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.specialists) {
-              catOrder.forEach(cat => {
-                (data.specialists[cat] || []).slice(0, 1).forEach((row, idx) => {
-                  categoryTopPerformers.push([catNames[cat], row.initials || '', row.count || 0]);
-                });
+        categories.forEach(cat => {
+          const listEl = document.getElementById(cat.listId);
+          if (listEl) {
+            const items = listEl.querySelectorAll('li');
+            if (items.length > 0) {
+              items.forEach(item => {
+                const text = item.textContent.trim();
+                const parts = text.match(/(.+?)\s+(\d+)$/);
+                if (parts) {
+                  categoryTopPerformers.push([cat.label, parts[1], parts[2]]);
+                }
               });
             }
           }
+        });
+      } else {
+        // For monthly reports, fetch top performers by category
+        const catOrder = ['laptops_desktops', 'servers', 'macs', 'mobiles'];
+        const catNames = {
+          laptops_desktops: 'Laptops/Desktops',
+          servers: 'Servers',
+          macs: 'Macs',
+          mobiles: 'Mobiles'
+        };
+        const monthDate = new Date(targetDate);
+        const year = monthDate.getFullYear();
+        const month = monthDate.getMonth();
+        const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
+        const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
+        const res = await fetch(`/competitions/category-specialists?startDate=${firstDay}&endDate=${lastDay}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.specialists) {
+            catOrder.forEach(cat => {
+              (data.specialists[cat] || []).slice(0, 1).forEach((row, idx) => {
+                categoryTopPerformers.push([catNames[cat], row.initials || '', row.count || 0]);
+              });
+            });
+          }
         }
-      } catch (err) {
-        console.error('Failed to fetch category top performers:', err);
       }
+    } catch (err) {
+      console.error('Failed to fetch category top performers:', err);
     }
 
     // Calculate progress metrics
