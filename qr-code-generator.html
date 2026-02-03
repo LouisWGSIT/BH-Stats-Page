@@ -240,7 +240,7 @@
                 <h2>Macs Workflow</h2>
                 <div class="qr-container" id="qr-macs"></div>
                 <div class="json-payload macs" id="payload-macs-display">
-                    {"event":"success","jobId":"","deviceType":"macs","initials":"&lt;Engineer Initials&gt;","durationSec":"&lt;REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time&gt;","timestamp":"&lt;Completion Time&gt;","manufacturer":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer&gt;","model":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.model&gt;","serial":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.serial&gt;"}
+                    {"event":"success","jobId":"","deviceType":"macs","initials":"&lt;Engineer Initials&gt;","durationSec":"&lt;REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time&gt;","timestamp":"&lt;Completion Time&gt;","manufacturer":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer&gt;","model":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.model&gt;","serial":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.serial&gt;","diskSerial":"&lt;REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial&gt;","diskCapacity":"&lt;REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity&gt;"}
                 </div>
                 <div class="button-group">
                     <button class="btn-copy" onclick="copyPayload('macs')">📋 Copy JSON</button>
@@ -254,7 +254,7 @@
                 <h2>Mobiles Workflow</h2>
                 <div class="qr-container" id="qr-mobiles"></div>
                 <div class="json-payload" id="payload-mobiles-display">
-                    {"event":"success","jobId":"","deviceType":"mobiles","initials":"&lt;Engineer Initials&gt;","durationSec":"&lt;REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time&gt;","timestamp":"&lt;Completion Time&gt;","manufacturer":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer&gt;","model":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.model&gt;","serial":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.serial&gt;"}
+                    {"event":"success","jobId":"","deviceType":"mobiles","initials":"&lt;Engineer Initials&gt;","durationSec":"&lt;REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time&gt;","timestamp":"&lt;Completion Time&gt;","manufacturer":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer&gt;","model":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.model&gt;","serial":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.serial&gt;","diskSerial":"&lt;REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial&gt;","diskCapacity":"&lt;REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity&gt;"}
                 </div>
                 <div class="button-group">
                     <button class="btn-copy" onclick="copyPayload('mobiles')">📋 Copy JSON</button>
@@ -280,8 +280,8 @@
     <script>
         // Payload data for both device types
         const payloads = {
-            macs: '{"event":"success","jobId":"","deviceType":"macs","initials":"<Engineer Initials>","durationSec":"<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>","timestamp":"<Completion Time>","manufacturer":"<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>","model":"<REPORTPATH blancco_data.blancco_hardware_report.system.model>","serial":"<REPORTPATH blancco_data.blancco_hardware_report.system.serial>"}',
-            mobiles: '{"event":"success","jobId":"","deviceType":"mobiles","initials":"<Engineer Initials>","durationSec":"<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>","timestamp":"<Completion Time>","manufacturer":"<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>","model":"<REPORTPATH blancco_data.blancco_hardware_report.system.model>","serial":"<REPORTPATH blancco_data.blancco_hardware_report.system.serial>"}'
+            macs: '{"event":"success","jobId":"","deviceType":"macs","initials":"<Engineer Initials>","durationSec":"<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>","timestamp":"<Completion Time>","manufacturer":"<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>","model":"<REPORTPATH blancco_data.blancco_hardware_report.system.model>","serial":"<REPORTPATH blancco_data.blancco_hardware_report.system.serial>","diskSerial":"<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>","diskCapacity":"<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>"}',
+            mobiles: '{"event":"success","jobId":"","deviceType":"mobiles","initials":"<Engineer Initials>","durationSec":"<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>","timestamp":"<Completion Time>","manufacturer":"<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>","model":"<REPORTPATH blancco_data.blancco_hardware_report.system.model>","serial":"<REPORTPATH blancco_data.blancco_hardware_report.system.serial>","diskSerial":"<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>","diskCapacity":"<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>"}'
         };
 
         // Generate QR codes
