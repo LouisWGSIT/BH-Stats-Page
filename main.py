@@ -500,17 +500,18 @@ async def erasure_detail(req: Request):
     if job_id and db.is_job_seen(job_id):
         return {"status": "ignored", "reason": "duplicate"}
 
-    # Extract device details from payload (Blancco report field names)
-    # From Blancco reports: System manufacturer, System model, System serial, Disk serial, Disk capacity
+    # Extract device details from payload (Blancco built-in variables)
+    # Using built-in Blancco variables: <MANUFACTURER> and <MODEL>
+    # Note: <SYSTEM SERIAL>, <DISK SERIAL>, <DISK CAPACITY> are not available as built-in variables
     manufacturer = payload.get("manufacturer")
     model = payload.get("model")
-    system_serial = payload.get("serial")  # System serial number
-    disk_serial = payload.get("diskSerial")  # Individual disk/drive serial
-    disk_capacity = payload.get("diskCapacity")  # Individual disk/drive size
+    system_serial = ""  # Not available from Blancco
+    disk_serial = ""    # Not available from Blancco
+    disk_capacity = ""  # Not available from Blancco
     
     # Log what we found
-    if manufacturer or model or disk_serial or disk_capacity:
-        print(f"[DEVICE DETAILS] Captured from payload: manufacturer={manufacturer}, model={model}, system_serial={system_serial}, disk_serial={disk_serial}, disk_capacity={disk_capacity}")
+    if manufacturer or model:
+        print(f"[DEVICE DETAILS] Captured from payload: manufacturer={manufacturer}, model={model}")
 
     db.add_erasure_event(event=event, device_type=device_type, initials=initials,
                          duration_sec=duration_sec, error_type=error_type, job_id=job_id, ts=ts,
