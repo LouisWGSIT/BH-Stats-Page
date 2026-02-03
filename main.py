@@ -585,6 +585,89 @@ async def admin_delete_event(req: Request):
     summary = db.get_summary_today_month()
     return {"deleted": deleted, "jobId": job_id, "summary": summary}
 
+# Admin: assign unassigned initials to a specific engineer
+@app.post("/admin/assign-unassigned")
+async def admin_assign_unassigned(req: Request):
+    """Assign all erasures with NULL or empty initials to a specific engineer"""
+    hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
+    if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    body = {}
+    try:
+        body = await req.json()
+    except Exception:
+        pass
+    
+    to_initials = (body.get("to") if isinstance(body, dict) else None) or req.query_params.get("to")
+    if not to_initials or not isinstance(to_initials, str) or len(to_initials.strip()) == 0:
+        raise HTTPException(status_code=400, detail="'to' parameter required with engineer initials")
+    
+    to_initials = to_initials.strip().upper()
+    
+    # Execute the update
+    conn = db.sqlite3.connect(db.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE erasures SET initials = ? WHERE initials IS NULL OR initials = ''", (to_initials,))
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    
+    print(f"[ADMIN] Assigned {affected} unassigned erasures to engineer {to_initials}")
+    
+    return {
+        "status": "ok",
+        "action": "assign_unassigned",
+        "to_initials": to_initials,
+        "affected_records": affected
+    }
+
+# Admin: fix specific initials (rename/correct typos)
+@app.post("/admin/fix-initials")
+async def admin_fix_initials(req: Request):
+    """Change all erasures with old initials to new initials (useful for fixing typos/mistakes)"""
+    hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
+    if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    body = {}
+    try:
+        body = await req.json()
+    except Exception:
+        pass
+    
+    from_initials = (body.get("from") if isinstance(body, dict) else None) or req.query_params.get("from")
+    to_initials = (body.get("to") if isinstance(body, dict) else None) or req.query_params.get("to")
+    
+    if not from_initials or not isinstance(from_initials, str) or len(from_initials.strip()) == 0:
+        raise HTTPException(status_code=400, detail="'from' parameter required with engineer initials")
+    if not to_initials or not isinstance(to_initials, str) or len(to_initials.strip()) == 0:
+        raise HTTPException(status_code=400, detail="'to' parameter required with engineer initials")
+    
+    from_initials = from_initials.strip().upper()
+    to_initials = to_initials.strip().upper()
+    
+    if from_initials == to_initials:
+        return {"status": "error", "message": "from and to initials must be different"}
+    
+    # Execute the update
+    conn = db.sqlite3.connect(db.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE erasures SET initials = ? WHERE initials = ?", (to_initials, from_initials))
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    
+    print(f"[ADMIN] Fixed initials: {from_initials} -> {to_initials} ({affected} records)")
+    
+    return {
+        "status": "ok",
+        "action": "fix_initials",
+        "from_initials": from_initials,
+        "to_initials": to_initials,
+        "affected_records": affected
+    }
+
 def _extract_initials_from_obj(obj: Any):
     # Try common explicit keys first
     if isinstance(obj, dict):
