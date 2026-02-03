@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - BH Stats</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            padding-bottom: 30px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+        }
+
+        .section h2 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+
+        input, select {
+            width: 100%;
+            max-width: 300px;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+            font-size: 14px;
+        }
+
+        .result.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .result.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        .result.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+
+        .result h3 {
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .stats {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="index.html" class="back-link">← Back to Dashboard</a>
+            <h1>⚙️ Admin Panel</h1>
+            <p>Manage engineer initials and fix data mistakes</p>
+        </div>
+
+        <div class="content">
+            <!-- Section 1: Assign Unassigned -->
+            <div class="section">
+                <h2>Assign Unassigned Erasures</h2>
+                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+                    Assign all erasures with missing engineer initials to a specific engineer.
+                </p>
+                <div class="form-group">
+                    <label for="assignTo">Engineer Initials:</label>
+                    <input type="text" id="assignTo" placeholder="e.g., MS" maxlength="3" style="max-width: 100px;">
+                </div>
+                <button onclick="assignUnassigned()" id="assignBtn">Assign Unassigned</button>
+                <div id="assignResult" class="result"></div>
+            </div>
+
+            <!-- Section 2: Fix Initials -->
+            <div class="section">
+                <h2>Fix/Correct Initials</h2>
+                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+                    Change all erasures from one set of initials to another. Useful for fixing typos or mistakes.
+                </p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fixFrom">From (Wrong Initials):</label>
+                        <input type="text" id="fixFrom" placeholder="e.g., MSS" maxlength="3">
+                    </div>
+                    <div class="form-group">
+                        <label for="fixTo">To (Correct Initials):</label>
+                        <input type="text" id="fixTo" placeholder="e.g., MS" maxlength="3">
+                    </div>
+                </div>
+                <button onclick="fixInitials()" id="fixBtn">Fix Initials</button>
+                <div id="fixResult" class="result"></div>
+            </div>
+
+            <!-- Section 3: Stats -->
+            <div class="section">
+                <h2>Current Statistics</h2>
+                <button onclick="loadStats()">📊 Refresh Stats</button>
+                <div id="statsContainer" class="stats" style="display: none; margin-top: 20px;">
+                    <h3>Engineer Breakdown</h3>
+                    <div id="statsContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = '6LVepDbZkbMwA66Gpl9bWherzT5wKfOl';
+
+        async function assignUnassigned() {
+            const initials = document.getElementById('assignTo').value.trim().toUpperCase();
+            const resultDiv = document.getElementById('assignResult');
+            const btn = document.getElementById('assignBtn');
+
+            if (!initials) {
+                showResult(resultDiv, 'error', 'Error', 'Please enter engineer initials');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Processing...';
+
+            try {
+                const response = await fetch('/admin/assign-unassigned?to=' + encodeURIComponent(initials), {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + API_KEY,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showResult(resultDiv, 'success', '✅ Success!', 
+                        `Assigned ${data.affected_records} unassigned erasures to engineer ${data.to_initials}`);
+                    document.getElementById('assignTo').value = '';
+                    loadStats();
+                } else {
+                    showResult(resultDiv, 'error', '❌ Error', data.detail || 'Failed to assign records');
+                }
+            } catch (error) {
+                showResult(resultDiv, 'error', '❌ Error', error.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Assign Unassigned';
+            }
+        }
+
+        async function fixInitials() {
+            const fromInitials = document.getElementById('fixFrom').value.trim().toUpperCase();
+            const toInitials = document.getElementById('fixTo').value.trim().toUpperCase();
+            const resultDiv = document.getElementById('fixResult');
+            const btn = document.getElementById('fixBtn');
+
+            if (!fromInitials || !toInitials) {
+                showResult(resultDiv, 'error', 'Error', 'Please enter both from and to initials');
+                return;
+            }
+
+            if (fromInitials === toInitials) {
+                showResult(resultDiv, 'error', 'Error', 'From and to initials must be different');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Processing...';
+
+            try {
+                const response = await fetch('/admin/fix-initials?from=' + encodeURIComponent(fromInitials) + '&to=' + encodeURIComponent(toInitials), {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + API_KEY,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showResult(resultDiv, 'success', '✅ Success!', 
+                        `Fixed ${data.affected_records} erasures: ${data.from_initials} → ${data.to_initials}`);
+                    document.getElementById('fixFrom').value = '';
+                    document.getElementById('fixTo').value = '';
+                    loadStats();
+                } else {
+                    showResult(resultDiv, 'error', '❌ Error', data.detail || data.message || 'Failed to fix records');
+                }
+            } catch (error) {
+                showResult(resultDiv, 'error', '❌ Error', error.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Fix Initials';
+            }
+        }
+
+        async function loadStats() {
+            const container = document.getElementById('statsContainer');
+            const content = document.getElementById('statsContent');
+
+            try {
+                const response = await fetch('/metrics/engineers/leaderboard?scope=all&limit=20', {
+                    headers: {
+                        'Authorization': 'Bearer ' + API_KEY
+                    }
+                });
+
+                const data = await response.json();
+                const engineers = data.items || [];
+
+                if (engineers.length === 0) {
+                    content.innerHTML = '<p style="color: #999;">No engineer data available yet.</p>';
+                } else {
+                    let html = '<div class="stats-grid">';
+                    engineers.forEach(eng => {
+                        const initials = eng.initials || '(unassigned)';
+                        html += `
+                            <div class="stat-card">
+                                <div class="stat-value">${eng.count || 0}</div>
+                                <div class="stat-label">${initials}</div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    content.innerHTML = html;
+                }
+
+                container.style.display = 'block';
+            } catch (error) {
+                content.innerHTML = '<p style="color: #c00;">Error loading stats: ' + error.message + '</p>';
+                container.style.display = 'block';
+            }
+        }
+
+        function showResult(div, type, title, message) {
+            div.className = 'result ' + type;
+            div.innerHTML = `<h3>${title}</h3><p>${message}</p>`;
+        }
+
+        // Load stats on page load
+        window.addEventListener('load', loadStats);
+    </script>
+</body>
+</html>

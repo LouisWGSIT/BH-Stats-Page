@@ -407,6 +407,32 @@ body {
   transform: translateY(0) scale(0.98);
 }
 
+.admin-btn {
+  background: linear-gradient(145deg, rgba(102, 126, 234, 0.2), rgba(102, 126, 234, 0.1));
+  border: 1px solid rgba(102, 126, 234, 0.4);
+  color: #667eea;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-right: 20px;
+  display: inline-block;
+  text-decoration: none;
+}
+
+.admin-btn:hover {
+  background: linear-gradient(145deg, rgba(102, 126, 234, 0.3), rgba(102, 126, 234, 0.15));
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+
+.admin-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
 .hidden { 
   display: none; 
 }
