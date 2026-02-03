@@ -500,97 +500,22 @@ async def erasure_detail(req: Request):
     if job_id and db.is_job_seen(job_id):
         return {"status": "ignored", "reason": "duplicate"}
 
-    # Extract device details from payload (try multiple possible field names)
-    # Based on actual Blancco report headers
-    device_details = payload.get("deviceDetails", {}) or payload.get("hardwareDetails", {}) or {}
-    
-    # Manufacturer (from "Manufacturer:" field in Blancco report)
-    manufacturer = (
-        device_details.get("manufacturer") if isinstance(device_details, dict) else None
-        or payload.get("manufacturer")
-        or payload.get("Manufacturer")
-        or payload.get("hardwareManufacturer")
-    )
-    
-    # Model (from "Model:" field in Blancco report)
-    model = (
-        device_details.get("model") if isinstance(device_details, dict) else None
-        or payload.get("model")
-        or payload.get("Model")
-    )
-    
-    # Chassis Type can help identify device type (laptop, desktop, server, etc.)
-    chassis_type = (
-        payload.get("chassisType")
-        or payload.get("ChassisType")
-        or payload.get("Chassis Type")
-    )
-    
-    # Use chassis type as model if model is empty
-    if not model and chassis_type:
-        model = chassis_type
-    
-    # Try to extract drive/disk information from Blancco fields
-    # Blancco reports show "Disk: 1 (L:1)", "Storage Controller: 1", etc.
-    drive_size = (
-        device_details.get("driveSize") if isinstance(device_details, dict) else None
-        or payload.get("driveSize")
-        or payload.get("totalDriveCapacity")
-        or payload.get("storageCapacity")
-        or payload.get("Disk")
-        or payload.get("diskSize")
-    )
-    
-    drive_count = (
-        device_details.get("driveCount") if isinstance(device_details, dict) else None
-        or payload.get("driveCount")
-        or payload.get("numberOfDrives")
-        or payload.get("storageController")
-        or payload.get("Storage Controller")
-    )
-    
-    drive_type = (
-        device_details.get("driveType") if isinstance(device_details, dict) else None
-        or payload.get("driveType")
-        or payload.get("storageType")
-        or payload.get("mediaType")
-        or payload.get("diskType")
-    )
-    
-    # Additional useful fields from Blancco that we might want to capture
-    serial = payload.get("serial") or payload.get("Serial")
-    asset_tag = payload.get("assetTag") or payload.get("Asset Tag") or payload.get("jobId")
+    # Extract device details from payload (Blancco report field names)
+    # From Blancco reports: System manufacturer, System model, System serial, Disk serial, Disk capacity
+    manufacturer = payload.get("manufacturer")
+    model = payload.get("model")
+    system_serial = payload.get("serial")  # System serial number
+    disk_serial = payload.get("diskSerial")  # Individual disk/drive serial
+    disk_capacity = payload.get("diskCapacity")  # Individual disk/drive size
     
     # Log what we found
-    if manufacturer or model or drive_size or drive_count or drive_type:
-        print(f"[DEVICE DETAILS] Captured from payload: manufacturer={manufacturer}, model={model}, chassis={chassis_type}, driveSize={drive_size}, driveCount={drive_count}, driveType={drive_type}, serial={serial}")
-    else:
-        print(f"[DEVICE DETAILS] No hardware details found in payload, attempting API fetch...")
-        # Try to fetch from Blancco API if available
-        if job_id:
-            api_details = await fetch_blancco_device_details(job_id)
-            if api_details:
-                manufacturer = manufacturer or api_details.get("manufacturer")
-                model = model or api_details.get("model")
-                drive_size = drive_size or api_details.get("drive_size")
-                drive_count = drive_count or api_details.get("drive_count")
-                drive_type = drive_type or api_details.get("drive_type")
-                print(f"[DEVICE DETAILS] Fetched from API: manufacturer={manufacturer}, model={model}")
-    
-    # Convert drive_size and drive_count to int if present
-    try:
-        drive_size = int(drive_size) if drive_size is not None else None
-    except:
-        drive_size = None
-    try:
-        drive_count = int(drive_count) if drive_count is not None else None
-    except:
-        drive_count = None
+    if manufacturer or model or disk_serial or disk_capacity:
+        print(f"[DEVICE DETAILS] Captured from payload: manufacturer={manufacturer}, model={model}, system_serial={system_serial}, disk_serial={disk_serial}, disk_capacity={disk_capacity}")
 
     db.add_erasure_event(event=event, device_type=device_type, initials=initials,
                          duration_sec=duration_sec, error_type=error_type, job_id=job_id, ts=ts,
-                         manufacturer=manufacturer, model=model, drive_size=drive_size,
-                         drive_count=drive_count, drive_type=drive_type)
+                         manufacturer=manufacturer, model=model, system_serial=system_serial,
+                         disk_serial=disk_serial, disk_capacity=disk_capacity)
     try:
         dbg = db.get_summary_today_month()
         print(f"erasure-detail wrote event={event} type={device_type} jobId={job_id} -> todayTotal={dbg.get('todayTotal')} avg={dbg.get('avgDurationSec')}")

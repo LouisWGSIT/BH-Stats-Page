@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blancco Server Message QR Code Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode.js/1.5.3/qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 40px;
+            font-size: 14px;
+        }
+
+        .qr-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .qr-card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .qr-card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .qr-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+        }
+
+        .qr-container canvas {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .device-type {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .device-type.macs {
+            background: #f0f4ff;
+            color: #667eea;
+        }
+
+        .device-type.mobiles {
+            background: #fff4f0;
+            color: #ff6b6b;
+        }
+
+        .json-payload {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 11px;
+            color: #333;
+            overflow-x: auto;
+            max-height: 150px;
+            overflow-y: auto;
+            border-left: 3px solid #667eea;
+        }
+
+        .json-payload.mobiles {
+            border-left-color: #ff6b6b;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            margin-top: 15px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-copy {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-copy:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-print {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-print:hover {
+            background: #38a169;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(72, 187, 120, 0.3);
+        }
+
+        .copy-notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #48bb78;
+            color: white;
+            padding: 16px 24px;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .copy-notification.show {
+            opacity: 1;
+        }
+
+        .instructions {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 30px;
+            margin-top: 30px;
+            color: #333;
+        }
+
+        .instructions h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            line-height: 1.8;
+        }
+
+        .instructions li {
+            margin-bottom: 10px;
+        }
+
+        .instructions code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', monospace;
+            color: #667eea;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+            .button-group {
+                display: none;
+            }
+            .instructions {
+                display: none;
+            }
+            .qr-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 24px;
+            }
+            .qr-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Blancco Server Message QR Codes</h1>
+        <p class="subtitle">Scan these QR codes into your Blancco workflows</p>
+
+        <div class="qr-grid">
+            <!-- Macs QR Code -->
+            <div class="qr-card">
+                <span class="device-type macs">🖥️ Apple Macs</span>
+                <h2>Macs Workflow</h2>
+                <div class="qr-container" id="qr-macs"></div>
+                <div class="json-payload macs" id="payload-macs-display">
+                    {"event":"success","jobId":"&lt;DEVICECUSTOMFIELD AssetTag&gt;","deviceType":"macs","initials":"&lt;DEVICECUSTOMFIELD Engineer Initials&gt;","durationSec":"&lt;DURATION&gt;","timestamp":"&lt;COMPLETIONTIME&gt;","manufacturer":"&lt;SYSTEM MANUFACTURER&gt;","model":"&lt;SYSTEM MODEL&gt;","serial":"&lt;SYSTEM SERIAL&gt;","diskSerial":"&lt;DISK SERIAL&gt;","diskCapacity":"&lt;DISK CAPACITY&gt;"}
+                </div>
+                <div class="button-group">
+                    <button class="btn-copy" onclick="copyPayload('macs')">📋 Copy JSON</button>
+                    <button class="btn-print" onclick="window.print()">🖨️ Print</button>
+                </div>
+            </div>
+
+            <!-- Mobiles QR Code -->
+            <div class="qr-card">
+                <span class="device-type mobiles">📱 Mobiles</span>
+                <h2>Mobiles Workflow</h2>
+                <div class="qr-container" id="qr-mobiles"></div>
+                <div class="json-payload" id="payload-mobiles-display">
+                    {"event":"success","jobId":"&lt;DEVICECUSTOMFIELD AssetTag&gt;","deviceType":"mobiles","initials":"&lt;DEVICECUSTOMFIELD Engineer Initials&gt;","durationSec":"&lt;DURATION&gt;","timestamp":"&lt;COMPLETIONTIME&gt;","manufacturer":"&lt;SYSTEM MANUFACTURER&gt;","model":"&lt;SYSTEM MODEL&gt;","serial":"&lt;SYSTEM SERIAL&gt;","diskSerial":"&lt;DISK SERIAL&gt;","diskCapacity":"&lt;DISK CAPACITY&gt;"}
+                </div>
+                <div class="button-group">
+                    <button class="btn-copy" onclick="copyPayload('mobiles')">📋 Copy JSON</button>
+                    <button class="btn-print" onclick="window.print()">🖨️ Print</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>📖 How to Use</h3>
+            <ol>
+                <li><strong>Option A - Scan QR Code:</strong> Use your phone to scan the QR code above and it will show the JSON payload</li>
+                <li><strong>Option B - Copy JSON:</strong> Click the "Copy JSON" button to copy the payload, then paste it into your Blancco workflow</li>
+                <li><strong>Paste into Blancco:</strong> In your Blancco workflow's Server Message configuration, replace the JSON with the copied payload</li>
+                <li><strong>Update deviceType:</strong> Make sure <code>"deviceType": "macs"</code> or <code>"deviceType": "mobiles"</code> matches your workflow</li>
+                <li><strong>Save and test:</strong> Run a test erasure to verify the payload is working</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="copy-notification" id="notification">✅ JSON copied to clipboard!</div>
+
+    <script>
+        // Payload data for both device types
+        const payloads = {
+            macs: '{"event":"success","jobId":"<DEVICECUSTOMFIELD AssetTag>","deviceType":"macs","initials":"<DEVICECUSTOMFIELD Engineer Initials>","durationSec":"<DURATION>","timestamp":"<COMPLETIONTIME>","manufacturer":"<SYSTEM MANUFACTURER>","model":"<SYSTEM MODEL>","serial":"<SYSTEM SERIAL>","diskSerial":"<DISK SERIAL>","diskCapacity":"<DISK CAPACITY>"}',
+            mobiles: '{"event":"success","jobId":"<DEVICECUSTOMFIELD AssetTag>","deviceType":"mobiles","initials":"<DEVICECUSTOMFIELD Engineer Initials>","durationSec":"<DURATION>","timestamp":"<COMPLETIONTIME>","manufacturer":"<SYSTEM MANUFACTURER>","model":"<SYSTEM MODEL>","serial":"<SYSTEM SERIAL>","diskSerial":"<DISK SERIAL>","diskCapacity":"<DISK CAPACITY>"}'
+        };
+
+        // Generate QR codes
+        function generateQRCode(deviceType) {
+            const qrElement = document.getElementById(`qr-${deviceType}`);
+            qrElement.innerHTML = ''; // Clear previous content
+            
+            new QRCode(qrElement, {
+                text: payloads[deviceType],
+                width: 250,
+                height: 250,
+                correctLevel: QRCode.CorrectLevel.H,
+                colorDark: '#000000',
+                colorLight: '#ffffff'
+            });
+        }
+
+        // Copy payload to clipboard
+        function copyPayload(deviceType) {
+            const payload = payloads[deviceType];
+            navigator.clipboard.writeText(payload).then(() => {
+                const notification = document.getElementById('notification');
+                notification.classList.add('show');
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, 3000);
+            }).catch(err => {
+                alert('Failed to copy: ' + err);
+            });
+        }
+
+        // Initialize QR codes on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            generateQRCode('macs');
+            generateQRCode('mobiles');
+        });
+    </script>
+</body>
+</html>

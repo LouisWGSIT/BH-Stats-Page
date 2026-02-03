@@ -347,8 +347,8 @@ def increment_engineer_type_count(device_type: str, initials: str, amount: int =
 
 def add_erasure_event(*, event: str, device_type: str, initials: str = None, duration_sec: int = None,
                       error_type: str = None, job_id: str = None, ts: str = None,
-                      manufacturer: str = None, model: str = None, drive_size: int = None,
-                      drive_count: int = None, drive_type: str = None):
+                      manufacturer: str = None, model: str = None, system_serial: str = None,
+                      disk_serial: str = None, disk_capacity: str = None):
     """Insert a detailed erasure event"""
     from datetime import datetime
     if ts is None:
@@ -365,7 +365,7 @@ def add_erasure_event(*, event: str, device_type: str, initials: str = None, dur
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (ts, d, month, event, device_type, (initials or None), duration_sec, (error_type or None), (job_id or None),
-         (manufacturer or None), (model or None), drive_size, drive_count, (drive_type or None))
+         (manufacturer or None), (model or None), (system_serial or None), (disk_serial or None), (disk_capacity or None))
     )
     conn.commit()
     conn.close()
