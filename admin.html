@@ -454,12 +454,14 @@
                 } else {
                     let html = '<div class="stats-grid">';
                     initials.forEach(item => {
-                        const displayName = item.initials === '(unassigned)' 
-                            ? '❌ No Name' 
-                            : item.initials;
-                        const bgColor = item.initials === '(unassigned)' 
-                            ? 'border-left-color: #ff6b6b;' 
-                            : '';
+                        // Handle empty/blank initials display
+                        let displayName = item.initials;
+                        let bgColor = '';
+                        
+                        if (item.initials === '(unassigned)' || !item.initials || item.initials.trim() === '') {
+                            displayName = '❌ No Name';
+                            bgColor = 'border-left-color: #ff6b6b;';
+                        }
                         
                         html += `
                             <div class="stat-card" style="${bgColor}">

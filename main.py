@@ -633,10 +633,14 @@ async def admin_assign_unassigned(req: Request):
     
     to_initials = to_initials.strip().upper()
     
-    # Execute the update
+    # Execute the update - catch NULL, empty string, and whitespace-only
     conn = db.sqlite3.connect(db.DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("UPDATE erasures SET initials = ? WHERE initials IS NULL OR initials = ''", (to_initials,))
+    cursor.execute("""
+        UPDATE erasures 
+        SET initials = ? 
+        WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
+    """, (to_initials,))
     affected = cursor.rowcount
     conn.commit()
     conn.close()
