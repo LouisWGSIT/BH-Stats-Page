@@ -538,14 +538,50 @@
 
     <!-- QA Stats View (Hidden by default) -->
     <main class="layout qa-stats-view" id="qaStatsView" style="display: none;">
-      <div class="qa-placeholder" style="grid-column: 1 / -1; padding: 40px; text-align: center;">
-        <h2>📊 QA Stats Dashboard</h2>
-        <p style="color: #999; margin-top: 20px; font-size: 16px;">QA metrics integration coming soon...</p>
-        <p style="color: #666; margin-top: 30px;">Connected to MariaDB for real-time QA tracking data</p>
-        <div style="margin-top: 40px; padding: 20px; background: rgba(102, 126, 234, 0.1); border-radius: 8px; display: inline-block;">
-          <p style="color: #667eea; font-weight: 600;">Data Source: QA_asset_info</p>
-          <p style="color: #999; font-size: 14px; margin-top: 10px;">Categories, Conditions, Assessments, and more</p>
+      <!-- QA Summary Cards -->
+      <div class="qa-summary-cards">
+        <div class="qa-stat-card">
+          <h3>Total Scans</h3>
+          <p class="qa-stat-value" id="qaTotalScans">-</p>
+          <span class="qa-stat-label" id="qaTotalScansLabel">This Period</span>
         </div>
+        <div class="qa-stat-card">
+          <h3>Pass Rate</h3>
+          <p class="qa-stat-value" id="qaPassRate">-</p>
+          <span class="qa-stat-label">Overall</span>
+        </div>
+        <div class="qa-stat-card">
+          <h3>Consistency</h3>
+          <p class="qa-stat-value" id="qaConsistency">-</p>
+          <span class="qa-stat-label">Avg Score</span>
+        </div>
+        <div class="qa-stat-card">
+          <h3>Top Performer</h3>
+          <p class="qa-stat-value" id="qaTopTech" style="font-size: 18px; word-break: break-word;">-</p>
+          <span class="qa-stat-label">Technician</span>
+        </div>
+      </div>
+
+      <!-- Top Performers Section -->
+      <div class="qa-section" style="grid-column: 1 / -1;">
+        <h3 class="qa-section-title">🏆 Top Performers</h3>
+        <div class="qa-performers-grid" id="qaTopPerformersGrid">
+          <!-- Populated by JavaScript -->
+        </div>
+      </div>
+
+      <!-- Technician Details Section -->
+      <div class="qa-section" style="grid-column: 1 / -1;">
+        <h3 class="qa-section-title">👥 Technician Performance</h3>
+        <div class="qa-technicians-grid" id="qaTechniciansGrid">
+          <!-- Populated by JavaScript -->
+        </div>
+      </div>
+
+      <!-- Period Selector at bottom -->
+      <div style="grid-column: 1 / -1; text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
+        <p>Period: <span id="qaCurrentPeriod">This Week</span></p>
+        <p id="qaDateRange" style="font-size: 11px;">-</p>
       </div>
     </main>
   </div>

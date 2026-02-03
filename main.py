@@ -1047,5 +1047,112 @@ async def export_qa_stats(period: str = "this_week"):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/qa-dashboard")
+async def get_qa_dashboard_data(period: str = "this_week"):
+    """Get QA dashboard data for display (not export)"""
+    try:
+        import qa_export
+        from datetime import date, timedelta
+        
+        # Get date range
+        start_date, end_date, period_label = qa_export.get_week_dates(period)
+        
+        # Get QA data
+        qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
+        
+        if not qa_data:
+            return {
+                "period": period_label,
+                "dateRange": f"{start_date} to {end_date}",
+                "technicians": [],
+                "summary": {
+                    "totalScans": 0,
+                    "passRate": 0,
+                    "avgConsistency": 0,
+                    "topTechnician": "N/A"
+                },
+                "topPerformers": [],
+                "locations": []
+            }
+        
+        # Calculate summary metrics
+        total_scans = sum(stats['total'] for stats in qa_data.values())
+        total_passed = sum(stats['successful'] for stats in qa_data.values())
+        overall_pass_rate = (total_passed / total_scans * 100) if total_scans > 0 else 0
+        
+        # Calculate consistency scores and build technician list
+        technicians = []
+        consistency_scores = []
+        
+        for tech_name in sorted(qa_data.keys()):
+            stats = qa_data[tech_name]
+            days_active = len([d for d in stats['daily'] if stats['daily'][d]['scans'] > 0])
+            avg_per_day = stats['total'] / max(1, days_active) if days_active > 0 else 0
+            
+            # Calculate consistency
+            daily_counts = [stats['daily'][day]['scans'] 
+                           for day in stats['daily'] if stats['daily'][day]['scans'] > 0]
+            
+            consistency = 100
+            if daily_counts and len(daily_counts) > 1:
+                avg = sum(daily_counts) / len(daily_counts)
+                if avg > 0:
+                    variance = sum((x - avg) ** 2 for x in daily_counts) / len(daily_counts)
+                    consistency = max(0, min(100, 100 - (variance / (avg + 1) * 10)))
+            
+            consistency_scores.append(consistency)
+            
+            # Reliability score
+            reliability = (stats['pass_rate'] * 0.6) + (consistency * 0.4)
+            
+            tech_data = {
+                "name": tech_name,
+                "totalScans": stats['total'],
+                "passRate": round(stats['pass_rate'], 1),
+                "avgPerDay": round(avg_per_day, 1),
+                "consistency": round(consistency, 1),
+                "reliability": round(reliability, 1),
+                "daysActive": days_active,
+                "daily": {}
+            }
+            
+            # Add daily breakdown
+            for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
+                if day in stats['daily']:
+                    daily = stats['daily'][day]
+                    pass_pct = (daily['passed'] / daily['scans'] * 100) if daily['scans'] > 0 else 0
+                    tech_data['daily'][day] = {
+                        "scans": daily['scans'],
+                        "passed": daily['passed'],
+                        "passRate": round(pass_pct, 1)
+                    }
+            
+            technicians.append(tech_data)
+        
+        # Get top performers
+        top_performers = sorted(technicians, key=lambda x: x['reliability'], reverse=True)[:5]
+        
+        avg_consistency = sum(consistency_scores) / len(consistency_scores) if consistency_scores else 0
+        
+        return {
+            "period": period_label,
+            "dateRange": f"{start_date.isoformat()} to {end_date.isoformat()}",
+            "technicians": technicians,
+            "summary": {
+                "totalScans": total_scans,
+                "passRate": round(overall_pass_rate, 1),
+                "avgConsistency": round(avg_consistency, 1),
+                "topTechnician": top_performers[0]['name'] if top_performers else "N/A",
+                "techniciansCount": len(technicians)
+            },
+            "topPerformers": top_performers
+        }
+    
+    except Exception as e:
+        print(f"QA dashboard data error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e), "period": period}
+
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")

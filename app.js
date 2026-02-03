@@ -2281,11 +2281,106 @@ function renderSVGSparkline(svgElem, data) {
   // ==================== DASHBOARD SWITCHING ====================
   
   let currentDashboard = 0;
+  let dashboardLocked = false;  // NEW: Lock dashboard to prevent rotation
   const dashboards = ['erasure', 'qa'];
   const dashboardTitles = {
     'erasure': 'Erasure Stats',
     'qa': 'QA Stats'
   };
+  
+  // Load QA dashboard data
+  async function loadQADashboard(period = 'this_week') {
+    try {
+      const response = await fetch(`/api/qa-dashboard?period=${period}`);
+      const data = await response.json();
+      
+      if (data.error) {
+        console.error('QA data error:', data.error);
+        return;
+      }
+      
+      // Update summary cards
+      document.getElementById('qaTotalScans').textContent = data.summary.totalScans.toLocaleString();
+      document.getElementById('qaPassRate').textContent = data.summary.passRate + '%';
+      document.getElementById('qaConsistency').textContent = data.summary.avgConsistency.toFixed(1);
+      document.getElementById('qaTopTech').textContent = data.summary.topTechnician;
+      document.getElementById('qaCurrentPeriod').textContent = data.period;
+      document.getElementById('qaDateRange').textContent = data.dateRange;
+      
+      // Render top performers
+      const performersGrid = document.getElementById('qaTopPerformersGrid');
+      performersGrid.innerHTML = data.topPerformers.map(tech => `
+        <div class="qa-performer-card">
+          <div class="qa-performer-name">${escapeHtml(tech.name)}</div>
+          <div class="qa-performer-metric">
+            <span class="qa-performer-metric-label">Scans:</span>
+            <span class="qa-performer-metric-value">${tech.totalScans}</span>
+          </div>
+          <div class="qa-performer-metric">
+            <span class="qa-performer-metric-label">Pass Rate:</span>
+            <span class="qa-performer-metric-value">${tech.passRate}%</span>
+          </div>
+          <div class="qa-performer-metric">
+            <span class="qa-performer-metric-label">Consistency:</span>
+            <span class="qa-performer-metric-value">${tech.consistency}</span>
+          </div>
+          <div class="qa-performer-metric">
+            <span class="qa-performer-metric-label">Reliability:</span>
+            <span class="qa-performer-metric-value">${tech.reliability}</span>
+          </div>
+        </div>
+      `).join('');
+      
+      // Render all technicians
+      const techniciansGrid = document.getElementById('qaTechniciansGrid');
+      techniciansGrid.innerHTML = data.technicians.map(tech => {
+        const maxScans = Math.max(...data.technicians.map(t => t.totalScans), 1);
+        const dailyData = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+          .map(day => tech.daily[day]?.scans || 0);
+        const maxDaily = Math.max(...dailyData, 1);
+        
+        return `
+          <div class="qa-tech-card">
+            <div class="qa-tech-name">${escapeHtml(tech.name)}</div>
+            <div class="qa-tech-stat">
+              <span class="qa-tech-stat-label">Scans:</span>
+              <span class="qa-tech-stat-value">${tech.totalScans}</span>
+            </div>
+            <div class="qa-tech-stat">
+              <span class="qa-tech-stat-label">Pass:</span>
+              <span class="qa-tech-stat-value">${tech.passRate}%</span>
+            </div>
+            <div class="qa-tech-stat">
+              <span class="qa-tech-stat-label">Consistency:</span>
+              <span class="qa-tech-stat-value">${tech.consistency}</span>
+            </div>
+            <div class="qa-tech-stat">
+              <span class="qa-tech-stat-label">Avg/Day:</span>
+              <span class="qa-tech-stat-value">${tech.avgPerDay}</span>
+            </div>
+            <div class="qa-daily-breakdown">
+              ${dailyData.map((scans, idx) => `
+                <div class="qa-day-bar ${scans > 0 ? 'active' : ''}">
+                  <div class="qa-day-bar-inner" style="height: ${(scans / maxDaily) * 100}%"></div>
+                  <div class="qa-day-label">${['M','T','W','T','F'][idx]}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+    } catch (error) {
+      console.error('Failed to load QA dashboard:', error);
+    }
+  }
+  
+  // Helper function to escape HTML
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
   
   function switchDashboard(index) {
     const erasureView = document.getElementById('erasureStatsView');
@@ -2307,14 +2402,18 @@ function renderSVGSparkline(svgElem, data) {
       erasureView.style.display = 'none';
       qaView.style.display = 'grid';
       titleElem.textContent = dashboardTitles.qa;
+      // Load QA data when switching to QA dashboard
+      const period = document.getElementById('dateSelector')?.value || 'this_week';
+      loadQADashboard(period);
     }
     
     // Store preference
     localStorage.setItem('currentDashboard', index);
   }
   
-  // Dashboard navigation buttons
+  // Dashboard navigation buttons - respect lock
   document.getElementById('prevDashboard').addEventListener('click', () => {
+    if (dashboardLocked) return;  // Prevent navigation if locked
     let newIndex = currentDashboard - 1;
     if (newIndex < 0) {
       newIndex = dashboards.length - 1;
@@ -2323,6 +2422,7 @@ function renderSVGSparkline(svgElem, data) {
   });
   
   document.getElementById('nextDashboard').addEventListener('click', () => {
+    if (dashboardLocked) return;  // Prevent navigation if locked
     let newIndex = currentDashboard + 1;
     if (newIndex >= dashboards.length) {
       newIndex = 0;
@@ -2330,9 +2430,38 @@ function renderSVGSparkline(svgElem, data) {
     switchDashboard(newIndex);
   });
   
+  // Lock dashboard feature - prevent switching on TVs
+  function lockDashboard() {
+    dashboardLocked = true;
+    localStorage.setItem('dashboardLocked', 'true');
+    console.log('Dashboard locked to', dashboards[currentDashboard]);
+  }
+  
+  function unlockDashboard() {
+    dashboardLocked = false;
+    localStorage.removeItem('dashboardLocked');
+    console.log('Dashboard unlocked');
+  }
+  
+  // Check if dashboard should be locked (e.g., from TV display)
+  const savedLock = localStorage.getItem('dashboardLocked') === 'true';
+  if (savedLock) {
+    lockDashboard();
+  }
+  
   // Restore last dashboard view
   const savedDashboard = parseInt(localStorage.getItem('currentDashboard') || '0');
   switchDashboard(savedDashboard);
+  
+  // Refresh QA data when period changes
+  if (document.getElementById('dateSelector')) {
+    document.getElementById('dateSelector').addEventListener('change', (e) => {
+      if (currentDashboard === 1) {  // QA dashboard index
+        const period = e.target.value.replace('-', '_');
+        loadQADashboard(period);
+      }
+    });
+  }
 
   // ==================== CSV EXPORT ====================
   

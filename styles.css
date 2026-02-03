@@ -2223,3 +2223,246 @@ main.layout {
   overflow: hidden;
   box-sizing: border-box;
 }
+/* ============= QA DASHBOARD STYLES ============= */
+
+/* QA Summary Cards (4 cards at top) */
+.qa-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+  grid-column: 1 / -1;
+}
+
+.qa-stat-card {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(102, 126, 234, 0.05) 100%);
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  transition: all 0.3s ease;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.qa-stat-card:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.25) 0%, rgba(102, 126, 234, 0.1) 100%);
+  border-color: rgba(102, 126, 234, 0.5);
+  transform: translateY(-2px);
+}
+
+.qa-stat-card h3 {
+  color: #999;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 12px 0;
+}
+
+.qa-stat-value {
+  color: #fff;
+  font-size: 42px;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1;
+}
+
+.qa-stat-label {
+  color: #888;
+  font-size: 12px;
+  margin-top: 8px;
+  display: block;
+}
+
+/* QA Section Styling */
+.qa-section {
+  display: grid;
+  gap: 0;
+  margin-bottom: 20px;
+}
+
+.qa-section-title {
+  color: #ccc;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 15px 0;
+  padding-bottom: 10px;
+  border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+}
+
+/* Top Performers Grid */
+.qa-performers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 15px;
+}
+
+.qa-performer-card {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.12) 0%, rgba(255, 193, 7, 0.04) 100%);
+  border: 2px solid rgba(255, 193, 7, 0.3);
+  border-radius: 10px;
+  padding: 18px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.qa-performer-card::before {
+  content: '★';
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 28px;
+  color: rgba(255, 193, 7, 0.5);
+}
+
+.qa-performer-card:hover {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.18) 0%, rgba(255, 193, 7, 0.08) 100%);
+  border-color: rgba(255, 193, 7, 0.5);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+}
+
+.qa-performer-name {
+  color: #ffc107;
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 12px 0;
+}
+
+.qa-performer-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+  font-size: 13px;
+}
+
+.qa-performer-metric:last-child {
+  border-bottom: none;
+}
+
+.qa-performer-metric-label {
+  color: #999;
+}
+
+.qa-performer-metric-value {
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* Technicians Grid */
+.qa-technicians-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.qa-tech-card {
+  background: rgba(102, 126, 234, 0.08);
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  border-radius: 8px;
+  padding: 15px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.qa-tech-card:hover {
+  background: rgba(102, 126, 234, 0.12);
+  border-color: rgba(102, 126, 234, 0.4);
+  transform: translateY(-2px);
+}
+
+.qa-tech-name {
+  color: #667eea;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 10px 0;
+  word-break: break-word;
+}
+
+.qa-tech-stat {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 12px;
+}
+
+.qa-tech-stat-label {
+  color: #888;
+}
+
+.qa-tech-stat-value {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Daily Breakdown Mini Chart */
+.qa-daily-breakdown {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(102, 126, 234, 0.1);
+}
+
+.qa-day-bar {
+  flex: 1;
+  height: 30px;
+  background: rgba(102, 126, 234, 0.2);
+  border-radius: 4px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  position: relative;
+  font-size: 9px;
+  color: #999;
+  overflow: hidden;
+}
+
+.qa-day-bar.active {
+  background: linear-gradient(180deg, rgba(102, 126, 234, 0.5) 0%, rgba(102, 126, 234, 0.3) 100%);
+}
+
+.qa-day-bar-inner {
+  width: 100%;
+  height: 0%;
+  background: linear-gradient(180deg, #667eea 0%, #5568d3 100%);
+  border-radius: 2px;
+  transition: height 0.3s ease;
+}
+
+.qa-day-label {
+  position: absolute;
+  bottom: -18px;
+  font-size: 10px;
+  width: 100%;
+  text-align: center;
+  color: #888;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1400px) {
+  .qa-summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .qa-summary-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .qa-performers-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  .qa-technicians-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+}
