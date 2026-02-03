@@ -18,17 +18,17 @@
         <h1>Warehouse Erasure Stats</h1>
       </div>
       <div class="meta">
+        <div class="dashboard-nav">
+          <button id="prevDashboard" class="nav-arrow" title="Previous dashboard">←</button>
+          <span id="dashboardTitle" class="dashboard-title">Erasure Stats</span>
+          <button id="nextDashboard" class="nav-arrow" title="Next dashboard">→</button>
+        </div>
         <select id="dateSelector" class="date-selector">
           <option value="this-week">This Week</option>
           <option value="last-week">Last Week</option>
           <option value="this-month">This Month</option>
           <option value="last-month">Last Month</option>
         </select>
-        <div class="dashboard-nav">
-          <button id="prevDashboard" class="nav-arrow" title="Previous dashboard">←</button>
-          <span id="dashboardTitle" class="dashboard-title">Erasure Stats</span>
-          <button id="nextDashboard" class="nav-arrow" title="Next dashboard">→</button>
-        </div>
         <button id="downloadBtn" class="download-btn" title="Download stats as CSV">📥 Export</button>
         <a href="admin.html" class="admin-btn" title="Admin panel">⚙️ Admin</a>
         <span id="last-updated">Last updated: --</span>

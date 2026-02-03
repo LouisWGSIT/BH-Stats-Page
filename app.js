@@ -2487,27 +2487,14 @@ function renderSVGSparkline(svgElem, data) {
     // Get category data - fetch for all report types
     const categoryRows = [];
     try {
-      if (!isMonthlyReport) {
-        if (!isYesterday) {
-          categories.forEach(cat => {
-            const count = document.getElementById(cat.countId)?.textContent || '0';
-            categoryRows.push([cat.label, count]);
-          });
-        } else {
-          // For yesterday, fetch from API
-          const res = await fetch(`/analytics/category-breakdown?date=${targetDate.toISOString().split('T')[0]}`);
-          if (res.ok) {
-            const data = await res.json();
-            (data.categories || []).forEach(cat => {
-              categoryRows.push([cat.name, cat.count]);
-            });
-          } else {
-            console.warn('Category breakdown endpoint not available for yesterday');
-          }
-        }
+      if (!isMonthlyReport && !isWeeklyReport) {
+        categories.forEach(cat => {
+          const count = document.getElementById(cat.countId)?.textContent || '0';
+          categoryRows.push([cat.label, count]);
+        });
       } else {
-        // For monthly reports, category breakdown endpoint not available - skip
-        console.log('Skipping category breakdown for monthly reports (endpoint not available)');
+        // For weekly/monthly reports, would need API endpoint - skip for now
+        console.log('Category breakdown for weekly/monthly reports not yet implemented');
       }
     } catch (err) {
       console.error('Failed to fetch category data:', err);
@@ -2515,9 +2502,8 @@ function renderSVGSparkline(svgElem, data) {
 
     // Get top performers per category - fetch for all report types
     const categoryTopPerformers = [];
-    if (!isYesterday) {
-      try {
-        if (!isMonthlyReport) {
+    try {
+      if (!isMonthlyReport && !isWeeklyReport) {
           categories.forEach(cat => {
             const listEl = document.getElementById(cat.listId);
             if (listEl) {
@@ -2593,9 +2579,12 @@ function renderSVGSparkline(svgElem, data) {
     } else if (isLastMonth) {
       reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT - LAST MONTH';
       reportSubtitle = `Monthly Report for: ${dateRangeStr}`;
-    } else if (isYesterday) {
-      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT (Yesterday)';
-      reportSubtitle = `Data for: ${dateRangeStr}`;
+    } else if (isLastWeek) {
+      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT - LAST WEEK';
+      reportSubtitle = `Weekly Report for: ${dateRangeStr}`;
+    } else if (isThisWeek) {
+      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT - THIS WEEK';
+      reportSubtitle = `Current Week Status - ${dateRangeStr}`;
     } else {
       reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT';
       reportSubtitle = `Current Status - ${dateRangeStr}`;
@@ -2617,8 +2606,12 @@ function renderSVGSparkline(svgElem, data) {
       csv.push(['Days in Month', daysInMonth, `Total days`, isThisMonth ? `${daysRemaining} remaining` : 'Complete']);
       csv.push(['Achievement Rate', `${progressPercent}%`, `of monthly expectation`, progressPercent >= 100 ? 'Exceeded Target' : 'Below Target']);
       csv.push(['Days Active', Object.values(engineerKPIs).reduce((sum, kpi) => sum + (kpi.daysActiveMonth || 0), 0), 'Across all engineers', 'Utilization metric']);
+    } else if (isWeeklyReport) {
+      csv.push(['Weekly Total', todayTotal, `Target: ~${parseInt(target) * 5}`, statusIndicator]);
+      csv.push(['Daily Average', dailyAvg, 'Per day', `${dailyAvg > parseInt(target) ? 'Above' : 'Below'} target`]);
+      csv.push(['Week Period', dateRangeStr, 'Mon-Sun', isThisWeek ? 'In Progress' : 'Complete']);
     } else {
-      csv.push([isYesterday ? 'Daily Total' : 'Today\'s Total', todayTotal, `Target: ${target}`, statusIndicator]);
+      csv.push(['Today\'s Total', todayTotal, `Target: ${target}`, statusIndicator]);
       csv.push(['Month Total', monthTotal, `Avg ${target}/day`, `${monthProgressPercent}% of pace`]);
       csv.push(['Daily Average', dailyAvg, 'Per day', `${dailyAvg > parseInt(target) ? 'Above' : 'Below'} target`]);
       csv.push(['Projected Month', projectedTotal, `of ~${parseInt(target) * daysInMonth} max`, `${Math.round((projectedTotal / (parseInt(target) * daysInMonth)) * 100)}% utilization`]);
@@ -2707,7 +2700,7 @@ function renderSVGSparkline(svgElem, data) {
     }
 
     // Engineer leaderboard section
-    if (!isMonthlyReport && !isYesterday && allEngineersRows.length > 0) {
+    if (!isMonthlyReport && !isWeeklyReport && allEngineersRows.length > 0) {
       csv.push(['TOP 3 ENGINEERS (Daily Leaders)']);
       csv.push(['Rank', 'Engineer', 'Erasures', 'Last Active', 'Status']);
       allEngineersRows.slice(0, 3).forEach((row, idx) => {
@@ -2732,8 +2725,8 @@ function renderSVGSparkline(svgElem, data) {
     }
 
     // All engineers section
-    csv.push([isMonthlyReport ? 'ENGINEER PERFORMANCE - MONTHLY SUMMARY' : (isYesterday ? 'ALL ENGINEERS (YESTERDAY)' : 'ALL ENGINEERS - DETAILED LEADERBOARD WITH KPIs')]);
-    csv.push(['Rank', 'Engineer', isMonthlyReport ? 'Month Total' : (isYesterday ? 'Total Erasures' : 'Today Total'), 'Last Active', 'Per Hour', '% Target', '7-Day Avg', '30-Day Avg', 'Trend', 'Personal Best', 'Consistency', 'Days Active']);
+    csv.push([isMonthlyReport ? 'ENGINEER PERFORMANCE - MONTHLY SUMMARY' : isWeeklyReport ? 'ALL ENGINEERS - WEEKLY SUMMARY' : 'ALL ENGINEERS - DETAILED LEADERBOARD WITH KPIs']);
+    csv.push(['Rank', 'Engineer', isMonthlyReport ? 'Month Total' : isWeeklyReport ? 'Week Total' : 'Today Total', 'Last Active', 'Per Hour', '% Target', '7-Day Avg', '30-Day Avg', 'Trend', 'Personal Best', 'Consistency', 'Days Active']);
     csv.push(...(allEngineersRows.length > 0 ? allEngineersRows.map(row => {
       const erasures = parseInt(row[2]);
       const pct = parseInt(target) > 0 ? Math.round((erasures / parseInt(target)) * 100) : 0;
@@ -2868,7 +2861,7 @@ function renderSVGSparkline(svgElem, data) {
     csv.push(['REPORT INFORMATION']);
     csv.push(['Report Type', isMonthlyReport ? 'Monthly Warehouse Erasure Statistics' : 'Daily Warehouse Erasure Statistics']);
     csv.push(['Target', `${target} erasures per day`]);
-    csv.push(['Scope', isThisMonth ? 'Current month (to date)' : isLastMonth ? 'Previous month' : isYesterday ? 'Yesterday\'s performance' : 'Current day (real-time)']);
+    csv.push(['Scope', isThisMonth ? 'Current month (to date)' : isLastMonth ? 'Previous month' : isThisWeek ? 'Current week (Monday to today)' : isLastWeek ? 'Previous week (Mon-Sun)' : 'Current day (real-time)']);
     csv.push(['Data Freshness', 'Real-time updates every 30 seconds']);
     csv.push(['Competitions', 'Speed Challenge (AM: 8-12, PM: 13:30-15:45) | Category Specialists | Consistency Kings/Queens']);
     
@@ -2895,7 +2888,7 @@ function renderSVGSparkline(svgElem, data) {
   }
 
   async function downloadExcel() {
-    const dateScope = document.getElementById('dateSelector')?.value || 'today';
+    const dateScope = document.getElementById('dateSelector')?.value || 'this-week';
     const csv = await generateCSV();
     
     // Parse CSV into rows
