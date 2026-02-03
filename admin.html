@@ -295,6 +295,25 @@
                     <div id="statsContent"></div>
                 </div>
             </div>
+
+            <!-- Section 5: Engineer Deep Dive Export -->
+            <div class="section">
+                <h2>📊 Engineer Deep Dive Export</h2>
+                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+                    Download comprehensive Excel reports analyzing each engineer's performance, device breakdown, manufacturers, models, and daily activity.
+                </p>
+                <div class="form-group">
+                    <label for="exportPeriod">Time Period:</label>
+                    <select id="exportPeriod" style="max-width: 200px;">
+                        <option value="this_week">This Week</option>
+                        <option value="last_week">Last Week</option>
+                        <option value="this_month">This Month</option>
+                        <option value="last_month">Last Month</option>
+                    </select>
+                </div>
+                <button onclick="downloadEngineerDeepDive()">📥 Download Report</button>
+                <div id="exportResult" class="result"></div>
+            </div>
         </div>
     </div>
 
@@ -524,6 +543,36 @@
             } catch (error) {
                 content.innerHTML = '<p style="color: #c00;">Error loading initials: ' + error.message + '</p>';
                 container.style.display = 'block';
+            }
+        }
+
+        async function downloadEngineerDeepDive() {
+            const period = document.getElementById('exportPeriod').value;
+            const resultDiv = document.getElementById('exportResult');
+            
+            resultDiv.innerHTML = '<p style="color: #667eea;">⏳ Generating report...</p>';
+            
+            try {
+                // Open the export endpoint in a new window to trigger download
+                window.location.href = `/export/engineer-deepdive?period=${period}`;
+                
+                // Show success message
+                setTimeout(() => {
+                    const periodLabels = {
+                        'this_week': 'This Week',
+                        'last_week': 'Last Week',
+                        'this_month': 'This Month',
+                        'last_month': 'Last Month'
+                    };
+                    resultDiv.innerHTML = `<p style="color: #10b981;">✅ Download started for ${periodLabels[period]}!</p>`;
+                    
+                    // Clear message after 3 seconds
+                    setTimeout(() => {
+                        resultDiv.innerHTML = '';
+                    }, 3000);
+                }, 500);
+            } catch (error) {
+                resultDiv.innerHTML = '<p style="color: #c00;">❌ Error: ' + error.message + '</p>';
             }
         }
     </script>
