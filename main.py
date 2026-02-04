@@ -64,8 +64,9 @@ LOCAL_NETWORKS = [
     ipaddress.ip_network("172.16.0.0/12"),    # 172.16.x.x
 ]
 
-# Admin password for external access (set via environment or use default)
-ADMIN_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "Gr33n5af3!")
+# Manager and admin passwords for external access (set via environment or use defaults)
+MANAGER_PASSWORD = os.getenv("DASHBOARD_MANAGER_PASSWORD", "Gr33n5af3!")
+ADMIN_PASSWORD = os.getenv("DASHBOARD_ADMIN_PASSWORD", "P!nkarrow")
 
 # Device token storage (persistent across redeployments)
 DEVICE_TOKENS_FILE = "device_tokens.json"
@@ -118,6 +119,37 @@ def is_local_network(client_ip: str) -> bool:
     except ValueError:
         return False
 
+def get_client_ip(request: Request) -> str:
+    """Get real client IP from X-Forwarded-For header or request client."""
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "0.0.0.0"
+
+def get_role_from_request(request: Request) -> str | None:
+    """Resolve role from request auth header or device token."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        if token == ADMIN_PASSWORD:
+            return "admin"
+        if token == MANAGER_PASSWORD:
+            return "manager"
+        if is_device_token_valid(token):
+            tokens = load_device_tokens()
+            return tokens.get(token, {}).get("role")
+    return None
+
+def require_manager_or_admin(request: Request):
+    role = get_role_from_request(request)
+    if role not in ("manager", "admin"):
+        raise HTTPException(status_code=403, detail="Manager access required for exports")
+
+def require_admin(request: Request):
+    role = get_role_from_request(request)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     """
@@ -126,11 +158,7 @@ async def auth_middleware(request: Request, call_next):
     External = requires password.
     """
     # Get real client IP from X-Forwarded-For header (set by reverse proxies like Render)
-    forwarded_for = request.headers.get("X-Forwarded-For", "")
-    if forwarded_for:
-        client_ip = forwarded_for.split(",")[0].strip()
-    else:
-        client_ip = request.client.host if request.client else "0.0.0.0"
+    client_ip = get_client_ip(request)
     
     # Get user agent to detect TV browsers (FireStick Silk)
     user_agent = request.headers.get("User-Agent", "").lower()
@@ -138,6 +166,10 @@ async def auth_middleware(request: Request, call_next):
     
     # Allow static assets without auth
     if request.url.path.startswith(("/styles.css", "/assets/", "/vendor/")):
+        return await call_next(request)
+
+    # Allow admin page to load (it will prompt for admin password)
+    if request.url.path == "/admin.html":
         return await call_next(request)
     
     # Allow auth endpoints without prior auth
@@ -149,15 +181,23 @@ async def auth_middleware(request: Request, call_next):
         print(f"TV browser detected (User-Agent: {user_agent[:50]}...) - auto-allowing access")
         return await call_next(request)
     
-    # Check if local network
+    # Check if local network (viewer access)
     if is_local_network(client_ip):
-        return await call_next(request)
+        # Admin paths still require admin password/token
+        if request.url.path.startswith("/admin"):
+            pass
+        else:
+            return await call_next(request)
     
     # Check for valid device token (remembered device)
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
         if is_device_token_valid(token):
+            tokens = load_device_tokens()
+            role = tokens.get(token, {}).get("role")
+            if request.url.path.startswith("/admin") and role != "admin":
+                return JSONResponse(status_code=403, content={"detail": "Admin access required."})
             return await call_next(request)
     
     # External access: check for password
@@ -166,9 +206,15 @@ async def auth_middleware(request: Request, call_next):
         token = auth_header[7:]
         if token == ADMIN_PASSWORD:
             return await call_next(request)
+        if token == MANAGER_PASSWORD:
+            if request.url.path.startswith("/admin"):
+                return JSONResponse(status_code=403, content={"detail": "Admin access required."})
+            return await call_next(request)
     
     # Check query parameter (for page loads)
-    if request.query_params.get("auth") == ADMIN_PASSWORD:
+    if request.query_params.get("auth") in (ADMIN_PASSWORD, MANAGER_PASSWORD):
+        if request.query_params.get("auth") == MANAGER_PASSWORD and request.url.path.startswith("/admin"):
+            return JSONResponse(status_code=403, content={"detail": "Admin access required."})
         return await call_next(request)
     
     # Check Basic Auth format
@@ -180,11 +226,13 @@ async def auth_middleware(request: Request, call_next):
                 _, password = decoded.split(":", 1)
                 if password == ADMIN_PASSWORD:
                     return await call_next(request)
+                if password == MANAGER_PASSWORD and not request.url.path.startswith("/admin"):
+                    return await call_next(request)
         except:
             pass
     
     # For API requests, return 401
-    if request.url.path.startswith("/metrics") or request.url.path.startswith("/analytics") or request.url.path.startswith("/competitions") or request.url.path.startswith("/export") or request.url.path.startswith("/api"):
+    if request.url.path.startswith("/metrics") or request.url.path.startswith("/analytics") or request.url.path.startswith("/competitions") or request.url.path.startswith("/export") or request.url.path.startswith("/api") or request.url.path.startswith("/admin"):
         return JSONResponse(
             status_code=401,
             content={"detail": "Unauthorized. External access requires password."}
@@ -617,9 +665,7 @@ async def metrics_month_comparison(currentStart: str, currentEnd: str, previousS
 @app.get("/admin/initials-list")
 async def admin_get_initials_list(req: Request):
     """Get all unique initials in the database with their counts"""
-    hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
-    if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    require_admin(req)
 
     conn = db.sqlite3.connect(db.DB_PATH)
     cursor = conn.cursor()
@@ -645,9 +691,7 @@ async def admin_get_initials_list(req: Request):
 # Admin: delete an ingested event by jobId (secured by API key)
 @app.post("/admin/delete-event")
 async def admin_delete_event(req: Request):
-    hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
-    if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    require_admin(req)
 
     body = {}
     try:
@@ -666,9 +710,7 @@ async def admin_delete_event(req: Request):
 @app.post("/admin/assign-unassigned")
 async def admin_assign_unassigned(req: Request):
     """Assign all erasures with NULL or empty initials to a specific engineer"""
-    hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
-    if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    require_admin(req)
 
     body = {}
     try:
@@ -707,9 +749,7 @@ async def admin_assign_unassigned(req: Request):
 @app.post("/admin/fix-initials")
 async def admin_fix_initials(req: Request):
     """Change all erasures with old initials to new initials (useful for fixing typos/mistakes)"""
-    hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
-    if not hdr or (hdr != f"Bearer {WEBHOOK_API_KEY}" and hdr != WEBHOOK_API_KEY):
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    require_admin(req)
 
     body = {}
     try:
@@ -719,6 +759,14 @@ async def admin_fix_initials(req: Request):
     
     from_initials = body.get("from") if isinstance(body, dict) else None
     to_initials = (body.get("to") if isinstance(body, dict) else None) or req.query_params.get("to")
+    limit = body.get("limit") if isinstance(body, dict) else None
+    if limit is None or limit == "":
+        limit = None
+    else:
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = None
     
     # from_initials can be empty string (for blank records), but to_initials must have a value
     if from_initials is None:
@@ -739,18 +787,51 @@ async def admin_fix_initials(req: Request):
     if from_initials == '' or from_initials is None:
         # Target NULL or empty/whitespace records
         cursor.execute("""
-            UPDATE erasures 
-            SET initials = ? 
+            SELECT COUNT(1)
+            FROM erasures
             WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
-        """, (to_initials,))
+        """)
+        available_count = cursor.fetchone()[0]
+        if limit is not None:
+            limit = max(0, min(int(limit), available_count))
+        if limit:
+            cursor.execute("""
+                UPDATE erasures
+                SET initials = ?
+                WHERE rowid IN (
+                    SELECT rowid FROM erasures
+                    WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
+                    LIMIT ?
+                )
+            """, (to_initials, limit))
+        else:
+            cursor.execute("""
+                UPDATE erasures 
+                SET initials = ? 
+                WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
+            """, (to_initials,))
         from_display = "(blank/unassigned)"
     else:
         # Target specific initials
         if from_initials == to_initials:
             conn.close()
             return {"status": "error", "message": "from and to initials must be different"}
-        
-        cursor.execute("UPDATE erasures SET initials = ? WHERE initials = ?", (to_initials, from_initials))
+        cursor.execute("SELECT COUNT(1) FROM erasures WHERE initials = ?", (from_initials,))
+        available_count = cursor.fetchone()[0]
+        if limit is not None:
+            limit = max(0, min(int(limit), available_count))
+        if limit:
+            cursor.execute("""
+                UPDATE erasures
+                SET initials = ?
+                WHERE rowid IN (
+                    SELECT rowid FROM erasures
+                    WHERE initials = ?
+                    LIMIT ?
+                )
+            """, (to_initials, from_initials, limit))
+        else:
+            cursor.execute("UPDATE erasures SET initials = ? WHERE initials = ?", (to_initials, from_initials))
         from_display = from_initials
     
     affected = cursor.rowcount
@@ -764,8 +845,45 @@ async def admin_fix_initials(req: Request):
         "action": "fix_initials",
         "from_initials": from_display,
         "to_initials": to_initials,
-        "affected_records": affected
+        "affected_records": affected,
+        "available_records": available_count
     }
+
+@app.get("/admin/connected-devices")
+async def admin_connected_devices(req: Request):
+    """List active device tokens with roles and expiry."""
+    require_admin(req)
+    tokens = load_device_tokens()
+    devices = []
+    for token, info in tokens.items():
+        devices.append({
+            "token": token,
+            "role": info.get("role"),
+            "client_ip": info.get("client_ip"),
+            "user_agent": info.get("user_agent"),
+            "created": info.get("created"),
+            "expiry": info.get("expiry")
+        })
+    return {"status": "ok", "devices": devices}
+
+@app.post("/admin/revoke-device")
+async def admin_revoke_device(req: Request):
+    """Revoke a device token."""
+    require_admin(req)
+    body = {}
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    token = (body.get("token") if isinstance(body, dict) else None) or req.query_params.get("token")
+    if not token:
+        raise HTTPException(status_code=400, detail="token is required")
+    tokens = load_device_tokens()
+    if token in tokens:
+        del tokens[token]
+        save_device_tokens(tokens)
+        return {"status": "ok", "revoked": True}
+    return {"status": "ok", "revoked": False}
 
 def _extract_initials_from_obj(obj: Any):
     # Try common explicit keys first
@@ -940,12 +1058,7 @@ async def get_all_engineers_kpis():
 @app.get("/auth/status")
 async def auth_status(request: Request):
     """Check auth status for current client"""
-    # Get real client IP from X-Forwarded-For header (set by reverse proxies like Render)
-    forwarded_for = request.headers.get("X-Forwarded-For", "")
-    if forwarded_for:
-        client_ip = forwarded_for.split(",")[0].strip()
-    else:
-        client_ip = request.client.host if request.client else "0.0.0.0"
+    client_ip = get_client_ip(request)
     
     # Check for TV browser
     user_agent = request.headers.get("User-Agent", "").lower()
@@ -953,11 +1066,24 @@ async def auth_status(request: Request):
     
     is_local = is_local_network(client_ip)
     is_authenticated = is_local or is_tv_browser
-    
-    # Determine role: local network = viewer, external requires manager password
     role = "viewer" if (is_local or is_tv_browser) else None
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        if token == ADMIN_PASSWORD:
+            role = "admin"
+            is_authenticated = True
+        elif token == MANAGER_PASSWORD:
+            role = "manager"
+            is_authenticated = True
+        elif is_device_token_valid(token):
+            tokens = load_device_tokens()
+            role = tokens.get(token, {}).get("role") or role
+            is_authenticated = True
     
     # Log for debugging
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
     print(f"Auth check - Client IP: {client_ip}, Is Local: {is_local}, Is TV: {is_tv_browser}, Role: {role}, X-Forwarded-For: {forwarded_for}")
     
     return {
@@ -971,7 +1097,7 @@ async def auth_status(request: Request):
 
 @app.post("/auth/login")
 async def login(request: Request):
-    """External users can login with password"""
+    """Users can login with manager/admin password"""
     try:
         body = await request.json()
         password = body.get("password", "")
@@ -983,7 +1109,7 @@ async def login(request: Request):
         else:
             client_ip = request.client.host if request.client else "0.0.0.0"
         
-        # Manager password accepted anywhere
+        # Admin password accepted anywhere
         if password == ADMIN_PASSWORD:
             # Generate device token for future auto-login
             user_agent = request.headers.get("User-Agent", "Unknown")
@@ -996,17 +1122,42 @@ async def login(request: Request):
                 "expiry": (datetime.now() + timedelta(days=DEVICE_TOKEN_EXPIRY_DAYS)).isoformat(),
                 "user_agent": user_agent,
                 "client_ip": client_ip,
-                "role": "manager"
+                "role": "admin"
             }
             save_device_tokens(tokens)
             
-            print(f"Manager device token created for {client_ip} - expires in {DEVICE_TOKEN_EXPIRY_DAYS} days")
+            print(f"Admin device token created for {client_ip} - expires in {DEVICE_TOKEN_EXPIRY_DAYS} days")
             
+            return {
+                "authenticated": True,
+                "role": "admin",
+                "device_token": device_token,
+                "token": ADMIN_PASSWORD,
+                "message": "Admin access granted"
+            }
+
+        # Manager password accepted anywhere
+        if password == MANAGER_PASSWORD:
+            user_agent = request.headers.get("User-Agent", "Unknown")
+            device_token = generate_device_token(user_agent, client_ip)
+
+            tokens = load_device_tokens()
+            tokens[device_token] = {
+                "created": datetime.now().isoformat(),
+                "expiry": (datetime.now() + timedelta(days=DEVICE_TOKEN_EXPIRY_DAYS)).isoformat(),
+                "user_agent": user_agent,
+                "client_ip": client_ip,
+                "role": "manager"
+            }
+            save_device_tokens(tokens)
+
+            print(f"Manager device token created for {client_ip} - expires in {DEVICE_TOKEN_EXPIRY_DAYS} days")
+
             return {
                 "authenticated": True,
                 "role": "manager",
                 "device_token": device_token,
-                "token": ADMIN_PASSWORD,
+                "token": MANAGER_PASSWORD,
                 "message": "Manager access granted"
             }
         
@@ -1023,17 +1174,7 @@ async def login(request: Request):
 @app.post("/export/excel")
 async def export_excel(req: Request):
     """Generate multi-sheet Excel export of warehouse stats (manager only)"""
-    # Check for manager role
-    auth_header = req.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer ") or auth_header[7:] != ADMIN_PASSWORD:
-        # Check device token for role
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-            tokens = load_device_tokens()
-            if token in tokens and tokens[token].get("role") != "manager":
-                raise HTTPException(status_code=403, detail="Manager access required for exports")
-        else:
-            raise HTTPException(status_code=403, detail="Manager access required for exports")
+    require_manager_or_admin(req)
     
     try:
         body = await req.json()
@@ -1055,17 +1196,7 @@ async def export_excel(req: Request):
 @app.get("/export/engineer-deepdive")
 async def export_engineer_deepdive(request: Request, period: str = "this_week"):
     """Generate engineer deep-dive Excel export for a specific period (manager only)"""
-    # Check for manager role
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer ") or auth_header[7:] != ADMIN_PASSWORD:
-        # Check device token for role
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-            tokens = load_device_tokens()
-            if token in tokens and tokens[token].get("role") != "manager":
-                raise HTTPException(status_code=403, detail="Manager access required for exports")
-        else:
-            raise HTTPException(status_code=403, detail="Manager access required for exports")
+    require_manager_or_admin(request)
     
     try:
         import engineer_export
@@ -1104,17 +1235,7 @@ async def export_engineer_deepdive(request: Request, period: str = "this_week"):
 @app.get("/export/qa-stats")
 async def export_qa_stats(request: Request, period: str = "this_week"):
     """Generate QA stats Excel export for a specific period from MariaDB (manager only)"""
-    # Check for manager role
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer ") or auth_header[7:] != ADMIN_PASSWORD:
-        # Check device token for role
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-            tokens = load_device_tokens()
-            if token in tokens and tokens[token].get("role") != "manager":
-                raise HTTPException(status_code=403, detail="Manager access required for exports")
-        else:
-            raise HTTPException(status_code=403, detail="Manager access required for exports")
+    require_manager_or_admin(request)
     
     try:
         import qa_export

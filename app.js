@@ -65,67 +65,47 @@ function renderSVGSparkline(svgElem, data) {
 
   async function checkAuth() {
     try {
-      // Check for device token first (remembered device)
-      const deviceToken = localStorage.getItem('deviceToken');
-      if (deviceToken) {
-        setupAuthHeaders(deviceToken);
+      const existingToken = sessionStorage.getItem('authToken') || localStorage.getItem('deviceToken');
+      if (existingToken) {
         try {
-          const verifyRes = await fetch('/metrics/all-time-totals');
-          if (verifyRes.ok) {
-      
-      // If already authenticated (local network), proceed
+          const statusRes = await fetch('/auth/status', {
+            headers: { 'Authorization': 'Bearer ' + existingToken }
+          });
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            if (statusData.role) {
+              sessionStorage.setItem('userRole', statusData.role);
+            }
+            if (statusData.authenticated) {
+              setupAuthHeaders(existingToken);
+              return true;
+            }
+          }
+        } catch (statusErr) {
+          console.warn('Auth status with token failed:', statusErr);
+        }
+      }
+
+      const authRes = await fetch('/auth/status');
+      const authData = await authRes.json();
+
+      if (authData.role) {
+        sessionStorage.setItem('userRole', authData.role);
+      }
+
       if (authData.authenticated) {
         console.log('Local network access granted, role:', authData.role);
+        if (authData.role === 'viewer') {
+          sessionStorage.setItem('userRole', 'viewer');
+        }
         return true;
       }
-      
-      // External access - show login modal
+
       console.log('External access requires password');
       showLoginModal();
-              console.log('Local network access granted, role:', authData.role);
-              // Enforce viewer role on local network - clear any cached manager tokens
-              if (authData.role === 'viewer') {
-                localStorage.removeItem('deviceToken');
-                sessionStorage.removeItem('authToken');
-                sessionStorage.setItem('userRole', 'viewer');
-              }
+      return false;
     } catch (err) {
       console.error('Auth check failed:', err);
-
-            // External access: check for device token (manager only)
-            const deviceToken = localStorage.getItem('deviceToken');
-            if (deviceToken) {
-              setupAuthHeaders(deviceToken);
-              try {
-                const verifyRes = await fetch('/metrics/all-time-totals');
-                if (verifyRes.ok) {
-                  console.log('Device token accepted');
-                  sessionStorage.setItem('userRole', 'manager');
-                  return true;
-                }
-              } catch (verifyErr) {
-                console.warn('Device token verification failed:', verifyErr);
-              }
-              localStorage.removeItem('deviceToken');
-            }
-
-            // External access: check for session token (manager only)
-            const existingToken = sessionStorage.getItem('authToken');
-            if (existingToken) {
-              setupAuthHeaders(existingToken);
-              try {
-                const verifyRes = await fetch('/metrics/all-time-totals');
-                if (verifyRes.ok) {
-                  console.log('Session auth token accepted');
-                  sessionStorage.setItem('userRole', 'manager');
-                  return true;
-                }
-              } catch (verifyErr) {
-                console.warn('Session auth token verification failed:', verifyErr);
-              }
-              sessionStorage.removeItem('authToken');
-            }
-      // If check fails, show login anyway to be safe
       showLoginModal();
       return false;
     }
@@ -251,7 +231,12 @@ function renderSVGSparkline(svgElem, data) {
       if (adminBtn) adminBtn.style.display = 'none';
       if (loginUpgradeIcon) loginUpgradeIcon.style.display = 'inline-block';
     } else if (userRole === 'manager') {
-      // Manager mode: show all controls, hide upgrade icon
+      // Manager mode: export only
+      if (downloadBtn) downloadBtn.style.display = 'inline-block';
+      if (adminBtn) adminBtn.style.display = 'none';
+      if (loginUpgradeIcon) loginUpgradeIcon.style.display = 'inline-block';
+    } else if (userRole === 'admin') {
+      // Admin mode: export + admin
       if (downloadBtn) downloadBtn.style.display = 'inline-block';
       if (adminBtn) adminBtn.style.display = 'inline-block';
       if (loginUpgradeIcon) loginUpgradeIcon.style.display = 'none';
