@@ -3055,111 +3055,17 @@ function renderSVGSparkline(svgElem, data) {
 
   async function downloadExcel() {
     const dateScope = document.getElementById('dateSelector')?.value || 'this-week';
-    const csv = await generateCSV();
-    
-    // Parse CSV into rows
-    const rows = csv.split('\n').map(line => {
-      // Simple CSV parsing - handle quoted fields
-      const result = [];
-      let current = '';
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          result.push(current.replace(/^"|"$/g, ''));
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      if (current) {
-        result.push(current.replace(/^"|"$/g, ''));
-      }
-      return result;
-    }).filter(row => row.some(cell => cell));  // Remove empty rows
-    
-    // Organize into sheets based on section headers
-    const sheets = {};
-    let currentSheet = 'Summary';
-    let currentSheetData = [];
-    
-    const sheetMappings = {
-      'EXECUTIVE SUMMARY': 'Executive Summary',
-      'PERFORMANCE TRENDS': 'Performance Trends',
-      'TARGET ACHIEVEMENT': 'Target Achievement',
-      'TOP 3 ENGINEERS': 'Top Engineers',
-      'ALL ENGINEERS': 'Engineer Details',
-      'ENGINEER DEVICE': 'Device Specialization',
-      'ENGINEER WEEKLY BREAKDOWN': 'Engineer Weekly Stats',
-      'MONTH-OVER-MONTH COMPARISON': 'Month Comparison',
-      'BREAKDOWN BY CATEGORY': 'Category Breakdown',
-      'TOP PERFORMERS': 'Category Leaders',
-      'HISTORICAL RECORDS': 'Records & Milestones',
-      'WEEKLY PERFORMANCE': 'Weekly Stats',
-      'SPEED CHALLENGE': 'Speed Challenges',
-      'CATEGORY SPECIALISTS': 'Category Specialists',
-      'CONSISTENCY': 'Consistency Kings',
-      'REPORT INFORMATION': 'Report Info',
-      'GLOSSARY': 'Glossary'
-    };
-    
-    rows.forEach(row => {
-      if (row.length > 0) {
-        const firstCell = row[0].trim();
-        
-        // Check if this is a section header
-        for (const [key, sheetName] of Object.entries(sheetMappings)) {
-          if (firstCell.includes(key)) {
-            // Save current sheet if it has data
-            if (currentSheetData.length > 0) {
-              sheets[currentSheet] = currentSheetData;
-            }
-            currentSheet = sheetName;
-            currentSheetData = [];
-            break;
-          }
-        }
-        
-        currentSheetData.push(row);
-      }
-    });
-    
-    // Save last sheet
-    if (currentSheetData.length > 0) {
-      sheets[currentSheet] = currentSheetData;
+    const period = dateScope.replace(/-/g, '_');
+
+    // Route export based on current dashboard
+    if (currentDashboard === 1) {
+      // QA dashboard export
+      window.location.href = `/export/qa-stats?period=${period}`;
+      return;
     }
-    
-    // Send to backend for Excel generation
-    try {
-      const response = await fetch('/export/excel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheetsData: sheets })
-      });
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        
-        const dateSuffix = dateScope === 'yesterday' ? 'yesterday' : new Date().toISOString().split('T')[0];
-        link.setAttribute('href', url);
-        link.setAttribute('download', `warehouse-stats-${dateSuffix}.xlsx`);
-        link.style.visibility = 'hidden';
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } else {
-        console.error('Failed to generate Excel file');
-        alert('Failed to generate Excel file. Please try again.');
-      }
-    } catch (err) {
-      console.error('Excel export error:', err);
-      alert('Error generating Excel file');
-    }
+
+    // Erasure dashboard export (engineer deep dive)
+    window.location.href = `/export/engineer-deepdive?period=${period}`;
   }
 
   // Add button listener
