@@ -463,7 +463,16 @@ async def erasure_detail(req: Request):
     initials = (initials_raw or "").strip().upper() or None
     duration_sec = payload.get("durationSec") or payload.get("duration")
     try:
-        duration_sec = int(duration_sec) if duration_sec is not None else None
+        if isinstance(duration_sec, str) and ':' in duration_sec:
+            # Parse HH:MM:SS format
+            parts = duration_sec.split(':')
+            if len(parts) == 3:
+                h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
+                duration_sec = h * 3600 + m * 60 + s
+            else:
+                duration_sec = None
+        else:
+            duration_sec = int(duration_sec) if duration_sec is not None else None
     except Exception:
         duration_sec = None
     error_type = payload.get("errorType") or payload.get("error")
