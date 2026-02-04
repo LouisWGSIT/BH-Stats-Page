@@ -2146,13 +2146,15 @@ body {
 
 /* ===== DASHBOARD SWITCHING ===== */
 .qa-stats-view {
-  display: none !important;
+  display: none;
   width: 100%;
   height: 100%;
-}
-
-.qa-stats-view[style*="display: grid"] {
-  display: grid !important;
+  padding: 16px;
+  box-sizing: border-box;
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-rows: min-content;
+  gap: 12px;
+  align-content: start;
 }
 
 .qa-placeholder {
