@@ -2313,7 +2313,15 @@ function renderSVGSparkline(svgElem, data) {
       
       // Render top performers
       const performersGrid = document.getElementById('qaTopPerformersGrid');
-      performersGrid.innerHTML = data.topPerformers.map(tech => `
+      if (!data.topPerformers || data.topPerformers.length === 0) {
+        performersGrid.innerHTML = `
+          <div style="grid-column: 1 / -1; padding: 30px; text-align: center; color: #999;">
+            <h3>No QA data for this period</h3>
+            <p style="margin-top: 8px; font-size: 13px;">Try Last Week or Last Month.</p>
+          </div>
+        `;
+      } else {
+        performersGrid.innerHTML = data.topPerformers.map(tech => `
         <div class="qa-performer-card">
           <div class="qa-performer-name">${escapeHtml(tech.name)}</div>
           <div class="qa-performer-metric">
@@ -2334,10 +2342,14 @@ function renderSVGSparkline(svgElem, data) {
           </div>
         </div>
       `).join('');
+      }
       
       // Render all technicians
       const techniciansGrid = document.getElementById('qaTechniciansGrid');
-      techniciansGrid.innerHTML = data.technicians.map(tech => {
+      if (!data.technicians || data.technicians.length === 0) {
+        techniciansGrid.innerHTML = '';
+      } else {
+        techniciansGrid.innerHTML = data.technicians.map(tech => {
         const maxScans = Math.max(...data.technicians.map(t => t.totalScans), 1);
         const dailyData = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
           .map(day => tech.daily[day]?.scans || 0);
@@ -2372,7 +2384,8 @@ function renderSVGSparkline(svgElem, data) {
             </div>
           </div>
         `;
-      }).join('');
+        }).join('');
+      }
       
     } catch (error) {
       console.error('Failed to load QA dashboard:', error);
@@ -2420,11 +2433,11 @@ function renderSVGSparkline(svgElem, data) {
     
     if (dashboard === 'erasure') {
       erasureView.style.display = '';
-      qaView.style.display = 'none';
+      qaView.style.setProperty('display', 'none');
       titleElem.textContent = dashboardTitles.erasure;
     } else if (dashboard === 'qa') {
       erasureView.style.display = 'none';
-      qaView.style.display = 'grid';
+      qaView.style.setProperty('display', 'grid', 'important');
       titleElem.textContent = dashboardTitles.qa;
       // Load QA data when switching to QA dashboard
       const periodValue = document.getElementById('dateSelector')?.value || 'this-week';
