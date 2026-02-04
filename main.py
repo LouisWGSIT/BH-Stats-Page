@@ -184,7 +184,7 @@ async def auth_middleware(request: Request, call_next):
             pass
     
     # For API requests, return 401
-    if request.url.path.startswith("/metrics") or request.url.path.startswith("/analytics") or request.url.path.startswith("/competitions") or request.url.path.startswith("/export"):
+    if request.url.path.startswith("/metrics") or request.url.path.startswith("/analytics") or request.url.path.startswith("/competitions") or request.url.path.startswith("/export") or request.url.path.startswith("/api"):
         return JSONResponse(
             status_code=401,
             content={"detail": "Unauthorized. External access requires password."}
@@ -983,11 +983,7 @@ async def login(request: Request):
         else:
             client_ip = request.client.host if request.client else "0.0.0.0"
         
-        # Local network users get viewer role
-        if is_local_network(client_ip):
-            return {"authenticated": True, "role": "viewer", "message": "Local network access"}
-        
-        # Check password for external users - only manager password accepted
+        # Manager password accepted anywhere
         if password == ADMIN_PASSWORD:
             # Generate device token for future auto-login
             user_agent = request.headers.get("User-Agent", "Unknown")
@@ -1013,8 +1009,12 @@ async def login(request: Request):
                 "token": ADMIN_PASSWORD,
                 "message": "Manager access granted"
             }
-        else:
-            raise HTTPException(status_code=401, detail="Invalid password")
+        
+        # Local network users can continue as viewer without password
+        if is_local_network(client_ip):
+            return {"authenticated": True, "role": "viewer", "message": "Local network view-only access"}
+        
+        raise HTTPException(status_code=401, detail="Invalid password")
     except HTTPException:
         raise
     except Exception as e:

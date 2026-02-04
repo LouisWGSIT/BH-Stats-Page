@@ -72,38 +72,6 @@ function renderSVGSparkline(svgElem, data) {
         try {
           const verifyRes = await fetch('/metrics/all-time-totals');
           if (verifyRes.ok) {
-            console.log('Device token still valid - auto-login');
-            return true;
-          }
-        } catch (verifyErr) {
-          console.warn('Device token verification failed:', verifyErr);
-        }
-        localStorage.removeItem('deviceToken');
-      }
-
-      // Check for session token (from current login)
-      const existingToken = sessionStorage.getItem('authToken');
-      if (existingToken) {
-        setupAuthHeaders(existingToken);
-        try {
-          const verifyRes = await fetch('/metrics/all-time-totals');
-          if (verifyRes.ok) {
-            console.log('Session auth token accepted');
-            return true;
-          }
-        } catch (verifyErr) {
-          console.warn('Session auth token verification failed:', verifyErr);
-        }
-        sessionStorage.removeItem('authToken');
-      }
-
-      const authRes = await fetch('/auth/status');
-      const authData = await authRes.json();
-      
-      // Store role for UI control
-      if (authData.role) {
-        sessionStorage.setItem('userRole', authData.role);
-      }
       
       // If already authenticated (local network), proceed
       if (authData.authenticated) {
@@ -114,9 +82,49 @@ function renderSVGSparkline(svgElem, data) {
       // External access - show login modal
       console.log('External access requires password');
       showLoginModal();
-      return false;
+              console.log('Local network access granted, role:', authData.role);
+              // Enforce viewer role on local network - clear any cached manager tokens
+              if (authData.role === 'viewer') {
+                localStorage.removeItem('deviceToken');
+                sessionStorage.removeItem('authToken');
+                sessionStorage.setItem('userRole', 'viewer');
+              }
     } catch (err) {
       console.error('Auth check failed:', err);
+
+            // External access: check for device token (manager only)
+            const deviceToken = localStorage.getItem('deviceToken');
+            if (deviceToken) {
+              setupAuthHeaders(deviceToken);
+              try {
+                const verifyRes = await fetch('/metrics/all-time-totals');
+                if (verifyRes.ok) {
+                  console.log('Device token accepted');
+                  sessionStorage.setItem('userRole', 'manager');
+                  return true;
+                }
+              } catch (verifyErr) {
+                console.warn('Device token verification failed:', verifyErr);
+              }
+              localStorage.removeItem('deviceToken');
+            }
+
+            // External access: check for session token (manager only)
+            const existingToken = sessionStorage.getItem('authToken');
+            if (existingToken) {
+              setupAuthHeaders(existingToken);
+              try {
+                const verifyRes = await fetch('/metrics/all-time-totals');
+                if (verifyRes.ok) {
+                  console.log('Session auth token accepted');
+                  sessionStorage.setItem('userRole', 'manager');
+                  return true;
+                }
+              } catch (verifyErr) {
+                console.warn('Session auth token verification failed:', verifyErr);
+              }
+              sessionStorage.removeItem('authToken');
+            }
       // If check fails, show login anyway to be safe
       showLoginModal();
       return false;
@@ -232,7 +240,7 @@ function renderSVGSparkline(svgElem, data) {
   // ==================== UI ROLE CONTROLS ====================
   // Hide export and admin buttons for viewer role
   function applyRolePermissions() {
-    const userRole = sessionStorage.getItem('userRole');
+    const userRole = sessionStorage.getItem('userRole') || 'viewer';
     const downloadBtn = document.getElementById('downloadBtn');
     const adminBtn = document.querySelector('.admin-btn');
     const loginUpgradeIcon = document.getElementById('loginUpgradeIcon');
@@ -2349,6 +2357,10 @@ function renderSVGSparkline(svgElem, data) {
     try {
       console.log('Loading QA dashboard with period:', period);
       const response = await fetch(`/api/qa-dashboard?period=${period}`);
+      if (!response.ok) {
+        showQAError(`Failed to load QA data (HTTP ${response.status})`);
+        return;
+      }
       const data = await response.json();
       
       console.log('QA data received:', data);
@@ -2513,6 +2525,14 @@ function renderSVGSparkline(svgElem, data) {
       erasureView.style.display = 'none';
       qaView.style.display = supportsGrid ? 'grid' : 'block';
       titleElem.textContent = dashboardTitles.qa;
+      const performersGrid = document.getElementById('qaTopPerformersGrid');
+      const techniciansGrid = document.getElementById('qaTechniciansGrid');
+      if (performersGrid) {
+        performersGrid.innerHTML = '<div style="grid-column: 1 / -1; padding: 24px; text-align: center; color: #999;">Loading QA data…</div>';
+      }
+      if (techniciansGrid) {
+        techniciansGrid.innerHTML = '';
+      }
       // Load QA data when switching to QA dashboard
       const periodValue = document.getElementById('dateSelector')?.value || 'this-week';
       const period = periodValue.replace(/-/g, '_');  // Convert "this-week" to "this_week"
