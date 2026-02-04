@@ -990,7 +990,7 @@ async def export_engineer_deepdive(period: str = "this_week"):
         import engineer_export
         
         # Validate period
-        valid_periods = ["this_week", "last_week", "this_month", "last_month"]
+        valid_periods = ["this_week", "last_week", "this_month", "last_month", "last_available"]
         if period not in valid_periods:
             raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}")
         

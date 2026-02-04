@@ -31,6 +31,14 @@ def get_mariadb_connection():
 def get_week_dates(period: str) -> Tuple[date, date, str]:
     """Get Monday-Friday dates for a given period"""
     today = date.today()
+
+    if period == "last_available":
+        min_date, max_date = get_qa_data_bounds()
+        if max_date:
+            end = max_date
+            start = max_date - timedelta(days=6)
+            label = "Last Available"
+            return start, end, label
     
     if period == "this_week":
         start = today - timedelta(days=today.weekday())

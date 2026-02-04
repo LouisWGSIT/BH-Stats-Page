@@ -3061,16 +3061,22 @@ function renderSVGSparkline(svgElem, data) {
 
   async function downloadExcel() {
     const dateScope = document.getElementById('dateSelector')?.value || 'this-week';
-    const period = dateScope.replace(/-/g, '_');
+    let period = dateScope.replace(/-/g, '_');
 
     // Determine export URL and filename
     let exportUrl, filename;
     if (currentDashboard === 1) {
       // QA dashboard export
+      if (period === 'last_available') {
+        period = 'last_available';
+      }
       exportUrl = `/export/qa-stats?period=${period}`;
       filename = `qa-stats-${dateScope}.xlsx`;
     } else {
       // Erasure dashboard export (engineer deep dive)
+      if (dateScope === 'last-available') {
+        period = 'this_week';
+      }
       exportUrl = `/export/engineer-deepdive?period=${period}`;
       filename = `engineer-deepdive-${dateScope}.xlsx`;
     }

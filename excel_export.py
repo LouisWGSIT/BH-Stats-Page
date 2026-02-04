@@ -54,6 +54,13 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
     first_sheet_processed = False
     for sheet_idx, (sheet_name, data) in enumerate(sheets_data.items()):
         ws = wb.create_sheet(title=sheet_name)
+
+        if isinstance(data, dict) and "rows" in data:
+            sheet_rows = data.get("rows", [])
+            sheet_groups = data.get("groups", [])
+        else:
+            sheet_rows = data
+            sheet_groups = []
         
         # Add logo to first sheet and Executive Summary/Summary sheets
         add_logo = (not first_sheet_processed) or ('Summary' in sheet_name or 'SUMMARY' in sheet_name)
@@ -77,7 +84,7 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
         
         # Write data
         start_row = 1
-        for row_idx, row_data in enumerate(data, start_row):
+        for row_idx, row_data in enumerate(sheet_rows, start_row):
             for col_idx, cell_value in enumerate(row_data, 1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=cell_value)
                 cell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
@@ -98,6 +105,12 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
                         cell.fill = section_fill
                         cell.font = section_font
         
+        # Apply row grouping for collapsible sections
+        for group in sheet_groups:
+            if len(group) >= 4:
+                start, end, level, hidden = group
+                ws.row_dimensions.group(start, end, outline_level=level, hidden=hidden)
+
         # Auto-adjust column widths
         for column in ws.columns:
             max_length = 0

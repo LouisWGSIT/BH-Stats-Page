@@ -151,6 +151,83 @@ def _get_period_totals(start_date: date, end_date: date) -> Dict[str, float]:
         "avg_capacity_gb": round(avg_capacity / 1_000_000_000, 2) if avg_capacity is not None else None
     }
 
+def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[List[List], List[Tuple[int, int, int, bool]]]:
+    conn = sqlite3.connect(db.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT initials, date, manufacturer, model, job_id, drive_size, drive_type, drive_count, duration_sec
+        FROM erasures
+        WHERE date >= ? AND date <= ? AND event = 'success'
+        ORDER BY initials, date, manufacturer, model
+        """,
+        (start_date.isoformat(), end_date.isoformat())
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    grouped = defaultdict(list)
+    for initials, date_str, manufacturer, model, job_id, drive_size, drive_type, drive_count, duration_sec in rows:
+        key = initials or '(unassigned)'
+        grouped[key].append((
+            date_str,
+            normalize_manufacturer(manufacturer) or 'Unknown',
+            model or 'Unknown',
+            job_id or '—',
+            drive_size,
+            drive_type or '—',
+            drive_count or '—',
+            duration_sec
+        ))
+
+    sheet_rows: List[List] = []
+    groups: List[Tuple[int, int, int, bool]] = []
+
+    sheet_rows.append(["MANUFACTURER DETAIL BY ENGINEER"])
+    sheet_rows.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_rows.append([])
+
+    current_row = len(sheet_rows)
+    for engineer in sorted(grouped.keys()):
+        entries = grouped[engineer]
+        sheet_rows.append([f"ENGINEER: {engineer}"])
+        sheet_rows.append([
+            "Engineer",
+            "Date",
+            "Manufacturer",
+            "Model",
+            "Serial/Job ID",
+            "Drive Size (GB)",
+            "Drive Type",
+            "Drive Count",
+            "Duration (sec)"
+        ])
+        data_start = len(sheet_rows) + 1
+
+        for date_str, manufacturer, model, job_id, drive_size, drive_type, drive_count, duration_sec in entries:
+            size_gb = None
+            if isinstance(drive_size, (int, float)):
+                size_gb = round(drive_size / 1_000_000_000, 2)
+            sheet_rows.append([
+                engineer,
+                date_str,
+                manufacturer,
+                model,
+                job_id,
+                size_gb if size_gb is not None else '—',
+                drive_type,
+                drive_count,
+                duration_sec if duration_sec is not None else '—'
+            ])
+
+        data_end = len(sheet_rows)
+        if data_end >= data_start:
+            groups.append((data_start, data_end, 1, True))
+
+        sheet_rows.append([])
+
+    return sheet_rows, groups
+
 def _get_daily_breakdown(start_date: date, end_date: date) -> Dict[str, Dict]:
     conn = sqlite3.connect(db.DB_PATH)
     cursor = conn.cursor()
@@ -350,7 +427,14 @@ def generate_engineer_deepdive_export(period: str) -> Dict[str, List[List]]:
 
     sheets['Engineer Daily'] = daily_sheet
 
-    # SHEET 4: Manufacturer Focus
+    # SHEET 4: Manufacturer Detail (collapsible groups per engineer)
+    detail_rows, detail_groups = _get_manufacturer_detail_rows(start_date, end_date)
+    sheets['Manufacturer Detail'] = {
+        "rows": detail_rows,
+        "groups": detail_groups
+    }
+
+    # SHEET 5: Manufacturer Focus
     mfr_sheet = []
     mfr_sheet.append(["MANUFACTURER FOCUS BY ENGINEER"])
     mfr_sheet.append([])
@@ -371,7 +455,7 @@ def generate_engineer_deepdive_export(period: str) -> Dict[str, List[List]]:
 
     sheets['Manufacturers'] = mfr_sheet
 
-    # SHEET 5: Engineer Performance Metrics (more detail)
+    # SHEET 6: Engineer Performance Metrics (more detail)
     metrics_sheet = []
     metrics_sheet.append(["ENGINEER PERFORMANCE METRICS"])
     metrics_sheet.append([])
