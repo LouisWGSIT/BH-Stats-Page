@@ -461,7 +461,22 @@ async def erasure_detail(req: Request):
     device_type = (payload.get("deviceType") or payload.get("device_type") or payload.get("type") or "laptops_desktops").strip().lower()
     initials_raw = payload.get("initials") or payload.get("Engineer Initals") or payload.get("Engineer Initials") or ""
     initials = (initials_raw or "").strip().upper() or None
-    duration_sec = payload.get("durationSec") or payload.get("duration")
+    def _clean_placeholder(value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if not cleaned:
+                return None
+            upper = cleaned.upper()
+            if cleaned.startswith("<REPORTPATH") or "<REPORTPATH" in cleaned:
+                return None
+            if "<SYSTEM_" in upper or "SYSTEM MANUFACTURER" in upper:
+                return None
+            return cleaned
+        return value
+
+    duration_sec = _clean_placeholder(payload.get("durationSec") or payload.get("duration"))
     try:
         if isinstance(duration_sec, str) and ':' in duration_sec:
             # Parse HH:MM:SS format
@@ -512,11 +527,27 @@ async def erasure_detail(req: Request):
     # Extract device details from payload (Blancco built-in variables)
     # Using built-in Blancco variables: <MANUFACTURER> and <MODEL>
     # Note: <SYSTEM SERIAL>, <DISK SERIAL>, <DISK CAPACITY> are not available as built-in variables
-    manufacturer = payload.get("manufacturer")
-    model = payload.get("model")
-    system_serial = payload.get("system_serial") or payload.get("systemSerial") or payload.get("system-serial") or payload.get("systemSerialNumber") or payload.get("serial") or ""
-    disk_serial = payload.get("disk_serial") or payload.get("diskSerial") or payload.get("disk-serial") or payload.get("diskSerialNumber") or ""
-    disk_capacity = payload.get("disk_capacity") or payload.get("diskCapacity") or payload.get("drive_size") or payload.get("driveSize") or ""
+    manufacturer = _clean_placeholder(payload.get("manufacturer"))
+    model = _clean_placeholder(payload.get("model"))
+    system_serial = _clean_placeholder(
+        payload.get("system_serial")
+        or payload.get("systemSerial")
+        or payload.get("system-serial")
+        or payload.get("systemSerialNumber")
+        or payload.get("serial")
+    ) or ""
+    disk_serial = _clean_placeholder(
+        payload.get("disk_serial")
+        or payload.get("diskSerial")
+        or payload.get("disk-serial")
+        or payload.get("diskSerialNumber")
+    ) or ""
+    disk_capacity = _clean_placeholder(
+        payload.get("disk_capacity")
+        or payload.get("diskCapacity")
+        or payload.get("drive_size")
+        or payload.get("driveSize")
+    ) or ""
 
     if isinstance(disk_capacity, str):
         try:
