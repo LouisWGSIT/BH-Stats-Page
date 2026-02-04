@@ -8,7 +8,7 @@ from collections import defaultdict, Counter
 MARIADB_HOST = "77.68.90.229"
 MARIADB_USER = "louiswhitehouse"
 MARIADB_PASSWORD = "Gr33nsafeIT2026"
-MARIADB_DB = "Billingservices"
+MARIADB_DB = "zaptest_"
 MARIADB_PORT = 3306
 
 def get_mariadb_connection():
