@@ -406,6 +406,30 @@ body {
   transform: translateY(0) scale(0.98);
 }
 
+.login-upgrade-icon {
+  background: linear-gradient(145deg, rgba(255, 193, 7, 0.2), rgba(255, 193, 7, 0.1));
+  border: 1px solid rgba(255, 193, 7, 0.4);
+  color: #ffc107;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.login-upgrade-icon:hover {
+  background: linear-gradient(145deg, rgba(255, 193, 7, 0.3), rgba(255, 193, 7, 0.15));
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+  transform: translateY(-1px);
+}
+
+.login-upgrade-icon:active {
+  transform: translateY(0) scale(0.98);
+}
+
 .dashboard-nav {
   display: flex;
   align-items: center;

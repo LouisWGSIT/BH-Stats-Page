@@ -100,9 +100,14 @@ function renderSVGSparkline(svgElem, data) {
       const authRes = await fetch('/auth/status');
       const authData = await authRes.json();
       
+      // Store role for UI control
+      if (authData.role) {
+        sessionStorage.setItem('userRole', authData.role);
+      }
+      
       // If already authenticated (local network), proceed
       if (authData.authenticated) {
-        console.log('Local network access granted');
+        console.log('Local network access granted, role:', authData.role);
         return true;
       }
       
@@ -159,11 +164,18 @@ function renderSVGSparkline(svgElem, data) {
               localStorage.setItem('deviceToken', loginData.device_token);
               console.log('Device remembered for future logins');
             }
+            // Store role for UI control
+            if (loginData.role) {
+              sessionStorage.setItem('userRole', loginData.role);
+            }
             // Also store session token for this session
             sessionStorage.setItem('authToken', loginData.token);
             
             // Set auth header for future requests
             setupAuthHeaders(loginData.token);
+            
+            // Apply role permissions to UI
+            applyRolePermissions();
             
             // Show success and continue
             form.style.display = 'none';
@@ -216,6 +228,38 @@ function renderSVGSparkline(svgElem, data) {
 
   // Now proceed with app initialization
   const cfg = await fetch('config.json').then(r => r.json());
+
+  // ==================== UI ROLE CONTROLS ====================
+  // Hide export and admin buttons for viewer role
+  function applyRolePermissions() {
+    const userRole = sessionStorage.getItem('userRole');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const adminBtn = document.querySelector('.admin-btn');
+    const loginUpgradeIcon = document.getElementById('loginUpgradeIcon');
+    
+    if (userRole === 'viewer') {
+      // Viewer mode: hide export and admin, show upgrade icon
+      if (downloadBtn) downloadBtn.style.display = 'none';
+      if (adminBtn) adminBtn.style.display = 'none';
+      if (loginUpgradeIcon) loginUpgradeIcon.style.display = 'inline-block';
+    } else if (userRole === 'manager') {
+      // Manager mode: show all controls, hide upgrade icon
+      if (downloadBtn) downloadBtn.style.display = 'inline-block';
+      if (adminBtn) adminBtn.style.display = 'inline-block';
+      if (loginUpgradeIcon) loginUpgradeIcon.style.display = 'none';
+    }
+  }
+  
+  // Apply role permissions on load
+  applyRolePermissions();
+  
+  // Upgrade icon click handler
+  const loginUpgradeIcon = document.getElementById('loginUpgradeIcon');
+  if (loginUpgradeIcon) {
+    loginUpgradeIcon.addEventListener('click', () => {
+      showLoginModal();
+    });
+  }
 
   // ==================== ALL TIME TOTALS ====================
   async function refreshAllTimeTotals() {

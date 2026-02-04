@@ -954,11 +954,15 @@ async def auth_status(request: Request):
     is_local = is_local_network(client_ip)
     is_authenticated = is_local or is_tv_browser
     
+    # Determine role: local network = viewer, external requires manager password
+    role = "viewer" if (is_local or is_tv_browser) else None
+    
     # Log for debugging
-    print(f"Auth check - Client IP: {client_ip}, Is Local: {is_local}, Is TV: {is_tv_browser}, X-Forwarded-For: {forwarded_for}")
+    print(f"Auth check - Client IP: {client_ip}, Is Local: {is_local}, Is TV: {is_tv_browser}, Role: {role}, X-Forwarded-For: {forwarded_for}")
     
     return {
         "authenticated": is_authenticated,
+        "role": role,
         "client_ip": client_ip,
         "is_tv_browser": is_tv_browser,
         "access_type": "tv-browser" if is_tv_browser else ("local" if is_local else "external"),
@@ -979,11 +983,11 @@ async def login(request: Request):
         else:
             client_ip = request.client.host if request.client else "0.0.0.0"
         
-        # Local network users are always authenticated
+        # Local network users get viewer role
         if is_local_network(client_ip):
-            return {"authenticated": True, "message": "Local network access"}
+            return {"authenticated": True, "role": "viewer", "message": "Local network access"}
         
-        # Check password for external users
+        # Check password for external users - only manager password accepted
         if password == ADMIN_PASSWORD:
             # Generate device token for future auto-login
             user_agent = request.headers.get("User-Agent", "Unknown")
@@ -995,17 +999,19 @@ async def login(request: Request):
                 "created": datetime.now().isoformat(),
                 "expiry": (datetime.now() + timedelta(days=DEVICE_TOKEN_EXPIRY_DAYS)).isoformat(),
                 "user_agent": user_agent,
-                "client_ip": client_ip
+                "client_ip": client_ip,
+                "role": "manager"
             }
             save_device_tokens(tokens)
             
-            print(f"Device token created for {client_ip} - expires in {DEVICE_TOKEN_EXPIRY_DAYS} days")
+            print(f"Manager device token created for {client_ip} - expires in {DEVICE_TOKEN_EXPIRY_DAYS} days")
             
             return {
                 "authenticated": True,
+                "role": "manager",
                 "device_token": device_token,
                 "token": ADMIN_PASSWORD,
-                "message": "Password accepted"
+                "message": "Manager access granted"
             }
         else:
             raise HTTPException(status_code=401, detail="Invalid password")
@@ -1016,7 +1022,19 @@ async def login(request: Request):
 
 @app.post("/export/excel")
 async def export_excel(req: Request):
-    """Generate multi-sheet Excel export of warehouse stats"""
+    """Generate multi-sheet Excel export of warehouse stats (manager only)"""
+    # Check for manager role
+    auth_header = req.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer ") or auth_header[7:] != ADMIN_PASSWORD:
+        # Check device token for role
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            tokens = load_device_tokens()
+            if token in tokens and tokens[token].get("role") != "manager":
+                raise HTTPException(status_code=403, detail="Manager access required for exports")
+        else:
+            raise HTTPException(status_code=403, detail="Manager access required for exports")
+    
     try:
         body = await req.json()
         sheets_data = body.get("sheetsData", {})
@@ -1028,13 +1046,27 @@ async def export_excel(req: Request):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename=warehouse-stats.xlsx"}
         )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Excel export error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/export/engineer-deepdive")
-async def export_engineer_deepdive(period: str = "this_week"):
-    """Generate engineer deep-dive Excel export for a specific period"""
+async def export_engineer_deepdive(request: Request, period: str = "this_week"):
+    """Generate engineer deep-dive Excel export for a specific period (manager only)"""
+    # Check for manager role
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer ") or auth_header[7:] != ADMIN_PASSWORD:
+        # Check device token for role
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            tokens = load_device_tokens()
+            if token in tokens and tokens[token].get("role") != "manager":
+                raise HTTPException(status_code=403, detail="Manager access required for exports")
+        else:
+            raise HTTPException(status_code=403, detail="Manager access required for exports")
+    
     try:
         import engineer_export
         
@@ -1061,6 +1093,8 @@ async def export_engineer_deepdive(period: str = "this_week"):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Engineer deep-dive export error: {e}")
         import traceback
@@ -1068,8 +1102,20 @@ async def export_engineer_deepdive(period: str = "this_week"):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/export/qa-stats")
-async def export_qa_stats(period: str = "this_week"):
-    """Generate QA stats Excel export for a specific period from MariaDB"""
+async def export_qa_stats(request: Request, period: str = "this_week"):
+    """Generate QA stats Excel export for a specific period from MariaDB (manager only)"""
+    # Check for manager role
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer ") or auth_header[7:] != ADMIN_PASSWORD:
+        # Check device token for role
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            tokens = load_device_tokens()
+            if token in tokens and tokens[token].get("role") != "manager":
+                raise HTTPException(status_code=403, detail="Manager access required for exports")
+        else:
+            raise HTTPException(status_code=403, detail="Manager access required for exports")
+    
     try:
         import qa_export
         
@@ -1096,6 +1142,8 @@ async def export_qa_stats(period: str = "this_week"):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"QA stats export error: {e}")
         import traceback
