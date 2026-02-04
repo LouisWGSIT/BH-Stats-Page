@@ -2159,20 +2159,30 @@ function renderSVGSparkline(svgElem, data) {
 
   // Rotate multi-panel cards in place (bottom row)
   const rotatorIntervals = new Map();
+  const rotatorTimeouts = new Map();
   
   function setupRotatorCards() {
     const cards = document.querySelectorAll('.rotator-card');
     if (!cards.length) return;
 
     cards.forEach((card, cardIdx) => {
-      // Clear any existing interval for this card
+      // Clear any existing interval/timeout for this card
       if (rotatorIntervals.has(cardIdx)) {
         clearInterval(rotatorIntervals.get(cardIdx));
         rotatorIntervals.delete(cardIdx);
       }
+      if (rotatorTimeouts.has(cardIdx)) {
+        clearTimeout(rotatorTimeouts.get(cardIdx));
+        rotatorTimeouts.delete(cardIdx);
+      }
       
       const panels = Array.from(card.querySelectorAll('.panel'));
       if (panels.length <= 1) return;
+
+      // Reset panel states to avoid stacking/overlap
+      panels.forEach(panel => {
+        panel.classList.remove('active', 'entering', 'exiting', 'about-to-rotate');
+      });
 
       let index = 0;
       let isTransitioning = false;
@@ -2187,7 +2197,8 @@ function renderSVGSparkline(svgElem, data) {
         
         const currentIndex = panels.findIndex(p => p.classList.contains('active'));
         if (currentIndex === -1) {
-          // First time setup - no indicator needed
+          // First time setup - ensure only one active
+          panels.forEach(panel => panel.classList.remove('active', 'entering', 'exiting', 'about-to-rotate'));
           panels[nextIndex].classList.add('active');
           return;
         }
@@ -2233,7 +2244,7 @@ function renderSVGSparkline(svgElem, data) {
       showPanel(index);
 
       // Begin rotation after a short delay to stagger with flip-cards
-      setTimeout(() => {
+      const startTimeout = setTimeout(() => {
         const intervalId = setInterval(() => {
           index = (index + 1) % panels.length;
           showPanel(index);
@@ -2242,6 +2253,7 @@ function renderSVGSparkline(svgElem, data) {
         // Store interval ID so we can clear it later if needed
         rotatorIntervals.set(cardIdx, intervalId);
       }, 3000);
+      rotatorTimeouts.set(cardIdx, startTimeout);
     });
   }
 
@@ -2447,10 +2459,14 @@ function renderSVGSparkline(svgElem, data) {
     if (dashboard === 'erasure') {
       erasureView.classList.add('is-active');
       qaView.classList.remove('is-active');
+      erasureView.style.display = 'flex';
+      qaView.style.display = 'none';
       titleElem.textContent = dashboardTitles.erasure;
     } else if (dashboard === 'qa') {
       erasureView.classList.remove('is-active');
       qaView.classList.add('is-active');
+      erasureView.style.display = 'none';
+      qaView.style.display = 'grid';
       titleElem.textContent = dashboardTitles.qa;
       // Load QA data when switching to QA dashboard
       const periodValue = document.getElementById('dateSelector')?.value || 'this-week';
