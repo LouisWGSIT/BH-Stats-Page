@@ -2438,12 +2438,12 @@ function renderSVGSparkline(svgElem, data) {
     const dashboard = dashboards[index];
     
     if (dashboard === 'erasure') {
-      erasureView.style.display = '';
-      qaView.style.setProperty('display', 'none');
+      erasureView.classList.add('is-active');
+      qaView.classList.remove('is-active');
       titleElem.textContent = dashboardTitles.erasure;
     } else if (dashboard === 'qa') {
-      erasureView.style.display = 'none';
-      qaView.style.setProperty('display', 'grid', 'important');
+      erasureView.classList.remove('is-active');
+      qaView.classList.add('is-active');
       titleElem.textContent = dashboardTitles.qa;
       // Load QA data when switching to QA dashboard
       const periodValue = document.getElementById('dateSelector')?.value || 'this-week';

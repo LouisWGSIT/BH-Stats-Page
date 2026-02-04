@@ -188,6 +188,19 @@ def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[Lis
     sheet_rows.append([])
 
     current_row = len(sheet_rows)
+    def format_duration(value: int | None) -> str:
+        if value is None:
+            return '—'
+        try:
+            total = int(value)
+        except Exception:
+            return '—'
+        hours, remainder = divmod(total, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if hours:
+            return f"{hours}:{minutes:02d}:{seconds:02d}"
+        return f"{minutes}:{seconds:02d}"
+
     for engineer in sorted(grouped.keys()):
         entries = grouped[engineer]
         sheet_rows.append([f"ENGINEER: {engineer}"])
@@ -198,7 +211,7 @@ def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[Lis
             "Model",
             "Serial/Job ID",
             "Drive Size (GB)",
-            "Duration (sec)"
+            "Duration"
         ])
         data_start = len(sheet_rows) + 1
 
@@ -213,7 +226,7 @@ def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[Lis
                 model,
                 serial_value,
                 size_gb if size_gb is not None else '—',
-                duration_sec if duration_sec is not None else '—'
+                format_duration(duration_sec)
             ])
 
         data_end = len(sheet_rows)
