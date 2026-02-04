@@ -52,7 +52,7 @@ def get_daily_engineer_data(date_str: str) -> Dict[str, Dict]:
     
     # Fetch records for this day during work hours (8-16:00)
     cursor.execute("""
-        SELECT initials, device_type, duration_sec, manufacturer, model, disk_capacity
+        SELECT initials, device_type, duration_sec, manufacturer, model, drive_size
         FROM erasures
         WHERE date = ? AND event = 'success'
         ORDER BY initials
@@ -70,7 +70,7 @@ def get_daily_engineer_data(date_str: str) -> Dict[str, Dict]:
         'disk_capacities': []
     })
     
-    for initials, device_type, duration_sec, manufacturer, model, disk_capacity in rows:
+    for initials, device_type, duration_sec, manufacturer, model, drive_size in rows:
         if not initials:
             initials = '(unassigned)'
         
@@ -83,9 +83,9 @@ def get_daily_engineer_data(date_str: str) -> Dict[str, Dict]:
                 data[initials]['durations'].append(int(duration_sec))
             except:
                 pass
-        if disk_capacity:
+        if drive_size:
             try:
-                data[initials]['disk_capacities'].append(int(disk_capacity))
+                data[initials]['disk_capacities'].append(int(drive_size))
             except:
                 pass
     
@@ -96,7 +96,7 @@ def _get_period_totals(start_date: date, end_date: date) -> Dict[str, float]:
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT COUNT(1), AVG(duration_sec), AVG(disk_capacity)
+        SELECT COUNT(1), AVG(duration_sec), AVG(drive_size)
         FROM erasures
         WHERE date >= ? AND date <= ? AND event = 'success'
         """,
