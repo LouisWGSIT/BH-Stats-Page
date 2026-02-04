@@ -505,7 +505,7 @@ async def erasure_detail(req: Request):
     # Note: <SYSTEM SERIAL>, <DISK SERIAL>, <DISK CAPACITY> are not available as built-in variables
     manufacturer = payload.get("manufacturer")
     model = payload.get("model")
-    system_serial = payload.get("system_serial") or payload.get("systemSerial") or payload.get("system-serial") or payload.get("systemSerialNumber") or ""
+    system_serial = payload.get("system_serial") or payload.get("systemSerial") or payload.get("system-serial") or payload.get("systemSerialNumber") or payload.get("serial") or ""
     disk_serial = payload.get("disk_serial") or payload.get("diskSerial") or payload.get("disk-serial") or payload.get("diskSerialNumber") or ""
     disk_capacity = payload.get("disk_capacity") or payload.get("diskCapacity") or payload.get("drive_size") or payload.get("driveSize") or ""
 
