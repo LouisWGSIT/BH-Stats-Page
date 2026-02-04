@@ -995,6 +995,9 @@ async def export_engineer_deepdive(period: str = "this_week"):
     try:
         import engineer_export
         
+        # Ensure database schema is up-to-date
+        db.init_db()
+        
         # Validate period
         valid_periods = ["this_week", "last_week", "this_month", "last_month", "last_available"]
         if period not in valid_periods:
@@ -1027,8 +1030,11 @@ async def export_qa_stats(period: str = "this_week"):
     try:
         import qa_export
         
+        # Ensure database schema is up-to-date
+        db.init_db()
+        
         # Validate period
-        valid_periods = ["this_week", "last_week", "this_month", "last_month"]
+        valid_periods = ["this_week", "last_week", "this_month", "last_month", "last_available"]
         if period not in valid_periods:
             raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}")
         

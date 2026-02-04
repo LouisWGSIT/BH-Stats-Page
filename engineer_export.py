@@ -430,11 +430,21 @@ def generate_engineer_deepdive_export(period: str) -> Dict[str, List[List]]:
     sheets['Engineer Daily'] = daily_sheet
 
     # SHEET 4: Manufacturer Detail (collapsible groups per engineer)
-    detail_rows, detail_groups = _get_manufacturer_detail_rows(start_date, end_date)
-    sheets['Manufacturer Detail'] = {
-        "rows": detail_rows,
-        "groups": detail_groups
-    }
+    try:
+        detail_rows, detail_groups = _get_manufacturer_detail_rows(start_date, end_date)
+        sheets['Manufacturer Detail'] = {
+            "rows": detail_rows,
+            "groups": detail_groups
+        }
+    except Exception as e:
+        # Fallback if columns don't exist in older database
+        print(f"Warning: Could not generate Manufacturer Detail sheet: {e}")
+        sheets['Manufacturer Detail'] = [
+            ["MANUFACTURER DETAIL BY ENGINEER"],
+            [f"Period: {start_date.isoformat()} to {end_date.isoformat()}"],
+            ["Note: Database schema does not include serial number columns yet."],
+            ["Please ensure database initialization has run with the latest schema."]
+        ]
 
     # SHEET 5: Manufacturer Focus
     mfr_sheet = []
