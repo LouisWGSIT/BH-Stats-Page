@@ -2437,6 +2437,13 @@ function renderSVGSparkline(svgElem, data) {
     currentDashboard = index;
     const dashboard = dashboards[index];
     
+    if (erasureView) {
+      erasureView.style.removeProperty('display');
+    }
+    if (qaView) {
+      qaView.style.removeProperty('display');
+    }
+
     if (dashboard === 'erasure') {
       erasureView.classList.add('is-active');
       qaView.classList.remove('is-active');

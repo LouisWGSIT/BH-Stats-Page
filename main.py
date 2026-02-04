@@ -203,10 +203,13 @@ async def get_total_by_type(type: str = "laptops_desktops", scope: str = "today"
     conn = db.sqlite3.connect(db.DB_PATH)
     cursor = conn.cursor()
     if scope == "month":
-        key_col = "month"
-        key_val = date.today().strftime('%Y-%m')
-        where = f"{key_col} = ? AND event = 'success' AND device_type = ?"
-        params = [key_val, type]
+        today = date.today()
+        year = today.year
+        month = today.month
+        first_day = f"{year:04d}-{month:02d}-01"
+        last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
+        where = "date >= ? AND date <= ? AND event = 'success' AND device_type = ?"
+        params = [first_day, last_day, type]
     elif scope == "all":
         where = "event = 'success' AND device_type = ?"
         params = [type]

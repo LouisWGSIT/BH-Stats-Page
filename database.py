@@ -536,10 +536,13 @@ def top_engineers(scope: str = 'today', device_type: str = None, limit: int = 3)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     if scope == 'month':
-        key_col = 'month'
-        key_val = get_today_str()[:7]
-        where = f"{key_col} = ? AND event = 'success'"
-        params = [key_val]
+        today = get_today_str()
+        year = int(today[:4])
+        month = int(today[5:7])
+        first_day = f"{year:04d}-{month:02d}-01"
+        last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
+        where = "date >= ? AND date <= ? AND event = 'success'"
+        params = [first_day, last_day]
     elif scope == 'all':
         where = "event = 'success'"
         params = []
