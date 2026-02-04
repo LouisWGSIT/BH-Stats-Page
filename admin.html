@@ -275,7 +275,9 @@
                     </div>
                 </div>
                 <button onclick="fixInitials()" id="fixBtn">Fix Initials</button>
+                <button onclick="undoLastInitials()" id="undoFixBtn" style="margin-left:10px;">Undo Last Transfer</button>
                 <div id="fixResult" class="result"></div>
+                <div id="undoFixResult" class="result"></div>
             </div>
 
             <!-- Section 3: Initials Breakdown -->
@@ -673,6 +675,31 @@
                 setTimeout(() => {
                     resultDiv.innerHTML = '';
                 }, 3000);
+            } catch (error) {
+                resultDiv.innerHTML = '<p style="color: #c00;">❌ Error: ' + error.message + '</p>';
+            }
+        }
+
+        async function undoLastInitials() {
+            const resultDiv = document.getElementById('undoFixResult');
+            resultDiv.innerHTML = '<p style="color: #667eea;">⏳ Undoing last transfer...</p>';
+            try {
+                const response = await fetch('/admin/undo-last-initials', {
+                    method: 'POST',
+                    headers: getAuthHeaders(true)
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Undo failed');
+                }
+                if (data.undone === 0) {
+                    resultDiv.innerHTML = '<p style="color: #999;">No undo history available.</p>';
+                } else {
+                    resultDiv.innerHTML = `<p style="color: #10b981;">✅ Restored ${data.undone} records (${data.from_initials} ← ${data.to_initials})</p>`;
+                }
+                loadStats();
+                loadInitialsList();
+                populateFromDropdown();
             } catch (error) {
                 resultDiv.innerHTML = '<p style="color: #c00;">❌ Error: ' + error.message + '</p>';
             }

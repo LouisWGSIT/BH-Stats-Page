@@ -780,61 +780,68 @@ async def admin_fix_initials(req: Request):
     if isinstance(from_initials, str):
         from_initials = from_initials.strip().upper()
     
-    # Execute the update
     conn = db.sqlite3.connect(db.DB_PATH)
     cursor = conn.cursor()
-    
+
+    cursor.execute("BEGIN")
     if from_initials == '' or from_initials is None:
-        # Target NULL or empty/whitespace records
         cursor.execute("""
-            SELECT COUNT(1)
+            SELECT rowid, initials
             FROM erasures
             WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
+            ORDER BY rowid ASC
         """)
-        available_count = cursor.fetchone()[0]
+        rows = cursor.fetchall()
+        available_count = len(rows)
         if limit is not None:
             limit = max(0, min(int(limit), available_count))
-        if limit:
-            cursor.execute("""
-                UPDATE erasures
-                SET initials = ?
-                WHERE rowid IN (
-                    SELECT rowid FROM erasures
-                    WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
-                    LIMIT ?
-                )
-            """, (to_initials, limit))
-        else:
-            cursor.execute("""
-                UPDATE erasures 
-                SET initials = ? 
-                WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
-            """, (to_initials,))
+            rows = rows[:limit]
         from_display = "(blank/unassigned)"
     else:
-        # Target specific initials
         if from_initials == to_initials:
             conn.close()
             return {"status": "error", "message": "from and to initials must be different"}
-        cursor.execute("SELECT COUNT(1) FROM erasures WHERE initials = ?", (from_initials,))
-        available_count = cursor.fetchone()[0]
+        cursor.execute("""
+            SELECT rowid, initials
+            FROM erasures
+            WHERE initials = ?
+            ORDER BY rowid ASC
+        """, (from_initials,))
+        rows = cursor.fetchall()
+        available_count = len(rows)
         if limit is not None:
             limit = max(0, min(int(limit), available_count))
-        if limit:
-            cursor.execute("""
-                UPDATE erasures
-                SET initials = ?
-                WHERE rowid IN (
-                    SELECT rowid FROM erasures
-                    WHERE initials = ?
-                    LIMIT ?
-                )
-            """, (to_initials, from_initials, limit))
-        else:
-            cursor.execute("UPDATE erasures SET initials = ? WHERE initials = ?", (to_initials, from_initials))
+            rows = rows[:limit]
         from_display = from_initials
-    
-    affected = cursor.rowcount
+
+    if not rows:
+        conn.rollback()
+        conn.close()
+        return {
+            "status": "ok",
+            "action": "fix_initials",
+            "from_initials": from_display,
+            "to_initials": to_initials,
+            "affected_records": 0,
+            "available_records": available_count
+        }
+
+    cursor.execute(
+        "INSERT INTO admin_actions (action, from_initials, to_initials, created_at, affected) VALUES (?, ?, ?, ?, ?)",
+        ("fix_initials", from_display, to_initials, datetime.now().isoformat(), len(rows))
+    )
+    action_id = cursor.lastrowid
+    cursor.executemany(
+        "INSERT INTO admin_action_rows (action_id, rowid, old_initials) VALUES (?, ?, ?)",
+        [(action_id, row_id, old_initials) for row_id, old_initials in rows]
+    )
+
+    cursor.executemany(
+        "UPDATE erasures SET initials = ? WHERE rowid = ?",
+        [(to_initials, row_id) for row_id, _ in rows]
+    )
+
+    affected = len(rows)
     conn.commit()
     conn.close()
     
@@ -847,6 +854,45 @@ async def admin_fix_initials(req: Request):
         "to_initials": to_initials,
         "affected_records": affected,
         "available_records": available_count
+    }
+
+@app.post("/admin/undo-last-initials")
+async def admin_undo_last_initials(req: Request):
+    """Undo the most recent initials change."""
+    require_admin(req)
+    conn = db.sqlite3.connect(db.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, action, from_initials, to_initials, affected
+        FROM admin_actions
+        WHERE action = 'fix_initials'
+        ORDER BY id DESC
+        LIMIT 1
+    """)
+    action = cursor.fetchone()
+    if not action:
+        conn.close()
+        return {"status": "ok", "undone": 0, "message": "No undo history"}
+
+    action_id, action_name, from_initials, to_initials, affected = action
+    cursor.execute("SELECT rowid, old_initials FROM admin_action_rows WHERE action_id = ?", (action_id,))
+    rows = cursor.fetchall()
+
+    cursor.execute("BEGIN")
+    cursor.executemany(
+        "UPDATE erasures SET initials = ? WHERE rowid = ?",
+        [(old_initials, row_id) for row_id, old_initials in rows]
+    )
+    cursor.execute("DELETE FROM admin_action_rows WHERE action_id = ?", (action_id,))
+    cursor.execute("DELETE FROM admin_actions WHERE id = ?", (action_id,))
+    conn.commit()
+    conn.close()
+
+    return {
+        "status": "ok",
+        "undone": len(rows),
+        "from_initials": from_initials,
+        "to_initials": to_initials
     }
 
 @app.get("/admin/connected-devices")

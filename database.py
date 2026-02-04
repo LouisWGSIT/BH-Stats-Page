@@ -228,6 +228,26 @@ def init_db():
         cursor.execute("ALTER TABLE erasures ADD COLUMN drive_type TEXT")
     except:
         pass
+
+    # Admin action history for undo support
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT,
+            from_initials TEXT,
+            to_initials TEXT,
+            created_at TEXT,
+            affected INTEGER DEFAULT 0
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_action_rows (
+            action_id INTEGER,
+            rowid INTEGER,
+            old_initials TEXT
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_action_rows_action ON admin_action_rows(action_id)")
     
     conn.commit()
     conn.close()
