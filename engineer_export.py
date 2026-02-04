@@ -177,8 +177,6 @@ def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[Lis
             model or 'Unknown',
             serial_value,
             drive_size,
-            drive_type or '—',
-            drive_count or '—',
             duration_sec
         ))
 
@@ -200,13 +198,11 @@ def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[Lis
             "Model",
             "Serial/Job ID",
             "Drive Size (GB)",
-            "Drive Type",
-            "Drive Count",
             "Duration (sec)"
         ])
         data_start = len(sheet_rows) + 1
 
-        for date_str, manufacturer, model, serial_value, drive_size, drive_type, drive_count, duration_sec in entries:
+        for date_str, manufacturer, model, serial_value, drive_size, duration_sec in entries:
             size_gb = None
             if isinstance(drive_size, (int, float)):
                 size_gb = round(drive_size / 1_000_000_000, 2)
@@ -217,8 +213,6 @@ def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[Lis
                 model,
                 serial_value,
                 size_gb if size_gb is not None else '—',
-                drive_type,
-                drive_count,
                 duration_sec if duration_sec is not None else '—'
             ])
 
