@@ -124,10 +124,12 @@ def get_daily_qa_data(date_obj: date) -> Dict[str, Dict]:
             if not username or username == 'NO USER':
                 username = '(unassigned)'
             
-            data[username]['total_scans'] += scans
-            data[username]['successful'] += (photos or 0)  # Photo = successful scan
-            data[username]['locations'][location or 'Unknown'] += scans
-            data[username]['daily_count'] = scans
+            scans_int = int(scans or 0)
+            photos_int = int(photos or 0)
+            data[username]['total_scans'] += scans_int
+            data[username]['successful'] += photos_int  # Photo = successful scan
+            data[username]['locations'][location or 'Unknown'] += scans_int
+            data[username]['daily_count'] = scans_int
         
         cursor.close()
         conn.close()
@@ -176,13 +178,16 @@ def get_weekly_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict
                 username = '(unassigned)'
             
             day_name = scan_date.strftime('%A') if scan_date else 'Unknown'
+
+            total_scans_int = int(total_scans or 0)
+            photos_int = int(photos or 0)
             
-            data[username]['total'] += total_scans
-            data[username]['successful'] += (photos or 0)
+            data[username]['total'] += total_scans_int
+            data[username]['successful'] += photos_int
             data[username]['daily'][day_name] = {
                 'date': scan_date,
-                'scans': total_scans,
-                'passed': photos or 0
+                'scans': total_scans_int,
+                'passed': photos_int
             }
         
         # Calculate pass rates

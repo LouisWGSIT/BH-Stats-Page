@@ -156,7 +156,8 @@ def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[Lis
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT initials, date, manufacturer, model, job_id, drive_size, drive_type, drive_count, duration_sec
+        SELECT initials, date, manufacturer, model, system_serial, disk_serial, job_id,
+               drive_size, drive_type, drive_count, duration_sec
         FROM erasures
         WHERE date >= ? AND date <= ? AND event = 'success'
         ORDER BY initials, date, manufacturer, model
@@ -167,13 +168,14 @@ def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[Lis
     conn.close()
 
     grouped = defaultdict(list)
-    for initials, date_str, manufacturer, model, job_id, drive_size, drive_type, drive_count, duration_sec in rows:
+    for initials, date_str, manufacturer, model, system_serial, disk_serial, job_id, drive_size, drive_type, drive_count, duration_sec in rows:
         key = initials or '(unassigned)'
+        serial_value = disk_serial or system_serial or job_id or '—'
         grouped[key].append((
             date_str,
             normalize_manufacturer(manufacturer) or 'Unknown',
             model or 'Unknown',
-            job_id or '—',
+            serial_value,
             drive_size,
             drive_type or '—',
             drive_count or '—',
@@ -204,7 +206,7 @@ def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[Lis
         ])
         data_start = len(sheet_rows) + 1
 
-        for date_str, manufacturer, model, job_id, drive_size, drive_type, drive_count, duration_sec in entries:
+        for date_str, manufacturer, model, serial_value, drive_size, drive_type, drive_count, duration_sec in entries:
             size_gb = None
             if isinstance(drive_size, (int, float)):
                 size_gb = round(drive_size / 1_000_000_000, 2)
@@ -213,7 +215,7 @@ def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[Lis
                 date_str,
                 manufacturer,
                 model,
-                job_id,
+                serial_value,
                 size_gb if size_gb is not None else '—',
                 drive_type,
                 drive_count,

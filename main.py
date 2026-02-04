@@ -505,9 +505,15 @@ async def erasure_detail(req: Request):
     # Note: <SYSTEM SERIAL>, <DISK SERIAL>, <DISK CAPACITY> are not available as built-in variables
     manufacturer = payload.get("manufacturer")
     model = payload.get("model")
-    system_serial = ""  # Not available from Blancco
-    disk_serial = ""    # Not available from Blancco
-    disk_capacity = ""  # Not available from Blancco
+    system_serial = payload.get("system_serial") or payload.get("systemSerial") or payload.get("system-serial") or payload.get("systemSerialNumber") or ""
+    disk_serial = payload.get("disk_serial") or payload.get("diskSerial") or payload.get("disk-serial") or payload.get("diskSerialNumber") or ""
+    disk_capacity = payload.get("disk_capacity") or payload.get("diskCapacity") or payload.get("drive_size") or payload.get("driveSize") or ""
+
+    if isinstance(disk_capacity, str):
+        try:
+            disk_capacity = int(float(disk_capacity))
+        except:
+            pass
     
     # Log what we found
     if manufacturer or model:
@@ -1095,7 +1101,7 @@ async def get_qa_dashboard_data(period: str = "this_week"):
             avg_per_day = stats['total'] / max(1, days_active) if days_active > 0 else 0
             
             # Calculate consistency
-            daily_counts = [stats['daily'][day]['scans'] 
+            daily_counts = [float(stats['daily'][day]['scans'])
                            for day in stats['daily'] if stats['daily'][day]['scans'] > 0]
             
             consistency = 100

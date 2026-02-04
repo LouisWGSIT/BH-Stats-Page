@@ -187,6 +187,8 @@ def init_db():
             job_id TEXT,
             manufacturer TEXT,      -- Device manufacturer (e.g., HP, Dell, Apple)
             model TEXT,             -- Device model (e.g., EliteBook 840 G5)
+            system_serial TEXT,     -- System serial number
+            disk_serial TEXT,       -- Disk serial number
             drive_size INTEGER,     -- Total drive capacity in GB
             drive_count INTEGER,    -- Number of drives
             drive_type TEXT         -- HDD, SSD, or NVMe
@@ -204,6 +206,14 @@ def init_db():
         pass
     try:
         cursor.execute("ALTER TABLE erasures ADD COLUMN model TEXT")
+    except:
+        pass
+    try:
+        cursor.execute("ALTER TABLE erasures ADD COLUMN system_serial TEXT")
+    except:
+        pass
+    try:
+        cursor.execute("ALTER TABLE erasures ADD COLUMN disk_serial TEXT")
     except:
         pass
     try:
@@ -361,11 +371,11 @@ def add_erasure_event(*, event: str, device_type: str, initials: str = None, dur
     cursor.execute(
         """
         INSERT INTO erasures (ts, date, month, event, device_type, initials, duration_sec, error_type, job_id,
-                             manufacturer, model, drive_size, drive_count, drive_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     manufacturer, model, system_serial, disk_serial, drive_size, drive_count, drive_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (ts, d, month, event, device_type, (initials or None), duration_sec, (error_type or None), (job_id or None),
-         (manufacturer or None), (model or None), (system_serial or None), (disk_serial or None), (disk_capacity or None))
+         (manufacturer or None), (model or None), (system_serial or None), (disk_serial or None), (disk_capacity or None), None, None)
     )
     conn.commit()
     conn.close()
