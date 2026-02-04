@@ -2441,6 +2441,7 @@ function renderSVGSparkline(svgElem, data) {
     const erasureView = document.getElementById('erasureStatsView');
     const qaView = document.getElementById('qaStatsView');
     const titleElem = document.getElementById('dashboardTitle');
+    const supportsGrid = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('display', 'grid');
     
     if (index < 0 || index >= dashboards.length) {
       return;
@@ -2466,7 +2467,7 @@ function renderSVGSparkline(svgElem, data) {
       erasureView.classList.remove('is-active');
       qaView.classList.add('is-active');
       erasureView.style.display = 'none';
-      qaView.style.display = 'grid';
+      qaView.style.display = supportsGrid ? 'grid' : 'block';
       titleElem.textContent = dashboardTitles.qa;
       // Load QA data when switching to QA dashboard
       const periodValue = document.getElementById('dateSelector')?.value || 'this-week';
