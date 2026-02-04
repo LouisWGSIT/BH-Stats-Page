@@ -2314,10 +2314,16 @@ function renderSVGSparkline(svgElem, data) {
       // Render top performers
       const performersGrid = document.getElementById('qaTopPerformersGrid');
       if (!data.topPerformers || data.topPerformers.length === 0) {
+        const latestDate = data.dataBounds?.maxDate;
+        const earliestDate = data.dataBounds?.minDate;
+        const availabilityMsg = latestDate
+          ? `Latest available QA data: ${latestDate}${earliestDate ? ` (earliest: ${earliestDate})` : ''}.`
+          : 'No QA data available in the database.';
         performersGrid.innerHTML = `
           <div style="grid-column: 1 / -1; padding: 30px; text-align: center; color: #999;">
             <h3>No QA data for this period</h3>
-            <p style="margin-top: 8px; font-size: 13px;">Try Last Week or Last Month.</p>
+            <p style="margin-top: 8px; font-size: 13px;">${availabilityMsg}</p>
+            <p style="margin-top: 6px; font-size: 12px;">Try a date range within the available period.</p>
           </div>
         `;
       } else {

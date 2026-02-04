@@ -4,9 +4,49 @@ import sqlite3
 from typing import Dict, List, Tuple
 import database as db
 from collections import defaultdict, Counter
+import re
 
 WORK_HOURS_START = 8  # 8:00 AM
 WORK_HOURS_END = 16   # 4:00 PM (16:00)
+
+MANUFACTURER_CLEAN_MAP = {
+    "dell inc.": "Dell",
+    "dell": "Dell",
+    "hewlett-packard": "HP",
+    "hp": "HP",
+    "lenovo": "Lenovo",
+    "microsoft corporation": "Microsoft",
+    "microsoft": "Microsoft",
+    "apple inc.": "Apple",
+    "apple": "Apple",
+    "samsung": "Samsung",
+}
+
+MANUFACTURER_INVALID_PATTERNS = (
+    "<system_manufacturer>",
+    "system manufacturer",
+    "<reportpath",
+    "blancco_data.blancco_hardware_report",
+    "unknown",
+    "n/a",
+)
+
+def normalize_manufacturer(value: str) -> str | None:
+    if not value:
+        return None
+    cleaned = re.sub(r"\s+", " ", str(value)).strip()
+    if not cleaned:
+        return None
+
+    lower = cleaned.lower()
+    if any(token in lower for token in MANUFACTURER_INVALID_PATTERNS):
+        return None
+    if cleaned.startswith("<") and cleaned.endswith(">"):
+        return None
+    if len(cleaned) > 60:
+        return None
+
+    return MANUFACTURER_CLEAN_MAP.get(lower, cleaned)
 
 def get_week_dates(period: str) -> Tuple[date, date, str]:
     """Get Monday-Friday dates for a given period"""
@@ -76,8 +116,9 @@ def get_daily_engineer_data(date_str: str) -> Dict[str, Dict]:
         
         data[initials]['erasures'] += 1
         data[initials]['device_types'][device_type or 'unknown'] += 1
-        if manufacturer:
-            data[initials]['manufacturers'][manufacturer] += 1
+        normalized = normalize_manufacturer(manufacturer)
+        if normalized:
+            data[initials]['manufacturers'][normalized] += 1
         if duration_sec:
             try:
                 data[initials]['durations'].append(int(duration_sec))

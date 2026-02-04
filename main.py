@@ -1061,6 +1061,7 @@ async def get_qa_dashboard_data(period: str = "this_week"):
         qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
         
         if not qa_data:
+            min_date, max_date = qa_export.get_qa_data_bounds()
             return {
                 "period": period_label,
                 "dateRange": f"{start_date} to {end_date}",
@@ -1072,7 +1073,11 @@ async def get_qa_dashboard_data(period: str = "this_week"):
                     "topTechnician": "N/A"
                 },
                 "topPerformers": [],
-                "locations": []
+                "locations": [],
+                "dataBounds": {
+                    "minDate": str(min_date) if min_date else None,
+                    "maxDate": str(max_date) if max_date else None
+                }
             }
         
         # Calculate summary metrics

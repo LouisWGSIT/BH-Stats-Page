@@ -62,6 +62,28 @@ def get_week_dates(period: str) -> Tuple[date, date, str]:
     
     return start, end, label
 
+def get_qa_data_bounds() -> Tuple[date | None, date | None]:
+    """Return the min/max QA scan dates available in MariaDB."""
+    conn = get_mariadb_connection()
+    if not conn:
+        return None, None
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT MIN(DATE(added_date)) AS min_date,
+                   MAX(DATE(added_date)) AS max_date
+            FROM ITAD_QA_App
+        """)
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return row[0], row[1]
+    except Exception as e:
+        print(f"[QA Export] Error fetching QA data bounds: {e}")
+        if conn:
+            conn.close()
+        return None, None
+
 def get_daily_qa_data(date_obj: date) -> Dict[str, Dict]:
     """Get QA data for a specific day aggregated by technician"""
     conn = get_mariadb_connection()
