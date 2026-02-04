@@ -3057,15 +3057,44 @@ function renderSVGSparkline(svgElem, data) {
     const dateScope = document.getElementById('dateSelector')?.value || 'this-week';
     const period = dateScope.replace(/-/g, '_');
 
-    // Route export based on current dashboard
+    // Determine export URL and filename
+    let exportUrl, filename;
     if (currentDashboard === 1) {
       // QA dashboard export
-      window.location.href = `/export/qa-stats?period=${period}`;
-      return;
+      exportUrl = `/export/qa-stats?period=${period}`;
+      filename = `qa-stats-${dateScope}.xlsx`;
+    } else {
+      // Erasure dashboard export (engineer deep dive)
+      exportUrl = `/export/engineer-deepdive?period=${period}`;
+      filename = `engineer-deepdive-${dateScope}.xlsx`;
     }
 
-    // Erasure dashboard export (engineer deep dive)
-    window.location.href = `/export/engineer-deepdive?period=${period}`;
+    try {
+      // Fetch with authentication header
+      const response = await fetch(exportUrl, {
+        headers: {
+          'Authorization': 'Bearer Gr33n5af3!'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.statusText}`);
+      }
+
+      // Convert response to blob and download
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to download spreadsheet: ' + error.message);
+    }
   }
 
   // Add button listener
