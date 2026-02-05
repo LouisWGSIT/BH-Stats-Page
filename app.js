@@ -2476,9 +2476,8 @@ function renderSVGSparkline(svgElem, data) {
       populateQACard('qaWeekTotal', 'qaWeeklyEngineers', weeklyData, 'qa', 6);
       populateQACard('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 'qa', 8);
       
-      // Bottom row: Today's Data Bearing, Today's Non Data Bearing, Metrics
-      populateQACard('dataBeringToday', 'dataBeringTodayEngineers', todayData, 'de', 6);
-      populateQACard('nonDataBeringToday', 'nonDataBeringTodayEngineers', todayData, 'non_de', 6);
+      // Bottom row: Rotating Data Bearing / Non Data Bearing cards, and Metrics
+      startQARotator(todayData, weeklyData, allTimeData);
       populateMetricsCard(todayData, weeklyData);
       
       // Right side: Sorting (QA App)
@@ -2490,6 +2489,43 @@ function renderSVGSparkline(svgElem, data) {
       console.error('Failed to load QA dashboard:', error);
       showQAError('Connection error: ' + error.message);
     }
+  }
+  
+  function startQARotator(todayData, weeklyData, allTimeData) {
+    const datasets = [
+      { data: todayData, label: "Today's" },
+      { data: weeklyData, label: "This Week's" },
+      { data: allTimeData, label: "All Time" }
+    ];
+    
+    let currentIndex = 0;
+    
+    // Update the cards with current dataset
+    function updateRotatingCards() {
+      const current = datasets[currentIndex];
+      
+      // Update Data Bearing card
+      const dataBearingTitle = document.querySelector('#dataBeringToday').closest('.qa-de-card').querySelector('h3');
+      if (dataBearingTitle) {
+        dataBearingTitle.textContent = `${current.label} Data Bearing`;
+      }
+      populateQACard('dataBeringToday', 'dataBeringTodayEngineers', current.data, 'de', 6);
+      
+      // Update Non Data Bearing card
+      const nonDataBearingTitle = document.querySelector('#nonDataBeringToday').closest('.qa-de-card').querySelector('h3');
+      if (nonDataBearingTitle) {
+        nonDataBearingTitle.textContent = `${current.label} Non Data Bearing`;
+      }
+      populateQACard('nonDataBeringToday', 'nonDataBeringTodayEngineers', current.data, 'non_de', 6);
+      
+      currentIndex = (currentIndex + 1) % datasets.length;
+    }
+    
+    // Initial display
+    updateRotatingCards();
+    
+    // Rotate every 15 seconds
+    setInterval(updateRotatingCards, 15000);
   }
   
   function populateQACard(totalId, listId, data, type = 'qa', maxItems = 6) {

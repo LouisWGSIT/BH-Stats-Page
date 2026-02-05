@@ -223,7 +223,7 @@ def get_weekly_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict
         return {}
 
 def get_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict]:
-    """Get DE QA data from view_audit_submission (DE APP) for the period."""
+    """Get DE QA data from audit_master (DEAPP_Submission) for the period."""
     conn = get_mariadb_connection()
     if not conn:
         return {}
@@ -234,14 +234,15 @@ def get_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict]:
         end_str = end_date.isoformat()
 
         cursor.execute("""
-            SELECT de_completed_by,
+            SELECT user_id,
                    COUNT(*) as total_scans,
-                   DATE(de_completed_date) as scan_date
-            FROM `view_audit_submission (DE APP)`
-            WHERE de_completed_date IS NOT NULL
-              AND DATE(de_completed_date) >= %s AND DATE(de_completed_date) <= %s
-            GROUP BY de_completed_by, DATE(de_completed_date)
-            ORDER BY de_completed_by, scan_date
+                   DATE(date_time) as scan_date
+            FROM audit_master
+            WHERE audit_type = 'DEAPP_Submission'
+              AND user_id IS NOT NULL AND user_id <> ''
+              AND DATE(date_time) >= %s AND DATE(date_time) <= %s
+            GROUP BY user_id, DATE(date_time)
+            ORDER BY user_id, scan_date
         """, (start_str, end_str))
 
         rows = cursor.fetchall()
