@@ -2460,8 +2460,12 @@ function renderSVGSparkline(svgElem, data) {
       document.getElementById('qaCurrentPeriod').textContent = data.period;
       document.getElementById('qaDateRange').textContent = data.dateRange;
       
+      const displayTopPerformers = (data.topPerformers || [])
+        .filter(tech => (tech.combinedScans || 0) > 0)
+        .filter(tech => (tech.name || '').toLowerCase() !== '(unassigned)');
+
       // Render top performers
-      if (!data.topPerformers || data.topPerformers.length === 0) {
+      if (!displayTopPerformers || displayTopPerformers.length === 0) {
         const latestDate = data.dataBounds?.maxDate;
         const earliestDate = data.dataBounds?.minDate;
         const availabilityMsg = latestDate
@@ -2475,54 +2479,73 @@ function renderSVGSparkline(svgElem, data) {
           </div>
         `;
       } else {
-        performersGrid.innerHTML = data.topPerformers.map(tech => `
+        performersGrid.innerHTML = displayTopPerformers.map(tech => {
+          const qaScans = tech.qaScans || 0;
+          const deScans = tech.deQaScans || 0;
+          const combined = tech.combinedScans || 0;
+          const passRate = qaScans > 0 ? `${tech.passRate}%` : '—';
+          const sourceTag = qaScans > 0 && deScans > 0
+            ? 'QA + DE'
+            : deScans > 0
+              ? 'DE QA'
+              : 'QA App';
+          return `
         <div class="qa-performer-card">
-          <div class="qa-performer-name">${escapeHtml(formatQaName(tech.name))}</div>
+          <div class="qa-performer-name">${escapeHtml(formatQaName(tech.name))}
+            <span class="qa-performer-tag">${sourceTag}</span>
+          </div>
           <div class="qa-performer-metric">
             <span class="qa-performer-metric-label">QA Scans:</span>
-            <span class="qa-performer-metric-value">${tech.qaScans || 0}</span>
+            <span class="qa-performer-metric-value">${qaScans}</span>
           </div>
           <div class="qa-performer-metric">
             <span class="qa-performer-metric-label">DE QA:</span>
-            <span class="qa-performer-metric-value">${tech.deQaScans || 0}</span>
+            <span class="qa-performer-metric-value">${deScans}</span>
           </div>
           <div class="qa-performer-metric">
             <span class="qa-performer-metric-label">Combined:</span>
-            <span class="qa-performer-metric-value">${tech.combinedScans || 0}</span>
+            <span class="qa-performer-metric-value">${combined}</span>
           </div>
           <div class="qa-performer-metric">
             <span class="qa-performer-metric-label">Pass Rate:</span>
-            <span class="qa-performer-metric-value">${tech.passRate}%</span>
+            <span class="qa-performer-metric-value">${passRate}</span>
           </div>
         </div>
-      `).join('');
+      `;
+        }).join('');
       }
       
       // Render all technicians
       const techniciansGrid = document.getElementById('qaTechniciansGrid');
-      if (!data.technicians || data.technicians.length === 0) {
+      const displayTechnicians = (data.technicians || [])
+        .filter(tech => (tech.combinedScans || 0) > 0);
+
+      if (!displayTechnicians || displayTechnicians.length === 0) {
         techniciansGrid.innerHTML = '';
       } else {
-        techniciansGrid.innerHTML = data.technicians.map(tech => {
-        const maxScans = Math.max(...data.technicians.map(t => t.combinedScans || 0), 1);
+        techniciansGrid.innerHTML = displayTechnicians.map(tech => {
+        const maxScans = Math.max(...displayTechnicians.map(t => t.combinedScans || 0), 1);
         const dailyData = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
           .map(day => tech.daily[day]?.scans || 0);
         const maxDaily = Math.max(...dailyData, 1);
+        const qaScans = tech.qaScans || 0;
+        const deScans = tech.deQaScans || 0;
+        const passRate = qaScans > 0 ? `${tech.passRate}%` : '—';
         
         return `
           <div class="qa-tech-card">
             <div class="qa-tech-name">${escapeHtml(formatQaName(tech.name))}</div>
             <div class="qa-tech-stat">
               <span class="qa-tech-stat-label">QA Scans:</span>
-                <span class="qa-tech-stat-value">${tech.qaScans || 0}</span>
+              <span class="qa-tech-stat-value">${qaScans}</span>
             </div>
             <div class="qa-tech-stat">
               <span class="qa-tech-stat-label">DE QA:</span>
-                <span class="qa-tech-stat-value">${tech.deQaScans || 0}</span>
+              <span class="qa-tech-stat-value">${deScans}</span>
             </div>
             <div class="qa-tech-stat">
               <span class="qa-tech-stat-label">Pass:</span>
-              <span class="qa-tech-stat-value">${tech.passRate}%</span>
+              <span class="qa-tech-stat-value">${passRate}</span>
             </div>
             <div class="qa-tech-stat">
               <span class="qa-tech-stat-label">Avg/Day:</span>
