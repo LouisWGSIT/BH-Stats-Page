@@ -553,7 +553,7 @@ def get_all_time_daily_record() -> Dict:
             ) ranked
             WHERE rn = 1
             ORDER BY qa_count DESC
-            LIMIT 4
+            LIMIT 6
         """)
         
         data_bearing_records = []
@@ -571,7 +571,7 @@ def get_all_time_daily_record() -> Dict:
                 'date': scan_date.isoformat() if scan_date else None
             })
         
-        # Get top 4 non-data-bearing records (excluding managers) - only best record per person
+        # Get top 6 non-data-bearing records (excluding managers) - only best record per person
         cursor.execute("""
             SELECT user_id, qa_count, qa_date
             FROM (
@@ -589,7 +589,7 @@ def get_all_time_daily_record() -> Dict:
             ) ranked
             WHERE rn = 1
             ORDER BY qa_count DESC
-            LIMIT 4
+            LIMIT 6
         """)
         
         non_data_bearing_records = []
