@@ -2434,14 +2434,26 @@ function renderSVGSparkline(svgElem, data) {
   // Load QA dashboard data
   async function loadQADashboard(period = 'this_week') {
     try {
+      console.log('=== QA DASHBOARD LOAD STARTED ===');
       console.log('Loading QA dashboard with period:', period);
+      
+      // First, show a diagnostic placeholder to verify the view is visible
+      const performersGrid = document.getElementById('qaTopPerformersGrid');
+      if (performersGrid) {
+        performersGrid.innerHTML = '<div style="grid-column: 1 / -1; padding: 24px; text-align: center; color: #8cf04a;">🔄 Fetching QA data...</div>';
+      }
+      
       const response = await fetch(`/api/qa-dashboard?period=${period}`);
+      console.log('QA API Response status:', response.status, response.statusText);
+      
       if (!response.ok) {
+        const text = await response.text();
+        console.error('QA API error response:', text);
         showQAError(`Failed to load QA data (HTTP ${response.status})`);
         return;
       }
-      const data = await response.json();
       
+      const data = await response.json();
       console.log('QA data received:', data);
       
       if (data.error) {
@@ -2451,15 +2463,16 @@ function renderSVGSparkline(svgElem, data) {
       }
       
       // Update summary cards
+      console.log('Updating summary cards...');
       document.getElementById('qaTotalScans').textContent = data.summary.totalScans.toLocaleString();
       document.getElementById('qaPassRate').textContent = data.summary.passRate + '%';
       document.getElementById('qaConsistency').textContent = data.summary.avgConsistency.toFixed(1);
       document.getElementById('qaTopTech').textContent = data.summary.topTechnician;
       document.getElementById('qaCurrentPeriod').textContent = data.period;
       document.getElementById('qaDateRange').textContent = data.dateRange;
+      console.log('Summary cards updated');
       
       // Render top performers
-      const performersGrid = document.getElementById('qaTopPerformersGrid');
       if (!data.topPerformers || data.topPerformers.length === 0) {
         const latestDate = data.dataBounds?.maxDate;
         const earliestDate = data.dataBounds?.minDate;
@@ -2573,18 +2586,26 @@ function renderSVGSparkline(svgElem, data) {
   }
   
   function switchDashboard(index) {
+    console.log('=== DASHBOARD SWITCH INITIATED ===');
+    console.log('Index:', index, 'Available dashboards:', dashboards);
+    
     const erasureView = document.getElementById('erasureStatsView');
     const qaView = document.getElementById('qaStatsView');
     const titleElem = document.getElementById('dashboardTitle');
     const supportsGrid = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('display', 'grid');
     
+    console.log('Views found - Erasure:', !!erasureView, 'QA:', !!qaView);
+    console.log('Grid support:', supportsGrid);
+    
     if (index < 0 || index >= dashboards.length) {
+      console.warn('Invalid dashboard index:', index);
       return;
     }
     
     currentDashboard = index;
     const dashboard = dashboards[index];
-    
+    console.log('Switching to dashboard:', dashboard);
+
     if (erasureView) {
       erasureView.style.removeProperty('display');
     }
@@ -2593,19 +2614,36 @@ function renderSVGSparkline(svgElem, data) {
     }
 
     if (dashboard === 'erasure') {
+      console.log('Activating Erasure view');
       erasureView.classList.add('is-active');
       qaView.classList.remove('is-active');
       erasureView.style.display = 'flex';
       qaView.style.display = 'none';
       titleElem.textContent = dashboardTitles.erasure;
     } else if (dashboard === 'qa') {
+      console.log('Activating QA view');
+      console.log('qaView element:', qaView);
+      console.log('qaView classList before:', qaView?.className);
+      
       erasureView.classList.remove('is-active');
       qaView.classList.add('is-active');
+      
+      console.log('qaView classList after:', qaView?.className);
+      console.log('Setting display to:', supportsGrid ? 'grid' : 'block');
+      
       erasureView.style.display = 'none';
       qaView.style.display = supportsGrid ? 'grid' : 'block';
+      
+      console.log('qaView display style:', qaView?.style.display);
+      console.log('qaView computed display:', window.getComputedStyle(qaView)?.display);
+      
       titleElem.textContent = dashboardTitles.qa;
       const performersGrid = document.getElementById('qaTopPerformersGrid');
       const techniciansGrid = document.getElementById('qaTechniciansGrid');
+      
+      console.log('Performers grid found:', !!performersGrid);
+      console.log('Technicians grid found:', !!techniciansGrid);
+      
       if (performersGrid) {
         performersGrid.innerHTML = '<div style="grid-column: 1 / -1; padding: 24px; text-align: center; color: #999;">Loading QA data…</div>';
       }
@@ -2615,6 +2653,7 @@ function renderSVGSparkline(svgElem, data) {
       // Load QA data when switching to QA dashboard
       const periodValue = document.getElementById('dateSelector')?.value || 'this-week';
       const period = periodValue.replace(/-/g, '_');  // Convert "this-week" to "this_week"
+      console.log('Calling loadQADashboard with period:', period);
       loadQADashboard(period);
     }
     
