@@ -2925,7 +2925,7 @@ function renderSVGSparkline(svgElem, data) {
     });
   }
   
-  // Auto-refresh data every 5 minutes for live updates
+  // Auto-refresh data every 2 minutes for live updates
   setInterval(() => {
     if (currentDashboard === 1) {  // Only refresh if on QA dashboard
       const periodValue = document.getElementById('dateSelector')?.value || 'this-week';
@@ -2933,7 +2933,7 @@ function renderSVGSparkline(svgElem, data) {
       console.log('Auto-refreshing QA data...');
       loadQADashboard(period);
     }
-  }, 5 * 60 * 1000); // 5 minutes
+  }, 2 * 60 * 1000); // 2 minutes
 
   // ==================== CSV EXPORT ====================
   

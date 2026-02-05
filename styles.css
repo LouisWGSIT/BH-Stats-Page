@@ -2630,13 +2630,6 @@ main.layout {
   font-weight: 700;
 }
 
-/* Period classes override background but keep title colors */
-/* Today's cards will use green background */
-.qa-card-today.qa-card-data-bearing .qa-de-card-header h3,
-.qa-card-today.qa-card-non-data-bearing .qa-de-card-header h3 {
-  /* Keep data-bearing teal or non-data-bearing orange for titles */
-}
-
 /* Keep medal colors on top of category colors */
 .qa-engineer-item:nth-child(1) .qa-engineer-count {
   color: #FFD700 !important;
