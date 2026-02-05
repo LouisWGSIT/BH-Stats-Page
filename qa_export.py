@@ -535,24 +535,30 @@ def get_all_time_daily_record() -> Dict:
     try:
         cursor = conn.cursor()
         
-        # Get top 4 data-bearing records (excluding managers)
+        # Get top 4 data-bearing records (excluding managers) - only best record per person
         cursor.execute("""
-            SELECT DATE(date_time) as scan_date, user_id,
-                   COUNT(DISTINCT sales_order) as data_bearing_qa
-            FROM audit_master
-            WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
-              AND user_id IS NOT NULL AND user_id <> ''
-              AND sales_order IS NOT NULL AND sales_order <> ''
-              AND user_id NOT LIKE '%mark.aldington%'
-              AND user_id NOT LIKE '%brandon.brace%'
-            GROUP BY DATE(date_time), user_id
-            ORDER BY data_bearing_qa DESC
+            SELECT user_id, qa_count, qa_date
+            FROM (
+                SELECT user_id,
+                       COUNT(DISTINCT sales_order) as qa_count,
+                       DATE(date_time) as qa_date,
+                       ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY COUNT(DISTINCT sales_order) DESC, DATE(date_time) DESC) as rn
+                FROM audit_master
+                WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
+                  AND user_id IS NOT NULL AND user_id <> ''
+                  AND sales_order IS NOT NULL AND sales_order <> ''
+                  AND user_id NOT LIKE '%mark.aldington%'
+                  AND user_id NOT LIKE '%brandon.brace%'
+                GROUP BY user_id, DATE(date_time)
+            ) ranked
+            WHERE rn = 1
+            ORDER BY qa_count DESC
             LIMIT 4
         """)
         
         data_bearing_records = []
         for row in cursor.fetchall():
-            scan_date, username, count = row
+            username, count, scan_date = row
             name = username or '(unassigned)'
             if '@' in name:
                 name = name.split('@')[0]
@@ -565,24 +571,30 @@ def get_all_time_daily_record() -> Dict:
                 'date': scan_date.isoformat() if scan_date else None
             })
         
-        # Get top 4 non-data-bearing records (excluding managers)
+        # Get top 4 non-data-bearing records (excluding managers) - only best record per person
         cursor.execute("""
-            SELECT DATE(date_time) as scan_date, user_id,
-                   COUNT(DISTINCT sales_order) as non_data_bearing_qa
-            FROM audit_master
-            WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
-              AND user_id IS NOT NULL AND user_id <> ''
-              AND sales_order IS NOT NULL AND sales_order <> ''
-              AND user_id NOT LIKE '%mark.aldington%'
-              AND user_id NOT LIKE '%brandon.brace%'
-            GROUP BY DATE(date_time), user_id
-            ORDER BY non_data_bearing_qa DESC
+            SELECT user_id, qa_count, qa_date
+            FROM (
+                SELECT user_id,
+                       COUNT(DISTINCT sales_order) as qa_count,
+                       DATE(date_time) as qa_date,
+                       ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY COUNT(DISTINCT sales_order) DESC, DATE(date_time) DESC) as rn
+                FROM audit_master
+                WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+                  AND user_id IS NOT NULL AND user_id <> ''
+                  AND sales_order IS NOT NULL AND sales_order <> ''
+                  AND user_id NOT LIKE '%mark.aldington%'
+                  AND user_id NOT LIKE '%brandon.brace%'
+                GROUP BY user_id, DATE(date_time)
+            ) ranked
+            WHERE rn = 1
+            ORDER BY qa_count DESC
             LIMIT 4
         """)
         
         non_data_bearing_records = []
         for row in cursor.fetchall():
-            scan_date, username, count = row
+            username, count, scan_date = row
             name = username or '(unassigned)'
             if '@' in name:
                 name = name.split('@')[0]

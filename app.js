@@ -2645,6 +2645,12 @@ function renderSVGSparkline(svgElem, data) {
     let currentView = 0; // 0 = stats, 1 = data-bearing, 2 = non-data-bearing
     
     function updateMetricsView() {
+      // Add flip animation
+      if (metricsCard) {
+        metricsCard.classList.add('flipping');
+        setTimeout(() => metricsCard.classList.remove('flipping'), 600);
+      }
+      
       if (currentView === 0) {
         // Show general stats
         metricsValue.textContent = todayTotal.toLocaleString();
@@ -2677,9 +2683,10 @@ function renderSVGSparkline(svgElem, data) {
         if (dbRecords.length === 0) {
           metricsContent.innerHTML = '<div style="padding: 12px; text-align: center; color: #888;">No records</div>';
         } else {
+          const medals = ['🥇', '🥈', '🥉', '4.'];
           metricsContent.innerHTML = dbRecords.map((record, index) => `
             <div class="qa-metric-item">
-              <span class="qa-metric-label">${index + 1}. ${escapeHtml(record.name)}</span>
+              <span class="qa-metric-label">${medals[index] || (index + 1 + '.')} ${escapeHtml(record.name)}</span>
               <span class="qa-metric-value">${record.count.toLocaleString()}</span>
             </div>
           `).join('');
@@ -2693,9 +2700,10 @@ function renderSVGSparkline(svgElem, data) {
         if (ndbRecords.length === 0) {
           metricsContent.innerHTML = '<div style="padding: 12px; text-align: center; color: #888;">No records</div>';
         } else {
+          const medals = ['🥇', '🥈', '🥉', '4.'];
           metricsContent.innerHTML = ndbRecords.map((record, index) => `
             <div class="qa-metric-item">
-              <span class="qa-metric-label">${index + 1}. ${escapeHtml(record.name)}</span>
+              <span class="qa-metric-label">${medals[index] || (index + 1 + '.')} ${escapeHtml(record.name)}</span>
               <span class="qa-metric-value">${record.count.toLocaleString()}</span>
             </div>
           `).join('');
@@ -2865,6 +2873,16 @@ function renderSVGSparkline(svgElem, data) {
       }
     });
   }
+  
+  // Auto-refresh data every 5 minutes for live updates
+  setInterval(() => {
+    if (currentDashboard === 1) {  // Only refresh if on QA dashboard
+      const periodValue = document.getElementById('dateSelector')?.value || 'this-week';
+      const period = periodValue.replace(/-/g, '_');
+      console.log('Auto-refreshing QA data...');
+      loadQADashboard(period);
+    }
+  }, 5 * 60 * 1000); // 5 minutes
 
   // ==================== CSV EXPORT ====================
   

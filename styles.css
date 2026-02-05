@@ -2356,8 +2356,8 @@ main.layout {
 
 /* DE QA Cards */
 .qa-de-card {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(102, 126, 234, 0.05) 100%);
-  border: 1px solid rgba(102, 126, 234, 0.3);
+  background: linear-gradient(135deg, rgba(26, 188, 156, 0.15) 0%, rgba(26, 188, 156, 0.05) 100%);
+  border: 1px solid rgba(26, 188, 156, 0.3);
   border-radius: 12px;
   padding: 16px;
   transition: all 0.3s ease;
@@ -2365,11 +2365,6 @@ main.layout {
   flex-direction: column;
   flex: 1 1 0;
   min-height: 0;
-}
-
-.qa-de-card:hover {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.25) 0%, rgba(102, 126, 234, 0.1) 100%);
-  border-color: rgba(102, 126, 234, 0.5);
 }
 
 .qa-de-card-header {
@@ -2395,10 +2390,11 @@ main.layout {
 }
 
 .qa-de-total span:first-child {
-  color: #667eea;
-  font-size: 32px;
-  font-weight: 700;
+  color: #1abc9c;
+  font-size: 38px;
+  font-weight: 800;
   line-height: 1;
+  text-shadow: 0 2px 8px rgba(26, 188, 156, 0.4);
 }
 
 .qa-de-label {
@@ -2422,10 +2418,7 @@ main.layout {
   min-height: 0;
 }
 
-.qa-app-card:hover {
-  background: linear-gradient(135deg, rgba(255, 193, 7, 0.18) 0%, rgba(255, 193, 7, 0.08) 100%);
-  border-color: rgba(255, 193, 7, 0.5);
-}
+
 
 .qa-app-card-header {
   display: flex;
@@ -2451,9 +2444,10 @@ main.layout {
 
 .qa-app-total span:first-child {
   color: #ffc107;
-  font-size: 32px;
-  font-weight: 700;
+  font-size: 38px;
+  font-weight: 800;
   line-height: 1;
+  text-shadow: 0 2px 8px rgba(255, 193, 7, 0.4);
 }
 
 .qa-app-label {
@@ -2491,11 +2485,6 @@ main.layout {
   transition: all 0.2s ease;
 }
 
-.qa-engineer-item:hover {
-  background: rgba(0, 0, 0, 0.35);
-  transform: translateX(4px);
-}
-
 .qa-engineer-name {
   color: #fff;
   font-size: 14px;
@@ -2503,8 +2492,8 @@ main.layout {
 }
 
 .qa-engineer-count {
-  color: #667eea;
-  font-size: 16px;
+  color: #1abc9c;
+  font-size: 17px;
   font-weight: 700;
 }
 
@@ -2512,9 +2501,44 @@ main.layout {
   color: #ffc107;
 }
 
+/* Medal colors for top 3 */
+.qa-engineer-item:nth-child(1) .qa-engineer-count {
+  color: #FFD700;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+}
+
+.qa-engineer-item:nth-child(2) .qa-engineer-count {
+  color: #C0C0C0;
+  text-shadow: 0 0 8px rgba(192, 192, 192, 0.5);
+}
+
+.qa-engineer-item:nth-child(3) .qa-engineer-count {
+  color: #CD7F32;
+  text-shadow: 0 0 8px rgba(205, 127, 50, 0.5);
+}
+
 /* Metrics Card */
 .qa-metrics-card {
   cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.qa-metrics-card .qa-de-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ddd;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+@keyframes cardFlip {
+  0% { opacity: 1; transform: rotateY(0deg); }
+  50% { opacity: 0.7; transform: rotateY(90deg); }
+  100% { opacity: 1; transform: rotateY(0deg); }
+}
+
+.qa-metrics-card.flipping {
+  animation: cardFlip 0.6s ease;
 }
 
 .qa-metrics-content {
@@ -2531,20 +2555,120 @@ main.layout {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  font-size: 14px;
 }
 
 .qa-metric-label {
-  color: #999;
+  color: #bbb;
+  font-weight: 500;
 }
 
 .qa-metric-value {
-  color: #667eea;
+  color: #1abc9c;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 16px;
+}
+
+/* Color coding for different card types */
+/* Today's cards - Green (GSIT accent) */
+.qa-card-today {
+  background: linear-gradient(135deg, rgba(140, 240, 74, 0.15) 0%, rgba(140, 240, 74, 0.05) 100%);
+  border-color: rgba(140, 240, 74, 0.3);
+}
+
+.qa-card-today .qa-de-total span:first-child {
+  color: #8cf04a;
+  text-shadow: 0 2px 8px rgba(140, 240, 74, 0.4);
+}
+
+.qa-card-today .qa-engineer-count {
+  color: #8cf04a;
+}
+
+/* This Week's cards - Blue */
+.qa-card-week {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(102, 126, 234, 0.05) 100%);
+  border-color: rgba(102, 126, 234, 0.3);
+}
+
+.qa-card-week .qa-de-total span:first-child {
+  color: #667eea;
+  text-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+.qa-card-week .qa-engineer-count {
+  color: #667eea;
+}
+
+/* All Time cards - Purple */
+.qa-card-alltime {
+  background: linear-gradient(135deg, rgba(155, 89, 182, 0.15) 0%, rgba(155, 89, 182, 0.05) 100%);
+  border-color: rgba(155, 89, 182, 0.3);
+}
+
+.qa-card-alltime .qa-de-total span:first-child {
+  color: #9b59b6;
+  text-shadow: 0 2px 8px rgba(155, 89, 182, 0.4);
+}
+
+.qa-card-alltime .qa-engineer-count {
+  color: #9b59b6;
+}
+
+/* Data Bearing cards - Teal */
+.qa-card-data-bearing {
+  background: linear-gradient(135deg, rgba(26, 188, 156, 0.15) 0%, rgba(26, 188, 156, 0.05) 100%);
+  border-color: rgba(26, 188, 156, 0.3);
+}
+
+.qa-card-data-bearing .qa-de-total span:first-child {
+  color: #1abc9c;
+  text-shadow: 0 2px 8px rgba(26, 188, 156, 0.4);
+}
+
+.qa-card-data-bearing .qa-engineer-count {
+  color: #1abc9c;
+}
+
+.qa-card-data-bearing .qa-de-card-header h3 {
+  color: #1abc9c;
+  font-weight: 700;
+}
+
+/* Non-Data Bearing cards - Orange */
+.qa-card-non-data-bearing {
+  background: linear-gradient(135deg, rgba(230, 126, 34, 0.15) 0%, rgba(230, 126, 34, 0.05) 100%);
+  border-color: rgba(230, 126, 34, 0.3);
+}
+
+.qa-card-non-data-bearing .qa-de-total span:first-child {
+  color: #e67e22;
+  text-shadow: 0 2px 8px rgba(230, 126, 34, 0.4);
+}
+
+.qa-card-non-data-bearing .qa-engineer-count {
+  color: #e67e22;
+}
+
+.qa-card-non-data-bearing .qa-de-card-header h3 {
+  color: #e67e22;
+  font-weight: 700;
+}
+
+/* Keep medal colors on top of category colors */
+.qa-engineer-item:nth-child(1) .qa-engineer-count {
+  color: #FFD700 !important;
+}
+
+.qa-engineer-item:nth-child(2) .qa-engineer-count {
+  color: #C0C0C0 !important;
+}
+
+.qa-engineer-item:nth-child(3) .qa-engineer-count {
+  color: #CD7F32 !important;
 }
 
 /* Old styles kept for compatibility */
