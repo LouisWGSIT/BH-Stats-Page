@@ -1447,6 +1447,9 @@ async def get_qa_dashboard_data(period: str = "this_week"):
         
         avg_consistency = sum(consistency_scores) / len(consistency_scores) if consistency_scores else 0
         
+        # Get all-time daily record
+        daily_record = qa_export.get_all_time_daily_record()
+        
         return {
             "period": period_label,
             "dateRange": f"{start_date.isoformat()} to {end_date.isoformat()}",
@@ -1459,7 +1462,8 @@ async def get_qa_dashboard_data(period: str = "this_week"):
                 "passRate": round(overall_pass_rate, 1),
                 "avgConsistency": round(avg_consistency, 1),
                 "topTechnician": top_performers[0]['name'] if top_performers else "N/A",
-                "techniciansCount": len(technicians)
+                "techniciansCount": len(technicians),
+                "dailyRecord": daily_record
             },
             "topPerformers": top_performers
         }

@@ -520,3 +520,107 @@ def generate_qa_export(period: str) -> Dict[str, List[List]]:
     sheets["Performance KPIs"] = sheet_data
     
     return sheets
+
+def get_all_time_daily_record() -> Dict:
+    """Get the all-time record for most QA done in a single day"""
+    conn = get_mariadb_connection()
+    if not conn:
+        return {'qa_record': 0, 'qa_engineer': 'Unknown', 'qa_date': None}
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Get QA app record
+        cursor.execute("""
+            SELECT DATE(added_date) as scan_date, username, COUNT(*) as scans
+            FROM ITAD_QA_App
+            GROUP BY DATE(added_date), username
+            ORDER BY scans DESC
+            LIMIT 1
+        """)
+        
+        qa_row = cursor.fetchone()
+        qa_record = 0
+        qa_engineer = 'Unknown'
+        qa_date = None
+        
+        if qa_row:
+            qa_date, username, qa_record = qa_row
+            qa_engineer = username or '(unassigned)'
+            if '@' in qa_engineer:
+                qa_engineer = qa_engineer.split('@')[0]
+                parts = qa_engineer.split('.')
+                if len(parts) >= 2:
+                    qa_engineer = f"{parts[0].title()} {parts[1][0].upper()}"
+        
+        # Get DE QA (data-bearing) record
+        cursor.execute("""
+            SELECT DATE(submission_date) as submit_date, submitted_by, COUNT(*) as scans
+            FROM view_audit_submission
+            WHERE submission_date IS NOT NULL
+            GROUP BY DATE(submission_date), submitted_by
+            ORDER BY scans DESC
+            LIMIT 1
+        """)
+        
+        de_row = cursor.fetchone()
+        de_record = 0
+        de_engineer = 'Unknown'
+        
+        if de_row:
+            de_date, username, de_record = de_row
+            de_engineer = username or '(unassigned)'
+            if '@' in de_engineer:
+                de_engineer = de_engineer.split('@')[0]
+                parts = de_engineer.split('.')
+                if len(parts) >= 2:
+                    de_engineer = f"{parts[0].title()} {parts[1][0].upper()}"
+        
+        # Get non-DE QA record
+        cursor.execute("""
+            SELECT DATE(submission_date) as submit_date, submitted_by, COUNT(*) as scans
+            FROM audit_master
+            WHERE submission_date IS NOT NULL
+            GROUP BY DATE(submission_date), submitted_by
+            ORDER BY scans DESC
+            LIMIT 1
+        """)
+        
+        non_de_row = cursor.fetchone()
+        non_de_record = 0
+        non_de_engineer = 'Unknown'
+        
+        if non_de_row:
+            non_de_date, username, non_de_record = non_de_row
+            non_de_engineer = username or '(unassigned)'
+            if '@' in non_de_engineer:
+                non_de_engineer = non_de_engineer.split('@')[0]
+                parts = non_de_engineer.split('.')
+                if len(parts) >= 2:
+                    non_de_engineer = f"{parts[0].title()} {parts[1][0].upper()}"
+        
+        cursor.close()
+        conn.close()
+        
+        # Combine QA records (all QA types)
+        total_record = qa_record + de_record + non_de_record
+        record_engineer = qa_engineer  # Use QA app engineer if they had the highest
+        
+        if de_record > qa_record and de_record >= non_de_record:
+            record_engineer = de_engineer
+            total_record = de_record
+        elif non_de_record > qa_record and non_de_record >= de_record:
+            record_engineer = non_de_engineer
+            total_record = non_de_record
+        
+        return {
+            'qa_record': int(total_record),
+            'qa_engineer': record_engineer,
+            'qa_date': qa_date.isoformat() if qa_date else None
+        }
+    
+    except Exception as e:
+        print(f"[QA Export] Error fetching all-time daily record: {e}")
+        if conn:
+            conn.close()
+        return {'qa_record': 0, 'qa_engineer': 'Unknown', 'qa_date': None}

@@ -2500,13 +2500,13 @@ function renderSVGSparkline(svgElem, data) {
     let engineers = [];
     
     if (type === 'qa') {
-      // All QA (data-bearing + non-data-bearing + QA app)
-      total = (data.summary.deQaScans || 0) + (data.summary.nonDeQaScans || 0) + (data.summary.totalScans || 0);
+      // All QA (data-bearing + non-data-bearing, NOT Sorting)
+      total = (data.summary.deQaScans || 0) + (data.summary.nonDeQaScans || 0);
       engineers = (data.technicians || [])
-        .filter(tech => ((tech.deQaScans || 0) + (tech.nonDeQaScans || 0) + (tech.qaScans || 0)) > 0)
+        .filter(tech => ((tech.deQaScans || 0) + (tech.nonDeQaScans || 0)) > 0)
         .map(tech => ({
           name: tech.name,
-          count: (tech.deQaScans || 0) + (tech.nonDeQaScans || 0) + (tech.qaScans || 0)
+          count: (tech.deQaScans || 0) + (tech.nonDeQaScans || 0)
         }))
         .sort((a, b) => b.count - a.count)
         .slice(0, maxItems);
@@ -2599,6 +2599,10 @@ function renderSVGSparkline(svgElem, data) {
     const engineerCount = todayData.technicians ? todayData.technicians.filter(t => t.combinedScans > 0).length : 0;
     const avgConsistency = todayData.summary.avgConsistency || 0;
     
+    // Get daily record from either dataset
+    const dailyRecord = todayData.summary.dailyRecord || weeklyData.summary.dailyRecord || { qa_record: 0, qa_engineer: 'N/A' };
+    const recordDisplay = dailyRecord.qa_record > 0 ? `${dailyRecord.qa_record} by ${dailyRecord.qa_engineer}` : 'N/A';
+    
     metricsValue.textContent = todayTotal.toLocaleString();
     metricsLabel.textContent = "Today's Total";
     
@@ -2616,8 +2620,9 @@ function renderSVGSparkline(svgElem, data) {
         <span class="qa-metric-value">${Math.round(avgConsistency)}%</span>
       </div>
       <div class="qa-metric-item">
-        <span class="qa-metric-label">Week Total</span>
-        <span class="qa-metric-value">${weeklyTotal.toLocaleString()}</span>
+        <span class="qa-metric-label">1-Day Record</span>
+        <span class="qa-metric-value" style="font-size: 0.9em;">${recordDisplay}</span>
+      </div>
       </div>
     `;
   }
