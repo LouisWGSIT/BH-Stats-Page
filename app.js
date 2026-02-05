@@ -2449,37 +2449,42 @@ function renderSVGSparkline(svgElem, data) {
   // Load QA dashboard data
   async function loadQADashboard(period = 'this_week') {
     try {
-      // Load both this week's data and all-time data in parallel
-      const [weeklyResponse, allTimeResponse] = await Promise.all([
+      // Load today, this week, and all-time data in parallel
+      const [todayResponse, weeklyResponse, allTimeResponse] = await Promise.all([
+        fetch(`/api/qa-dashboard?period=today`),
         fetch(`/api/qa-dashboard?period=this_week`),
         fetch(`/api/qa-dashboard?period=all_time`)
       ]);
       
-      if (!weeklyResponse.ok || !allTimeResponse.ok) {
+      if (!todayResponse.ok || !weeklyResponse.ok || !allTimeResponse.ok) {
         showQAError(`Failed to load QA data`);
         return;
       }
       
+      const todayData = await todayResponse.json();
       const weeklyData = await weeklyResponse.json();
       const allTimeData = await allTimeResponse.json();
       
-      if (weeklyData.error || allTimeData.error) {
-        console.error('QA data error:', weeklyData.error || allTimeData.error);
+      if (todayData.error || weeklyData.error || allTimeData.error) {
+        console.error('QA data error');
         showQAError('Failed to load QA data');
         return;
       }
       
-      // Populate DE QA - This Week
-      populateDESection('deWeekTotal', 'deWeeklyEngineers', weeklyData, 10);
+      // Top row: Today's QA, This Week's QA, All Time QA
+      populateQACard('qaTodayTotal', 'qaTodayEngineers', todayData, 'qa', 6);
+      populateQACard('qaWeekTotal', 'qaWeeklyEngineers', weeklyData, 'qa', 6);
+      populateQACard('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 'qa', 8);
       
-      // Populate DE QA - All Time
-      populateDESection('deAllTimeTotal', 'deAllTimeEngineers', allTimeData, 12);
+      // Bottom row: Today's Data Bearing, Today's Non Data Bearing, Metrics
+      populateQACard('dataBeringToday', 'dataBeringTodayEngineers', todayData, 'de', 6);
+      populateQACard('nonDataBeringToday', 'nonDataBeringTodayEngineers', todayData, 'non_de', 6);
+      populateMetricsCard(todayData, weeklyData);
       
-      // Populate QA App - This Week
-      populateQAAppSection('qaWeekTotal', 'qaWeeklyEngineers', weeklyData, 8);
-      
-      // Populate QA App - All Time
-      populateQAAppSection('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 10);
+      // Right side: Sorting (QA App)
+      populateQAAppCard('qaAppTodayTotal', 'qaAppTodayEngineers', todayData, 6);
+      populateQAAppCard('qaAppWeekTotal', 'qaAppWeeklyEngineers', weeklyData, 8);
+      populateQAAppCard('qaAppAllTimeTotal', 'qaAppAllTimeEngineers', allTimeData, 10);
       
     } catch (error) {
       console.error('Failed to load QA dashboard:', error);
@@ -2487,49 +2492,70 @@ function renderSVGSparkline(svgElem, data) {
     }
   }
   
-  function populateDESection(totalId, listId, data, maxItems = 8) {
+  function populateQACard(totalId, listId, data, type = 'qa', maxItems = 6) {
     const totalEl = document.getElementById(totalId);
     const listEl = document.getElementById(listId);
     
-    // Calculate DE QA total (data-bearing + non-data-bearing)
-    const deTotal = (data.summary.deQaScans || 0) + (data.summary.nonDeQaScans || 0);
+    let total = 0;
+    let engineers = [];
+    
+    if (type === 'qa') {
+      // All QA (data-bearing + non-data-bearing + QA app)
+      total = (data.summary.deQaScans || 0) + (data.summary.nonDeQaScans || 0) + (data.summary.totalScans || 0);
+      engineers = (data.technicians || [])
+        .filter(tech => ((tech.deQaScans || 0) + (tech.nonDeQaScans || 0) + (tech.qaScans || 0)) > 0)
+        .map(tech => ({
+          name: tech.name,
+          count: (tech.deQaScans || 0) + (tech.nonDeQaScans || 0) + (tech.qaScans || 0)
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, maxItems);
+    } else if (type === 'de') {
+      // Data-bearing only
+      total = data.summary.deQaScans || 0;
+      engineers = (data.technicians || [])
+        .filter(tech => (tech.deQaScans || 0) > 0)
+        .map(tech => ({
+          name: tech.name,
+          count: tech.deQaScans || 0
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, maxItems);
+    } else if (type === 'non_de') {
+      // Non-data-bearing only
+      total = data.summary.nonDeQaScans || 0;
+      engineers = (data.technicians || [])
+        .filter(tech => (tech.nonDeQaScans || 0) > 0)
+        .map(tech => ({
+          name: tech.name,
+          count: tech.nonDeQaScans || 0
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, maxItems);
+    }
     
     if (totalEl) {
-      totalEl.textContent = deTotal.toLocaleString();
+      totalEl.textContent = total.toLocaleString();
     }
     
     if (listEl) {
-      // Get technicians with DE QA activity, sorted by DE total
-      const deEngineers = (data.technicians || [])
-        .filter(tech => ((tech.deQaScans || 0) + (tech.nonDeQaScans || 0)) > 0)
-        .filter(tech => (tech.name || '').toLowerCase() !== '(unassigned)')
-        .map(tech => ({
-          name: tech.name,
-          deTotal: (tech.deQaScans || 0) + (tech.nonDeQaScans || 0),
-          deScans: tech.deQaScans || 0,
-          nonDeScans: tech.nonDeQaScans || 0
-        }))
-        .sort((a, b) => b.deTotal - a.deTotal)
-        .slice(0, maxItems);
-      
-      if (deEngineers.length === 0) {
-        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #888;">No DE QA data</div>';
+      if (engineers.length === 0) {
+        listEl.innerHTML = '<div style="padding: 12px; text-align: center; color: #888;">No data</div>';
       } else {
-        listEl.innerHTML = deEngineers.map(eng => `
+        listEl.innerHTML = engineers.map(eng => `
           <div class="qa-engineer-item">
             <span class="qa-engineer-name">${escapeHtml(formatQaName(eng.name))}</span>
-            <span class="qa-engineer-count">${eng.deTotal.toLocaleString()}</span>
+            <span class="qa-engineer-count">${eng.count.toLocaleString()}</span>
           </div>
         `).join('');
       }
     }
   }
   
-  function populateQAAppSection(totalId, listId, data, maxItems = 6) {
+  function populateQAAppCard(totalId, listId, data, maxItems = 8) {
     const totalEl = document.getElementById(totalId);
     const listEl = document.getElementById(listId);
     
-    // QA App scans only (ITAD_QA_App)
     const qaTotal = data.summary.totalScans || 0;
     
     if (totalEl) {
@@ -2537,32 +2563,63 @@ function renderSVGSparkline(svgElem, data) {
     }
     
     if (listEl) {
-      // Get technicians with QA App activity, sorted by QA scans
       const qaEngineers = (data.technicians || [])
         .filter(tech => (tech.qaScans || 0) > 0)
         .filter(tech => (tech.name || '').toLowerCase() !== '(unassigned)')
         .map(tech => ({
           name: tech.name,
-          qaScans: tech.qaScans || 0,
-          passRate: tech.passRate || 0
+          qaScans: tech.qaScans || 0
         }))
         .sort((a, b) => b.qaScans - a.qaScans)
         .slice(0, maxItems);
       
       if (qaEngineers.length === 0) {
-        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #888;">No QA App data</div>';
+        listEl.innerHTML = '<div style="padding: 12px; text-align: center; color: #888;">No data</div>';
       } else {
         listEl.innerHTML = qaEngineers.map(eng => `
           <div class="qa-engineer-item">
-            <div>
-              <span class="qa-engineer-name">${escapeHtml(formatQaName(eng.name))}</span>
-              ${eng.passRate > 0 ? `<div style="font-size: 11px; color: #888; margin-top: 2px;">${eng.passRate}% pass rate</div>` : ''}
-            </div>
+            <span class="qa-engineer-name">${escapeHtml(formatQaName(eng.name))}</span>
             <span class="qa-engineer-count">${eng.qaScans.toLocaleString()}</span>
           </div>
         `).join('');
       }
     }
+  }
+  
+  function populateMetricsCard(todayData, weeklyData) {
+    const metricsContent = document.getElementById('metricsContent');
+    const metricsValue = document.getElementById('metricsValue');
+    const metricsLabel = document.getElementById('metricsLabel');
+    
+    if (!metricsContent) return;
+    
+    const todayTotal = (todayData.summary.totalScans || 0) + (todayData.summary.deQaScans || 0) + (todayData.summary.nonDeQaScans || 0);
+    const weeklyTotal = (weeklyData.summary.totalScans || 0) + (weeklyData.summary.deQaScans || 0) + (weeklyData.summary.nonDeQaScans || 0);
+    const avgDaily = weeklyTotal > 0 ? Math.round(weeklyTotal / 5) : 0;
+    const engineerCount = todayData.technicians ? todayData.technicians.filter(t => t.combinedScans > 0).length : 0;
+    const avgConsistency = todayData.summary.avgConsistency || 0;
+    
+    metricsValue.textContent = todayTotal.toLocaleString();
+    metricsLabel.textContent = "Today's Total";
+    
+    metricsContent.innerHTML = `
+      <div class="qa-metric-item">
+        <span class="qa-metric-label">Weekly Avg</span>
+        <span class="qa-metric-value">${avgDaily.toLocaleString()}/day</span>
+      </div>
+      <div class="qa-metric-item">
+        <span class="qa-metric-label">Active Engineers</span>
+        <span class="qa-metric-value">${engineerCount}</span>
+      </div>
+      <div class="qa-metric-item">
+        <span class="qa-metric-label">Consistency</span>
+        <span class="qa-metric-value">${Math.round(avgConsistency)}%</span>
+      </div>
+      <div class="qa-metric-item">
+        <span class="qa-metric-label">Week Total</span>
+        <span class="qa-metric-value">${weeklyTotal.toLocaleString()}</span>
+      </div>
+    `;
   }
   
   // Show error message on QA dashboard

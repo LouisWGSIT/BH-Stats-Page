@@ -539,53 +539,129 @@
     <!-- QA Stats View (Hidden by default) -->
     <main class="layout qa-stats-view" id="qaStatsView">
       <div class="qa-main-layout">
-        <!-- Left Side: DE QA (75%) -->
+        <!-- Left Side: QA (75%) -->
         <div class="qa-de-section">
-          <h2 class="qa-section-header">📋 DE QA Pipeline</h2>
+          <h2 class="qa-section-header">📊 QA</h2>
           
-          <!-- This Week's DE QA -->
-          <div class="qa-de-card">
-            <div class="qa-de-card-header">
-              <h3>This Week's DE QA</h3>
-              <div class="qa-de-total">
-                <span id="deWeekTotal">-</span>
-                <span class="qa-de-label">Total QA'd</span>
+          <!-- Top Row: Time-based QA metrics -->
+          <div class="qa-cards-grid">
+            <!-- Today's QA -->
+            <div class="qa-de-card">
+              <div class="qa-de-card-header">
+                <h3>Today's QA</h3>
+                <div class="qa-de-total">
+                  <span id="qaTodayTotal">-</span>
+                  <span class="qa-de-label">Total QA'd</span>
+                </div>
+              </div>
+              <div class="qa-engineers-list" id="qaTodayEngineers">
+                <!-- Populated by JavaScript -->
               </div>
             </div>
-            <div class="qa-engineers-list" id="deWeeklyEngineers">
-              <!-- Populated by JavaScript -->
+
+            <!-- This Week's QA -->
+            <div class="qa-de-card">
+              <div class="qa-de-card-header">
+                <h3>This Week's QA</h3>
+                <div class="qa-de-total">
+                  <span id="qaWeekTotal">-</span>
+                  <span class="qa-de-label">Total QA'd</span>
+                </div>
+              </div>
+              <div class="qa-engineers-list" id="qaWeeklyEngineers">
+                <!-- Populated by JavaScript -->
+              </div>
+            </div>
+
+            <!-- All Time QA -->
+            <div class="qa-de-card">
+              <div class="qa-de-card-header">
+                <h3>All Time QA</h3>
+                <div class="qa-de-total">
+                  <span id="qaAllTimeTotal">-</span>
+                  <span class="qa-de-label">Total QA'd</span>
+                </div>
+              </div>
+              <div class="qa-engineers-list" id="qaAllTimeEngineers">
+                <!-- Populated by JavaScript -->
+              </div>
             </div>
           </div>
 
-          <!-- All Time DE QA -->
-          <div class="qa-de-card">
-            <div class="qa-de-card-header">
-              <h3>All Time DE QA</h3>
-              <div class="qa-de-total">
-                <span id="deAllTimeTotal">-</span>
-                <span class="qa-de-label">Total QA'd</span>
+          <!-- Bottom Row: Data-bearing breakdown + Metrics -->
+          <div class="qa-cards-grid">
+            <!-- Today's Data Bearing QA -->
+            <div class="qa-de-card">
+              <div class="qa-de-card-header">
+                <h3>Today's Data Bearing</h3>
+                <div class="qa-de-total">
+                  <span id="dataBeringToday">-</span>
+                  <span class="qa-de-label">Total QA'd</span>
+                </div>
+              </div>
+              <div class="qa-engineers-list" id="dataBeringTodayEngineers">
+                <!-- Populated by JavaScript -->
               </div>
             </div>
-            <div class="qa-engineers-list" id="deAllTimeEngineers">
-              <!-- Populated by JavaScript -->
+
+            <!-- Today's Non Data Bearing QA -->
+            <div class="qa-de-card">
+              <div class="qa-de-card-header">
+                <h3>Today's Non Data Bearing</h3>
+                <div class="qa-de-total">
+                  <span id="nonDataBeringToday">-</span>
+                  <span class="qa-de-label">Total QA'd</span>
+                </div>
+              </div>
+              <div class="qa-engineers-list" id="nonDataBeringTodayEngineers">
+                <!-- Populated by JavaScript -->
+              </div>
+            </div>
+
+            <!-- Metrics Card (Flip) -->
+            <div class="qa-de-card qa-metrics-card">
+              <div class="qa-de-card-header">
+                <h3>Metrics</h3>
+                <div class="qa-de-total">
+                  <span id="metricsValue">-</span>
+                  <span class="qa-de-label" id="metricsLabel">Total</span>
+                </div>
+              </div>
+              <div class="qa-metrics-content" id="metricsContent">
+                <!-- Populated by JavaScript -->
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Right Side: QA App Scans (25%) -->
+        <!-- Right Side: Sorting (25%) -->
         <div class="qa-app-section">
-          <h2 class="qa-section-header">📱 QA App Scans</h2>
+          <h2 class="qa-section-header">🔄 Sorting</h2>
+          
+          <!-- Today's QA App -->
+          <div class="qa-app-card">
+            <div class="qa-app-card-header">
+              <h3>Today's</h3>
+              <div class="qa-app-total">
+                <span id="qaAppTodayTotal">-</span>
+                <span class="qa-app-label">Scans</span>
+              </div>
+            </div>
+            <div class="qa-engineers-list" id="qaAppTodayEngineers">
+              <!-- Populated by JavaScript -->
+            </div>
+          </div>
           
           <!-- This Week's QA App -->
           <div class="qa-app-card">
             <div class="qa-app-card-header">
               <h3>This Week</h3>
               <div class="qa-app-total">
-                <span id="qaWeekTotal">-</span>
+                <span id="qaAppWeekTotal">-</span>
                 <span class="qa-app-label">Scans</span>
               </div>
             </div>
-            <div class="qa-engineers-list" id="qaWeeklyEngineers">
+            <div class="qa-engineers-list" id="qaAppWeeklyEngineers">
               <!-- Populated by JavaScript -->
             </div>
           </div>
@@ -595,11 +671,11 @@
             <div class="qa-app-card-header">
               <h3>All Time</h3>
               <div class="qa-app-total">
-                <span id="qaAllTimeTotal">-</span>
+                <span id="qaAppAllTimeTotal">-</span>
                 <span class="qa-app-label">Scans</span>
               </div>
             </div>
-            <div class="qa-engineers-list" id="qaAllTimeEngineers">
+            <div class="qa-engineers-list" id="qaAppAllTimeEngineers">
               <!-- Populated by JavaScript -->
             </div>
           </div>

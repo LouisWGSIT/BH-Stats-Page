@@ -51,6 +51,10 @@ def get_week_dates(period: str) -> Tuple[date, date, str]:
         label = "All Time"
         return start, end, label
     
+    if period == "today":
+        label = "Today"
+        return today, today, label
+    
     if period == "this_week":
         start = today - timedelta(days=today.weekday())
         if today.weekday() >= 5:  # Saturday or Sunday

@@ -2316,12 +2316,21 @@ main.layout {
 .qa-de-section {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   overflow: hidden;
   padding-right: 8px;
   min-width: 0;
   height: 100%;
   min-height: 0;
+}
+
+.qa-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .qa-app-section {
@@ -2501,6 +2510,41 @@ main.layout {
 
 .qa-app-section .qa-engineer-count {
   color: #ffc107;
+}
+
+/* Metrics Card */
+.qa-metrics-card {
+  cursor: pointer;
+}
+
+.qa-metrics-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.qa-metric-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.qa-metric-label {
+  color: #999;
+}
+
+.qa-metric-value {
+  color: #667eea;
+  font-weight: 700;
+  font-size: 14px;
 }
 
 /* Old styles kept for compatibility */
