@@ -536,6 +536,7 @@ def get_all_time_daily_record() -> Dict:
         cursor = conn.cursor()
         
         # Get combined QA record (data-bearing + non-data-bearing) per day per user
+        # Exclude managers whose accounts may have been shared
         cursor.execute("""
             SELECT DATE(date_time) as scan_date, user_id,
                    COUNT(DISTINCT CASE WHEN audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload') THEN sales_order END) +
@@ -545,6 +546,8 @@ def get_all_time_daily_record() -> Dict:
                                 'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
               AND user_id IS NOT NULL AND user_id <> ''
               AND sales_order IS NOT NULL AND sales_order <> ''
+              AND user_id NOT LIKE '%mark.aldington%'
+              AND user_id NOT LIKE '%brandon.brace%'
             GROUP BY DATE(date_time), user_id
             ORDER BY total_qa DESC
             LIMIT 1
