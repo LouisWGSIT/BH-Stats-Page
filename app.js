@@ -988,19 +988,19 @@ function renderSVGSparkline(svgElem, data) {
     'daily-race-winner': (winner) => ({
       title: `🏆 ${winner.initials} WINS THE DAILY RACE! 🏆`,
       subtitle: `Finished with ${winner.erasures} erasures today`,
-      duration: 8000,
+      duration: 600000, // 10 minutes - display until they leave warehouse
       emoji: '🏁🎉',
     }),
     'speed-challenge-am': (winner) => ({
       title: `⚡ ${winner.initials} CRUSHES THE AM SPEED CHALLENGE! ⚡`,
       subtitle: `${winner.erasures} erasures in record time`,
-      duration: 7000,
+      duration: 60000, // 1 minute
       emoji: '🏃💨',
     }),
     'speed-challenge-pm': (winner) => ({
       title: `🌙 ${winner.initials} DOMINATES THE PM SPEED CHALLENGE! 🌙`,
       subtitle: `${winner.erasures} erasures in the afternoon blitz`,
-      duration: 7000,
+      duration: 60000, // 1 minute
       emoji: '🌟⚡',
     }),
     'category-specialist': (specialist) => ({
