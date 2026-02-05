@@ -233,13 +233,15 @@ def get_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict]:
         start_str = start_date.isoformat()
         end_str = end_date.isoformat()
 
+        # Use DISTINCT sales_order to avoid counting duplicates from DEAPP_Submission_EditStock_Payload
         cursor.execute("""
             SELECT user_id,
-                   COUNT(*) as total_scans,
+                   COUNT(DISTINCT sales_order) as total_scans,
                    DATE(date_time) as scan_date
             FROM audit_master
-            WHERE audit_type = 'DEAPP_Submission'
+            WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
               AND user_id IS NOT NULL AND user_id <> ''
+              AND sales_order IS NOT NULL AND sales_order <> ''
               AND DATE(date_time) >= %s AND DATE(date_time) <= %s
             GROUP BY user_id, DATE(date_time)
             ORDER BY user_id, scan_date
@@ -287,13 +289,15 @@ def get_non_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict
         start_str = start_date.isoformat()
         end_str = end_date.isoformat()
 
+        # Use DISTINCT sales_order to avoid counting duplicates from Non_DEAPP_Submission_EditStock_Payload
         cursor.execute("""
             SELECT user_id,
-                   COUNT(*) as total_scans,
+                   COUNT(DISTINCT sales_order) as total_scans,
                    DATE(date_time) as scan_date
             FROM audit_master
-            WHERE audit_type = 'Non_DEAPP_Submission'
+            WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
               AND user_id IS NOT NULL AND user_id <> ''
+              AND sales_order IS NOT NULL AND sales_order <> ''
               AND DATE(date_time) >= %s AND DATE(date_time) <= %s
             GROUP BY user_id, DATE(date_time)
             ORDER BY user_id, scan_date
@@ -531,22 +535,28 @@ def get_all_time_daily_record() -> Dict:
     try:
         cursor = conn.cursor()
         
-        # Get QA app record
+        # Get combined QA record (data-bearing + non-data-bearing) per day per user
         cursor.execute("""
-            SELECT DATE(added_date) as scan_date, username, COUNT(*) as scans
-            FROM ITAD_QA_App
-            GROUP BY DATE(added_date), username
-            ORDER BY scans DESC
+            SELECT DATE(date_time) as scan_date, user_id,
+                   COUNT(DISTINCT CASE WHEN audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload') THEN sales_order END) +
+                   COUNT(DISTINCT CASE WHEN audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload') THEN sales_order END) as total_qa
+            FROM audit_master
+            WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload', 
+                                'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+              AND user_id IS NOT NULL AND user_id <> ''
+              AND sales_order IS NOT NULL AND sales_order <> ''
+            GROUP BY DATE(date_time), user_id
+            ORDER BY total_qa DESC
             LIMIT 1
         """)
         
-        qa_row = cursor.fetchone()
+        row = cursor.fetchone()
         qa_record = 0
         qa_engineer = 'Unknown'
         qa_date = None
         
-        if qa_row:
-            qa_date, username, qa_record = qa_row
+        if row:
+            qa_date, username, qa_record = row
             qa_engineer = username or '(unassigned)'
             if '@' in qa_engineer:
                 qa_engineer = qa_engineer.split('@')[0]
@@ -554,69 +564,12 @@ def get_all_time_daily_record() -> Dict:
                 if len(parts) >= 2:
                     qa_engineer = f"{parts[0].title()} {parts[1][0].upper()}"
         
-        # Get DE QA (data-bearing) record
-        cursor.execute("""
-            SELECT DATE(submission_date) as submit_date, submitted_by, COUNT(*) as scans
-            FROM view_audit_submission
-            WHERE submission_date IS NOT NULL
-            GROUP BY DATE(submission_date), submitted_by
-            ORDER BY scans DESC
-            LIMIT 1
-        """)
-        
-        de_row = cursor.fetchone()
-        de_record = 0
-        de_engineer = 'Unknown'
-        
-        if de_row:
-            de_date, username, de_record = de_row
-            de_engineer = username or '(unassigned)'
-            if '@' in de_engineer:
-                de_engineer = de_engineer.split('@')[0]
-                parts = de_engineer.split('.')
-                if len(parts) >= 2:
-                    de_engineer = f"{parts[0].title()} {parts[1][0].upper()}"
-        
-        # Get non-DE QA record
-        cursor.execute("""
-            SELECT DATE(submission_date) as submit_date, submitted_by, COUNT(*) as scans
-            FROM audit_master
-            WHERE submission_date IS NOT NULL
-            GROUP BY DATE(submission_date), submitted_by
-            ORDER BY scans DESC
-            LIMIT 1
-        """)
-        
-        non_de_row = cursor.fetchone()
-        non_de_record = 0
-        non_de_engineer = 'Unknown'
-        
-        if non_de_row:
-            non_de_date, username, non_de_record = non_de_row
-            non_de_engineer = username or '(unassigned)'
-            if '@' in non_de_engineer:
-                non_de_engineer = non_de_engineer.split('@')[0]
-                parts = non_de_engineer.split('.')
-                if len(parts) >= 2:
-                    non_de_engineer = f"{parts[0].title()} {parts[1][0].upper()}"
-        
         cursor.close()
         conn.close()
         
-        # Combine QA records (all QA types)
-        total_record = qa_record + de_record + non_de_record
-        record_engineer = qa_engineer  # Use QA app engineer if they had the highest
-        
-        if de_record > qa_record and de_record >= non_de_record:
-            record_engineer = de_engineer
-            total_record = de_record
-        elif non_de_record > qa_record and non_de_record >= de_record:
-            record_engineer = non_de_engineer
-            total_record = non_de_record
-        
         return {
-            'qa_record': int(total_record),
-            'qa_engineer': record_engineer,
+            'qa_record': int(qa_record),
+            'qa_engineer': qa_engineer,
             'qa_date': qa_date.isoformat() if qa_date else None
         }
     
