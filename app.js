@@ -2470,16 +2470,16 @@ function renderSVGSparkline(svgElem, data) {
       }
       
       // Populate DE QA - This Week
-      populateDESection('deWeekTotal', 'deWeeklyEngineers', weeklyData);
+      populateDESection('deWeekTotal', 'deWeeklyEngineers', weeklyData, 8);
       
       // Populate DE QA - All Time
-      populateDESection('deAllTimeTotal', 'deAllTimeEngineers', allTimeData);
+      populateDESection('deAllTimeTotal', 'deAllTimeEngineers', allTimeData, 10);
       
       // Populate QA App - This Week
-      populateQAAppSection('qaWeekTotal', 'qaWeeklyEngineers', weeklyData);
+      populateQAAppSection('qaWeekTotal', 'qaWeeklyEngineers', weeklyData, 6);
       
       // Populate QA App - All Time
-      populateQAAppSection('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData);
+      populateQAAppSection('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 8);
       
     } catch (error) {
       console.error('Failed to load QA dashboard:', error);
@@ -2487,7 +2487,7 @@ function renderSVGSparkline(svgElem, data) {
     }
   }
   
-  function populateDESection(totalId, listId, data) {
+  function populateDESection(totalId, listId, data, maxItems = 8) {
     const totalEl = document.getElementById(totalId);
     const listEl = document.getElementById(listId);
     
@@ -2509,7 +2509,8 @@ function renderSVGSparkline(svgElem, data) {
           deScans: tech.deQaScans || 0,
           nonDeScans: tech.nonDeQaScans || 0
         }))
-        .sort((a, b) => b.deTotal - a.deTotal);
+        .sort((a, b) => b.deTotal - a.deTotal)
+        .slice(0, maxItems);
       
       if (deEngineers.length === 0) {
         listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #888;">No DE QA data</div>';
@@ -2524,7 +2525,7 @@ function renderSVGSparkline(svgElem, data) {
     }
   }
   
-  function populateQAAppSection(totalId, listId, data) {
+  function populateQAAppSection(totalId, listId, data, maxItems = 6) {
     const totalEl = document.getElementById(totalId);
     const listEl = document.getElementById(listId);
     
@@ -2545,7 +2546,8 @@ function renderSVGSparkline(svgElem, data) {
           qaScans: tech.qaScans || 0,
           passRate: tech.passRate || 0
         }))
-        .sort((a, b) => b.qaScans - a.qaScans);
+        .sort((a, b) => b.qaScans - a.qaScans)
+        .slice(0, maxItems);
       
       if (qaEngineers.length === 0) {
         listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #888;">No QA App data</div>';
