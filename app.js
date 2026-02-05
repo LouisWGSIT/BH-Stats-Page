@@ -2452,8 +2452,10 @@ function renderSVGSparkline(svgElem, data) {
       
       // Update summary cards
       document.getElementById('qaTotalScans').textContent = data.summary.totalScans.toLocaleString();
-      document.getElementById('qaPassRate').textContent = data.summary.passRate + '%';
-      document.getElementById('qaConsistency').textContent = data.summary.avgConsistency.toFixed(1);
+      const deScansEl = document.getElementById('qaDeScans');
+      if (deScansEl) deScansEl.textContent = (data.summary.deQaScans || 0).toLocaleString();
+      const combinedScansEl = document.getElementById('qaCombinedScans');
+      if (combinedScansEl) combinedScansEl.textContent = (data.summary.combinedScans || 0).toLocaleString();
       document.getElementById('qaTopTech').textContent = formatQaName(data.summary.topTechnician);
       document.getElementById('qaCurrentPeriod').textContent = data.period;
       document.getElementById('qaDateRange').textContent = data.dateRange;
@@ -2477,20 +2479,20 @@ function renderSVGSparkline(svgElem, data) {
         <div class="qa-performer-card">
           <div class="qa-performer-name">${escapeHtml(formatQaName(tech.name))}</div>
           <div class="qa-performer-metric">
-            <span class="qa-performer-metric-label">Scans:</span>
-            <span class="qa-performer-metric-value">${tech.totalScans}</span>
+            <span class="qa-performer-metric-label">QA Scans:</span>
+            <span class="qa-performer-metric-value">${tech.qaScans || 0}</span>
+          </div>
+          <div class="qa-performer-metric">
+            <span class="qa-performer-metric-label">DE QA:</span>
+            <span class="qa-performer-metric-value">${tech.deQaScans || 0}</span>
+          </div>
+          <div class="qa-performer-metric">
+            <span class="qa-performer-metric-label">Combined:</span>
+            <span class="qa-performer-metric-value">${tech.combinedScans || 0}</span>
           </div>
           <div class="qa-performer-metric">
             <span class="qa-performer-metric-label">Pass Rate:</span>
             <span class="qa-performer-metric-value">${tech.passRate}%</span>
-          </div>
-          <div class="qa-performer-metric">
-            <span class="qa-performer-metric-label">Consistency:</span>
-            <span class="qa-performer-metric-value">${tech.consistency}</span>
-          </div>
-          <div class="qa-performer-metric">
-            <span class="qa-performer-metric-label">Reliability:</span>
-            <span class="qa-performer-metric-value">${tech.reliability}</span>
           </div>
         </div>
       `).join('');
@@ -2502,7 +2504,7 @@ function renderSVGSparkline(svgElem, data) {
         techniciansGrid.innerHTML = '';
       } else {
         techniciansGrid.innerHTML = data.technicians.map(tech => {
-        const maxScans = Math.max(...data.technicians.map(t => t.totalScans), 1);
+        const maxScans = Math.max(...data.technicians.map(t => t.combinedScans || 0), 1);
         const dailyData = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
           .map(day => tech.daily[day]?.scans || 0);
         const maxDaily = Math.max(...dailyData, 1);
@@ -2511,16 +2513,16 @@ function renderSVGSparkline(svgElem, data) {
           <div class="qa-tech-card">
             <div class="qa-tech-name">${escapeHtml(formatQaName(tech.name))}</div>
             <div class="qa-tech-stat">
-              <span class="qa-tech-stat-label">Scans:</span>
-              <span class="qa-tech-stat-value">${tech.totalScans}</span>
+              <span class="qa-tech-stat-label">QA Scans:</span>
+                <span class="qa-tech-stat-value">${tech.qaScans || 0}</span>
+            </div>
+            <div class="qa-tech-stat">
+              <span class="qa-tech-stat-label">DE QA:</span>
+                <span class="qa-tech-stat-value">${tech.deQaScans || 0}</span>
             </div>
             <div class="qa-tech-stat">
               <span class="qa-tech-stat-label">Pass:</span>
               <span class="qa-tech-stat-value">${tech.passRate}%</span>
-            </div>
-            <div class="qa-tech-stat">
-              <span class="qa-tech-stat-label">Consistency:</span>
-              <span class="qa-tech-stat-value">${tech.consistency}</span>
             </div>
             <div class="qa-tech-stat">
               <span class="qa-tech-stat-label">Avg/Day:</span>

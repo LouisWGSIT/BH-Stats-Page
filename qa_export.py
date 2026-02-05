@@ -207,6 +207,58 @@ def get_weekly_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict
             conn.close()
         return {}
 
+def get_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict]:
+    """Get DE QA data from view_audit_submission (DE APP) for the period."""
+    conn = get_mariadb_connection()
+    if not conn:
+        return {}
+
+    try:
+        cursor = conn.cursor()
+        start_str = start_date.isoformat()
+        end_str = end_date.isoformat()
+
+        cursor.execute("""
+            SELECT de_completed_by,
+                   COUNT(*) as total_scans,
+                   DATE(de_completed_date) as scan_date
+            FROM `view_audit_submission (DE APP)`
+            WHERE de_completed_date IS NOT NULL
+              AND DATE(de_completed_date) >= %s AND DATE(de_completed_date) <= %s
+            GROUP BY de_completed_by, DATE(de_completed_date)
+            ORDER BY de_completed_by, scan_date
+        """, (start_str, end_str))
+
+        rows = cursor.fetchall()
+
+        data = defaultdict(lambda: {
+            'total': 0,
+            'daily': {}
+        })
+
+        for username, total_scans, scan_date in rows:
+            if not username:
+                username = '(unassigned)'
+
+            day_name = scan_date.strftime('%A') if scan_date else 'Unknown'
+            total_scans_int = int(total_scans or 0)
+
+            data[username]['total'] += total_scans_int
+            data[username]['daily'][day_name] = {
+                'date': scan_date,
+                'scans': total_scans_int
+            }
+
+        cursor.close()
+        conn.close()
+        return dict(data)
+
+    except Exception as e:
+        print(f"[QA Export] Error fetching DE QA data: {e}")
+        if conn:
+            conn.close()
+        return {}
+
 def generate_qa_export(period: str) -> Dict[str, List[List]]:
     """Generate comprehensive QA stats export with multiple sheets"""
     start_date, end_date, period_label = get_week_dates(period)

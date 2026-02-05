@@ -1327,10 +1327,11 @@ async def get_qa_dashboard_data(period: str = "this_week"):
         # Get date range
         start_date, end_date, period_label = qa_export.get_week_dates(period)
         
-        # Get QA data
+        # Get QA data (ITAD_QA_App) and DE QA data (view_audit_submission DE APP)
         qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
+        de_qa_data = qa_export.get_de_qa_comparison(start_date, end_date)
         
-        if not qa_data:
+        if not qa_data and not de_qa_data:
             min_date, max_date = qa_export.get_qa_data_bounds()
             return {
                 "period": period_label,
@@ -1338,6 +1339,8 @@ async def get_qa_dashboard_data(period: str = "this_week"):
                 "technicians": [],
                 "summary": {
                     "totalScans": 0,
+                    "deQaScans": 0,
+                    "combinedScans": 0,
                     "passRate": 0,
                     "avgConsistency": 0,
                     "topTechnician": "N/A"
@@ -1351,22 +1354,44 @@ async def get_qa_dashboard_data(period: str = "this_week"):
             }
         
         # Calculate summary metrics
-        total_scans = sum(stats['total'] for stats in qa_data.values())
-        total_passed = sum(stats['successful'] for stats in qa_data.values())
+        total_scans = sum(stats['total'] for stats in qa_data.values()) if qa_data else 0
+        total_passed = sum(stats['successful'] for stats in qa_data.values()) if qa_data else 0
+        total_de_scans = sum(stats['total'] for stats in de_qa_data.values()) if de_qa_data else 0
+        combined_scans = total_scans + total_de_scans
         overall_pass_rate = (total_passed / total_scans * 100) if total_scans > 0 else 0
         
         # Calculate consistency scores and build technician list
         technicians = []
         consistency_scores = []
         
-        for tech_name in sorted(qa_data.keys()):
-            stats = qa_data[tech_name]
-            days_active = len([d for d in stats['daily'] if stats['daily'][d]['scans'] > 0])
-            avg_per_day = stats['total'] / max(1, days_active) if days_active > 0 else 0
+        all_names = sorted(set(qa_data.keys() if qa_data else []) | set(de_qa_data.keys() if de_qa_data else []))
+
+        for tech_name in all_names:
+            stats = qa_data.get(tech_name, {'total': 0, 'successful': 0, 'daily': {}, 'pass_rate': 0.0})
+            de_stats = de_qa_data.get(tech_name, {'total': 0, 'daily': {}})
+
+            qa_total = stats['total']
+            de_total = de_stats['total']
+            tech_combined_total = qa_total + de_total
+
+            # Calculate combined daily counts (QA app + DE QA)
+            combined_daily = {}
+            for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
+                qa_scans = stats['daily'].get(day, {}).get('scans', 0)
+                de_scans = de_stats['daily'].get(day, {}).get('scans', 0)
+                combined_scans_day = qa_scans + de_scans
+                if combined_scans_day > 0:
+                    combined_daily[day] = {
+                        'scans': combined_scans_day,
+                        'passed': stats['daily'].get(day, {}).get('passed', 0)
+                    }
+
+            days_active = len([d for d in combined_daily if combined_daily[d]['scans'] > 0])
+            avg_per_day = tech_combined_total / max(1, days_active) if days_active > 0 else 0
             
-            # Calculate consistency
-            daily_counts = [float(stats['daily'][day]['scans'])
-                           for day in stats['daily'] if stats['daily'][day]['scans'] > 0]
+            # Calculate consistency from combined daily totals
+            daily_counts = [float(combined_daily[day]['scans'])
+                           for day in combined_daily if combined_daily[day]['scans'] > 0]
             
             consistency = 100
             if daily_counts and len(daily_counts) > 1:
@@ -1378,11 +1403,13 @@ async def get_qa_dashboard_data(period: str = "this_week"):
             consistency_scores.append(consistency)
             
             # Reliability score
-            reliability = (stats['pass_rate'] * 0.6) + (consistency * 0.4)
+            reliability = (stats['pass_rate'] * 0.6) + (consistency * 0.4) if qa_total > 0 else 0
             
             tech_data = {
                 "name": tech_name,
-                "totalScans": stats['total'],
+                "qaScans": qa_total,
+                "deQaScans": de_total,
+                "combinedScans": tech_combined_total,
                 "passRate": round(stats['pass_rate'], 1),
                 "avgPerDay": round(avg_per_day, 1),
                 "consistency": round(consistency, 1),
@@ -1393,8 +1420,8 @@ async def get_qa_dashboard_data(period: str = "this_week"):
             
             # Add daily breakdown
             for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
-                if day in stats['daily']:
-                    daily = stats['daily'][day]
+                if day in combined_daily:
+                    daily = combined_daily[day]
                     pass_pct = (daily['passed'] / daily['scans'] * 100) if daily['scans'] > 0 else 0
                     tech_data['daily'][day] = {
                         "scans": daily['scans'],
@@ -1405,7 +1432,7 @@ async def get_qa_dashboard_data(period: str = "this_week"):
             technicians.append(tech_data)
         
         # Get top performers
-        top_performers = sorted(technicians, key=lambda x: x['reliability'], reverse=True)[:5]
+        top_performers = sorted(technicians, key=lambda x: x['combinedScans'], reverse=True)[:5]
         
         avg_consistency = sum(consistency_scores) / len(consistency_scores) if consistency_scores else 0
         
@@ -1415,6 +1442,8 @@ async def get_qa_dashboard_data(period: str = "this_week"):
             "technicians": technicians,
             "summary": {
                 "totalScans": total_scans,
+                "deQaScans": total_de_scans,
+                "combinedScans": combined_scans,
                 "passRate": round(overall_pass_rate, 1),
                 "avgConsistency": round(avg_consistency, 1),
                 "topTechnician": top_performers[0]['name'] if top_performers else "N/A",
