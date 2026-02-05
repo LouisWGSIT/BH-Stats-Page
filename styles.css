@@ -2212,7 +2212,7 @@ body {
   display: none;
   width: 100%;
   height: 100%;
-  padding: 16px;
+  padding: 8px;
   box-sizing: border-box;
   overflow: hidden;
   flex-direction: column;
@@ -2305,7 +2305,7 @@ main.layout {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
   grid-column: 1 / -1;
-  gap: 20px;
+  gap: 12px;
   width: 100%;
   height: 100%;
   flex: 1 1 auto;
@@ -2350,7 +2350,7 @@ main.layout {
   background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(102, 126, 234, 0.05) 100%);
   border: 1px solid rgba(102, 126, 234, 0.3);
   border-radius: 12px;
-  padding: 20px;
+  padding: 16px;
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
@@ -2367,8 +2367,8 @@ main.layout {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
   border-bottom: 1px solid rgba(102, 126, 234, 0.2);
 }
 
@@ -2405,7 +2405,7 @@ main.layout {
   background: linear-gradient(135deg, rgba(255, 193, 7, 0.12) 0%, rgba(255, 193, 7, 0.04) 100%);
   border: 1px solid rgba(255, 193, 7, 0.3);
   border-radius: 12px;
-  padding: 20px;
+  padding: 16px;
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
@@ -2422,8 +2422,8 @@ main.layout {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
   border-bottom: 1px solid rgba(255, 193, 7, 0.2);
 }
 
