@@ -2454,7 +2454,7 @@ function renderSVGSparkline(svgElem, data) {
       document.getElementById('qaTotalScans').textContent = data.summary.totalScans.toLocaleString();
       document.getElementById('qaPassRate').textContent = data.summary.passRate + '%';
       document.getElementById('qaConsistency').textContent = data.summary.avgConsistency.toFixed(1);
-      document.getElementById('qaTopTech').textContent = data.summary.topTechnician;
+      document.getElementById('qaTopTech').textContent = formatQaName(data.summary.topTechnician);
       document.getElementById('qaCurrentPeriod').textContent = data.period;
       document.getElementById('qaDateRange').textContent = data.dateRange;
       
@@ -2475,7 +2475,7 @@ function renderSVGSparkline(svgElem, data) {
       } else {
         performersGrid.innerHTML = data.topPerformers.map(tech => `
         <div class="qa-performer-card">
-          <div class="qa-performer-name">${escapeHtml(tech.name)}</div>
+          <div class="qa-performer-name">${escapeHtml(formatQaName(tech.name))}</div>
           <div class="qa-performer-metric">
             <span class="qa-performer-metric-label">Scans:</span>
             <span class="qa-performer-metric-value">${tech.totalScans}</span>
@@ -2509,7 +2509,7 @@ function renderSVGSparkline(svgElem, data) {
         
         return `
           <div class="qa-tech-card">
-            <div class="qa-tech-name">${escapeHtml(tech.name)}</div>
+            <div class="qa-tech-name">${escapeHtml(formatQaName(tech.name))}</div>
             <div class="qa-tech-stat">
               <span class="qa-tech-stat-label">Scans:</span>
               <span class="qa-tech-stat-value">${tech.totalScans}</span>
@@ -2569,6 +2569,24 @@ function renderSVGSparkline(svgElem, data) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  function formatQaName(rawName) {
+    if (!rawName) return '';
+    const name = rawName.toString().trim();
+    if (!name) return '';
+    if (name.toLowerCase() === '(unassigned)') return '(unassigned)';
+    if (name.toLowerCase() === 'unknown') return 'Unknown';
+
+    const withoutDomain = name.replace(/@.*$/, '').replace(/[._-]+/g, ' ').trim();
+    const parts = withoutDomain.split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return name;
+    if (parts.length === 1) {
+      return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+    }
+    const first = parts[0];
+    const lastInitial = parts[parts.length - 1][0];
+    return `${first.charAt(0).toUpperCase() + first.slice(1)} ${lastInitial.toUpperCase()}`;
   }
   
   function switchDashboard(index) {
