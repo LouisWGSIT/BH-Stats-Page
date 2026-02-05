@@ -1355,11 +1355,11 @@ async def get_qa_dashboard_data(period: str = "this_week"):
                 }
             }
         
-        # Calculate summary metrics
-        total_scans = sum(stats['total'] for stats in qa_data.values()) if qa_data else 0
-        total_passed = sum(stats['successful'] for stats in qa_data.values()) if qa_data else 0
-        total_de_scans = sum(stats['total'] for stats in de_qa_data.values()) if de_qa_data else 0
-        total_non_de_scans = sum(stats['total'] for stats in non_de_qa_data.values()) if non_de_qa_data else 0
+        # Calculate summary metrics (excluding unassigned)
+        total_scans = sum(stats['total'] for name, stats in qa_data.items() if name.lower() != '(unassigned)') if qa_data else 0
+        total_passed = sum(stats['successful'] for name, stats in qa_data.items() if name.lower() != '(unassigned)') if qa_data else 0
+        total_de_scans = sum(stats['total'] for name, stats in de_qa_data.items() if name.lower() != '(unassigned)') if de_qa_data else 0
+        total_non_de_scans = sum(stats['total'] for name, stats in non_de_qa_data.items() if name.lower() != '(unassigned)') if non_de_qa_data else 0
         combined_scans = total_scans + total_de_scans + total_non_de_scans
         overall_pass_rate = (total_passed / total_scans * 100) if total_scans > 0 else 0
         
