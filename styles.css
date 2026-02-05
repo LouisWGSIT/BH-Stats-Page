@@ -2306,13 +2306,186 @@ main.layout {
 }
 /* ============= QA DASHBOARD STYLES ============= */
 
-/* QA Summary Cards (4 cards at top) */
-.qa-summary-cards {
+/* Main QA Layout: 3/4 DE QA + 1/4 QA App */
+.qa-main-layout {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
-  margin-bottom: 20px;
-  grid-column: 1 / -1;
+  grid-template-columns: 3fr 1fr;
+  gap: 20px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.qa-de-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.qa-app-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-left: 8px;
+  border-left: 2px solid rgba(102, 126, 234, 0.3);
+}
+
+.qa-section-header {
+  color: #667eea;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+}
+
+/* DE QA Cards */
+.qa-de-card {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(102, 126, 234, 0.05) 100%);
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.3s ease;
+}
+
+.qa-de-card:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.25) 0%, rgba(102, 126, 234, 0.1) 100%);
+  border-color: rgba(102, 126, 234, 0.5);
+}
+
+.qa-de-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+.qa-de-card-header h3 {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.qa-de-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.qa-de-total span:first-child {
+  color: #667eea;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.qa-de-label {
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+/* QA App Cards */
+.qa-app-card {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.12) 0%, rgba(255, 193, 7, 0.04) 100%);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.3s ease;
+}
+
+.qa-app-card:hover {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.18) 0%, rgba(255, 193, 7, 0.08) 100%);
+  border-color: rgba(255, 193, 7, 0.5);
+}
+
+.qa-app-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 193, 7, 0.2);
+}
+
+.qa-app-card-header h3 {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.qa-app-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.qa-app-total span:first-child {
+  color: #ffc107;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.qa-app-label {
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+/* Engineers List */
+.qa-engineers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.qa-engineer-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.qa-engineer-item:hover {
+  background: rgba(0, 0, 0, 0.35);
+  transform: translateX(4px);
+}
+
+.qa-engineer-name {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.qa-engineer-count {
+  color: #667eea;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.qa-app-section .qa-engineer-count {
+  color: #ffc107;
+}
+
+/* Old styles kept for compatibility */
+.qa-summary-cards {
+  display: none; /* Hide old layout */
 }
 
 .qa-stat-card {

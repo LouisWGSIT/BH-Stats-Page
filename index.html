@@ -538,55 +538,72 @@
 
     <!-- QA Stats View (Hidden by default) -->
     <main class="layout qa-stats-view" id="qaStatsView">
-      <!-- QA Summary Cards -->
-      <div class="qa-summary-cards">
-        <div class="qa-stat-card">
-          <h3>DE QA Scans</h3>
-          <p class="qa-stat-value" id="qaDeScans">-</p>
-          <span class="qa-stat-label">This Period</span>
-        </div>
-        <div class="qa-stat-card">
-          <h3>Non-DE QA</h3>
-          <p class="qa-stat-value" id="qaNonDeScans">-</p>
-          <span class="qa-stat-label">This Period</span>
-        </div>
-        <div class="qa-stat-card">
-          <h3>DE QA Total</h3>
-          <p class="qa-stat-value" id="qaDeTotalScans">-</p>
-          <span class="qa-stat-label">DE + Non-DE</span>
-        </div>
-        <div class="qa-stat-card">
-          <h3>QA App Scans</h3>
-          <p class="qa-stat-value" id="qaTotalScans">-</p>
-          <span class="qa-stat-label" id="qaTotalScansLabel">This Period</span>
-        </div>
-        <div class="qa-stat-card">
-          <h3>Top Performer</h3>
-          <p class="qa-stat-value" id="qaTopTech" style="font-size: 18px; word-break: break-word;">-</p>
-          <span class="qa-stat-label">Technician</span>
-        </div>
-      </div>
+      <div class="qa-main-layout">
+        <!-- Left Side: DE QA (75%) -->
+        <div class="qa-de-section">
+          <h2 class="qa-section-header">📋 DE QA Pipeline</h2>
+          
+          <!-- This Week's DE QA -->
+          <div class="qa-de-card">
+            <div class="qa-de-card-header">
+              <h3>This Week's DE QA</h3>
+              <div class="qa-de-total">
+                <span id="deWeekTotal">-</span>
+                <span class="qa-de-label">Total Scans</span>
+              </div>
+            </div>
+            <div class="qa-engineers-list" id="deWeeklyEngineers">
+              <!-- Populated by JavaScript -->
+            </div>
+          </div>
 
-      <!-- Top Performers Section -->
-      <div class="qa-section" style="grid-column: 1 / -1;">
-        <h3 class="qa-section-title">🏆 Top Performers</h3>
-        <div class="qa-performers-grid" id="qaTopPerformersGrid">
-          <!-- Populated by JavaScript -->
+          <!-- All Time DE QA -->
+          <div class="qa-de-card">
+            <div class="qa-de-card-header">
+              <h3>All Time DE QA</h3>
+              <div class="qa-de-total">
+                <span id="deAllTimeTotal">-</span>
+                <span class="qa-de-label">Total Scans</span>
+              </div>
+            </div>
+            <div class="qa-engineers-list" id="deAllTimeEngineers">
+              <!-- Populated by JavaScript -->
+            </div>
+          </div>
         </div>
-      </div>
 
-      <!-- Technician Details Section -->
-      <div class="qa-section" style="grid-column: 1 / -1;">
-        <h3 class="qa-section-title">👥 Technician Performance</h3>
-        <div class="qa-technicians-grid" id="qaTechniciansGrid">
-          <!-- Populated by JavaScript -->
+        <!-- Right Side: QA App Scans (25%) -->
+        <div class="qa-app-section">
+          <h2 class="qa-section-header">📱 QA App Scans</h2>
+          
+          <!-- This Week's QA App -->
+          <div class="qa-app-card">
+            <div class="qa-app-card-header">
+              <h3>This Week</h3>
+              <div class="qa-app-total">
+                <span id="qaWeekTotal">-</span>
+                <span class="qa-app-label">Scans</span>
+              </div>
+            </div>
+            <div class="qa-engineers-list" id="qaWeeklyEngineers">
+              <!-- Populated by JavaScript -->
+            </div>
+          </div>
+
+          <!-- All Time QA App -->
+          <div class="qa-app-card">
+            <div class="qa-app-card-header">
+              <h3>All Time</h3>
+              <div class="qa-app-total">
+                <span id="qaAllTimeTotal">-</span>
+                <span class="qa-app-label">Scans</span>
+              </div>
+            </div>
+            <div class="qa-engineers-list" id="qaAllTimeEngineers">
+              <!-- Populated by JavaScript -->
+            </div>
+          </div>
         </div>
-      </div>
-
-      <!-- Period Selector at bottom -->
-      <div style="grid-column: 1 / -1; text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
-        <p>Period: <span id="qaCurrentPeriod">This Week</span></p>
-        <p id="qaDateRange" style="font-size: 11px;">-</p>
       </div>
     </main>
   </div>

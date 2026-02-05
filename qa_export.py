@@ -40,6 +40,17 @@ def get_week_dates(period: str) -> Tuple[date, date, str]:
             label = "Last Available"
             return start, end, label
     
+    if period == "all_time":
+        min_date, max_date = get_qa_data_bounds()
+        if min_date and max_date:
+            label = "All Time"
+            return min_date, max_date, label
+        # Fallback to a large range if bounds unavailable
+        start = today - timedelta(days=365)
+        end = today
+        label = "All Time"
+        return start, end, label
+    
     if period == "this_week":
         start = today - timedelta(days=today.weekday())
         if today.weekday() >= 5:  # Saturday or Sunday
