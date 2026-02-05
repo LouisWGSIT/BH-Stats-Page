@@ -2636,6 +2636,22 @@ function renderSVGSparkline(svgElem, data) {
       
       console.log('qaView display style:', qaView?.style.display);
       console.log('qaView computed display:', window.getComputedStyle(qaView)?.display);
+
+      if (qaView) {
+        qaView.style.minHeight = '400px';
+        qaView.style.visibility = 'visible';
+        qaView.style.opacity = '1';
+        qaView.style.outline = '2px solid #ff1ea3';
+        qaView.style.background = 'rgba(255, 30, 163, 0.05)';
+        if (!document.getElementById('qaDebugBanner')) {
+          qaView.insertAdjacentHTML(
+            'afterbegin',
+            '<div id="qaDebugBanner" style="grid-column: 1 / -1; padding: 12px; margin-bottom: 12px; background: rgba(140, 240, 74, 0.2); border: 1px solid rgba(140, 240, 74, 0.6); text-align: center; color: #8cf04a; font-weight: 700;">QA DEBUG BANNER — If you can read this, the view is visible.</div>'
+          );
+        }
+        console.log('qaView size:', qaView.getBoundingClientRect());
+        console.log('qaSummary cards count:', qaView.querySelectorAll('.qa-stat-card').length);
+      }
       
       titleElem.textContent = dashboardTitles.qa;
       const performersGrid = document.getElementById('qaTopPerformersGrid');
