@@ -2320,6 +2320,8 @@ main.layout {
   overflow: hidden;
   padding-right: 8px;
   min-width: 0;
+  height: 100%;
+  min-height: 0;
 }
 
 .qa-app-section {
@@ -2330,6 +2332,8 @@ main.layout {
   padding-left: 8px;
   border-left: 2px solid rgba(102, 126, 234, 0.3);
   min-width: 0;
+  height: 100%;
+  min-height: 0;
 }
 
 .qa-section-header {
@@ -2348,6 +2352,10 @@ main.layout {
   border-radius: 12px;
   padding: 20px;
   transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .qa-de-card:hover {
@@ -2399,6 +2407,10 @@ main.layout {
   border-radius: 12px;
   padding: 20px;
   transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .qa-app-card:hover {
@@ -2448,8 +2460,16 @@ main.layout {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 320px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.qa-engineers-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .qa-engineer-item {

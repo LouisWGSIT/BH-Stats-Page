@@ -2470,16 +2470,16 @@ function renderSVGSparkline(svgElem, data) {
       }
       
       // Populate DE QA - This Week
-      populateDESection('deWeekTotal', 'deWeeklyEngineers', weeklyData, 8);
+      populateDESection('deWeekTotal', 'deWeeklyEngineers', weeklyData, 10);
       
       // Populate DE QA - All Time
-      populateDESection('deAllTimeTotal', 'deAllTimeEngineers', allTimeData, 10);
+      populateDESection('deAllTimeTotal', 'deAllTimeEngineers', allTimeData, 12);
       
       // Populate QA App - This Week
-      populateQAAppSection('qaWeekTotal', 'qaWeeklyEngineers', weeklyData, 6);
+      populateQAAppSection('qaWeekTotal', 'qaWeeklyEngineers', weeklyData, 8);
       
       // Populate QA App - All Time
-      populateQAAppSection('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 8);
+      populateQAAppSection('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 10);
       
     } catch (error) {
       console.error('Failed to load QA dashboard:', error);
