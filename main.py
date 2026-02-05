@@ -1294,15 +1294,15 @@ async def export_qa_stats(request: Request, period: str = "this_week"):
         if period not in valid_periods:
             raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}")
         
-        # Generate the analysis
-        sheets_data = qa_export.generate_qa_export(period)
+        # Generate the QA engineer breakdown export (new comprehensive version)
+        sheets_data = qa_export.generate_qa_engineer_export(period)
         
         # Create Excel file
         excel_file = excel_export.create_excel_report(sheets_data)
         
         # Format filename with period
         period_label = period.replace("_", "-")
-        filename = f"qa-stats-{period_label}.xlsx"
+        filename = f"qa-engineer-stats-{period_label}.xlsx"
         
         return StreamingResponse(
             iter([excel_file.getvalue()]),

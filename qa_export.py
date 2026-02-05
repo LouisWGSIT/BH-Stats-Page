@@ -620,3 +620,257 @@ def get_all_time_daily_record() -> Dict:
         if conn:
             conn.close()
         return {'data_bearing_records': [], 'non_data_bearing_records': []}
+
+def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
+    """Generate comprehensive QA engineer breakdown export with overall, data-bearing, non-data-bearing, sorting, and comparison sections"""
+    start_date, end_date, period_label = get_week_dates(period)
+    
+    sheets = {}
+    
+    # Get all QA data types
+    de_qa_data = get_de_qa_comparison(start_date, end_date)
+    non_de_qa_data = get_non_de_qa_comparison(start_date, end_date)
+    sorting_data = get_weekly_qa_comparison(start_date, end_date)  # From ITAD_QA_App
+    
+    # Combine all engineer names
+    all_engineers = set()
+    all_engineers.update(de_qa_data.keys())
+    all_engineers.update(non_de_qa_data.keys())
+    all_engineers.update(sorting_data.keys())
+    
+    # ============= SHEET 1: Overall QA Summary (All Types Combined) =============
+    sheet_data = []
+    sheet_data.append(["QA ENGINEER SUMMARY - " + period_label.upper()])
+    sheet_data.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_data.append([])
+    
+    header = ["Engineer", "Total QA", "Data Bearing", "Non-Data Bearing", "Sorting", "Avg/Day", "Days Active"]
+    
+    if period in ["this_week", "last_week"]:
+        header.extend(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+    
+    sheet_data.append(header)
+    
+    for engineer in sorted(all_engineers):
+        de_total = de_qa_data.get(engineer, {}).get('total', 0)
+        non_de_total = non_de_qa_data.get(engineer, {}).get('total', 0)
+        sorting_total = sorting_data.get(engineer, {}).get('total', 0)
+        qa_total = de_total + non_de_total
+        
+        # Calculate days active (any activity)
+        days_active = len(set(
+            list(de_qa_data.get(engineer, {}).get('daily', {}).keys()) +
+            list(non_de_qa_data.get(engineer, {}).get('daily', {}).keys()) +
+            list(sorting_data.get(engineer, {}).get('daily', {}).keys())
+        ))
+        
+        avg_per_day = round(qa_total / max(1, days_active), 1) if days_active > 0 else 0
+        
+        row = [engineer, qa_total, de_total, non_de_total, sorting_total, avg_per_day, days_active]
+        
+        if period in ["this_week", "last_week"]:
+            for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
+                de_day = de_qa_data.get(engineer, {}).get('daily', {}).get(day, {}).get('scans', 0)
+                non_de_day = non_de_qa_data.get(engineer, {}).get('daily', {}).get(day, {}).get('scans', 0)
+                row.append(de_day + non_de_day)
+        
+        sheet_data.append(row)
+    
+    sheets["Overall QA Summary"] = sheet_data
+    
+    # ============= SHEET 2: Data Bearing QA =============
+    sheet_data = []
+    sheet_data.append(["DATA BEARING QA - " + period_label.upper()])
+    sheet_data.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_data.append([])
+    
+    header = ["Engineer", "Total", "Avg/Day", "Days Active"]
+    
+    if period in ["this_week", "last_week"]:
+        header.extend(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+    
+    header.append("Consistency Score")
+    sheet_data.append(header)
+    
+    for engineer in sorted(de_qa_data.keys()):
+        stats = de_qa_data[engineer]
+        avg_per_day = round(stats['total'] / max(1, len(stats['daily'])), 1)
+        days_active = len(stats['daily'])
+        
+        # Calculate consistency score
+        daily_counts = [stats['daily'][day]['scans'] for day in stats['daily']]
+        consistency = 100
+        if daily_counts and len(daily_counts) > 1:
+            avg = sum(daily_counts) / len(daily_counts)
+            if avg > 0:
+                variance = sum((x - avg) ** 2 for x in daily_counts) / len(daily_counts)
+                consistency = max(0, min(100, 100 - (variance / (avg + 1) * 10)))
+        
+        row = [engineer, stats['total'], avg_per_day, days_active]
+        
+        if period in ["this_week", "last_week"]:
+            for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
+                row.append(stats['daily'].get(day, {}).get('scans', 0))
+        
+        row.append(round(consistency, 1))
+        sheet_data.append(row)
+    
+    sheet_data.append([])
+    sheet_data.append(["* Consistency Score: 100 = perfectly consistent, 0 = highly variable"])
+    
+    sheets["Data Bearing QA"] = sheet_data
+    
+    # ============= SHEET 3: Non-Data Bearing QA =============
+    sheet_data = []
+    sheet_data.append(["NON-DATA BEARING QA - " + period_label.upper()])
+    sheet_data.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_data.append([])
+    
+    header = ["Engineer", "Total", "Avg/Day", "Days Active"]
+    
+    if period in ["this_week", "last_week"]:
+        header.extend(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+    
+    header.append("Consistency Score")
+    sheet_data.append(header)
+    
+    for engineer in sorted(non_de_qa_data.keys()):
+        stats = non_de_qa_data[engineer]
+        avg_per_day = round(stats['total'] / max(1, len(stats['daily'])), 1)
+        days_active = len(stats['daily'])
+        
+        # Calculate consistency score
+        daily_counts = [stats['daily'][day]['scans'] for day in stats['daily']]
+        consistency = 100
+        if daily_counts and len(daily_counts) > 1:
+            avg = sum(daily_counts) / len(daily_counts)
+            if avg > 0:
+                variance = sum((x - avg) ** 2 for x in daily_counts) / len(daily_counts)
+                consistency = max(0, min(100, 100 - (variance / (avg + 1) * 10)))
+        
+        row = [engineer, stats['total'], avg_per_day, days_active]
+        
+        if period in ["this_week", "last_week"]:
+            for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
+                row.append(stats['daily'].get(day, {}).get('scans', 0))
+        
+        row.append(round(consistency, 1))
+        sheet_data.append(row)
+    
+    sheet_data.append([])
+    sheet_data.append(["* Consistency Score: 100 = perfectly consistent, 0 = highly variable"])
+    
+    sheets["Non-Data Bearing QA"] = sheet_data
+    
+    # ============= SHEET 4: Sorting (ITAD QA App) =============
+    sheet_data = []
+    sheet_data.append(["SORTING (ITAD QA APP) - " + period_label.upper()])
+    sheet_data.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_data.append([])
+    
+    header = ["Engineer", "Total Scans", "Avg/Day", "Days Active", "Pass Rate"]
+    
+    if period in ["this_week", "last_week"]:
+        header.extend(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+    
+    sheet_data.append(header)
+    
+    for engineer in sorted(sorting_data.keys()):
+        stats = sorting_data[engineer]
+        avg_per_day = round(stats['total'] / max(1, len(stats['daily'])), 1)
+        days_active = len(stats['daily'])
+        pass_rate = stats.get('pass_rate', 0)
+        
+        row = [engineer, stats['total'], avg_per_day, days_active, f"{pass_rate}%"]
+        
+        if period in ["this_week", "last_week"]:
+            for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
+                row.append(stats['daily'].get(day, {}).get('scans', 0))
+        
+        sheet_data.append(row)
+    
+    sheets["Sorting"] = sheet_data
+    
+    # ============= SHEET 5: QA vs Sorting Comparison =============
+    sheet_data = []
+    sheet_data.append(["QA vs SORTING COMPARISON - " + period_label.upper()])
+    sheet_data.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_data.append([])
+    sheet_data.append(["This sheet compares items QA'd (data+non-data) vs items Sorted"])
+    sheet_data.append([])
+    
+    header = ["Engineer", "Total QA'd", "Total Sorted", "Difference", "QA/Sorting Ratio", "Primary Activity"]
+    sheet_data.append(header)
+    
+    for engineer in sorted(all_engineers):
+        de_total = de_qa_data.get(engineer, {}).get('total', 0)
+        non_de_total = non_de_qa_data.get(engineer, {}).get('total', 0)
+        qa_total = de_total + non_de_total
+        sorting_total = sorting_data.get(engineer, {}).get('total', 0)
+        
+        difference = qa_total - sorting_total
+        
+        if qa_total > 0 and sorting_total > 0:
+            ratio = f"{round(qa_total / sorting_total, 2)}:1"
+        elif qa_total > 0:
+            ratio = "QA Only"
+        elif sorting_total > 0:
+            ratio = "Sorting Only"
+        else:
+            ratio = "N/A"
+        
+        if qa_total > sorting_total * 1.5:
+            primary = "QA Focus"
+        elif sorting_total > qa_total * 1.5:
+            primary = "Sorting Focus"
+        elif qa_total > 0 or sorting_total > 0:
+            primary = "Balanced"
+        else:
+            primary = "Inactive"
+        
+        sheet_data.append([engineer, qa_total, sorting_total, difference, ratio, primary])
+    
+    sheet_data.append([])
+    sheet_data.append(["* QA/Sorting Ratio shows how many items QA'd per item Sorted"])
+    sheet_data.append(["* Primary Activity indicates if engineer focuses more on QA or Sorting"])
+    
+    sheets["QA vs Sorting"] = sheet_data
+    
+    # ============= SHEET 6: Daily Breakdown =============
+    sheet_data = []
+    sheet_data.append(["DAILY BREAKDOWN - " + period_label.upper()])
+    sheet_data.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_data.append([])
+    
+    header = ["Date", "Day", "Engineer", "Data Bearing", "Non-Data", "Total QA", "Sorting"]
+    sheet_data.append(header)
+    
+    # Iterate through each date in the period
+    current_date = start_date
+    while current_date <= end_date:
+        date_str = current_date.isoformat()
+        day_name = current_date.strftime('%A')
+        
+        # Get all engineers active on this date
+        active_engineers = set()
+        for engineer in all_engineers:
+            if day_name in de_qa_data.get(engineer, {}).get('daily', {}):
+                active_engineers.add(engineer)
+            if day_name in non_de_qa_data.get(engineer, {}).get('daily', {}):
+                active_engineers.add(engineer)
+            if day_name in sorting_data.get(engineer, {}).get('daily', {}):
+                active_engineers.add(engineer)
+        
+        for engineer in sorted(active_engineers):
+            de_count = de_qa_data.get(engineer, {}).get('daily', {}).get(day_name, {}).get('scans', 0)
+            non_de_count = non_de_qa_data.get(engineer, {}).get('daily', {}).get(day_name, {}).get('scans', 0)
+            qa_total = de_count + non_de_count
+            sorting_count = sorting_data.get(engineer, {}).get('daily', {}).get(day_name, {}).get('scans', 0)
+            
+            sheet_data.append([date_str, day_name, engineer, de_count, non_de_count, qa_total, sorting_count])
+        
+        current_date += timedelta(days=1)
+    
+    sheets["Daily Breakdown"] = sheet_data
+    
+    return sheets
