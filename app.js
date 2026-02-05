@@ -2454,8 +2454,13 @@ function renderSVGSparkline(svgElem, data) {
       document.getElementById('qaTotalScans').textContent = data.summary.totalScans.toLocaleString();
       const deScansEl = document.getElementById('qaDeScans');
       if (deScansEl) deScansEl.textContent = (data.summary.deQaScans || 0).toLocaleString();
-      const combinedScansEl = document.getElementById('qaCombinedScans');
-      if (combinedScansEl) combinedScansEl.textContent = (data.summary.combinedScans || 0).toLocaleString();
+      const nonDeScansEl = document.getElementById('qaNonDeScans');
+      if (nonDeScansEl) nonDeScansEl.textContent = (data.summary.nonDeQaScans || 0).toLocaleString();
+      const deTotalEl = document.getElementById('qaDeTotalScans');
+      if (deTotalEl) {
+        const deTotal = (data.summary.deQaScans || 0) + (data.summary.nonDeQaScans || 0);
+        deTotalEl.textContent = deTotal.toLocaleString();
+      }
       document.getElementById('qaTopTech').textContent = formatQaName(data.summary.topTechnician);
       document.getElementById('qaCurrentPeriod').textContent = data.period;
       document.getElementById('qaDateRange').textContent = data.dateRange;
@@ -2482,13 +2487,18 @@ function renderSVGSparkline(svgElem, data) {
         performersGrid.innerHTML = displayTopPerformers.map(tech => {
           const qaScans = tech.qaScans || 0;
           const deScans = tech.deQaScans || 0;
+          const nonDeScans = tech.nonDeQaScans || 0;
           const combined = tech.combinedScans || 0;
           const passRate = qaScans > 0 ? `${tech.passRate}%` : '—';
-          const sourceTag = qaScans > 0 && deScans > 0
+          const sourceTag = qaScans > 0 && (deScans > 0 || nonDeScans > 0)
             ? 'QA + DE'
-            : deScans > 0
-              ? 'DE QA'
-              : 'QA App';
+            : deScans > 0 && nonDeScans > 0
+              ? 'DE + Non-DE'
+              : deScans > 0
+                ? 'DE QA'
+                : nonDeScans > 0
+                  ? 'Non-DE'
+                  : 'QA App';
           return `
         <div class="qa-performer-card">
           <div class="qa-performer-name">${escapeHtml(formatQaName(tech.name))}
@@ -2501,6 +2511,10 @@ function renderSVGSparkline(svgElem, data) {
           <div class="qa-performer-metric">
             <span class="qa-performer-metric-label">DE QA:</span>
             <span class="qa-performer-metric-value">${deScans}</span>
+          </div>
+          <div class="qa-performer-metric">
+            <span class="qa-performer-metric-label">Non-DE:</span>
+            <span class="qa-performer-metric-value">${nonDeScans}</span>
           </div>
           <div class="qa-performer-metric">
             <span class="qa-performer-metric-label">Combined:</span>
@@ -2530,6 +2544,7 @@ function renderSVGSparkline(svgElem, data) {
         const maxDaily = Math.max(...dailyData, 1);
         const qaScans = tech.qaScans || 0;
         const deScans = tech.deQaScans || 0;
+        const nonDeScans = tech.nonDeQaScans || 0;
         const passRate = qaScans > 0 ? `${tech.passRate}%` : '—';
         
         return `
@@ -2542,6 +2557,10 @@ function renderSVGSparkline(svgElem, data) {
             <div class="qa-tech-stat">
               <span class="qa-tech-stat-label">DE QA:</span>
               <span class="qa-tech-stat-value">${deScans}</span>
+            </div>
+            <div class="qa-tech-stat">
+              <span class="qa-tech-stat-label">Non-DE:</span>
+              <span class="qa-tech-stat-value">${nonDeScans}</span>
             </div>
             <div class="qa-tech-stat">
               <span class="qa-tech-stat-label">Pass:</span>

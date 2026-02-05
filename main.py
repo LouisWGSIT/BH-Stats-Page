@@ -1327,11 +1327,12 @@ async def get_qa_dashboard_data(period: str = "this_week"):
         # Get date range
         start_date, end_date, period_label = qa_export.get_week_dates(period)
         
-        # Get QA data (ITAD_QA_App) and DE QA data (view_audit_submission DE APP)
+        # Get QA data (ITAD_QA_App), DE QA data, and Non-DE QA data
         qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
         de_qa_data = qa_export.get_de_qa_comparison(start_date, end_date)
+        non_de_qa_data = qa_export.get_non_de_qa_comparison(start_date, end_date)
         
-        if not qa_data and not de_qa_data:
+        if not qa_data and not de_qa_data and not non_de_qa_data:
             min_date, max_date = qa_export.get_qa_data_bounds()
             return {
                 "period": period_label,
@@ -1340,6 +1341,7 @@ async def get_qa_dashboard_data(period: str = "this_week"):
                 "summary": {
                     "totalScans": 0,
                     "deQaScans": 0,
+                    "nonDeQaScans": 0,
                     "combinedScans": 0,
                     "passRate": 0,
                     "avgConsistency": 0,
@@ -1357,29 +1359,37 @@ async def get_qa_dashboard_data(period: str = "this_week"):
         total_scans = sum(stats['total'] for stats in qa_data.values()) if qa_data else 0
         total_passed = sum(stats['successful'] for stats in qa_data.values()) if qa_data else 0
         total_de_scans = sum(stats['total'] for stats in de_qa_data.values()) if de_qa_data else 0
-        combined_scans = total_scans + total_de_scans
+        total_non_de_scans = sum(stats['total'] for stats in non_de_qa_data.values()) if non_de_qa_data else 0
+        combined_scans = total_scans + total_de_scans + total_non_de_scans
         overall_pass_rate = (total_passed / total_scans * 100) if total_scans > 0 else 0
         
         # Calculate consistency scores and build technician list
         technicians = []
         consistency_scores = []
         
-        all_names = sorted(set(qa_data.keys() if qa_data else []) | set(de_qa_data.keys() if de_qa_data else []))
+        all_names = sorted(
+            set(qa_data.keys() if qa_data else [])
+            | set(de_qa_data.keys() if de_qa_data else [])
+            | set(non_de_qa_data.keys() if non_de_qa_data else [])
+        )
 
         for tech_name in all_names:
             stats = qa_data.get(tech_name, {'total': 0, 'successful': 0, 'daily': {}, 'pass_rate': 0.0})
             de_stats = de_qa_data.get(tech_name, {'total': 0, 'daily': {}})
+            non_de_stats = non_de_qa_data.get(tech_name, {'total': 0, 'daily': {}})
 
             qa_total = stats['total']
             de_total = de_stats['total']
-            tech_combined_total = qa_total + de_total
+            non_de_total = non_de_stats['total']
+            tech_combined_total = qa_total + de_total + non_de_total
 
-            # Calculate combined daily counts (QA app + DE QA)
+            # Calculate combined daily counts (QA app + DE QA + Non-DE QA)
             combined_daily = {}
             for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
                 qa_scans = stats['daily'].get(day, {}).get('scans', 0)
                 de_scans = de_stats['daily'].get(day, {}).get('scans', 0)
-                combined_scans_day = qa_scans + de_scans
+                non_de_scans = non_de_stats['daily'].get(day, {}).get('scans', 0)
+                combined_scans_day = qa_scans + de_scans + non_de_scans
                 if combined_scans_day > 0:
                     combined_daily[day] = {
                         'scans': combined_scans_day,
@@ -1409,6 +1419,7 @@ async def get_qa_dashboard_data(period: str = "this_week"):
                 "name": tech_name,
                 "qaScans": qa_total,
                 "deQaScans": de_total,
+                "nonDeQaScans": non_de_total,
                 "combinedScans": tech_combined_total,
                 "passRate": round(stats['pass_rate'], 1),
                 "avgPerDay": round(avg_per_day, 1),
@@ -1443,6 +1454,7 @@ async def get_qa_dashboard_data(period: str = "this_week"):
             "summary": {
                 "totalScans": total_scans,
                 "deQaScans": total_de_scans,
+                "nonDeQaScans": total_non_de_scans,
                 "combinedScans": combined_scans,
                 "passRate": round(overall_pass_rate, 1),
                 "avgConsistency": round(avg_consistency, 1),

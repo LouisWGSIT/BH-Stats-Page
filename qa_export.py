@@ -259,6 +259,60 @@ def get_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict]:
             conn.close()
         return {}
 
+
+def get_non_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict]:
+    """Get Non-DE QA data from audit_master (Non_DEAPP_Submission) for the period."""
+    conn = get_mariadb_connection()
+    if not conn:
+        return {}
+
+    try:
+        cursor = conn.cursor()
+        start_str = start_date.isoformat()
+        end_str = end_date.isoformat()
+
+        cursor.execute("""
+            SELECT user_id,
+                   COUNT(*) as total_scans,
+                   DATE(date_time) as scan_date
+            FROM audit_master
+            WHERE audit_type = 'Non_DEAPP_Submission'
+              AND user_id IS NOT NULL AND user_id <> ''
+              AND DATE(date_time) >= %s AND DATE(date_time) <= %s
+            GROUP BY user_id, DATE(date_time)
+            ORDER BY user_id, scan_date
+        """, (start_str, end_str))
+
+        rows = cursor.fetchall()
+
+        data = defaultdict(lambda: {
+            'total': 0,
+            'daily': {}
+        })
+
+        for username, total_scans, scan_date in rows:
+            if not username:
+                username = '(unassigned)'
+
+            day_name = scan_date.strftime('%A') if scan_date else 'Unknown'
+            total_scans_int = int(total_scans or 0)
+
+            data[username]['total'] += total_scans_int
+            data[username]['daily'][day_name] = {
+                'date': scan_date,
+                'scans': total_scans_int
+            }
+
+        cursor.close()
+        conn.close()
+        return dict(data)
+
+    except Exception as e:
+        print(f"[QA Export] Error fetching Non-DE QA data: {e}")
+        if conn:
+            conn.close()
+        return {}
+
 def generate_qa_export(period: str) -> Dict[str, List[List]]:
     """Generate comprehensive QA stats export with multiple sheets"""
     start_date, end_date, period_label = get_week_dates(period)
