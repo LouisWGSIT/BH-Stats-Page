@@ -2635,32 +2635,87 @@ function renderSVGSparkline(svgElem, data) {
     const engineerCount = todayData.technicians ? todayData.technicians.filter(t => t.combinedScans > 0).length : 0;
     const avgConsistency = todayData.summary.avgConsistency || 0;
     
-    // Get daily record from either dataset
-    const dailyRecord = todayData.summary.dailyRecord || weeklyData.summary.dailyRecord || { qa_record: 0, qa_engineer: 'N/A' };
-    const recordDisplay = dailyRecord.qa_record > 0 ? `${dailyRecord.qa_record} by ${dailyRecord.qa_engineer}` : 'N/A';
+    // Get daily records from either dataset
+    const dailyRecords = todayData.summary.dailyRecord || weeklyData.summary.dailyRecord || { 
+      data_bearing_records: [], 
+      non_data_bearing_records: [] 
+    };
     
-    metricsValue.textContent = todayTotal.toLocaleString();
-    metricsLabel.textContent = "Today's Total";
+    const metricsCard = document.querySelector('.qa-metrics-card');
+    let currentView = 0; // 0 = stats, 1 = data-bearing, 2 = non-data-bearing
     
-    metricsContent.innerHTML = `
-      <div class="qa-metric-item">
-        <span class="qa-metric-label">Weekly Avg</span>
-        <span class="qa-metric-value">${avgDaily.toLocaleString()}/day</span>
-      </div>
-      <div class="qa-metric-item">
-        <span class="qa-metric-label">Active Engineers</span>
-        <span class="qa-metric-value">${engineerCount}</span>
-      </div>
-      <div class="qa-metric-item">
-        <span class="qa-metric-label">Consistency</span>
-        <span class="qa-metric-value">${Math.round(avgConsistency)}%</span>
-      </div>
-      <div class="qa-metric-item">
-        <span class="qa-metric-label">1-Day Record</span>
-        <span class="qa-metric-value" style="font-size: 0.9em;">${recordDisplay}</span>
-      </div>
-      </div>
-    `;
+    function updateMetricsView() {
+      if (currentView === 0) {
+        // Show general stats
+        metricsValue.textContent = todayTotal.toLocaleString();
+        metricsLabel.textContent = "Today's Total";
+        
+        metricsContent.innerHTML = `
+          <div class="qa-metric-item">
+            <span class="qa-metric-label">Weekly Avg</span>
+            <span class="qa-metric-value">${avgDaily.toLocaleString()}/day</span>
+          </div>
+          <div class="qa-metric-item">
+            <span class="qa-metric-label">Active Engineers</span>
+            <span class="qa-metric-value">${engineerCount}</span>
+          </div>
+          <div class="qa-metric-item">
+            <span class="qa-metric-label">Consistency</span>
+            <span class="qa-metric-value">${Math.round(avgConsistency)}%</span>
+          </div>
+          <div class="qa-metric-item">
+            <span class="qa-metric-label">Week Total</span>
+            <span class="qa-metric-value">${weeklyTotal.toLocaleString()}</span>
+          </div>
+        `;
+      } else if (currentView === 1) {
+        // Show data-bearing records
+        metricsValue.textContent = "🏆";
+        metricsLabel.textContent = "Data Bearing Records";
+        
+        const dbRecords = dailyRecords.data_bearing_records || [];
+        if (dbRecords.length === 0) {
+          metricsContent.innerHTML = '<div style="padding: 12px; text-align: center; color: #888;">No records</div>';
+        } else {
+          metricsContent.innerHTML = dbRecords.map((record, index) => `
+            <div class="qa-metric-item">
+              <span class="qa-metric-label">${index + 1}. ${escapeHtml(record.name)}</span>
+              <span class="qa-metric-value">${record.count.toLocaleString()}</span>
+            </div>
+          `).join('');
+        }
+      } else if (currentView === 2) {
+        // Show non-data-bearing records
+        metricsValue.textContent = "🏆";
+        metricsLabel.textContent = "Non-Data Bearing Records";
+        
+        const ndbRecords = dailyRecords.non_data_bearing_records || [];
+        if (ndbRecords.length === 0) {
+          metricsContent.innerHTML = '<div style="padding: 12px; text-align: center; color: #888;">No records</div>';
+        } else {
+          metricsContent.innerHTML = ndbRecords.map((record, index) => `
+            <div class="qa-metric-item">
+              <span class="qa-metric-label">${index + 1}. ${escapeHtml(record.name)}</span>
+              <span class="qa-metric-value">${record.count.toLocaleString()}</span>
+            </div>
+          `).join('');
+        }
+      }
+      
+      currentView = (currentView + 1) % 3;
+    }
+    
+    // Initial display
+    updateMetricsView();
+    
+    // Flip every 10 seconds
+    setInterval(updateMetricsView, 10000);
+    
+    // Also allow manual click to flip
+    if (metricsCard) {
+      metricsCard.style.cursor = 'pointer';
+      metricsCard.onclick = updateMetricsView;
+    }
   }
   
   // Show error message on QA dashboard
