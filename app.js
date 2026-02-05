@@ -2728,13 +2728,13 @@ function renderSVGSparkline(svgElem, data) {
       } else if (currentView === 1) {
         // Show data-bearing records
         metricsValue.textContent = "🏆";
-        metricsLabel.textContent = "Data Bearing Records";
+        metricsLabel.textContent = "Data Bearing - Most QA'd in 1 Day!";
         
         const dbRecords = dailyRecords.data_bearing_records || [];
         if (dbRecords.length === 0) {
           metricsContent.innerHTML = '<div style="padding: 12px; text-align: center; color: #888;">No records</div>';
         } else {
-          const medals = ['🥇', '🥈', '🥉', '4.'];
+          const medals = ['🥇', '🥈', '🥉', '4.', '5.', '6.'];
           metricsContent.innerHTML = dbRecords.map((record, index) => `
             <div class="qa-metric-item">
               <span class="qa-metric-label">${medals[index] || (index + 1 + '.')} ${escapeHtml(record.name)}</span>
@@ -2745,13 +2745,13 @@ function renderSVGSparkline(svgElem, data) {
       } else if (currentView === 2) {
         // Show non-data-bearing records
         metricsValue.textContent = "🏆";
-        metricsLabel.textContent = "Non-Data Bearing Records";
+        metricsLabel.textContent = "Non-Data Bearing - Most QA'd in 1 Day!";
         
         const ndbRecords = dailyRecords.non_data_bearing_records || [];
         if (ndbRecords.length === 0) {
           metricsContent.innerHTML = '<div style="padding: 12px; text-align: center; color: #888;">No records</div>';
         } else {
-          const medals = ['🥇', '🥈', '🥉', '4.'];
+          const medals = ['🥇', '🥈', '🥉', '4.', '5.', '6.'];
           metricsContent.innerHTML = ndbRecords.map((record, index) => `
             <div class="qa-metric-item">
               <span class="qa-metric-label">${medals[index] || (index + 1 + '.')} ${escapeHtml(record.name)}</span>
