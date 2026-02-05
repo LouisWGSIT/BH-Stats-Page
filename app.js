@@ -774,6 +774,7 @@ function renderSVGSparkline(svgElem, data) {
 
       if (!list) return;
       list.innerHTML = '';
+      const fragment = document.createDocumentFragment();
       (data.leaderboard || []).forEach((row, idx) => {
         const li = document.createElement('li');
         li.innerHTML = `
@@ -781,8 +782,9 @@ function renderSVGSparkline(svgElem, data) {
           <span class="speed-name">${row.initials || '—'}</span>
           <span class="speed-count">${row.erasures || 0}</span>
         `;
-        list.appendChild(li);
+        fragment.appendChild(li);
       });
+      list.appendChild(fragment);
     } catch (err) {
       console.error('Speed challenge fetch error:', err);
     }
@@ -804,6 +806,7 @@ function renderSVGSparkline(svgElem, data) {
         if (!list) return;
         list.innerHTML = '';
         const rows = (data.specialists && data.specialists[key]) || [];
+        const fragment = document.createDocumentFragment();
         rows.forEach((row, idx) => {
           const li = document.createElement('li');
           const trophyClass = idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze';
@@ -813,8 +816,9 @@ function renderSVGSparkline(svgElem, data) {
             <span class="speed-count">${row.count || 0}</span>
             <span class="trophy ${trophyClass}"></span>
           `;
-          list.appendChild(li);
+          fragment.appendChild(li);
         });
+        list.appendChild(fragment);
       });
     } catch (err) {
       console.error('Category specialists fetch error:', err);
@@ -829,6 +833,7 @@ function renderSVGSparkline(svgElem, data) {
       const list = document.getElementById('consistencyList');
       if (!list) return;
       list.innerHTML = '';
+      const fragment = document.createDocumentFragment();
       (data.leaderboard || []).forEach((row, idx) => {
         const li = document.createElement('li');
         li.innerHTML = `
@@ -839,8 +844,9 @@ function renderSVGSparkline(svgElem, data) {
             <span class="gap">avg time between actions: ${row.avgGapMinutes || 0} min • consistency (lower is steadier): ${row.consistencyScore || 0}</span>
           </div>
         `;
-        list.appendChild(li);
+        fragment.appendChild(li);
       });
+      list.appendChild(fragment);
     } catch (err) {
       console.error('Consistency fetch error:', err);
     }
@@ -853,6 +859,7 @@ function renderSVGSparkline(svgElem, data) {
       const data = await res.json();
       const body = document.getElementById('leaderboardBody');
       body.innerHTML = '';
+      const fragment = document.createDocumentFragment();
       // Display all top engineers in the leaderboard table (up to 5 to match race lanes)
       (data.items || []).slice(0, 5).forEach((row, idx) => {
         const tr = document.createElement('tr');
@@ -868,8 +875,9 @@ function renderSVGSparkline(svgElem, data) {
           <td class="value-strong">${row.erasures || 0}</td>
           <td class="time-ago">${lastActive}</td>
         `;
-        body.appendChild(tr);
+        fragment.appendChild(tr);
       });
+      body.appendChild(fragment);
 
       // Update race positions with all top 5 engineers
       updateRace(data.items || []);
@@ -1063,34 +1071,23 @@ function renderSVGSparkline(svgElem, data) {
       '#8cf04a', // green
       '#00d4ff', // cyan
       '#ffcc00', // yellow
-      '#ff6b35', // orange
-      '#a78bfa', // purple
     ];
 
     const defaults = {
-      origin: { y: 0 },
+      origin: { y: 0.3 },
       zIndex: 10000,
+      disableForReducedMotion: true,
     };
 
-    // Burst from multiple points
+    // Single optimized burst for TV performance
     confetti({
       ...defaults,
-      particleCount: 100,
-      spread: 70,
-      startVelocity: 55,
+      particleCount: 50, // Reduced from 100
+      spread: 90,
+      startVelocity: 40,
       colors: confettiColors,
+      ticks: 120, // Limit animation duration
     });
-
-    // Second burst after delay
-    setTimeout(() => {
-      confetti({
-        ...defaults,
-        particleCount: 50,
-        spread: 100,
-        startVelocity: 45,
-        colors: confettiColors,
-      });
-    }, 150);
   }
 
   function renderBars(counts) {
@@ -1099,6 +1096,9 @@ function renderSVGSparkline(svgElem, data) {
     const container = document.getElementById('byTypeBars');
     if (!container) return;
     container.innerHTML = '';
+    
+    // Use DocumentFragment for better performance
+    const fragment = document.createDocumentFragment();
     defs.forEach(def => {
       const val = counts[def.key] || 0;
       const pct = Math.round((val / total) * 100);
@@ -1109,15 +1109,16 @@ function renderSVGSparkline(svgElem, data) {
         <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
         <div class="bar-value">${val}</div>
       `;
-      container.appendChild(row);
+      fragment.appendChild(row);
     });
+    container.appendChild(fragment);
   }
 
   function updateDonut(chart, value, target) {
     const remaining = Math.max(target - value, 0);
     chart.data.datasets[0].data = [value, remaining];
     chart.canvas.dataset.target = target;
-    chart.update();
+    chart.update('none'); // Skip animation for better performance
     
     // Trigger pulse animation on chart container
     const container = chart.canvas.closest('.donut-card');
@@ -2292,9 +2293,20 @@ function renderSVGSparkline(svgElem, data) {
   const rotatorIntervals = new Map();
   const rotatorTimeouts = new Map();
   
+  function cleanupRotatorCards() {
+    // Clear all intervals and timeouts
+    rotatorIntervals.forEach(id => clearInterval(id));
+    rotatorTimeouts.forEach(id => clearTimeout(id));
+    rotatorIntervals.clear();
+    rotatorTimeouts.clear();
+  }
+  
   function setupRotatorCards() {
     const cards = document.querySelectorAll('.rotator-card');
     if (!cards.length) return;
+
+    // Clean up before setting up new ones
+    cleanupRotatorCards();
 
     cards.forEach((card, cardIdx) => {
       // Clear any existing interval/timeout for this card
@@ -2398,6 +2410,9 @@ function renderSVGSparkline(svgElem, data) {
       if (!document.hidden) {
         setupFlipCards();
         setupRotatorCards();
+      } else {
+        // Clean up when tab is hidden to save resources
+        cleanupRotatorCards();
       }
     });
   }, 500);
