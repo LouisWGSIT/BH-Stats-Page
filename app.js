@@ -414,6 +414,12 @@ function renderSVGSparkline(svgElem, data) {
 
   // Track race data for winner announcement
   let raceData = { engineer1: null, engineer2: null, engineer3: null, firstFinisher: null, winnerAnnounced: false };
+  
+  // Track speed challenges
+  let speedChallengeData = {
+    am: { lastWinner: null, isFinished: false, wasActive: false },
+    pm: { lastWinner: null, isFinished: false, wasActive: false },
+  };
 
   function triggerGreenie(quote) {
     const container = document.getElementById('greenieContainer');
@@ -728,12 +734,44 @@ function renderSVGSparkline(svgElem, data) {
       const data = await res.json();
       const list = document.getElementById(listId);
       const statusEl = document.getElementById(statusId);
+      
+      // Get tracker for this window
+      const tracker = speedChallengeData[window];
+      if (!tracker) return;
+
       if (statusEl && data.status) {
         const st = data.status;
         const liveBadge = st.isActive ? 'LIVE · ' : '';
         const remaining = st.isActive ? `${st.timeRemainingMinutes} mins left` : `${st.startTime} - ${st.endTime}`;
         statusEl.textContent = `${liveBadge}${st.name} (${remaining})`;
+        
+        // Check if challenge just finished (was active, now isn't)
+        if (tracker.wasActive && !st.isActive && !tracker.isFinished) {
+          tracker.isFinished = true;
+          // Announce the winner after a short delay to let data settle
+          setTimeout(() => {
+            const firstPlace = (data.leaderboard || [])[0];
+            if (firstPlace && firstPlace.initials) {
+              const announcementType = window === 'am' 
+                ? announcementTypes.SPEED_CHALLENGE_AM 
+                : announcementTypes.SPEED_CHALLENGE_PM;
+              showAnnouncement(announcementType, {
+                initials: firstPlace.initials,
+                erasures: firstPlace.erasures || 0,
+              });
+            }
+          }, 500);
+        }
+        
+        // Track if active for next check
+        tracker.wasActive = st.isActive;
+        
+        // Reset finished flag when challenge becomes active again (next day)
+        if (st.isActive && tracker.isFinished) {
+          tracker.isFinished = false;
+        }
       }
+
       if (!list) return;
       list.innerHTML = '';
       (data.leaderboard || []).forEach((row, idx) => {
@@ -936,26 +974,82 @@ function renderSVGSparkline(svgElem, data) {
     }
   }
 
-  function announceWinner() {
-    const winner = raceData.engineer1;
-    if (!winner) return;
+  // Enhanced announcement system
+  const announcementTypes = {
+    DAILY_RACE_WINNER: 'daily-race-winner',
+    SPEED_CHALLENGE_AM: 'speed-challenge-am',
+    SPEED_CHALLENGE_PM: 'speed-challenge-pm',
+    CATEGORY_SPECIALIST: 'category-specialist',
+    CONSISTENCY_KING: 'consistency-king',
+    TOP_PERFORMER: 'top-performer',
+  };
 
+  const announcementMessages = {
+    'daily-race-winner': (winner) => ({
+      title: `🏆 ${winner.initials} WINS THE DAILY RACE! 🏆`,
+      subtitle: `Finished with ${winner.erasures} erasures today`,
+      duration: 8000,
+      emoji: '🏁🎉',
+    }),
+    'speed-challenge-am': (winner) => ({
+      title: `⚡ ${winner.initials} CRUSHES THE AM SPEED CHALLENGE! ⚡`,
+      subtitle: `${winner.erasures} erasures in record time`,
+      duration: 7000,
+      emoji: '🏃💨',
+    }),
+    'speed-challenge-pm': (winner) => ({
+      title: `🌙 ${winner.initials} DOMINATES THE PM SPEED CHALLENGE! 🌙`,
+      subtitle: `${winner.erasures} erasures in the afternoon blitz`,
+      duration: 7000,
+      emoji: '🌟⚡',
+    }),
+    'category-specialist': (specialist) => ({
+      title: `🎯 ${specialist.initials} IS THE ${specialist.category} SPECIALIST! 🎯`,
+      subtitle: `Master of ${specialist.category} erasures`,
+      duration: 7000,
+      emoji: '👑✨',
+    }),
+    'consistency-king': (winner) => ({
+      title: `🎪 ${winner.initials} IS TODAY'S CONSISTENCY KING/QUEEN! 🎪`,
+      subtitle: `${winner.erasures} erasures with flawless pacing`,
+      duration: 7000,
+      emoji: '⏱️💯',
+    }),
+    'top-performer': (winner) => ({
+      title: `⭐ ALL HAIL ${winner.initials}, TOP PERFORMER! ⭐`,
+      subtitle: `${winner.erasures} erasures and counting`,
+      duration: 7000,
+      emoji: '👏🔥',
+    }),
+  };
+
+  function showAnnouncement(type, data) {
+    const config = announcementMessages[type];
+    if (!config) return;
+
+    const message = config(data);
     const modal = document.getElementById('winnerModal');
     const winnerText = document.getElementById('winnerText');
     const winnerSubtext = document.getElementById('winnerSubtext');
 
-    winnerText.textContent = `🏆 ${winner.initials} WINS! 🏆`;
-    winnerSubtext.textContent = `${winner.erasures} erasures today`;
+    winnerText.textContent = message.title;
+    winnerSubtext.textContent = message.subtitle;
 
     modal.classList.remove('hidden');
 
-    // Trigger confetti
+    // Trigger confetti for more impressive effect
     triggerConfetti();
 
-    // Hide modal after 5 seconds
+    // Hide modal after configured duration
     setTimeout(() => {
       modal.classList.add('hidden');
-    }, 5000);
+    }, message.duration);
+  }
+
+  function announceWinner() {
+    const winner = raceData.engineer1;
+    if (!winner) return;
+    showAnnouncement(announcementTypes.DAILY_RACE_WINNER, winner);
   }
 
   function triggerConfetti() {

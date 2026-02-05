@@ -747,11 +747,12 @@ body {
   left: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
-  background: rgba(0, 0, 0, 0.9) !important;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(255, 30, 163, 0.1)) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   z-index: 99999 !important;
+  backdrop-filter: blur(5px);
 }
 
 .modal.hidden {
@@ -759,24 +760,64 @@ body {
 }
 
 .modal-content {
-  background: rgba(0, 0, 0, 0.85);
-  border-radius: 20px;
-  padding: 40px;
+  background: rgba(0, 0, 0, 0.9);
+  border-radius: 24px;
+  padding: 60px 40px;
   text-align: center;
-  border: 2px solid var(--ring-secondary);
-  animation: popIn 0.5s ease;
+  border: 3px solid var(--ring-secondary);
+  animation: popInBounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 
+    0 0 40px rgba(255, 30, 163, 0.5),
+    0 0 80px rgba(140, 240, 74, 0.2),
+    inset 0 0 30px rgba(255, 30, 163, 0.1);
 }
 
-@keyframes popIn {
-  0% { transform: scale(0.8); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
+@keyframes popInBounce {
+  0% { 
+    transform: scale(0.5) rotate(-5deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% { 
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
 }
 
 .modal-content h2 {
-  margin: 0 0 16px 0;
-  font-size: 48px;
+  margin: 0 0 20px 0;
+  font-size: 56px;
   font-weight: 900;
   color: var(--ring-secondary);
+  text-shadow: 
+    0 0 20px rgba(255, 30, 163, 0.8),
+    0 4px 8px rgba(0, 0, 0, 0.5);
+  letter-spacing: 2px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { 
+    text-shadow: 
+      0 0 20px rgba(255, 30, 163, 0.8),
+      0 4px 8px rgba(0, 0, 0, 0.5);
+  }
+  50% { 
+    text-shadow: 
+      0 0 40px rgba(255, 30, 163, 1),
+      0 0 60px rgba(140, 240, 74, 0.5),
+      0 4px 8px rgba(0, 0, 0, 0.5);
+  }
+}
+
+.modal-content p {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 1px;
 }
 
 /* Login Modal Styling */
@@ -2179,10 +2220,12 @@ body {
   grid-auto-rows: min-content;
   gap: 12px;
   align-content: start;
+  flex-direction: column;
+  overflow: auto;
 }
 
 .qa-stats-view.is-active {
-  display: grid;
+  display: grid !important;
 }
 
 #erasureStatsView.is-active {
