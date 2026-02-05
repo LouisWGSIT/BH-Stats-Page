@@ -2619,43 +2619,22 @@ main.layout {
 }
 
 /* Data Bearing cards - Teal */
-.qa-card-data-bearing {
-  background: linear-gradient(135deg, rgba(26, 188, 156, 0.15) 0%, rgba(26, 188, 156, 0.05) 100%);
-  border-color: rgba(26, 188, 156, 0.3);
-}
-
-.qa-card-data-bearing .qa-de-total span:first-child {
-  color: #1abc9c;
-  text-shadow: 0 2px 8px rgba(26, 188, 156, 0.4);
-}
-
-.qa-card-data-bearing .qa-engineer-count {
-  color: #1abc9c;
-}
-
 .qa-card-data-bearing .qa-de-card-header h3 {
   color: #1abc9c;
   font-weight: 700;
 }
 
 /* Non-Data Bearing cards - Orange */
-.qa-card-non-data-bearing {
-  background: linear-gradient(135deg, rgba(230, 126, 34, 0.15) 0%, rgba(230, 126, 34, 0.05) 100%);
-  border-color: rgba(230, 126, 34, 0.3);
-}
-
-.qa-card-non-data-bearing .qa-de-total span:first-child {
-  color: #e67e22;
-  text-shadow: 0 2px 8px rgba(230, 126, 34, 0.4);
-}
-
-.qa-card-non-data-bearing .qa-engineer-count {
-  color: #e67e22;
-}
-
 .qa-card-non-data-bearing .qa-de-card-header h3 {
   color: #e67e22;
   font-weight: 700;
+}
+
+/* Period classes override background but keep title colors */
+/* Today's cards will use green background */
+.qa-card-today.qa-card-data-bearing .qa-de-card-header h3,
+.qa-card-today.qa-card-non-data-bearing .qa-de-card-header h3 {
+  /* Keep data-bearing teal or non-data-bearing orange for titles */
 }
 
 /* Keep medal colors on top of category colors */

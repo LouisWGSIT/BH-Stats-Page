@@ -2504,15 +2504,66 @@ function renderSVGSparkline(svgElem, data) {
     function updateRotatingCards() {
       const current = datasets[currentIndex];
       
+      // Get card elements
+      const dataBearingCard = document.querySelector('#dataBeringToday').closest('.qa-de-card');
+      const nonDataBearingCard = document.querySelector('#nonDataBeringToday').closest('.qa-de-card');
+      
+      // Add flip animation
+      if (dataBearingCard) {
+        dataBearingCard.classList.add('flipping');
+        setTimeout(() => dataBearingCard.classList.remove('flipping'), 600);
+      }
+      if (nonDataBearingCard) {
+        nonDataBearingCard.classList.add('flipping');
+        setTimeout(() => nonDataBearingCard.classList.remove('flipping'), 600);
+      }
+      
+      // Remove old color classes
+      const colorClasses = ['qa-card-today', 'qa-card-week', 'qa-card-alltime'];
+      if (dataBearingCard) {
+        colorClasses.forEach(cls => dataBearingCard.classList.remove(cls));
+      }
+      if (nonDataBearingCard) {
+        colorClasses.forEach(cls => nonDataBearingCard.classList.remove(cls));
+      }
+      
+      // Add appropriate color class based on period (but keep data-bearing/non-data-bearing styling)
+      let colorClass = '';
+      if (current.label === "Today's") {
+        colorClass = 'qa-card-today';
+      } else if (current.label === "This Week's") {
+        colorClass = 'qa-card-week';
+      } else if (current.label === "All Time") {
+        colorClass = 'qa-card-alltime';
+      }
+      
+      // Apply color to data bearing card (keep qa-card-data-bearing for styling)
+      if (dataBearingCard && colorClass) {
+        dataBearingCard.classList.add(colorClass);
+        // Ensure data-bearing class is always present
+        if (!dataBearingCard.classList.contains('qa-card-data-bearing')) {
+          dataBearingCard.classList.add('qa-card-data-bearing');
+        }
+      }
+      
+      // Apply color to non-data bearing card (keep qa-card-non-data-bearing for styling)
+      if (nonDataBearingCard && colorClass) {
+        nonDataBearingCard.classList.add(colorClass);
+        // Ensure non-data-bearing class is always present
+        if (!nonDataBearingCard.classList.contains('qa-card-non-data-bearing')) {
+          nonDataBearingCard.classList.add('qa-card-non-data-bearing');
+        }
+      }
+      
       // Update Data Bearing card
-      const dataBearingTitle = document.querySelector('#dataBeringToday').closest('.qa-de-card').querySelector('h3');
+      const dataBearingTitle = dataBearingCard?.querySelector('h3');
       if (dataBearingTitle) {
         dataBearingTitle.textContent = `${current.label} Data Bearing`;
       }
       populateQACard('dataBeringToday', 'dataBeringTodayEngineers', current.data, 'de', 6);
       
       // Update Non Data Bearing card
-      const nonDataBearingTitle = document.querySelector('#nonDataBeringToday').closest('.qa-de-card').querySelector('h3');
+      const nonDataBearingTitle = nonDataBearingCard?.querySelector('h3');
       if (nonDataBearingTitle) {
         nonDataBearingTitle.textContent = `${current.label} Non Data Bearing`;
       }
@@ -2524,8 +2575,8 @@ function renderSVGSparkline(svgElem, data) {
     // Initial display
     updateRotatingCards();
     
-    // Rotate every 15 seconds
-    setInterval(updateRotatingCards, 15000);
+    // Rotate every 20 seconds (sync with metrics card)
+    setInterval(updateRotatingCards, 20000);
   }
   
   function populateQACard(totalId, listId, data, type = 'qa', maxItems = 6) {
@@ -2716,8 +2767,8 @@ function renderSVGSparkline(svgElem, data) {
     // Initial display
     updateMetricsView();
     
-    // Flip every 10 seconds
-    setInterval(updateMetricsView, 10000);
+    // Flip every 20 seconds for smooth TV viewing
+    setInterval(updateMetricsView, 20000);
     
     // Also allow manual click to flip
     if (metricsCard) {
