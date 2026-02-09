@@ -2546,7 +2546,8 @@ main.layout {
   flex-direction: column;
   gap: 8px;
   flex: 1;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-top: 4px;
   min-height: 0;
   overflow: hidden;
 }

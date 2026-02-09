@@ -2673,6 +2673,8 @@ function renderSVGSparkline(svgElem, data) {
     }
   }
   
+  let metricsFlipIntervalId = null;
+
   function populateMetricsCard(todayData, weeklyData) {
     const metricsContent = document.getElementById('metricsContent');
     const metricsValue = document.getElementById('metricsValue');
@@ -2684,6 +2686,7 @@ function renderSVGSparkline(svgElem, data) {
     const weeklyTotal = (weeklyData.summary.totalScans || 0) + (weeklyData.summary.deQaScans || 0) + (weeklyData.summary.nonDeQaScans || 0);
     const avgDaily = weeklyTotal > 0 ? Math.round(weeklyTotal / 5) : 0;
     const engineerCount = todayData.technicians ? todayData.technicians.filter(t => t.combinedScans > 0).length : 0;
+    const avgPerEngineer = engineerCount > 0 ? Math.round(todayTotal / engineerCount) : 0;
     const avgConsistency = todayData.summary.avgConsistency || 0;
     
     // Get daily records from either dataset
@@ -2705,7 +2708,7 @@ function renderSVGSparkline(svgElem, data) {
       if (currentView === 0) {
         // Show general stats
         metricsValue.textContent = todayTotal.toLocaleString();
-        metricsLabel.textContent = "Today's Total";
+        metricsLabel.textContent = "QA Summary";
         
         metricsContent.innerHTML = `
           <div class="qa-metric-item">
@@ -2715,6 +2718,10 @@ function renderSVGSparkline(svgElem, data) {
           <div class="qa-metric-item">
             <span class="qa-metric-label">Active Engineers</span>
             <span class="qa-metric-value">${engineerCount}</span>
+          </div>
+          <div class="qa-metric-item">
+            <span class="qa-metric-label">Avg per Engineer</span>
+            <span class="qa-metric-value">${avgPerEngineer.toLocaleString()}</span>
           </div>
           <div class="qa-metric-item">
             <span class="qa-metric-label">Consistency</span>
@@ -2768,7 +2775,10 @@ function renderSVGSparkline(svgElem, data) {
     updateMetricsView();
     
     // Flip every 20 seconds for smooth TV viewing
-    setInterval(updateMetricsView, 20000);
+    if (metricsFlipIntervalId) {
+      clearInterval(metricsFlipIntervalId);
+    }
+    metricsFlipIntervalId = setInterval(updateMetricsView, 20000);
     
     // Also allow manual click to flip
     if (metricsCard) {
