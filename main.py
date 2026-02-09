@@ -70,6 +70,7 @@ ADMIN_PASSWORD = os.getenv("DASHBOARD_ADMIN_PASSWORD", "P!nkarrow")
 
 # Device token storage (persistent across redeployments)
 DEVICE_TOKENS_FILE = "device_tokens.json"
+POWERBI_API_KEY_FILE = "powerbi_api_key.txt"
 DEVICE_TOKEN_EXPIRY_DAYS = 7  # Remember device for 7 days
 
 def load_device_tokens():
@@ -89,6 +90,30 @@ def save_device_tokens(tokens):
             json.dump(tokens, f)
     except Exception as e:
         print(f"Error saving device tokens: {e}")
+
+def get_powerbi_api_key() -> str:
+    """Load or create a Power BI API key for service refreshes."""
+    env_key = os.getenv("POWERBI_API_KEY", "").strip()
+    if env_key:
+        return env_key
+
+    try:
+        if os.path.exists(POWERBI_API_KEY_FILE):
+            with open(POWERBI_API_KEY_FILE, "r") as f:
+                file_key = f.read().strip()
+            if file_key:
+                return file_key
+    except Exception as e:
+        print(f"Error reading Power BI API key file: {e}")
+
+    new_key = secrets.token_urlsafe(32)
+    try:
+        with open(POWERBI_API_KEY_FILE, "w") as f:
+            f.write(new_key)
+    except Exception as e:
+        print(f"Error saving Power BI API key file: {e}")
+    print("Power BI API key generated. Set POWERBI_API_KEY to override.")
+    return new_key
 
 def generate_device_token(user_agent: str, client_ip: str) -> str:
     """Generate a unique device token based on device fingerprint."""
@@ -187,6 +212,15 @@ async def auth_middleware(request: Request, call_next):
         if request.url.path.startswith("/admin"):
             pass
         else:
+            return await call_next(request)
+
+    # Allow Power BI API access via static API key
+    if request.url.path.startswith("/api/powerbi") and POWERBI_API_KEY:
+        auth_header = request.headers.get("Authorization", "")
+        header_key = request.headers.get("x-api-key") or request.headers.get("X-API-Key")
+        query_key = request.query_params.get("api_key")
+        bearer_key = auth_header[7:] if auth_header.startswith("Bearer ") else ""
+        if header_key == POWERBI_API_KEY or query_key == POWERBI_API_KEY or bearer_key == POWERBI_API_KEY:
             return await call_next(request)
     
     # Check for valid device token (remembered device)
@@ -333,6 +367,7 @@ app.add_middleware(
 )
 
 WEBHOOK_API_KEY = os.getenv("WEBHOOK_API_KEY", "6LVepDbZkbMwA66Gpl9bWherzT5wKfOl")
+POWERBI_API_KEY = get_powerbi_api_key()
 
 # Background task for daily reset
 async def check_daily_reset():
@@ -430,6 +465,24 @@ async def powerbi_daily_stats(start_date: str = None, end_date: str = None):
         start_date = (datetime.now().date() - timedelta(days=30)).isoformat()
     
     data = db.get_stats_range(start_date, end_date)
+    qa_data = []
+    try:
+        import qa_export
+        qa_data = qa_export.get_qa_daily_totals_range(
+            datetime.fromisoformat(start_date).date(),
+            datetime.fromisoformat(end_date).date()
+        )
+    except Exception as e:
+        print(f"Power BI QA daily merge error: {e}")
+
+    qa_by_date = {row.get("date"): row for row in qa_data}
+    for row in data:
+        qa_row = qa_by_date.get(row.get("date"), {})
+        row["qaApp"] = qa_row.get("qaApp", 0)
+        row["deQa"] = qa_row.get("deQa", 0)
+        row["nonDeQa"] = qa_row.get("nonDeQa", 0)
+        row["qaTotal"] = qa_row.get("total", 0)
+
     return {"data": data}
 
 @app.get("/api/powerbi/erasure-events")
@@ -468,6 +521,38 @@ async def powerbi_engineer_stats(start_date: str = None, end_date: str = None):
     
     stats = db.get_engineer_stats_range(start_date, end_date)
     return {"data": stats}
+
+@app.get("/api/powerbi/qa-daily")
+async def powerbi_qa_daily(start_date: str = None, end_date: str = None):
+    """
+    Power BI endpoint: Returns QA daily totals
+    Parameters:
+    - start_date: YYYY-MM-DD (optional, defaults to 30 days ago)
+    - end_date: YYYY-MM-DD (optional, defaults to today)
+    """
+    from datetime import datetime, timedelta
+    import qa_export
+
+    end = datetime.now().date() if not end_date else datetime.fromisoformat(end_date).date()
+    start = (end - timedelta(days=30)) if not start_date else datetime.fromisoformat(start_date).date()
+    daily = qa_export.get_qa_daily_totals_range(start, end)
+    return {"data": daily}
+
+@app.get("/api/powerbi/qa-engineer")
+async def powerbi_qa_engineer(start_date: str = None, end_date: str = None):
+    """
+    Power BI endpoint: Returns per-engineer QA daily breakdown
+    Parameters:
+    - start_date: YYYY-MM-DD (optional, defaults to 30 days ago)
+    - end_date: YYYY-MM-DD (optional, defaults to today)
+    """
+    from datetime import datetime, timedelta
+    import qa_export
+
+    end = datetime.now().date() if not end_date else datetime.fromisoformat(end_date).date()
+    start = (end - timedelta(days=30)) if not start_date else datetime.fromisoformat(start_date).date()
+    data = qa_export.get_qa_engineer_daily_breakdown_range(start, end)
+    return {"data": data}
 
 def _get_period_range(period: str):
     """Return (start_date, end_date, label) for a period string."""

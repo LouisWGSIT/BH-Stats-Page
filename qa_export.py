@@ -480,6 +480,85 @@ def get_qa_engineer_daily_totals_range(start_date: date, end_date: date) -> Dict
     if not conn:
         return {}
 
+def get_qa_engineer_daily_breakdown_range(start_date: date, end_date: date) -> List[Dict[str, int | str]]:
+    """Return per-engineer daily QA breakdown for QA App, DE, and Non-DE scans."""
+    conn = get_mariadb_connection()
+    if not conn:
+        return []
+
+    results: Dict[Tuple[str, str], Dict[str, int]] = defaultdict(lambda: {
+        "qaScans": 0,
+        "deQaScans": 0,
+        "nonDeQaScans": 0
+    })
+    try:
+        cursor = conn.cursor()
+        start_str = start_date.isoformat()
+        end_str = end_date.isoformat()
+
+        cursor.execute("""
+            SELECT username, DATE(added_date) as scan_date, COUNT(*) as total_scans
+            FROM ITAD_QA_App
+            WHERE DATE(added_date) >= %s AND DATE(added_date) <= %s
+            GROUP BY username, DATE(added_date)
+        """, (start_str, end_str))
+        for username, scan_date, total_scans in cursor.fetchall():
+            name = username if username else '(unassigned)'
+            if scan_date:
+                key = (name, scan_date.isoformat())
+                results[key]["qaScans"] += int(total_scans or 0)
+
+        cursor.execute("""
+            SELECT user_id, DATE(date_time) as scan_date, COUNT(DISTINCT sales_order) as total_scans
+            FROM audit_master
+            WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
+              AND user_id IS NOT NULL AND user_id <> ''
+              AND sales_order IS NOT NULL AND sales_order <> ''
+              AND DATE(date_time) >= %s AND DATE(date_time) <= %s
+            GROUP BY user_id, DATE(date_time)
+        """, (start_str, end_str))
+        for user_id, scan_date, total_scans in cursor.fetchall():
+            name = user_id if user_id else '(unassigned)'
+            if scan_date:
+                key = (name, scan_date.isoformat())
+                results[key]["deQaScans"] += int(total_scans or 0)
+
+        cursor.execute("""
+            SELECT user_id, DATE(date_time) as scan_date, COUNT(DISTINCT sales_order) as total_scans
+            FROM audit_master
+            WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+              AND user_id IS NOT NULL AND user_id <> ''
+              AND sales_order IS NOT NULL AND sales_order <> ''
+              AND DATE(date_time) >= %s AND DATE(date_time) <= %s
+            GROUP BY user_id, DATE(date_time)
+        """, (start_str, end_str))
+        for user_id, scan_date, total_scans in cursor.fetchall():
+            name = user_id if user_id else '(unassigned)'
+            if scan_date:
+                key = (name, scan_date.isoformat())
+                results[key]["nonDeQaScans"] += int(total_scans or 0)
+
+        cursor.close()
+        conn.close()
+
+        rows: List[Dict[str, int | str]] = []
+        for (name, date_str), totals in sorted(results.items(), key=lambda x: (x[0][1], x[0][0])):
+            total = totals["qaScans"] + totals["deQaScans"] + totals["nonDeQaScans"]
+            rows.append({
+                "name": name,
+                "date": date_str,
+                "qaScans": totals["qaScans"],
+                "deQaScans": totals["deQaScans"],
+                "nonDeQaScans": totals["nonDeQaScans"],
+                "total": total
+            })
+        return rows
+    except Exception as e:
+        print(f"[QA Export] Error fetching QA engineer breakdown: {e}")
+        if conn:
+            conn.close()
+        return []
+
     results: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
     try:
         cursor = conn.cursor()
