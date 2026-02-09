@@ -284,6 +284,55 @@ def get_non_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict
     if not conn:
         return {}
 
+    try:
+        cursor = conn.cursor()
+        start_str = start_date.isoformat()
+        end_str = end_date.isoformat()
+
+        # Use DISTINCT sales_order to avoid counting duplicates from Non_DEAPP_Submission_EditStock_Payload
+        cursor.execute("""
+            SELECT user_id,
+                   COUNT(DISTINCT sales_order) as total_scans,
+                   DATE(date_time) as scan_date
+            FROM audit_master
+            WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+              AND user_id IS NOT NULL AND user_id <> ''
+              AND sales_order IS NOT NULL AND sales_order <> ''
+              AND DATE(date_time) >= %s AND DATE(date_time) <= %s
+            GROUP BY user_id, DATE(date_time)
+            ORDER BY user_id, scan_date
+        """, (start_str, end_str))
+
+        rows = cursor.fetchall()
+
+        data = defaultdict(lambda: {
+            'total': 0,
+            'daily': {}
+        })
+
+        for username, total_scans, scan_date in rows:
+            if not username:
+                username = '(unassigned)'
+
+            day_name = scan_date.strftime('%A') if scan_date else 'Unknown'
+            total_scans_int = int(total_scans or 0)
+
+            data[username]['total'] += total_scans_int
+            data[username]['daily'][day_name] = {
+                'date': scan_date,
+                'scans': total_scans_int
+            }
+
+        cursor.close()
+        conn.close()
+        return dict(data)
+
+    except Exception as e:
+        print(f"[QA Export] Error fetching Non-DE QA data: {e}")
+        if conn:
+            conn.close()
+        return {}
+
 def get_qa_daily_totals_range(start_date: date, end_date: date) -> List[Dict[str, int]]:
     """Return daily totals for QA App, DE QA, and Non-DE QA combined."""
     conn = get_mariadb_connection()
@@ -481,55 +530,6 @@ def get_qa_engineer_daily_totals_range(start_date: date, end_date: date) -> Dict
         return dict(results)
     except Exception as e:
         print(f"[QA Export] Error fetching QA engineer totals: {e}")
-        if conn:
-            conn.close()
-        return {}
-
-    try:
-        cursor = conn.cursor()
-        start_str = start_date.isoformat()
-        end_str = end_date.isoformat()
-
-        # Use DISTINCT sales_order to avoid counting duplicates from Non_DEAPP_Submission_EditStock_Payload
-        cursor.execute("""
-            SELECT user_id,
-                   COUNT(DISTINCT sales_order) as total_scans,
-                   DATE(date_time) as scan_date
-            FROM audit_master
-            WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
-              AND user_id IS NOT NULL AND user_id <> ''
-              AND sales_order IS NOT NULL AND sales_order <> ''
-              AND DATE(date_time) >= %s AND DATE(date_time) <= %s
-            GROUP BY user_id, DATE(date_time)
-            ORDER BY user_id, scan_date
-        """, (start_str, end_str))
-
-        rows = cursor.fetchall()
-
-        data = defaultdict(lambda: {
-            'total': 0,
-            'daily': {}
-        })
-
-        for username, total_scans, scan_date in rows:
-            if not username:
-                username = '(unassigned)'
-
-            day_name = scan_date.strftime('%A') if scan_date else 'Unknown'
-            total_scans_int = int(total_scans or 0)
-
-            data[username]['total'] += total_scans_int
-            data[username]['daily'][day_name] = {
-                'date': scan_date,
-                'scans': total_scans_int
-            }
-
-        cursor.close()
-        conn.close()
-        return dict(data)
-
-    except Exception as e:
-        print(f"[QA Export] Error fetching Non-DE QA data: {e}")
         if conn:
             conn.close()
         return {}
