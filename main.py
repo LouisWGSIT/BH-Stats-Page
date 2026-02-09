@@ -469,6 +469,319 @@ async def powerbi_engineer_stats(start_date: str = None, end_date: str = None):
     stats = db.get_engineer_stats_range(start_date, end_date)
     return {"data": stats}
 
+def _get_period_range(period: str):
+    """Return (start_date, end_date, label) for a period string."""
+    today = datetime.now().date()
+
+    if period == "today":
+        return today, today, "Today"
+
+    if period == "this_week":
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=4) if today.weekday() >= 5 else today
+        return start, end, "This Week"
+
+    if period == "last_week":
+        start = today - timedelta(days=today.weekday() + 7)
+        end = start + timedelta(days=4)
+        return start, end, "Last Week"
+
+    if period == "this_month":
+        start = today.replace(day=1)
+        end = today
+        return start, end, "This Month"
+
+    if period == "last_month":
+        last_month_end = today.replace(day=1) - timedelta(days=1)
+        start = last_month_end.replace(day=1)
+        end = last_month_end
+        return start, end, "Last Month"
+
+    if period == "all_time":
+        return None, None, "All Time"
+
+    return None, None, "Custom"
+
+@app.get("/api/insights/erasure")
+async def erasure_insights(period: str = "this_week"):
+    """Return averages and trajectory data for erasures."""
+    start_date, end_date, label = _get_period_range(period)
+    if not start_date or not end_date:
+        return {
+            "period": label,
+            "error": "Unsupported period"
+        }
+
+    stats = db.get_stats_range(start_date.isoformat(), end_date.isoformat())
+    engineer_stats = db.get_engineer_stats_range(start_date.isoformat(), end_date.isoformat())
+
+    total_erased = sum(row.get("erased", 0) for row in stats)
+    day_count = max(1, (end_date - start_date).days + 1)
+    avg_per_day = round(total_erased / day_count, 1)
+
+    active_engineers = {
+        row.get("initials") for row in engineer_stats
+        if row.get("initials") and (row.get("count") or 0) > 0
+    }
+    active_count = len(active_engineers)
+    avg_per_engineer = round(total_erased / active_count, 1) if active_count else 0
+
+    projection = None
+    today = datetime.now().date()
+    if period == "this_month":
+        total_days = (today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        total_days = total_days.day
+        days_elapsed = max(1, today.day)
+        pace = total_erased / days_elapsed
+        projection = round(pace * total_days)
+
+    # Rolling averages for last 30 days
+    rolling_7 = 0
+    rolling_30 = 0
+    trend_pct = 0
+    try:
+        end_rolling = datetime.now().date()
+        start_rolling = end_rolling - timedelta(days=29)
+        rolling_stats = db.get_stats_range(start_rolling.isoformat(), end_rolling.isoformat())
+        daily_map = {row["date"]: row.get("erased", 0) for row in rolling_stats}
+        daily_values = []
+        cursor_date = start_rolling
+        while cursor_date <= end_rolling:
+            daily_values.append(daily_map.get(cursor_date.isoformat(), 0))
+            cursor_date += timedelta(days=1)
+        if daily_values:
+            rolling_30 = round(sum(daily_values) / len(daily_values), 1)
+            last_7 = daily_values[-7:]
+            prev_7 = daily_values[-14:-7] if len(daily_values) >= 14 else []
+            rolling_7 = round(sum(last_7) / max(1, len(last_7)), 1)
+            if prev_7 and sum(prev_7) > 0:
+                prev_avg = sum(prev_7) / len(prev_7)
+                trend_pct = round(((rolling_7 - prev_avg) / prev_avg) * 100, 1)
+    except Exception as e:
+        print(f"Erasure rolling avg error: {e}")
+
+    return {
+        "period": label,
+        "dateRange": f"{start_date} to {end_date}",
+        "total": total_erased,
+        "avgPerDay": avg_per_day,
+        "rolling7DayAvg": rolling_7,
+        "rolling30DayAvg": rolling_30,
+        "trend7DayPct": trend_pct,
+        "activeEngineers": active_count,
+        "avgPerEngineer": avg_per_engineer,
+        "projection": projection,
+    }
+
+@app.get("/api/insights/qa")
+async def qa_insights(period: str = "this_week"):
+    """Return averages and trajectory data for QA totals (QA App + DE + Non-DE)."""
+    try:
+        import qa_export
+        start_date, end_date, label = qa_export.get_week_dates(period)
+
+        qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
+        de_qa_data = qa_export.get_de_qa_comparison(start_date, end_date)
+        non_de_qa_data = qa_export.get_non_de_qa_comparison(start_date, end_date)
+
+        total_qa_app = sum(stats["total"] for name, stats in qa_data.items() if name.lower() != '(unassigned)') if qa_data else 0
+        total_de = sum(stats["total"] for name, stats in de_qa_data.items() if name.lower() != '(unassigned)') if de_qa_data else 0
+        total_non_de = sum(stats["total"] for name, stats in non_de_qa_data.items() if name.lower() != '(unassigned)') if non_de_qa_data else 0
+        combined_total = total_qa_app + total_de + total_non_de
+
+        day_count = max(1, (end_date - start_date).days + 1)
+        avg_per_day = round(combined_total / day_count, 1)
+
+        active_engineers = set()
+        for name, stats in (qa_data or {}).items():
+            if name.lower() != '(unassigned)' and stats.get("total", 0) > 0:
+                active_engineers.add(name)
+        for name, stats in (de_qa_data or {}).items():
+            if name.lower() != '(unassigned)' and stats.get("total", 0) > 0:
+                active_engineers.add(name)
+        for name, stats in (non_de_qa_data or {}).items():
+            if name.lower() != '(unassigned)' and stats.get("total", 0) > 0:
+                active_engineers.add(name)
+        active_count = len(active_engineers)
+        avg_per_engineer = round(combined_total / active_count, 1) if active_count else 0
+
+        projection = None
+        today = datetime.now().date()
+        if period == "this_month":
+            total_days = (today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+            total_days = total_days.day
+            days_elapsed = max(1, today.day)
+            pace = combined_total / days_elapsed
+            projection = round(pace * total_days)
+
+        # Rolling averages for last 30 days
+        rolling_7 = 0
+        rolling_30 = 0
+        trend_pct = 0
+        try:
+            end_rolling = datetime.now().date()
+            start_rolling = end_rolling - timedelta(days=29)
+            daily_totals = qa_export.get_qa_daily_totals_range(start_rolling, end_rolling)
+            daily_values = [row.get("total", 0) for row in daily_totals]
+            if daily_values:
+                rolling_30 = round(sum(daily_values) / len(daily_values), 1)
+                last_7 = daily_values[-7:]
+                prev_7 = daily_values[-14:-7] if len(daily_values) >= 14 else []
+                rolling_7 = round(sum(last_7) / max(1, len(last_7)), 1)
+                if prev_7 and sum(prev_7) > 0:
+                    prev_avg = sum(prev_7) / len(prev_7)
+                    trend_pct = round(((rolling_7 - prev_avg) / prev_avg) * 100, 1)
+        except Exception as e:
+            print(f"QA rolling avg error: {e}")
+
+        return {
+            "period": label,
+            "dateRange": f"{start_date} to {end_date}",
+            "total": combined_total,
+            "breakdown": {
+                "qaApp": total_qa_app,
+                "deQa": total_de,
+                "nonDeQa": total_non_de
+            },
+            "avgPerDay": avg_per_day,
+            "rolling7DayAvg": rolling_7,
+            "rolling30DayAvg": rolling_30,
+            "trend7DayPct": trend_pct,
+            "activeEngineers": active_count,
+            "avgPerEngineer": avg_per_engineer,
+            "projection": projection,
+        }
+    except Exception as e:
+        print(f"QA insights error: {e}")
+        return {"error": "Failed to compute QA insights"}
+
+@app.get("/api/qa-trends")
+async def qa_trends(period: str = "this_week"):
+    """Return QA trend series for sparklines."""
+    try:
+        import qa_export
+        today = datetime.now().date()
+
+        if period == "today":
+            hourly = qa_export.get_qa_hourly_totals(today)
+            return {
+                "period": "Today",
+                "granularity": "hour",
+                "series": hourly
+            }
+
+        if period == "all_time":
+            min_date, max_date = qa_export.get_qa_data_bounds()
+            if max_date:
+                end_date = max_date
+                start_date = max_date - timedelta(days=29)
+                label = "All Time (Last 30 Days)"
+            else:
+                start_date = today - timedelta(days=29)
+                end_date = today
+                label = "All Time (Last 30 Days)"
+        else:
+            start_date, end_date, label = qa_export.get_week_dates(period)
+
+        daily = qa_export.get_qa_daily_totals_range(start_date, end_date)
+        return {
+            "period": label,
+            "granularity": "day",
+            "series": daily
+        }
+    except Exception as e:
+        print(f"QA trends error: {e}")
+        return {"error": "Failed to compute QA trends"}
+
+@app.get("/api/insights/erasure-engineers")
+async def erasure_engineer_insights(period: str = "this_week", limit: int = 10):
+    """Return per-engineer averages and trends for erasures."""
+    start_date, end_date, label = _get_period_range(period)
+    if not start_date or not end_date:
+        return {"period": label, "error": "Unsupported period"}
+
+    day_count = max(1, (end_date - start_date).days + 1)
+    stats = db.get_engineer_stats_range(start_date.isoformat(), end_date.isoformat())
+
+    totals = {}
+    active_days = {}
+    for row in stats:
+        initials = row.get("initials")
+        if not initials:
+            continue
+        totals[initials] = totals.get(initials, 0) + (row.get("count") or 0)
+        active_days.setdefault(initials, set()).add(row.get("date"))
+
+    prev_start = start_date - timedelta(days=day_count)
+    prev_end = start_date - timedelta(days=1)
+    prev_stats = db.get_engineer_stats_range(prev_start.isoformat(), prev_end.isoformat())
+    prev_totals = {}
+    for row in prev_stats:
+        initials = row.get("initials")
+        if not initials:
+            continue
+        prev_totals[initials] = prev_totals.get(initials, 0) + (row.get("count") or 0)
+
+    results = []
+    for initials, total in totals.items():
+        avg_per_day = round(total / day_count, 1)
+        active_count = len(active_days.get(initials, []))
+        avg_per_active_day = round(total / active_count, 1) if active_count else 0
+        prev_avg = round((prev_totals.get(initials, 0) / day_count), 1)
+        trend_pct = 0
+        if prev_avg > 0:
+            trend_pct = round(((avg_per_day - prev_avg) / prev_avg) * 100, 1)
+        results.append({
+            "initials": initials,
+            "total": total,
+            "avgPerDay": avg_per_day,
+            "avgPerActiveDay": avg_per_active_day,
+            "trendPct": trend_pct
+        })
+
+    results.sort(key=lambda x: x["total"], reverse=True)
+    return {"period": label, "data": results[:max(1, limit)]}
+
+@app.get("/api/insights/qa-engineers")
+async def qa_engineer_insights(period: str = "this_week", limit: int = 10):
+    """Return per-engineer averages and trends for QA totals."""
+    try:
+        import qa_export
+        start_date, end_date, label = qa_export.get_week_dates(period)
+        day_count = max(1, (end_date - start_date).days + 1)
+
+        data = qa_export.get_qa_engineer_daily_totals_range(start_date, end_date)
+        prev_start = start_date - timedelta(days=day_count)
+        prev_end = start_date - timedelta(days=1)
+        prev_data = qa_export.get_qa_engineer_daily_totals_range(prev_start, prev_end)
+
+        results = []
+        for name, daily in data.items():
+            if name.lower() == '(unassigned)':
+                continue
+            total = sum(daily.values())
+            active_days = len([v for v in daily.values() if v > 0])
+            avg_per_day = round(total / day_count, 1)
+            avg_per_active_day = round(total / active_days, 1) if active_days else 0
+            prev_total = sum(prev_data.get(name, {}).values())
+            prev_avg = round(prev_total / day_count, 1)
+            trend_pct = 0
+            if prev_avg > 0:
+                trend_pct = round(((avg_per_day - prev_avg) / prev_avg) * 100, 1)
+            results.append({
+                "name": name,
+                "total": total,
+                "avgPerDay": avg_per_day,
+                "avgPerActiveDay": avg_per_active_day,
+                "trendPct": trend_pct
+            })
+
+        results.sort(key=lambda x: x["total"], reverse=True)
+        return {"period": label, "data": results[:max(1, limit)]}
+    except Exception as e:
+        print(f"QA engineer insights error: {e}")
+        return {"error": "Failed to compute QA engineer insights"}
+
 # New: detailed erasure webhook for richer dashboard (accept GET/POST, robust parsing)
 @app.api_route("/hooks/erasure-detail", methods=["GET", "POST"])
 async def erasure_detail(req: Request):

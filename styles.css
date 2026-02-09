@@ -776,6 +776,80 @@ body {
   backface-visibility: hidden;
 }
 
+.winner-modal {
+  width: min(1100px, 92vw);
+  padding: 50px 40px;
+}
+
+.announcement-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.summary-title {
+  font-size: 44px;
+  font-weight: 900;
+  color: var(--ring-secondary);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 0 18px rgba(255, 30, 163, 0.6);
+}
+
+.summary-subtitle {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 6px;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(140, 240, 74, 0.25);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.35);
+}
+
+.summary-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.summary-icon {
+  font-size: 26px;
+}
+
+.summary-label {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #bcd2e8;
+}
+
+.summary-winner {
+  font-size: 22px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.summary-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #8cf04a;
+}
+
 @keyframes popInBounce {
   0% { 
     transform: scale(0.7) translateZ(0);
@@ -2363,8 +2437,83 @@ main.layout {
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;
   flex: 1 1 0;
   min-height: 0;
+}
+
+.qa-top-flip-card {
+  perspective: 1000px;
+  position: relative;
+  overflow: hidden;
+}
+
+.qa-flip-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 1.4s ease;
+}
+
+.qa-top-flip-card.flipped .qa-flip-inner {
+  transform: rotateY(180deg);
+}
+
+.qa-flip-front,
+.qa-flip-back {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.qa-flip-back {
+  transform: rotateY(180deg);
+}
+
+.qa-trend-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.qa-trend-sparkline {
+  width: 100%;
+  height: 48px;
+}
+
+.qa-trend-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.qa-trend-metric {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qa-trend-metric-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #b5c4d8;
+}
+
+.qa-trend-metric-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #8cf04a;
 }
 
 .qa-de-card-header {
@@ -2485,10 +2634,32 @@ main.layout {
   transition: all 0.2s ease;
 }
 
+.qa-engineer-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.qa-engineer-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+  flex: 0 0 auto;
+}
+
 .qa-engineer-name {
   color: #fff;
   font-size: 14px;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .qa-engineer-count {
@@ -2547,6 +2718,7 @@ main.layout {
   gap: 8px;
   flex: 1;
   justify-content: flex-start;
+  align-content: flex-start;
   padding-top: 4px;
   min-height: 0;
   overflow: hidden;

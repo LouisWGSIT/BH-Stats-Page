@@ -972,18 +972,19 @@ function renderSVGSparkline(svgElem, data) {
 
     // Trigger at 15:58
     if (hours === 15 && minutes === 58 && !raceData.winnerAnnounced) {
-      raceData.winnerAnnounced = true;
       announceWinner();
     }
 
     // Reset flag at midnight for next day
     if (hours === 0 && minutes === 0) {
       raceData.winnerAnnounced = false;
+      raceData.firstFinisher = null;
     }
   }
 
   // Enhanced announcement system
   const announcementTypes = {
+    DAILY_SUMMARY: 'daily-summary',
     DAILY_RACE_WINNER: 'daily-race-winner',
     SPEED_CHALLENGE_AM: 'speed-challenge-am',
     SPEED_CHALLENGE_PM: 'speed-challenge-pm',
@@ -993,6 +994,12 @@ function renderSVGSparkline(svgElem, data) {
   };
 
   const announcementMessages = {
+    'daily-summary': (summary) => ({
+      title: summary.title || '🏆 End of Day Awards',
+      subtitle: summary.subtitle || '',
+      duration: 600000, // 10 minutes
+      emoji: '🏆🎉',
+    }),
     'daily-race-winner': (winner) => ({
       title: `🏆 ${winner.initials} WINS THE DAILY RACE! 🏆`,
       subtitle: `Finished with ${winner.erasures} erasures today`,
@@ -1031,6 +1038,108 @@ function renderSVGSparkline(svgElem, data) {
     }),
   };
 
+  async function safeFetchJson(url) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function buildDailySummary() {
+    const [leaderboardData, speedAmData, speedPmData, consistencyData, specialistsData] = await Promise.all([
+      safeFetchJson('/metrics/engineers/leaderboard?scope=today&limit=1'),
+      safeFetchJson('/competitions/speed-challenge?window=am'),
+      safeFetchJson('/competitions/speed-challenge?window=pm'),
+      safeFetchJson('/competitions/consistency'),
+      safeFetchJson('/competitions/category-specialists'),
+    ]);
+
+    const items = [];
+
+    const raceWinner = (leaderboardData && leaderboardData.items && leaderboardData.items[0]) || raceData.engineer1;
+    if (raceWinner) {
+      items.push({
+        icon: '🏁',
+        label: 'Daily Race',
+        winner: raceWinner.initials || '—',
+        value: `${raceWinner.erasures || 0} erasures`,
+      });
+    }
+
+    const amWinner = speedAmData && speedAmData.leaderboard && speedAmData.leaderboard[0];
+    if (amWinner) {
+      items.push({
+        icon: '⚡',
+        label: 'Speed Challenge (AM)',
+        winner: amWinner.initials || '—',
+        value: `${amWinner.erasures || 0} erasures`,
+      });
+    }
+
+    const pmWinner = speedPmData && speedPmData.leaderboard && speedPmData.leaderboard[0];
+    if (pmWinner) {
+      items.push({
+        icon: '🌙',
+        label: 'Speed Challenge (PM)',
+        winner: pmWinner.initials || '—',
+        value: `${pmWinner.erasures || 0} erasures`,
+      });
+    }
+
+    const consistencyWinner = consistencyData && consistencyData.leaderboard && consistencyData.leaderboard[0];
+    if (consistencyWinner) {
+      items.push({
+        icon: '⏱️',
+        label: 'Consistency King/Queen',
+        winner: consistencyWinner.initials || '—',
+        value: `${consistencyWinner.erasures || 0} erasures`,
+      });
+    }
+
+    const specialists = (specialistsData && specialistsData.specialists) || {};
+    const specialistLabels = {
+      laptops_desktops: 'Laptops/Desktops Specialist',
+      servers: 'Servers Specialist',
+      macs: 'Macs Specialist',
+      mobiles: 'Mobiles Specialist',
+    };
+    Object.entries(specialistLabels).forEach(([key, label]) => {
+      const row = (specialists[key] || [])[0];
+      if (row) {
+        items.push({
+          icon: '🎯',
+          label,
+          winner: row.initials || '—',
+          value: `${row.count || 0} erasures`,
+        });
+      }
+    });
+
+    if (items.length === 0) {
+      items.push({
+        icon: 'ℹ️',
+        label: 'No results yet',
+        winner: '—',
+        value: 'Waiting for data',
+      });
+    }
+
+    const todayLabel = new Date().toLocaleDateString(undefined, {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    });
+
+    return {
+      title: '🏆 End of Day Awards',
+      subtitle: `${todayLabel} • Winners`,
+      items,
+    };
+  }
+
   function showAnnouncement(type, data) {
     const config = announcementMessages[type];
     if (!config) return;
@@ -1039,9 +1148,42 @@ function renderSVGSparkline(svgElem, data) {
     const modal = document.getElementById('winnerModal');
     const winnerText = document.getElementById('winnerText');
     const winnerSubtext = document.getElementById('winnerSubtext');
+    const summaryContainer = document.getElementById('announcementSummary');
+    const summaryTitle = document.getElementById('summaryTitle');
+    const summarySubtitle = document.getElementById('summarySubtitle');
+    const summaryGrid = document.getElementById('summaryGrid');
 
-    winnerText.textContent = message.title;
-    winnerSubtext.textContent = message.subtitle;
+    if (type === announcementTypes.DAILY_SUMMARY && summaryContainer) {
+      if (winnerText) winnerText.style.display = 'none';
+      if (winnerSubtext) winnerSubtext.style.display = 'none';
+      summaryContainer.classList.remove('hidden');
+      if (summaryTitle) summaryTitle.textContent = data.title || message.title;
+      if (summarySubtitle) summarySubtitle.textContent = data.subtitle || message.subtitle || '';
+      if (summaryGrid) {
+        summaryGrid.innerHTML = (data.items || []).map(item => `
+          <div class="summary-item">
+            <div class="summary-item-left">
+              <span class="summary-icon">${item.icon || '🏆'}</span>
+              <div>
+                <div class="summary-label">${escapeHtml(item.label || '')}</div>
+                <div class="summary-winner">${escapeHtml(item.winner || '—')}</div>
+              </div>
+            </div>
+            <div class="summary-value">${escapeHtml(item.value || '')}</div>
+          </div>
+        `).join('');
+      }
+    } else {
+      if (summaryContainer) summaryContainer.classList.add('hidden');
+      if (winnerText) {
+        winnerText.style.display = '';
+        winnerText.textContent = message.title;
+      }
+      if (winnerSubtext) {
+        winnerSubtext.style.display = '';
+        winnerSubtext.textContent = message.subtitle;
+      }
+    }
 
     modal.classList.remove('hidden');
 
@@ -1054,10 +1196,11 @@ function renderSVGSparkline(svgElem, data) {
     }, message.duration);
   }
 
-  function announceWinner() {
-    const winner = raceData.engineer1;
-    if (!winner) return;
-    showAnnouncement(announcementTypes.DAILY_RACE_WINNER, winner);
+  async function announceWinner() {
+    if (raceData.winnerAnnounced) return;
+    raceData.winnerAnnounced = true;
+    const summary = await buildDailySummary();
+    showAnnouncement(announcementTypes.DAILY_SUMMARY, summary);
   }
 
   function triggerConfetti() {
@@ -2479,6 +2622,43 @@ function renderSVGSparkline(svgElem, data) {
       // Bottom row: Rotating Data Bearing / Non Data Bearing cards, and Metrics
       startQARotator(todayData, weeklyData, allTimeData);
       populateMetricsCard(todayData, weeklyData);
+
+      // QA trend panels for top cards
+      const [todayTrend, weekTrend, allTimeTrend, todayInsights, weekInsights, allTimeInsights] = await Promise.all([
+        fetch('/api/qa-trends?period=today').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch('/api/qa-trends?period=this_week').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch('/api/qa-trends?period=all_time').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch('/api/insights/qa?period=today').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch('/api/insights/qa?period=this_week').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch('/api/insights/qa?period=all_time').then(r => r.ok ? r.json() : null).catch(() => null),
+      ]);
+
+      updateQATrendPanel({
+        totalId: 'qaTodayTrendTotal',
+        sparklineId: 'qaTodaySparkline',
+        metricsId: 'qaTodayMetrics',
+        trend: todayTrend,
+        insights: todayInsights,
+        mode: 'today'
+      });
+      updateQATrendPanel({
+        totalId: 'qaWeekTrendTotal',
+        sparklineId: 'qaWeekSparkline',
+        metricsId: 'qaWeekMetrics',
+        trend: weekTrend,
+        insights: weekInsights,
+        mode: 'week'
+      });
+      updateQATrendPanel({
+        totalId: 'qaAllTimeTrendTotal',
+        sparklineId: 'qaAllTimeSparkline',
+        metricsId: 'qaAllTimeMetrics',
+        trend: allTimeTrend,
+        insights: allTimeInsights,
+        mode: 'all_time'
+      });
+
+      startQATopFlipRotation();
       
       // Right side: Sorting (QA App)
       populateQAAppCard('qaAppTodayTotal', 'qaAppTodayEngineers', todayData, 6);
@@ -2490,7 +2670,85 @@ function renderSVGSparkline(svgElem, data) {
       showQAError('Connection error: ' + error.message);
     }
   }
+
+  let qaTopFlipIntervalId = null;
+
+  function startQATopFlipRotation() {
+    const cards = document.querySelectorAll('.qa-top-flip-card');
+    if (!cards.length) return;
+
+    let flipped = false;
+    cards.forEach(card => card.classList.remove('flipped'));
+
+    if (qaTopFlipIntervalId) {
+      clearInterval(qaTopFlipIntervalId);
+    }
+
+    qaTopFlipIntervalId = setInterval(() => {
+      flipped = !flipped;
+      cards.forEach(card => card.classList.toggle('flipped', flipped));
+    }, 35000);
+  }
+
+  function updateQATrendPanel({ totalId, sparklineId, metricsId, trend, insights, mode }) {
+    const totalEl = document.getElementById(totalId);
+    const metricsEl = document.getElementById(metricsId);
+    const sparklineEl = document.getElementById(sparklineId);
+
+    if (!trend || !trend.series || !Array.isArray(trend.series)) {
+      if (metricsEl) {
+        metricsEl.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #888;">No trend data</div>';
+      }
+      if (sparklineEl) {
+        renderSVGSparkline(sparklineEl, []);
+      }
+      return;
+    }
+
+    const values = trend.series.map(row => row.total || 0);
+    const total = (insights && typeof insights.total === 'number')
+      ? insights.total
+      : values.reduce((sum, v) => sum + v, 0);
+
+    if (totalEl) {
+      totalEl.textContent = total.toLocaleString();
+    }
+
+    if (sparklineEl) {
+      renderSVGSparkline(sparklineEl, values);
+    }
+
+    if (!metricsEl) return;
+
+    const metrics = [];
+    if (mode === 'today') {
+      const activeHours = trend.series.filter(row => (row.total || 0) > 0).length || 1;
+      const hourlyAvg = Math.round(total / activeHours);
+      metrics.push({ label: 'Hourly Avg', value: hourlyAvg.toLocaleString() });
+      metrics.push({ label: 'Active Hours', value: activeHours.toString() });
+      if (insights) {
+        metrics.push({ label: 'Avg/Engineer', value: (insights.avgPerEngineer || 0).toLocaleString() });
+        metrics.push({ label: 'Active Engineers', value: (insights.activeEngineers || 0).toString() });
+      }
+    } else {
+      if (insights) {
+        metrics.push({ label: 'Avg/Day', value: (insights.avgPerDay || 0).toLocaleString() });
+        metrics.push({ label: 'Avg/Engineer', value: (insights.avgPerEngineer || 0).toLocaleString() });
+        metrics.push({ label: '7D Avg', value: (insights.rolling7DayAvg || 0).toLocaleString() });
+        metrics.push({ label: '30D Avg', value: (insights.rolling30DayAvg || 0).toLocaleString() });
+      }
+    }
+
+    metricsEl.innerHTML = metrics.map(item => `
+      <div class="qa-trend-metric">
+        <div class="qa-trend-metric-label">${escapeHtml(item.label)}</div>
+        <div class="qa-trend-metric-value">${escapeHtml(item.value)}</div>
+      </div>
+    `).join('');
+  }
   
+  let qaRotatorIntervalId = null;
+
   function startQARotator(todayData, weeklyData, allTimeData) {
     const datasets = [
       { data: todayData, label: "Today's" },
@@ -2575,8 +2833,11 @@ function renderSVGSparkline(svgElem, data) {
     // Initial display
     updateRotatingCards();
     
-    // Rotate every 20 seconds (sync with metrics card)
-    setInterval(updateRotatingCards, 20000);
+    // Rotate every 30 seconds (sync with metrics card)
+    if (qaRotatorIntervalId) {
+      clearInterval(qaRotatorIntervalId);
+    }
+    qaRotatorIntervalId = setInterval(updateRotatingCards, 30000);
   }
   
   function populateQACard(totalId, listId, data, type = 'qa', maxItems = 6) {
@@ -2629,12 +2890,20 @@ function renderSVGSparkline(svgElem, data) {
       if (engineers.length === 0) {
         listEl.innerHTML = '<div style="padding: 12px; text-align: center; color: #888;">No data</div>';
       } else {
-        listEl.innerHTML = engineers.map(eng => `
-          <div class="qa-engineer-item">
-            <span class="qa-engineer-name">${escapeHtml(formatQaName(eng.name))}</span>
-            <span class="qa-engineer-count">${eng.count.toLocaleString()}</span>
-          </div>
-        `).join('');
+        listEl.innerHTML = engineers.map(eng => {
+          const displayName = formatQaName(eng.name);
+          const initials = getQaInitials(displayName);
+          const avatar = getAvatarDataUri(initials || 'QA');
+          return `
+            <div class="qa-engineer-item">
+              <div class="qa-engineer-left">
+                <span class="qa-engineer-avatar" style="background-image: url(${avatar})"></span>
+                <span class="qa-engineer-name">${escapeHtml(displayName)}</span>
+              </div>
+              <span class="qa-engineer-count">${eng.count.toLocaleString()}</span>
+            </div>
+          `;
+        }).join('');
       }
     }
   }
@@ -2663,12 +2932,20 @@ function renderSVGSparkline(svgElem, data) {
       if (qaEngineers.length === 0) {
         listEl.innerHTML = '<div style="padding: 12px; text-align: center; color: #888;">No data</div>';
       } else {
-        listEl.innerHTML = qaEngineers.map(eng => `
-          <div class="qa-engineer-item">
-            <span class="qa-engineer-name">${escapeHtml(formatQaName(eng.name))}</span>
-            <span class="qa-engineer-count">${eng.qaScans.toLocaleString()}</span>
-          </div>
-        `).join('');
+        listEl.innerHTML = qaEngineers.map(eng => {
+          const displayName = formatQaName(eng.name);
+          const initials = getQaInitials(displayName);
+          const avatar = getAvatarDataUri(initials || 'QA');
+          return `
+            <div class="qa-engineer-item">
+              <div class="qa-engineer-left">
+                <span class="qa-engineer-avatar" style="background-image: url(${avatar})"></span>
+                <span class="qa-engineer-name">${escapeHtml(displayName)}</span>
+              </div>
+              <span class="qa-engineer-count">${eng.qaScans.toLocaleString()}</span>
+            </div>
+          `;
+        }).join('');
       }
     }
   }
@@ -2774,11 +3051,11 @@ function renderSVGSparkline(svgElem, data) {
     // Initial display
     updateMetricsView();
     
-    // Flip every 20 seconds for smooth TV viewing
+    // Flip every 30 seconds for smooth TV viewing
     if (metricsFlipIntervalId) {
       clearInterval(metricsFlipIntervalId);
     }
-    metricsFlipIntervalId = setInterval(updateMetricsView, 20000);
+    metricsFlipIntervalId = setInterval(updateMetricsView, 30000);
     
     // Also allow manual click to flip
     if (metricsCard) {
@@ -2830,6 +3107,17 @@ function renderSVGSparkline(svgElem, data) {
     const first = parts[0];
     const lastInitial = parts[parts.length - 1][0];
     return `${first.charAt(0).toUpperCase() + first.slice(1)} ${lastInitial.toUpperCase()}`;
+  }
+
+  function getQaInitials(displayName) {
+    if (!displayName) return '';
+    const cleaned = displayName.replace(/[^a-zA-Z\s]/g, '').trim();
+    if (!cleaned) return '';
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+    }
+    return cleaned.slice(0, 2).toUpperCase();
   }
   
   function switchDashboard(index) {
