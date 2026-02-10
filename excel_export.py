@@ -58,9 +58,11 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
         if isinstance(data, dict) and "rows" in data:
             sheet_rows = data.get("rows", [])
             sheet_groups = data.get("groups", [])
+            sheet_col_widths = data.get("col_widths", {})
         else:
             sheet_rows = data
             sheet_groups = []
+            sheet_col_widths = {}
         
         # Add logo to first sheet and Executive Summary/Summary sheets
         add_logo = (not first_sheet_processed) or ('Summary' in sheet_name or 'SUMMARY' in sheet_name)
@@ -131,6 +133,14 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
                     pass
             adjusted_width = min(max_length + 2, 50)  # Cap at 50
             ws.column_dimensions[col_letter].width = adjusted_width
+
+        if sheet_col_widths:
+            for col_idx, width in sheet_col_widths.items():
+                try:
+                    if width:
+                        ws.column_dimensions[get_column_letter(col_idx)].width = width
+                except Exception:
+                    pass
     
     # Save to BytesIO
     output = BytesIO()

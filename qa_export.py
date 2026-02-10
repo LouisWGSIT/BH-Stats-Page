@@ -1071,6 +1071,24 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
                         "pallet_id": pallet_id,
                     }
 
+                missing_pallet_ids = [
+                    stockid for stockid in unique_ids
+                    if not asset_map.get(str(stockid), {}).get("pallet_id")
+                ]
+                if missing_pallet_ids:
+                    placeholders = ",".join(["%s"] * len(missing_pallet_ids))
+                    cursor.execute(
+                        f"""
+                        SELECT stockid, pallet_id
+                        FROM Stockbypallet
+                        WHERE stockid IN ({placeholders})
+                        """,
+                        missing_pallet_ids
+                    )
+                    for stockid, pallet_id in cursor.fetchall():
+                        if pallet_id:
+                            asset_map.setdefault(str(stockid), {})["pallet_id"] = pallet_id
+
         for event in events:
             stock_id = event.get("stockid")
             if stock_id and str(stock_id) in asset_map:
@@ -1241,6 +1259,23 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
                     }
                     for stockid, condition, pallet_id in cursor.fetchall()
                 }
+                missing_pallet_ids = [
+                    stockid for stockid in unique_ids
+                    if not asset_map.get(str(stockid), {}).get("pallet_id")
+                ]
+                if missing_pallet_ids:
+                    placeholders = ",".join(["%s"] * len(missing_pallet_ids))
+                    cursor.execute(
+                        f"""
+                        SELECT stockid, pallet_id
+                        FROM Stockbypallet
+                        WHERE stockid IN ({placeholders})
+                        """,
+                        missing_pallet_ids
+                    )
+                    for stockid, pallet_id in cursor.fetchall():
+                        if pallet_id:
+                            asset_map.setdefault(str(stockid), {})["pallet_id"] = pallet_id
                 for item in history:
                     stock_id = item.get("stockid")
                     if stock_id and str(stock_id) in asset_map:
@@ -1648,7 +1683,25 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
 
     sheets["Device History"] = {
         "rows": sheet_rows,
-        "groups": sheet_groups
+        "groups": sheet_groups,
+        "col_widths": {
+            1: 19,  # Timestamp
+            2: 16,  # Stage
+            3: 12,  # Stock ID
+            4: 14,  # Serial
+            5: 20,  # User/Initials
+            6: 14,  # Location
+            7: 16,  # Manufacturer
+            8: 28,  # Model
+            9: 16,  # Device Type
+            10: 12, # Drive Size (GB)
+            11: 18, # Destination
+            12: 12, # Pallet ID
+            13: 18, # Pallet Destination
+            14: 16, # Pallet Location
+            15: 12, # Pallet Status
+            16: 14, # Source
+        }
     }
 
     # ============= SHEET 8: Device Log by Engineer =============
@@ -1730,7 +1783,24 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
 
     sheets["Device Log by Engineer"] = {
         "rows": sheet_rows,
-        "groups": sheet_groups
+        "groups": sheet_groups,
+        "col_widths": {
+            1: 19,  # Timestamp
+            2: 16,  # Stage
+            3: 12,  # Stock ID
+            4: 14,  # Serial
+            5: 14,  # Location
+            6: 16,  # Manufacturer
+            7: 28,  # Model
+            8: 16,  # Device Type
+            9: 12,  # Drive Size (GB)
+            10: 18, # Destination
+            11: 12, # Pallet ID
+            12: 18, # Pallet Destination
+            13: 16, # Pallet Location
+            14: 12, # Pallet Status
+            15: 14, # Source
+        }
     }
     
     return sheets
