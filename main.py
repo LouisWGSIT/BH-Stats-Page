@@ -478,10 +478,10 @@ async def powerbi_daily_stats(start_date: str = None, end_date: str = None):
     qa_by_date = {row.get("date"): row for row in qa_data}
     for row in data:
         qa_row = qa_by_date.get(row.get("date"), {})
-        row["qaApp"] = qa_row.get("qaApp", 0)
+        row["qaApp"] = qa_row.get("qaApp", 0)  # Sorting scans
         row["deQa"] = qa_row.get("deQa", 0)
         row["nonDeQa"] = qa_row.get("nonDeQa", 0)
-        row["qaTotal"] = qa_row.get("total", 0)
+        row["qaTotal"] = qa_row.get("qaTotal", 0)  # QA only (DE + Non-DE, no sorting)
 
     return {"data": data}
 

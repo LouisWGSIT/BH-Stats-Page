@@ -392,10 +392,11 @@ def get_qa_daily_totals_range(start_date: date, end_date: date) -> List[Dict[str
             row = totals[scan_date]
             results.append({
                 "date": scan_date.isoformat(),
-                "qaApp": row["qaApp"],
+                "qaApp": row["qaApp"],  # Sorting scans (separate)
                 "deQa": row["deQa"],
                 "nonDeQa": row["nonDeQa"],
-                "total": row["qaApp"] + row["deQa"] + row["nonDeQa"]
+                "qaTotal": row["deQa"] + row["nonDeQa"],  # QA only (no sorting)
+                "total": row["qaApp"] + row["deQa"] + row["nonDeQa"]  # Everything combined
             })
         return results
     except Exception as e:
