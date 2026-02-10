@@ -1481,34 +1481,40 @@ def get_stats_range(start_date: str, end_date: str) -> List[Dict]:
         for row in rows
     ]
     
-    # Check if today is in range but missing from results
+    # Refresh today's row from live erasures data (daily_stats can lag)
     today_str = date.today().isoformat()
     existing_dates = {row["date"] for row in result}
     
-    if start_date <= today_str <= end_date and today_str not in existing_dates:
+    if start_date <= today_str <= end_date:
         # Get today's count from erasures table directly
         cursor.execute("""
-            SELECT COUNT(1) FROM erasures 
+            SELECT COUNT(1) FROM erasures
             WHERE date = ? AND event = 'success'
         """, (today_str,))
         erased_today = cursor.fetchone()[0] or 0
-        
-        # Get booked_in from daily_stats if exists, else 0
+
+        # Get booked_in and qa from daily_stats if exists, else 0
         cursor.execute("""
             SELECT booked_in, qa FROM daily_stats WHERE date = ?
         """, (today_str,))
         row = cursor.fetchone()
         booked_in_today = row[0] if row else 0
         qa_today = row[1] if row else 0
-        
-        if erased_today > 0 or booked_in_today > 0:
+
+        if today_str in existing_dates:
+            for item in result:
+                if item["date"] == today_str:
+                    item["booked_in"] = booked_in_today
+                    item["erased"] = erased_today
+                    item["qa"] = qa_today
+                    break
+        elif erased_today > 0 or booked_in_today > 0 or qa_today > 0:
             result.append({
                 "date": today_str,
                 "booked_in": booked_in_today,
                 "erased": erased_today,
                 "qa": qa_today
             })
-            # Re-sort by date
             result.sort(key=lambda x: x["date"])
     
     conn.close()
@@ -1581,20 +1587,21 @@ def get_engineer_stats_range(start_date: str, end_date: str) -> List[Dict]:
         for row in rows
     ]
     
-    # Check if today is in range but missing from results
+    # Refresh today's rows from live erasures data (engineer_stats can lag)
     today_str = date.today().isoformat()
-    existing_today = any(row["date"] == today_str for row in result)
-    
-    if start_date <= today_str <= end_date and not existing_today:
+    if start_date <= today_str <= end_date:
+        # Remove any stale rows for today
+        result = [row for row in result if row["date"] != today_str]
+
         # Get today's counts directly from erasures table
         cursor.execute("""
             SELECT initials, COUNT(1) as cnt
-            FROM erasures 
+            FROM erasures
             WHERE date = ? AND event = 'success' AND initials IS NOT NULL
             GROUP BY initials
             ORDER BY cnt DESC
         """, (today_str,))
-        
+
         today_rows = cursor.fetchall()
         for row in today_rows:
             result.append({
