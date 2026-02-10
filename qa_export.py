@@ -1043,6 +1043,9 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
                 "drive_count": None,
                 "destination": None,
                 "pallet_id": None,
+                "pallet_destination": None,
+                "pallet_location": None,
+                "pallet_status": None,
                 "source": "audit_master",
             })
 
@@ -1078,6 +1081,34 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
                 event["model"] = asset.get("model")
                 event["destination"] = asset.get("destination")
                 event["pallet_id"] = asset.get("pallet_id")
+
+        pallet_ids = [str(event.get("pallet_id")) for event in events if event.get("pallet_id")]
+        unique_pallets = list({p for p in pallet_ids if p})
+        pallet_map: Dict[str, Dict[str, object]] = {}
+        if unique_pallets:
+            placeholders = ",".join(["%s"] * len(unique_pallets))
+            cursor.execute(
+                f"""
+                SELECT pallet_id, destination, pallet_location, pallet_status
+                FROM ITAD_pallet
+                WHERE pallet_id IN ({placeholders})
+                """,
+                unique_pallets
+            )
+            for pallet_id, destination, pallet_location, pallet_status in cursor.fetchall():
+                pallet_map[str(pallet_id)] = {
+                    "pallet_destination": destination,
+                    "pallet_location": pallet_location,
+                    "pallet_status": pallet_status,
+                }
+
+        for event in events:
+            pallet_id = event.get("pallet_id")
+            if pallet_id and str(pallet_id) in pallet_map:
+                pallet = pallet_map[str(pallet_id)]
+                event["pallet_destination"] = pallet.get("pallet_destination")
+                event["pallet_location"] = pallet.get("pallet_location")
+                event["pallet_status"] = pallet.get("pallet_status")
 
         cursor.close()
         conn.close()
@@ -1132,6 +1163,9 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
                     "drive_count": None,
                     "destination": None,
                     "pallet_id": None,
+                    "pallet_destination": None,
+                    "pallet_location": None,
+                    "pallet_status": None,
                     "source": "ITAD_QA_App",
                     "_sort_key": sort_dt
                 })
@@ -1173,6 +1207,9 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
                 "drive_count": drive_count,
                 "destination": None,
                 "pallet_id": None,
+                "pallet_destination": None,
+                "pallet_location": None,
+                "pallet_status": None,
                 "source": "erasures",
                 "_sort_key": sort_dt
             })
@@ -1211,6 +1248,35 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
                         item["destination"] = asset.get("destination")
                         item["pallet_id"] = asset.get("pallet_id")
             cursor.close()
+            pallet_ids = [str(item.get("pallet_id")) for item in history if item.get("pallet_id")]
+            unique_pallets = list({p for p in pallet_ids if p})
+            if unique_pallets:
+                placeholders = ",".join(["%s"] * len(unique_pallets))
+                cursor = asset_conn.cursor()
+                cursor.execute(
+                    f"""
+                    SELECT pallet_id, destination, pallet_location, pallet_status
+                    FROM ITAD_pallet
+                    WHERE pallet_id IN ({placeholders})
+                    """,
+                    unique_pallets
+                )
+                pallet_map = {
+                    str(pallet_id): {
+                        "pallet_destination": destination,
+                        "pallet_location": pallet_location,
+                        "pallet_status": pallet_status,
+                    }
+                    for pallet_id, destination, pallet_location, pallet_status in cursor.fetchall()
+                }
+                for item in history:
+                    pallet_id = item.get("pallet_id")
+                    if pallet_id and str(pallet_id) in pallet_map:
+                        pallet = pallet_map[str(pallet_id)]
+                        item["pallet_destination"] = pallet.get("pallet_destination")
+                        item["pallet_location"] = pallet.get("pallet_location")
+                        item["pallet_status"] = pallet.get("pallet_status")
+                cursor.close()
             asset_conn.close()
     except Exception as e:
         print(f"[QA Export] Error fetching destination/pallet data: {e}")
@@ -1505,6 +1571,9 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
         "Drive Size (GB)",
         "Destination",
         "Pallet ID",
+        "Pallet Destination",
+        "Pallet Location",
+        "Pallet Status",
         "Source"
     ]
 
@@ -1559,6 +1628,9 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
                     _format_drive_size_gb(row.get("drive_size")),
                     row.get("destination"),
                     _normalize_id_value(row.get("pallet_id")),
+                    row.get("pallet_destination"),
+                    row.get("pallet_location"),
+                    row.get("pallet_status"),
                     row.get("source")
                 ])
 
@@ -1613,6 +1685,9 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
         "Drive Size (GB)",
         "Destination",
         "Pallet ID",
+        "Pallet Destination",
+        "Pallet Location",
+        "Pallet Status",
         "Source"
     ]
 
@@ -1641,6 +1716,9 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
                 _format_drive_size_gb(row.get("drive_size")),
                 row.get("destination"),
                 _normalize_id_value(row.get("pallet_id")),
+                row.get("pallet_destination"),
+                row.get("pallet_location"),
+                row.get("pallet_status"),
                 row.get("source")
             ])
 
