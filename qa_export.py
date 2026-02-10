@@ -4,6 +4,7 @@ import sqlite3
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Tuple
 from collections import defaultdict, Counter
+import calendar
 import re
 import database as db
 
@@ -1335,6 +1336,251 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
 
     return history
 
+
+def _iter_month_ranges(start_date: date, end_date: date) -> List[Tuple[date, date]]:
+    ranges: List[Tuple[date, date]] = []
+    current = date(start_date.year, start_date.month, 1)
+    end_anchor = date(end_date.year, end_date.month, 1)
+    while current <= end_anchor:
+        last_day = calendar.monthrange(current.year, current.month)[1]
+        month_start = current
+        month_end = date(current.year, current.month, last_day)
+        if month_start < start_date:
+            month_start = start_date
+        if month_end > end_date:
+            month_end = end_date
+        ranges.append((month_start, month_end))
+        if current.month == 12:
+            current = date(current.year + 1, 1, 1)
+        else:
+            current = date(current.year, current.month + 1, 1)
+    return ranges
+
+
+def _build_device_history_sheet(start_date: date, end_date: date, period_label: str) -> Dict[str, object]:
+    history_rows = get_device_history_range(start_date, end_date)
+    grouped_by_date: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    for row in history_rows:
+        ts = _parse_timestamp(row.get("timestamp"))
+        date_key = ts.date().isoformat() if ts else "unknown"
+        grouped_by_date[date_key].append(row)
+
+    sheet_rows: List[List] = []
+    sheet_groups: List[Tuple[int, int, int, bool]] = []
+
+    sheet_rows.append(["DEVICE HISTORY - " + period_label.upper()])
+    sheet_rows.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_rows.append([])
+    sheet_rows.append([
+        "Note: Device-level QA (DE/Non-DE) is not available in audit_master. This log includes erasure + sorting scans only."
+    ])
+    sheet_rows.append([])
+
+    header = [
+        "Timestamp",
+        "Stage",
+        "Stock ID",
+        "Serial",
+        "User/Initials",
+        "Location",
+        "Manufacturer",
+        "Model",
+        "Device Type",
+        "Drive Size (GB)",
+        "Destination",
+        "Pallet ID",
+        "Pallet Destination",
+        "Pallet Status",
+        "Source"
+    ]
+
+    for date_key in sorted(grouped_by_date.keys()):
+        date_entries = grouped_by_date[date_key]
+        date_entries.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
+
+        sheet_rows.append([f"DATE: {date_key}"])
+        sheet_rows.append(header)
+        date_start = len(sheet_rows) + 1
+
+        grouped_history: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+        for row in date_entries:
+            device_key = row.get("serial") or row.get("stockid") or "unknown"
+            grouped_history[str(device_key)].append(row)
+
+        for device_key in sorted(grouped_history.keys()):
+            entries = grouped_history[device_key]
+            entries.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
+
+            stock_id = next((e.get("stockid") for e in entries if e.get("stockid")), None)
+            serial = next((e.get("serial") for e in entries if e.get("serial")), None)
+            if stock_id is not None and serial is not None and str(stock_id).strip() == str(serial).strip():
+                stock_id = None
+            device_label = f"DEVICE: {device_key}"
+            if stock_id or serial:
+                parts = []
+                if stock_id:
+                    parts.append(f"Stock ID: {stock_id}")
+                if serial:
+                    parts.append(f"Serial: {serial}")
+                device_label = f"{device_label} | " + " | ".join(parts)
+
+            sheet_rows.append([device_label])
+            data_start = len(sheet_rows) + 1
+
+            for row in entries:
+                stock_value = row.get("stockid")
+                serial_value = row.get("serial")
+                if stock_value is not None and serial_value is not None and str(stock_value).strip() == str(serial_value).strip():
+                    stock_value = None
+                sheet_rows.append([
+                    _format_timestamp(row.get("timestamp")),
+                    row.get("stage"),
+                    _normalize_id_value(stock_value),
+                    _normalize_id_value(serial_value),
+                    row.get("user"),
+                    row.get("location"),
+                    row.get("manufacturer"),
+                    row.get("model"),
+                    row.get("device_type"),
+                    _format_drive_size_gb(row.get("drive_size")),
+                    row.get("destination"),
+                    _normalize_id_value(row.get("pallet_id")),
+                    row.get("pallet_destination"),
+                    row.get("pallet_status"),
+                    row.get("source")
+                ])
+
+            data_end = len(sheet_rows)
+            if data_end >= data_start:
+                sheet_groups.append((data_start, data_end, 2, True))
+
+            sheet_rows.append([])
+
+        date_end = len(sheet_rows) - 1
+        if date_end >= date_start:
+            sheet_groups.append((date_start, date_end, 1, True))
+
+        sheet_rows.append([])
+
+    return {
+        "rows": sheet_rows,
+        "groups": sheet_groups,
+        "col_widths": {
+            1: 19,  # Timestamp
+            2: 16,  # Stage
+            3: 12,  # Stock ID
+            4: 14,  # Serial
+            5: 20,  # User/Initials
+            6: 14,  # Location
+            7: 16,  # Manufacturer
+            8: 28,  # Model
+            9: 16,  # Device Type
+            10: 12, # Drive Size (GB)
+            11: 18, # Destination
+            12: 12, # Pallet ID
+            13: 18, # Pallet Destination
+            14: 12, # Pallet Status
+            15: 14, # Source
+        }
+    }
+
+
+def _build_device_log_by_engineer_sheet(start_date: date, end_date: date, period_label: str) -> Dict[str, object]:
+    history_rows = [
+        row for row in get_device_history_range(start_date, end_date)
+        if row.get("stage") == "Sorting"
+    ]
+    history_rows.extend(get_qa_device_events_range(start_date, end_date))
+    grouped_by_engineer: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    for row in history_rows:
+        engineer_key = row.get("user") or "(unassigned)"
+        grouped_by_engineer[str(engineer_key)].append(row)
+
+    sheet_rows: List[List] = []
+    sheet_groups: List[Tuple[int, int, int, bool]] = []
+
+    sheet_rows.append(["DEVICE LOG BY ENGINEER - " + period_label.upper()])
+    sheet_rows.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_rows.append([])
+    sheet_rows.append([
+        "Note: Device-level QA (DE/Non-DE) is parsed from audit_master logs. This log includes QA + sorting scans only."
+    ])
+    sheet_rows.append([])
+
+    header = [
+        "Timestamp",
+        "Stage",
+        "Stock ID",
+        "Serial",
+        "Location",
+        "Manufacturer",
+        "Model",
+        "Device Type",
+        "Drive Size (GB)",
+        "Destination",
+        "Pallet ID",
+        "Pallet Destination",
+        "Pallet Status",
+        "Source"
+    ]
+
+    for engineer_key in sorted(grouped_by_engineer.keys()):
+        entries = grouped_by_engineer[engineer_key]
+        entries.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
+
+        sheet_rows.append([f"ENGINEER: {engineer_key}"])
+        sheet_rows.append(header)
+        data_start = len(sheet_rows) + 1
+
+        for row in entries:
+            stock_value = row.get("stockid")
+            serial_value = row.get("serial")
+            if stock_value is not None and serial_value is not None and str(stock_value).strip() == str(serial_value).strip():
+                stock_value = None
+            sheet_rows.append([
+                _format_timestamp(row.get("timestamp")),
+                row.get("stage"),
+                _normalize_id_value(stock_value),
+                _normalize_id_value(serial_value),
+                row.get("location"),
+                row.get("manufacturer"),
+                row.get("model"),
+                row.get("device_type"),
+                _format_drive_size_gb(row.get("drive_size")),
+                row.get("destination"),
+                _normalize_id_value(row.get("pallet_id")),
+                row.get("pallet_destination"),
+                row.get("pallet_status"),
+                row.get("source")
+            ])
+
+        data_end = len(sheet_rows)
+        if data_end >= data_start:
+            sheet_groups.append((data_start, data_end, 1, True))
+
+        sheet_rows.append([])
+
+    return {
+        "rows": sheet_rows,
+        "groups": sheet_groups,
+        "col_widths": {
+            1: 24,  # Timestamp / Engineer header
+            2: 16,  # Stage
+            3: 12,  # Stock ID
+            4: 14,  # Serial
+            5: 14,  # Location
+            6: 16,  # Manufacturer
+            7: 28,  # Model
+            8: 16,  # Device Type
+            9: 12,  # Drive Size (GB)
+            10: 18, # Destination
+            11: 12, # Pallet ID
+            12: 18, # Pallet Destination
+            13: 12, # Pallet Status
+            14: 14, # Source
+        }
+    }
+
 def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
     """Generate comprehensive QA engineer breakdown export with overall, data-bearing, non-data-bearing, sorting, and comparison sections"""
     start_date, end_date, period_label = get_week_dates(period)
@@ -1587,227 +1833,23 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
     
     sheets["Daily Breakdown"] = sheet_data
 
-    # ============= SHEET 7: Device History =============
-    history_rows = get_device_history_range(start_date, end_date)
-    grouped_by_date: Dict[str, List[Dict[str, object]]] = defaultdict(list)
-    for row in history_rows:
-        ts = _parse_timestamp(row.get("timestamp"))
-        date_key = ts.date().isoformat() if ts else "unknown"
-        grouped_by_date[date_key].append(row)
-
-    sheet_rows: List[List] = []
-    sheet_groups: List[Tuple[int, int, int, bool]] = []
-
-    sheet_rows.append(["DEVICE HISTORY - " + period_label.upper()])
-    sheet_rows.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
-    sheet_rows.append([])
-    sheet_rows.append([
-        "Note: Device-level QA (DE/Non-DE) is not available in audit_master. This log includes erasure + sorting scans only."
-    ])
-    sheet_rows.append([])
-
-    header = [
-        "Timestamp",
-        "Stage",
-        "Stock ID",
-        "Serial",
-        "User/Initials",
-        "Location",
-        "Manufacturer",
-        "Model",
-        "Device Type",
-        "Drive Size (GB)",
-        "Destination",
-        "Pallet ID",
-        "Pallet Destination",
-        "Pallet Status",
-        "Source"
-    ]
-
-    for date_key in sorted(grouped_by_date.keys()):
-        date_entries = grouped_by_date[date_key]
-        date_entries.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
-
-        sheet_rows.append([f"DATE: {date_key}"])
-        sheet_rows.append(header)
-        date_start = len(sheet_rows) + 1
-
-        grouped_history: Dict[str, List[Dict[str, object]]] = defaultdict(list)
-        for row in date_entries:
-            device_key = row.get("serial") or row.get("stockid") or "unknown"
-            grouped_history[str(device_key)].append(row)
-
-        for device_key in sorted(grouped_history.keys()):
-            entries = grouped_history[device_key]
-            entries.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
-
-            stock_id = next((e.get("stockid") for e in entries if e.get("stockid")), None)
-            serial = next((e.get("serial") for e in entries if e.get("serial")), None)
-            if stock_id is not None and serial is not None and str(stock_id).strip() == str(serial).strip():
-                stock_id = None
-            device_label = f"DEVICE: {device_key}"
-            if stock_id or serial:
-                parts = []
-                if stock_id:
-                    parts.append(f"Stock ID: {stock_id}")
-                if serial:
-                    parts.append(f"Serial: {serial}")
-                device_label = f"{device_label} | " + " | ".join(parts)
-
-            sheet_rows.append([device_label])
-            data_start = len(sheet_rows) + 1
-
-            for row in entries:
-                stock_value = row.get("stockid")
-                serial_value = row.get("serial")
-                if stock_value is not None and serial_value is not None and str(stock_value).strip() == str(serial_value).strip():
-                    stock_value = None
-                sheet_rows.append([
-                    _format_timestamp(row.get("timestamp")),
-                    row.get("stage"),
-                    _normalize_id_value(stock_value),
-                    _normalize_id_value(serial_value),
-                    row.get("user"),
-                    row.get("location"),
-                    row.get("manufacturer"),
-                    row.get("model"),
-                    row.get("device_type"),
-                    _format_drive_size_gb(row.get("drive_size")),
-                    row.get("destination"),
-                    _normalize_id_value(row.get("pallet_id")),
-                    row.get("pallet_destination"),
-                    row.get("pallet_status"),
-                    row.get("source")
-                ])
-
-            data_end = len(sheet_rows)
-            if data_end >= data_start:
-                sheet_groups.append((data_start, data_end, 2, True))
-
-            sheet_rows.append([])
-
-        date_end = len(sheet_rows) - 1
-        if date_end >= date_start:
-            sheet_groups.append((date_start, date_end, 1, True))
-
-        sheet_rows.append([])
-
-    sheets["Device History"] = {
-        "rows": sheet_rows,
-        "groups": sheet_groups,
-        "col_widths": {
-            1: 19,  # Timestamp
-            2: 16,  # Stage
-            3: 12,  # Stock ID
-            4: 14,  # Serial
-            5: 20,  # User/Initials
-            6: 14,  # Location
-            7: 16,  # Manufacturer
-            8: 28,  # Model
-            9: 16,  # Device Type
-            10: 12, # Drive Size (GB)
-            11: 18, # Destination
-            12: 12, # Pallet ID
-            13: 18, # Pallet Destination
-            14: 12, # Pallet Status
-            15: 14, # Source
-        }
-    }
-
-    # ============= SHEET 8: Device Log by Engineer =============
-    history_rows = [
-        row for row in get_device_history_range(start_date, end_date)
-        if row.get("stage") == "Sorting"
-    ]
-    history_rows.extend(get_qa_device_events_range(start_date, end_date))
-    grouped_by_engineer: Dict[str, List[Dict[str, object]]] = defaultdict(list)
-    for row in history_rows:
-        engineer_key = row.get("user") or "(unassigned)"
-        grouped_by_engineer[str(engineer_key)].append(row)
-
-    sheet_rows = []
-    sheet_groups = []
-
-    sheet_rows.append(["DEVICE LOG BY ENGINEER - " + period_label.upper()])
-    sheet_rows.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
-    sheet_rows.append([])
-    sheet_rows.append([
-        "Note: Device-level QA (DE/Non-DE) is parsed from audit_master logs. This log includes QA + sorting scans only."
-    ])
-    sheet_rows.append([])
-
-    header = [
-        "Timestamp",
-        "Stage",
-        "Stock ID",
-        "Serial",
-        "Location",
-        "Manufacturer",
-        "Model",
-        "Device Type",
-        "Drive Size (GB)",
-        "Destination",
-        "Pallet ID",
-        "Pallet Destination",
-        "Pallet Status",
-        "Source"
-    ]
-
-    for engineer_key in sorted(grouped_by_engineer.keys()):
-        entries = grouped_by_engineer[engineer_key]
-        entries.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
-
-        sheet_rows.append([f"ENGINEER: {engineer_key}"])
-        sheet_rows.append(header)
-        data_start = len(sheet_rows) + 1
-
-        for row in entries:
-            stock_value = row.get("stockid")
-            serial_value = row.get("serial")
-            if stock_value is not None and serial_value is not None and str(stock_value).strip() == str(serial_value).strip():
-                stock_value = None
-            sheet_rows.append([
-                _format_timestamp(row.get("timestamp")),
-                row.get("stage"),
-                _normalize_id_value(stock_value),
-                _normalize_id_value(serial_value),
-                row.get("location"),
-                row.get("manufacturer"),
-                row.get("model"),
-                row.get("device_type"),
-                _format_drive_size_gb(row.get("drive_size")),
-                row.get("destination"),
-                _normalize_id_value(row.get("pallet_id")),
-                row.get("pallet_destination"),
-                row.get("pallet_status"),
-                row.get("source")
-            ])
-
-        data_end = len(sheet_rows)
-        if data_end >= data_start:
-            sheet_groups.append((data_start, data_end, 1, True))
-
-        sheet_rows.append([])
-
-    sheets["Device Log by Engineer"] = {
-        "rows": sheet_rows,
-        "groups": sheet_groups,
-        "col_widths": {
-            1: 24,  # Timestamp / Engineer header
-            2: 16,  # Stage
-            3: 12,  # Stock ID
-            4: 14,  # Serial
-            5: 14,  # Location
-            6: 16,  # Manufacturer
-            7: 28,  # Model
-            8: 16,  # Device Type
-            9: 12,  # Drive Size (GB)
-            10: 18, # Destination
-            11: 12, # Pallet ID
-            12: 18, # Pallet Destination
-            13: 12, # Pallet Status
-            14: 14, # Source
-        }
-    }
+    # ============= SHEET 7/8: Device History + Log by Engineer =============
+    if period in ["this_year", "last_year"]:
+        for month_start, month_end in _iter_month_ranges(start_date, end_date):
+            month_label = month_start.strftime("%b %Y")
+            month_suffix = month_start.strftime("%Y-%m")
+            sheets[f"Device History {month_suffix}"] = _build_device_history_sheet(
+                month_start,
+                month_end,
+                month_label
+            )
+            sheets[f"Device Log by Engineer {month_suffix}"] = _build_device_log_by_engineer_sheet(
+                month_start,
+                month_end,
+                month_label
+            )
+    else:
+        sheets["Device History"] = _build_device_history_sheet(start_date, end_date, period_label)
+        sheets["Device Log by Engineer"] = _build_device_log_by_engineer_sheet(start_date, end_date, period_label)
     
     return sheets
