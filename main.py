@@ -699,7 +699,7 @@ async def qa_insights(period: str = "this_week"):
             pace = combined_total / days_elapsed
             projection = round(pace * total_days)
 
-        # Rolling averages for last 30 days
+        # Rolling averages for last 30 days (QA only, no sorting)
         rolling_7 = 0
         rolling_30 = 0
         trend_pct = 0
@@ -707,7 +707,8 @@ async def qa_insights(period: str = "this_week"):
             end_rolling = datetime.now().date()
             start_rolling = end_rolling - timedelta(days=29)
             daily_totals = qa_export.get_qa_daily_totals_range(start_rolling, end_rolling)
-            daily_values = [row.get("total", 0) for row in daily_totals]
+            # Use qaTotal (DE + Non-DE only, excludes sorting)
+            daily_values = [row.get("qaTotal", row.get("deQa", 0) + row.get("nonDeQa", 0)) for row in daily_totals]
             if daily_values:
                 rolling_30 = round(sum(daily_values) / len(daily_values), 1)
                 last_7 = daily_values[-7:]
@@ -719,21 +720,27 @@ async def qa_insights(period: str = "this_week"):
         except Exception as e:
             print(f"QA rolling avg error: {e}")
 
+        # QA-only totals (DE + Non-DE, excludes sorting)
+        qa_only_total = total_de + total_non_de
+        qa_only_avg_per_day = round(qa_only_total / day_count, 1)
+        qa_only_avg_per_engineer = round(qa_only_total / active_count, 1) if active_count else 0
+
         return {
             "period": label,
             "dateRange": f"{start_date} to {end_date}",
-            "total": combined_total,
+            "total": qa_only_total,  # QA only (DE + Non-DE, no sorting)
+            "combinedTotal": combined_total,  # Everything including sorting
             "breakdown": {
-                "qaApp": total_qa_app,
+                "qaApp": total_qa_app,  # Sorting
                 "deQa": total_de,
                 "nonDeQa": total_non_de
             },
-            "avgPerDay": avg_per_day,
+            "avgPerDay": qa_only_avg_per_day,
             "rolling7DayAvg": rolling_7,
             "rolling30DayAvg": rolling_30,
             "trend7DayPct": trend_pct,
             "activeEngineers": active_count,
-            "avgPerEngineer": avg_per_engineer,
+            "avgPerEngineer": qa_only_avg_per_engineer,
             "projection": projection,
         }
     except Exception as e:

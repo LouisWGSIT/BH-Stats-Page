@@ -463,10 +463,11 @@ def get_qa_hourly_totals(date_obj: date) -> List[Dict[str, int]]:
             row = totals[hour]
             results.append({
                 "hour": hour,
-                "qaApp": row["qaApp"],
+                "qaApp": row["qaApp"],  # Sorting scans (separate)
                 "deQa": row["deQa"],
                 "nonDeQa": row["nonDeQa"],
-                "total": row["qaApp"] + row["deQa"] + row["nonDeQa"]
+                "qaTotal": row["deQa"] + row["nonDeQa"],  # QA only (no sorting)
+                "total": row["qaApp"] + row["deQa"] + row["nonDeQa"]  # Everything combined
             })
         return results
     except Exception as e:

@@ -2705,7 +2705,8 @@ function renderSVGSparkline(svgElem, data) {
       return;
     }
 
-    const values = trend.series.map(row => row.total || 0);
+    // Use qaTotal (DE + Non-DE only, excludes sorting) if available, fallback to total
+    const values = trend.series.map(row => row.qaTotal !== undefined ? row.qaTotal : (row.deQa || 0) + (row.nonDeQa || 0));
     const total = (insights && typeof insights.total === 'number')
       ? insights.total
       : values.reduce((sum, v) => sum + v, 0);
@@ -2959,10 +2960,12 @@ function renderSVGSparkline(svgElem, data) {
     
     if (!metricsContent) return;
     
-    const todayTotal = (todayData.summary.totalScans || 0) + (todayData.summary.deQaScans || 0) + (todayData.summary.nonDeQaScans || 0);
-    const weeklyTotal = (weeklyData.summary.totalScans || 0) + (weeklyData.summary.deQaScans || 0) + (weeklyData.summary.nonDeQaScans || 0);
+    // QA-only totals (DE + Non-DE, excludes sorting/qaApp)
+    const todayTotal = (todayData.summary.deQaScans || 0) + (todayData.summary.nonDeQaScans || 0);
+    const weeklyTotal = (weeklyData.summary.deQaScans || 0) + (weeklyData.summary.nonDeQaScans || 0);
     const avgDaily = weeklyTotal > 0 ? Math.round(weeklyTotal / 5) : 0;
-    const engineerCount = todayData.technicians ? todayData.technicians.filter(t => t.combinedScans > 0).length : 0;
+    // Count engineers with any QA activity (DE or Non-DE)
+    const engineerCount = todayData.technicians ? todayData.technicians.filter(t => (t.deQaScans || 0) + (t.nonDeQaScans || 0) > 0).length : 0;
     const avgPerEngineer = engineerCount > 0 ? Math.round(todayTotal / engineerCount) : 0;
     const avgConsistency = todayData.summary.avgConsistency || 0;
     
