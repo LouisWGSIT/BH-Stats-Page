@@ -1,8 +1,10 @@
 """QA Dashboard Stats - MariaDB Integration for Quality Assurance Metrics"""
 import pymysql
+import sqlite3
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Tuple
 from collections import defaultdict, Counter
+import database as db
 
 # MariaDB Connection Config
 MARIADB_HOST = "77.68.90.229"
@@ -903,6 +905,121 @@ def get_all_time_daily_record() -> Dict:
             conn.close()
         return {'data_bearing_records': [], 'non_data_bearing_records': []}
 
+def _parse_timestamp(value: str | datetime | date | None, fallback_date: str | None = None) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    if isinstance(value, str) and value.strip():
+        cleaned = value.strip().replace("Z", "")
+        try:
+            return datetime.fromisoformat(cleaned)
+        except Exception:
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+                try:
+                    return datetime.strptime(cleaned, fmt)
+                except Exception:
+                    continue
+    if fallback_date:
+        try:
+            return datetime.fromisoformat(fallback_date)
+        except Exception:
+            return None
+    return None
+
+def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str, object]]:
+    """Return device history entries (erasure + sorting) between start_date and end_date."""
+    history: List[Dict[str, object]] = []
+
+    conn = get_mariadb_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT q.added_date,
+                       q.username,
+                       q.scanned_location,
+                       q.stockid,
+                       b.serial,
+                       b.manufacturer,
+                       b.model
+                FROM ITAD_QA_App q
+                LEFT JOIN ITAD_asset_info_blancco b
+                  ON b.stockid = q.stockid
+                WHERE DATE(q.added_date) >= %s AND DATE(q.added_date) <= %s
+                ORDER BY q.added_date ASC
+                """,
+                (start_date.isoformat(), end_date.isoformat())
+            )
+            for added_date, username, scanned_location, stockid, serial, manufacturer, model in cursor.fetchall():
+                sort_dt = _parse_timestamp(added_date)
+                history.append({
+                    "timestamp": added_date.isoformat() if isinstance(added_date, (datetime, date)) else added_date,
+                    "stage": "Sorting",
+                    "stockid": stockid,
+                    "serial": serial,
+                    "user": username,
+                    "location": scanned_location,
+                    "device_type": None,
+                    "manufacturer": manufacturer,
+                    "model": model,
+                    "drive_size": None,
+                    "drive_type": None,
+                    "drive_count": None,
+                    "source": "ITAD_QA_App",
+                    "_sort_key": sort_dt
+                })
+            cursor.close()
+        except Exception as e:
+            print(f"[QA Export] Error fetching device sorting history: {e}")
+        finally:
+            conn.close()
+
+    try:
+        sqlite_conn = sqlite3.connect(db.DB_PATH)
+        cursor = sqlite_conn.cursor()
+        cursor.execute(
+            """
+            SELECT ts, date, initials, device_type, manufacturer, model,
+                   system_serial, disk_serial, job_id, drive_size, drive_type, drive_count
+            FROM erasures
+            WHERE date >= ? AND date <= ? AND event = 'success'
+            ORDER BY date ASC, ts ASC
+            """,
+            (start_date.isoformat(), end_date.isoformat())
+        )
+        for row in cursor.fetchall():
+            ts, date_str, initials, device_type, manufacturer, model, system_serial, disk_serial, job_id, drive_size, drive_type, drive_count = row
+            serial_value = system_serial or disk_serial or job_id
+            sort_dt = _parse_timestamp(ts, fallback_date=date_str)
+            history.append({
+                "timestamp": ts or date_str,
+                "stage": "Erasure",
+                "stockid": None,
+                "serial": serial_value,
+                "user": initials,
+                "location": None,
+                "device_type": device_type,
+                "manufacturer": manufacturer,
+                "model": model,
+                "drive_size": drive_size,
+                "drive_type": drive_type,
+                "drive_count": drive_count,
+                "source": "erasures",
+                "_sort_key": sort_dt
+            })
+        cursor.close()
+        sqlite_conn.close()
+    except Exception as e:
+        print(f"[QA Export] Error fetching device erasure history: {e}")
+
+    history.sort(key=lambda item: item.get("_sort_key") or datetime.min)
+    for item in history:
+        item.pop("_sort_key", None)
+
+    return history
+
 def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
     """Generate comprehensive QA engineer breakdown export with overall, data-bearing, non-data-bearing, sorting, and comparison sections"""
     start_date, end_date, period_label = get_week_dates(period)
@@ -1154,5 +1271,52 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
         current_date += timedelta(days=1)
     
     sheets["Daily Breakdown"] = sheet_data
+
+    # ============= SHEET 7: Device History =============
+    sheet_data = []
+    sheet_data.append(["DEVICE HISTORY - " + period_label.upper()])
+    sheet_data.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_data.append([])
+    sheet_data.append([
+        "Note: Device-level QA (DE/Non-DE) is not available in audit_master. This log includes erasure + sorting scans only."
+    ])
+    sheet_data.append([])
+
+    header = [
+        "Timestamp",
+        "Stage",
+        "Stock ID",
+        "Serial",
+        "User/Initials",
+        "Location",
+        "Device Type",
+        "Manufacturer",
+        "Model",
+        "Drive Size (GB)",
+        "Drive Type",
+        "Drive Count",
+        "Source"
+    ]
+    sheet_data.append(header)
+
+    history_rows = get_device_history_range(start_date, end_date)
+    for row in history_rows:
+        sheet_data.append([
+            row.get("timestamp"),
+            row.get("stage"),
+            row.get("stockid"),
+            row.get("serial"),
+            row.get("user"),
+            row.get("location"),
+            row.get("device_type"),
+            row.get("manufacturer"),
+            row.get("model"),
+            row.get("drive_size"),
+            row.get("drive_type"),
+            row.get("drive_count"),
+            row.get("source")
+        ])
+
+    sheets["Device History"] = sheet_data
     
     return sheets

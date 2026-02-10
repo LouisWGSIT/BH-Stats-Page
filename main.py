@@ -538,6 +538,22 @@ async def powerbi_qa_daily(start_date: str = None, end_date: str = None):
     daily = qa_export.get_qa_daily_totals_range(start, end)
     return {"data": daily}
 
+@app.get("/api/powerbi/device-history")
+async def powerbi_device_history(start_date: str = None, end_date: str = None):
+    """
+    Power BI endpoint: Returns device history (erasure + sorting)
+    Parameters:
+    - start_date: YYYY-MM-DD (optional, defaults to 30 days ago)
+    - end_date: YYYY-MM-DD (optional, defaults to today)
+    """
+    from datetime import datetime, timedelta
+    import qa_export
+
+    end = datetime.now().date() if not end_date else datetime.fromisoformat(end_date).date()
+    start = (end - timedelta(days=30)) if not start_date else datetime.fromisoformat(start_date).date()
+    history = qa_export.get_device_history_range(start, end)
+    return {"data": history}
+
 @app.get("/api/powerbi/qa-engineer")
 async def powerbi_qa_engineer(start_date: str = None, end_date: str = None):
     """
