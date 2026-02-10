@@ -57,6 +57,19 @@ def get_week_dates(period: str) -> Tuple[date, date, str]:
     if period == "today":
         label = "Today"
         return today, today, label
+
+    if period == "this_year":
+        start = date(today.year, 1, 1)
+        end = today
+        label = "This Year"
+        return start, end, label
+
+    if period == "last_year":
+        last_year = today.year - 1
+        start = date(last_year, 1, 1)
+        end = date(last_year, 12, 31)
+        label = "Last Year"
+        return start, end, label
     
     if period == "this_week":
         start = today - timedelta(days=today.weekday())

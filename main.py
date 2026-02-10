@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from typing import Any, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import asyncio
 import database as db
 import excel_export
@@ -613,6 +613,17 @@ def _get_period_range(period: str):
         start = last_month_end.replace(day=1)
         end = last_month_end
         return start, end, "Last Month"
+
+    if period == "this_year":
+        start = date(today.year, 1, 1)
+        end = today
+        return start, end, "This Year"
+
+    if period == "last_year":
+        last_year = today.year - 1
+        start = date(last_year, 1, 1)
+        end = date(last_year, 12, 31)
+        return start, end, "Last Year"
 
     if period == "all_time":
         return None, None, "All Time"
@@ -1705,7 +1716,15 @@ async def export_engineer_deepdive(request: Request, period: str = "this_week"):
         db.init_db()
         
         # Validate period
-        valid_periods = ["this_week", "last_week", "this_month", "last_month", "last_available"]
+        valid_periods = [
+            "this_week",
+            "last_week",
+            "this_month",
+            "last_month",
+            "this_year",
+            "last_year",
+            "last_available",
+        ]
         if period not in valid_periods:
             raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}")
         
@@ -1744,7 +1763,15 @@ async def export_qa_stats(request: Request, period: str = "this_week"):
         db.init_db()
         
         # Validate period
-        valid_periods = ["this_week", "last_week", "this_month", "last_month", "last_available"]
+        valid_periods = [
+            "this_week",
+            "last_week",
+            "this_month",
+            "last_month",
+            "this_year",
+            "last_year",
+            "last_available",
+        ]
         if period not in valid_periods:
             raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}")
         

@@ -316,6 +316,8 @@
                         <option value="last_week">Last Week</option>
                         <option value="this_month">This Month</option>
                         <option value="last_month">Last Month</option>
+                        <option value="this_year">This Year</option>
+                        <option value="last_year">Last Year</option>
                     </select>
                 </div>
                 <button onclick="downloadEngineerDeepDive()">📥 Download Report</button>
@@ -669,7 +671,9 @@
                     'this_week': 'This Week',
                     'last_week': 'Last Week',
                     'this_month': 'This Month',
-                    'last_month': 'Last Month'
+                    'last_month': 'Last Month',
+                    'this_year': 'This Year',
+                    'last_year': 'Last Year'
                 };
                 resultDiv.innerHTML = `<p style="color: #10b981;">✅ Download started for ${periodLabels[period]}!</p>`;
                 setTimeout(() => {
