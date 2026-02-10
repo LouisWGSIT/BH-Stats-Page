@@ -1295,10 +1295,11 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
 
     # ============= SHEET 7: Device History =============
     history_rows = get_device_history_range(start_date, end_date)
-    grouped_history: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    grouped_by_date: Dict[str, List[Dict[str, object]]] = defaultdict(list)
     for row in history_rows:
-        device_key = row.get("serial") or row.get("stockid") or "unknown"
-        grouped_history[str(device_key)].append(row)
+        ts = _parse_timestamp(row.get("timestamp"))
+        date_key = ts.date().isoformat() if ts else "unknown"
+        grouped_by_date[date_key].append(row)
 
     sheet_rows: List[List] = []
     sheet_groups: List[Tuple[int, int, int, bool]] = []
@@ -1325,32 +1326,61 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
         "Source"
     ]
 
-    for device_key in sorted(grouped_history.keys()):
-        entries = grouped_history[device_key]
-        entries.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
+    for date_key in sorted(grouped_by_date.keys()):
+        date_entries = grouped_by_date[date_key]
+        date_entries.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
 
-        sheet_rows.append([f"DEVICE: {device_key}"])
+        sheet_rows.append([f"DATE: {date_key}"])
         sheet_rows.append(header)
-        data_start = len(sheet_rows) + 1
+        date_start = len(sheet_rows) + 1
 
-        for row in entries:
-            sheet_rows.append([
-                _format_timestamp(row.get("timestamp")),
-                row.get("stage"),
-                row.get("stockid"),
-                row.get("serial"),
-                row.get("user"),
-                row.get("location"),
-                row.get("manufacturer"),
-                row.get("model"),
-                row.get("device_type"),
-                _format_drive_size_gb(row.get("drive_size")),
-                row.get("source")
-            ])
+        grouped_history: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+        for row in date_entries:
+            device_key = row.get("serial") or row.get("stockid") or "unknown"
+            grouped_history[str(device_key)].append(row)
 
-        data_end = len(sheet_rows)
-        if data_end >= data_start:
-            sheet_groups.append((data_start, data_end, 1, True))
+        for device_key in sorted(grouped_history.keys()):
+            entries = grouped_history[device_key]
+            entries.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
+
+            stock_id = next((e.get("stockid") for e in entries if e.get("stockid")), None)
+            serial = next((e.get("serial") for e in entries if e.get("serial")), None)
+            device_label = f"DEVICE: {device_key}"
+            if stock_id or serial:
+                parts = []
+                if stock_id:
+                    parts.append(f"Stock ID: {stock_id}")
+                if serial:
+                    parts.append(f"Serial: {serial}")
+                device_label = f"{device_label} | " + " | ".join(parts)
+
+            sheet_rows.append([device_label])
+            data_start = len(sheet_rows) + 1
+
+            for row in entries:
+                sheet_rows.append([
+                    _format_timestamp(row.get("timestamp")),
+                    row.get("stage"),
+                    row.get("stockid"),
+                    row.get("serial"),
+                    row.get("user"),
+                    row.get("location"),
+                    row.get("manufacturer"),
+                    row.get("model"),
+                    row.get("device_type"),
+                    _format_drive_size_gb(row.get("drive_size")),
+                    row.get("source")
+                ])
+
+            data_end = len(sheet_rows)
+            if data_end >= data_start:
+                sheet_groups.append((data_start, data_end, 2, True))
+
+            sheet_rows.append([])
+
+        date_end = len(sheet_rows) - 1
+        if date_end >= date_start:
+            sheet_groups.append((date_start, date_end, 1, False))
 
         sheet_rows.append([])
 
