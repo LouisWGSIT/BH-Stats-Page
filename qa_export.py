@@ -1607,7 +1607,6 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
         "Destination",
         "Pallet ID",
         "Pallet Destination",
-        "Pallet Location",
         "Pallet Status",
         "Source"
     ]
@@ -1664,7 +1663,6 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
                     row.get("destination"),
                     _normalize_id_value(row.get("pallet_id")),
                     row.get("pallet_destination"),
-                    row.get("pallet_location"),
                     row.get("pallet_status"),
                     row.get("source")
                 ])
@@ -1698,9 +1696,8 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
             11: 18, # Destination
             12: 12, # Pallet ID
             13: 18, # Pallet Destination
-            14: 16, # Pallet Location
-            15: 12, # Pallet Status
-            16: 14, # Source
+            14: 12, # Pallet Status
+            15: 14, # Source
         }
     }
 
@@ -1739,7 +1736,6 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
         "Destination",
         "Pallet ID",
         "Pallet Destination",
-        "Pallet Location",
         "Pallet Status",
         "Source"
     ]
@@ -1770,7 +1766,6 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
                 row.get("destination"),
                 _normalize_id_value(row.get("pallet_id")),
                 row.get("pallet_destination"),
-                row.get("pallet_location"),
                 row.get("pallet_status"),
                 row.get("source")
             ])
@@ -1785,7 +1780,7 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
         "rows": sheet_rows,
         "groups": sheet_groups,
         "col_widths": {
-            1: 19,  # Timestamp
+            1: 24,  # Timestamp / Engineer header
             2: 16,  # Stage
             3: 12,  # Stock ID
             4: 14,  # Serial
@@ -1797,9 +1792,8 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
             10: 18, # Destination
             11: 12, # Pallet ID
             12: 18, # Pallet Destination
-            13: 16, # Pallet Location
-            14: 12, # Pallet Status
-            15: 14, # Source
+            13: 12, # Pallet Status
+            14: 14, # Source
         }
     }
     

@@ -34,6 +34,21 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
     subheader_font = Font(bold=True, color="FFFFFF", size=10)
     section_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
     section_font = Font(bold=True, size=10)
+    engineer_palette = [
+        "FDEBD0",
+        "D6EAF8",
+        "D5F5E3",
+        "FADBD8",
+        "FCF3CF",
+        "E8DAEF",
+        "D4EFDF",
+        "F5EEF8",
+    ]
+    engineer_fills = [
+        PatternFill(start_color=color, end_color=color, fill_type="solid")
+        for color in engineer_palette
+    ]
+    zebra_fill = PatternFill(start_color="F7F9FC", end_color="F7F9FC", fill_type="solid")
     border = Border(
         left=Side(style='thin'),
         right=Side(style='thin'),
@@ -54,6 +69,8 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
     first_sheet_processed = False
     for sheet_idx, (sheet_name, data) in enumerate(sheets_data.items()):
         ws = wb.create_sheet(title=sheet_name)
+        is_engineer_sheet = sheet_name == "Device Log by Engineer"
+        zebra_index = 0
 
         if isinstance(data, dict) and "rows" in data:
             sheet_rows = data.get("rows", [])
@@ -91,6 +108,30 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
             first_cell = row_data[0] if row_data else None
             if isinstance(first_cell, str) and (first_cell.startswith('DATE:') or first_cell.startswith('DEVICE:')):
                 is_date_device_row = True
+            is_engineer_row = isinstance(first_cell, str) and first_cell.startswith('ENGINEER:')
+            is_engineer_table_header = (
+                isinstance(first_cell, str)
+                and first_cell == "Timestamp"
+                and len(row_data) > 1
+                and str(row_data[1]) == "Stage"
+            )
+            engineer_fill = None
+            if is_engineer_row:
+                engineer_key = first_cell.split('ENGINEER:', 1)[-1].strip().lower()
+                color_index = sum(ord(ch) for ch in engineer_key) % len(engineer_fills)
+                engineer_fill = engineer_fills[color_index]
+                zebra_index = 0
+
+            is_data_row = (
+                is_engineer_sheet
+                and not is_date_device_row
+                and not is_engineer_row
+                and not is_engineer_table_header
+                and any(cell is not None and str(cell).strip() for cell in row_data)
+            )
+            apply_zebra = is_data_row and (zebra_index % 2 == 1)
+            if is_data_row:
+                zebra_index += 1
 
             for col_idx, cell_value in enumerate(row_data, 1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=cell_value)
@@ -114,6 +155,12 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
                 if is_date_device_row:
                     cell.fill = section_fill
                     cell.font = section_font
+                if is_engineer_row and engineer_fill:
+                    cell.fill = engineer_fill
+                    cell.font = Font(bold=True, size=11)
+                    cell.alignment = Alignment(wrap_text=False, vertical='center', horizontal='left')
+                if apply_zebra and not (is_engineer_row or is_date_device_row or is_engineer_table_header):
+                    cell.fill = zebra_fill
         
         # Apply row grouping for collapsible sections
         for group in sheet_groups:
