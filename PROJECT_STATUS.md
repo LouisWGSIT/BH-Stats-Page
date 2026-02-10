@@ -190,6 +190,9 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 - For Copilot in Power BI: requires admin to enable; in the meantime I can provide DAX/M snippets here.
 
 ## Change Log
+- 2026-02-10: Fixed Power BI daily-stats and engineer-stats endpoints to include today's live data from erasures table (not just daily_stats/engineer_stats tables which only sync periodically).
+- 2026-02-09: Power BI semantic model created with 5 tables (Daily Stats, Engineer Stats, Erasure Events, QA Daily, QA Engineer) and 20 measures. Date table linked. **BLOCKED**: Daily Stats numeric columns stored as Text type; need to convert erased, booked_in, qa, qaApp, deQa, nonDeQa, qaTotal to Whole Number in Power Query before visuals work.
+- 2026-02-09: Power BI API key configured (87786640-8358-4aad-a092-005a47fb92a8) in Render env vars.
 - 2026-02-09: Added persistent Power BI API key and QA columns on daily-stats.
 - 2026-02-09: Added Power BI API key bypass and QA Power BI endpoints.
 - 2026-02-09: Fixed non-data-bearing QA comparison query in qa_export.py; cleaned misplaced block.
@@ -201,3 +204,17 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 
 ## Working Agreement
 - Keep this file updated after each significant change or decision.
+
+## Power BI Current Status
+- **Semantic Model**: Created in Power BI Service.
+- **Tables**: Daily Stats, Engineer Stats, Erasure Events, QA Daily, QA Engineer (all loaded from API endpoints).
+- **Date Table**: Created with Day, Month, Month Name, Year columns. Relationships set (1:* from Date to each fact table).
+- **Measures**: 20 core measures for Erasure (Today, MTD, Rolling 7D, Target Achievement), QA (Today, MTD, Rolling 7D, DE %, Non-DE %), and Targets (Daily Target, Days Elapsed MTD, MTD Target).
+- **BLOCKER**: Daily Stats numeric columns (erased, booked_in, qa, qaApp, deQa, nonDeQa, qaTotal) are **Text type** in the loaded data. Power Query type conversion needed before any visuals will render.
+- **Next**: Fix data types in Power Query, then build Exec dashboard with 4 KPI cards (Today Erased, MTD Erased, Rolling 7D Avg, Target Achievement %), QA KPIs, QA split donut, trend lines, and engineer table.
+
+## Power BI Exec Dashboard Plan
+1. **Row 1**: Today Erased, MTD Erased, Rolling 7D Avg (Erased), Target Achievement %
+2. **Row 2**: Today QA, MTD QA, Rolling 7D Avg (QA), QA Split (Data Bearing vs Non-Data Bearing) donut
+3. **Row 3**: Erasure trend line, QA trend line
+4. **Bottom**: Top 5 Engineers table (initials, count)

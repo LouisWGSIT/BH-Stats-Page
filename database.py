@@ -1453,10 +1453,15 @@ def get_all_engineers_kpis() -> List[Dict]:
 
 # ===== Power BI Integration Functions =====
 def get_stats_range(start_date: str, end_date: str) -> List[Dict]:
-    """Get daily stats for a date range in Power BI-friendly format"""
+    """Get daily stats for a date range in Power BI-friendly format.
+    
+    Combines daily_stats table with live erasures data to ensure
+    today's data is included even if not yet in daily_stats.
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
+    # Get from daily_stats table
     cursor.execute("""
         SELECT date, booked_in, erased, qa
         FROM daily_stats
@@ -1465,9 +1470,8 @@ def get_stats_range(start_date: str, end_date: str) -> List[Dict]:
     """, (start_date, end_date))
     
     rows = cursor.fetchall()
-    conn.close()
     
-    return [
+    result = [
         {
             "date": row[0],
             "booked_in": row[1],
@@ -1476,6 +1480,40 @@ def get_stats_range(start_date: str, end_date: str) -> List[Dict]:
         }
         for row in rows
     ]
+    
+    # Check if today is in range but missing from results
+    today_str = date.today().isoformat()
+    existing_dates = {row["date"] for row in result}
+    
+    if start_date <= today_str <= end_date and today_str not in existing_dates:
+        # Get today's count from erasures table directly
+        cursor.execute("""
+            SELECT COUNT(1) FROM erasures 
+            WHERE date = ? AND event = 'success'
+        """, (today_str,))
+        erased_today = cursor.fetchone()[0] or 0
+        
+        # Get booked_in from daily_stats if exists, else 0
+        cursor.execute("""
+            SELECT booked_in, qa FROM daily_stats WHERE date = ?
+        """, (today_str,))
+        row = cursor.fetchone()
+        booked_in_today = row[0] if row else 0
+        qa_today = row[1] if row else 0
+        
+        if erased_today > 0 or booked_in_today > 0:
+            result.append({
+                "date": today_str,
+                "booked_in": booked_in_today,
+                "erased": erased_today,
+                "qa": qa_today
+            })
+            # Re-sort by date
+            result.sort(key=lambda x: x["date"])
+    
+    conn.close()
+    
+    return result
 
 def get_erasure_events_range(start_date: str, end_date: str, device_type: str = None) -> List[Dict]:
     """Get detailed erasure events for a date range in Power BI-friendly format"""
@@ -1516,10 +1554,15 @@ def get_erasure_events_range(start_date: str, end_date: str, device_type: str = 
     ]
 
 def get_engineer_stats_range(start_date: str, end_date: str) -> List[Dict]:
-    """Get engineer stats for a date range in Power BI-friendly format"""
+    """Get engineer stats for a date range in Power BI-friendly format.
+    
+    Combines engineer_stats table with live erasures data to ensure
+    today's data is included even if not yet synced.
+    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
+    # Get from engineer_stats table
     cursor.execute("""
         SELECT date, initials, count
         FROM engineer_stats
@@ -1528,9 +1571,8 @@ def get_engineer_stats_range(start_date: str, end_date: str) -> List[Dict]:
     """, (start_date, end_date))
     
     rows = cursor.fetchall()
-    conn.close()
     
-    return [
+    result = [
         {
             "date": row[0],
             "initials": row[1],
@@ -1538,6 +1580,32 @@ def get_engineer_stats_range(start_date: str, end_date: str) -> List[Dict]:
         }
         for row in rows
     ]
+    
+    # Check if today is in range but missing from results
+    today_str = date.today().isoformat()
+    existing_today = any(row["date"] == today_str for row in result)
+    
+    if start_date <= today_str <= end_date and not existing_today:
+        # Get today's counts directly from erasures table
+        cursor.execute("""
+            SELECT initials, COUNT(1) as cnt
+            FROM erasures 
+            WHERE date = ? AND event = 'success' AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY cnt DESC
+        """, (today_str,))
+        
+        today_rows = cursor.fetchall()
+        for row in today_rows:
+            result.append({
+                "date": today_str,
+                "initials": row[0],
+                "count": row[1]
+            })
+    
+    conn.close()
+    
+    return result
 
 def sync_engineer_stats_from_erasures(date_str: str = None):
     """
