@@ -4,6 +4,7 @@ import sqlite3
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Tuple
 from collections import defaultdict, Counter
+import re
 import database as db
 
 # MariaDB Connection Config
@@ -961,6 +962,128 @@ def _normalize_id_value(value: object) -> object | None:
             return text
     return text
 
+def _extract_from_text(text: str | None, patterns: List[str]) -> str | None:
+    if not text:
+        return None
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            value = match.group(1).strip()
+            if value:
+                return value
+    return None
+
+def _extract_stock_id(text: str | None) -> str | None:
+    patterns = [
+        r"<stock_id>([^<]+)</stock_id>",
+        r"stock_id\s*=\s*'([^']+)'",
+        r"stock_id\s*=\s*\"([^\"]+)\"",
+        r"stockID\";s:\d+:\"([^\"]+)\"",
+        r"stockid\";s:\d+:\"([^\"]+)\"",
+        r"stockID\s*[:=]\s*\"?([^\",\s]+)\"?",
+        r"stockid\s*[:=]\s*\"?([^\",\s]+)\"?",
+    ]
+    return _extract_from_text(text, patterns)
+
+def _extract_serial(text: str | None) -> str | None:
+    patterns = [
+        r"serialnumber\s*=\s*'([^']+)'",
+        r"serialnumber\s*=\s*\"([^\"]+)\"",
+        r"stock_serial_frm\";s:\d+:\"([^\"]+)\"",
+        r"serial\s*[:=]\s*\"?([^\",\s]+)\"?",
+    ]
+    return _extract_from_text(text, patterns)
+
+def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[str, object]]:
+    """Return QA device events (data bearing + non-data bearing) between dates."""
+    conn = get_mariadb_connection()
+    if not conn:
+        return []
+
+    events: List[Dict[str, object]] = []
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT date_time, audit_type, user_id, log_description, log_description2
+            FROM audit_master
+            WHERE audit_type IN (
+                'DEAPP_Submission',
+                'DEAPP_Submission_EditStock_Payload',
+                'Non_DEAPP_Submission',
+                'Non_DEAPP_Submission_EditStock_Payload'
+            )
+              AND DATE(date_time) >= %s AND DATE(date_time) <= %s
+            ORDER BY date_time ASC
+            """,
+            (start_date.isoformat(), end_date.isoformat())
+        )
+        rows = cursor.fetchall()
+
+        stock_ids: List[str] = []
+        for date_time, audit_type, user_id, log_desc, log_desc2 in rows:
+            stock_id = _extract_stock_id(log_desc) or _extract_stock_id(log_desc2)
+            serial = _extract_serial(log_desc2) or _extract_serial(log_desc)
+            if stock_id:
+                stock_ids.append(stock_id)
+
+            stage = "QA Data Bearing" if audit_type.startswith("DEAPP_") else "QA Non-Data Bearing"
+            events.append({
+                "timestamp": date_time.isoformat() if isinstance(date_time, (datetime, date)) else date_time,
+                "stage": stage,
+                "stockid": stock_id,
+                "serial": serial,
+                "user": user_id,
+                "location": None,
+                "device_type": None,
+                "manufacturer": None,
+                "model": None,
+                "drive_size": None,
+                "drive_type": None,
+                "drive_count": None,
+                "source": "audit_master",
+            })
+
+        asset_map: Dict[str, Dict[str, object]] = {}
+        if stock_ids:
+            unique_ids = list({s for s in stock_ids if s})
+            if unique_ids:
+                placeholders = ",".join(["%s"] * len(unique_ids))
+                cursor.execute(
+                    f"""
+                    SELECT stockid, serial, manufacturer, model
+                    FROM ITAD_asset_info_blancco
+                    WHERE stockid IN ({placeholders})
+                    """,
+                    unique_ids
+                )
+                for stockid, serial, manufacturer, model in cursor.fetchall():
+                    asset_map[str(stockid)] = {
+                        "serial": serial,
+                        "manufacturer": manufacturer,
+                        "model": model,
+                    }
+
+        for event in events:
+            stock_id = event.get("stockid")
+            if stock_id and str(stock_id) in asset_map:
+                asset = asset_map[str(stock_id)]
+                if not event.get("serial"):
+                    event["serial"] = asset.get("serial")
+                event["manufacturer"] = asset.get("manufacturer")
+                event["model"] = asset.get("model")
+
+        cursor.close()
+        conn.close()
+        return events
+    except Exception as e:
+        print(f"[QA Export] Error fetching QA device events: {e}")
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return []
+
 def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str, object]]:
     """Return device history entries (erasure + sorting) between start_date and end_date."""
     history: List[Dict[str, object]] = []
@@ -1411,8 +1534,9 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
     # ============= SHEET 8: Device Log by Engineer =============
     history_rows = [
         row for row in get_device_history_range(start_date, end_date)
-        if row.get("stage") != "Erasure"
+        if row.get("stage") == "Sorting"
     ]
+    history_rows.extend(get_qa_device_events_range(start_date, end_date))
     grouped_by_engineer: Dict[str, List[Dict[str, object]]] = defaultdict(list)
     for row in history_rows:
         engineer_key = row.get("user") or "(unassigned)"
@@ -1425,7 +1549,7 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
     sheet_rows.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
     sheet_rows.append([])
     sheet_rows.append([
-        "Note: Device-level QA (DE/Non-DE) is not available in audit_master. This log includes sorting scans only."
+        "Note: Device-level QA (DE/Non-DE) is parsed from audit_master logs. This log includes QA + sorting scans only."
     ])
     sheet_rows.append([])
 
