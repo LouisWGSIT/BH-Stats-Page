@@ -2702,6 +2702,23 @@ main.layout {
   letter-spacing: 1px;
 }
 
+.qa-metrics-card .qa-de-total span:first-child {
+  font-size: 32px;
+  color: #f6d46a;
+  text-shadow: 0 2px 8px rgba(246, 212, 106, 0.35);
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.qa-metrics-icon {
+  width: 26px;
+  height: 26px;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+}
+
 @keyframes cardFlip {
   0% { opacity: 1; transform: rotateY(0deg); }
   50% { opacity: 0.7; transform: rotateY(90deg); }

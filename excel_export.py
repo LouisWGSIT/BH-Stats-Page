@@ -85,6 +85,11 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
         # Write data
         start_row = 1
         for row_idx, row_data in enumerate(sheet_rows, start_row):
+            is_date_device_row = False
+            first_cell = row_data[0] if row_data else None
+            if isinstance(first_cell, str) and (first_cell.startswith('DATE:') or first_cell.startswith('DEVICE:')):
+                is_date_device_row = True
+
             for col_idx, cell_value in enumerate(row_data, 1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=cell_value)
                 cell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
@@ -101,9 +106,12 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
                 # Style section headers (rows with single merged cell or key column)
                 elif isinstance(cell_value, str) and cell_value.isupper() and len(str(cell_value)) > 3:
                     # Check if it's a section header (all caps, longer than 3 chars)
-                    if col_idx == 1 and any(cell_value.startswith(x) for x in ['EXECUTIVE', 'PERFORMANCE', 'TARGET', 'TOP', 'ALL', 'BREAKDOWN', 'ENGINEER', 'HISTORICAL', 'WEEKLY', 'SPEED', 'CATEGORY', 'CONSISTENCY', 'REPORT', 'GLOSSARY']):
+                    if col_idx == 1 and any(cell_value.startswith(x) for x in ['EXECUTIVE', 'PERFORMANCE', 'TARGET', 'TOP', 'ALL', 'BREAKDOWN', 'ENGINEER', 'HISTORICAL', 'WEEKLY', 'SPEED', 'CATEGORY', 'CONSISTENCY', 'REPORT', 'GLOSSARY', 'DATE', 'DEVICE']):
                         cell.fill = section_fill
                         cell.font = section_font
+                if is_date_device_row:
+                    cell.fill = section_fill
+                    cell.font = section_font
         
         # Apply row grouping for collapsible sections
         for group in sheet_groups:

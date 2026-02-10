@@ -193,6 +193,7 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 ## Change Log
 - 2026-02-10: Fixed Power BI daily-stats and engineer-stats endpoints to include today's live data from erasures table (not just daily_stats/engineer_stats tables which only sync periodically).
 - 2026-02-10: Added device history export sheet (erasure + sorting) and Power BI device-history endpoint.
+- 2026-02-10: Device history export grouped by date, collapsed by default, with shaded DATE/DEVICE headers.
 - 2026-02-09: Power BI semantic model created with 5 tables (Daily Stats, Engineer Stats, Erasure Events, QA Daily, QA Engineer) and 20 measures. Date table linked. **BLOCKED**: Daily Stats numeric columns stored as Text type; need to convert erased, booked_in, qa, qaApp, deQa, nonDeQa, qaTotal to Whole Number in Power Query before visuals work.
 - 2026-02-10: Separated QA totals from Sorting (qaApp) across all endpoints and UI cards. QA cards now show DE + Non-DE only; Sorting tracked separately.
 - 2026-02-10: Fixed Power BI dynamic date range in M queries (removed hard-coded end_date). Now uses current year (Jan 1 to today).

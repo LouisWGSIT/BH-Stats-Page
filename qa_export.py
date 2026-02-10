@@ -948,6 +948,19 @@ def _format_drive_size_gb(value: object) -> str | None:
         gb = numeric
     return f"{gb:.1f}"
 
+def _normalize_id_value(value: object) -> object | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.isdigit() and not text.startswith("0"):
+        try:
+            return int(text)
+        except Exception:
+            return text
+    return text
+
 def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str, object]]:
     """Return device history entries (erasure + sorting) between start_date and end_date."""
     history: List[Dict[str, object]] = []
@@ -1345,6 +1358,8 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
 
             stock_id = next((e.get("stockid") for e in entries if e.get("stockid")), None)
             serial = next((e.get("serial") for e in entries if e.get("serial")), None)
+            if stock_id is not None and serial is not None and str(stock_id).strip() == str(serial).strip():
+                stock_id = None
             device_label = f"DEVICE: {device_key}"
             if stock_id or serial:
                 parts = []
@@ -1358,11 +1373,15 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
             data_start = len(sheet_rows) + 1
 
             for row in entries:
+                stock_value = row.get("stockid")
+                serial_value = row.get("serial")
+                if stock_value is not None and serial_value is not None and str(stock_value).strip() == str(serial_value).strip():
+                    stock_value = None
                 sheet_rows.append([
                     _format_timestamp(row.get("timestamp")),
                     row.get("stage"),
-                    row.get("stockid"),
-                    row.get("serial"),
+                    _normalize_id_value(stock_value),
+                    _normalize_id_value(serial_value),
                     row.get("user"),
                     row.get("location"),
                     row.get("manufacturer"),
@@ -1380,7 +1399,7 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
 
         date_end = len(sheet_rows) - 1
         if date_end >= date_start:
-            sheet_groups.append((date_start, date_end, 1, False))
+            sheet_groups.append((date_start, date_end, 1, True))
 
         sheet_rows.append([])
 

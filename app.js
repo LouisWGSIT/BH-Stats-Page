@@ -2893,8 +2893,8 @@ function renderSVGSparkline(svgElem, data) {
       } else {
         listEl.innerHTML = engineers.map(eng => {
           const displayName = formatQaName(eng.name);
-          const initials = getQaInitials(displayName);
-          const avatar = getAvatarDataUri(initials || 'QA');
+          const avatarKey = eng.name || displayName || 'QA';
+          const avatar = getAvatarDataUri(avatarKey);
           return `
             <div class="qa-engineer-item">
               <div class="qa-engineer-left">
@@ -2935,8 +2935,8 @@ function renderSVGSparkline(svgElem, data) {
       } else {
         listEl.innerHTML = qaEngineers.map(eng => {
           const displayName = formatQaName(eng.name);
-          const initials = getQaInitials(displayName);
-          const avatar = getAvatarDataUri(initials || 'QA');
+          const avatarKey = eng.name || displayName || 'QA';
+          const avatar = getAvatarDataUri(avatarKey);
           return `
             <div class="qa-engineer-item">
               <div class="qa-engineer-left">
@@ -3014,7 +3014,7 @@ function renderSVGSparkline(svgElem, data) {
         `;
       } else if (currentView === 1) {
         // Show data-bearing records
-        metricsValue.textContent = "🏆";
+        metricsValue.innerHTML = '<img class="qa-metrics-icon" src="assets/trophy-gold.svg" alt="Record">';
         metricsLabel.textContent = "Data Bearing - Most QA'd in 1 Day!";
         
         const dbRecords = dailyRecords.data_bearing_records || [];
@@ -3031,7 +3031,7 @@ function renderSVGSparkline(svgElem, data) {
         }
       } else if (currentView === 2) {
         // Show non-data-bearing records
-        metricsValue.textContent = "🏆";
+        metricsValue.innerHTML = '<img class="qa-metrics-icon" src="assets/trophy-silver.svg" alt="Record">';
         metricsLabel.textContent = "Non-Data Bearing - Most QA'd in 1 Day!";
         
         const ndbRecords = dailyRecords.non_data_bearing_records || [];
