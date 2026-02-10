@@ -13,6 +13,7 @@ import json
 import hashlib
 import secrets
 import httpx  # For making API calls to Blancco
+from time import time
 
 app = FastAPI(title="Warehouse Stats Service")
 
@@ -72,6 +73,21 @@ ADMIN_PASSWORD = os.getenv("DASHBOARD_ADMIN_PASSWORD", "P!nkarrow")
 DEVICE_TOKENS_FILE = "device_tokens.json"
 POWERBI_API_KEY_FILE = "powerbi_api_key.txt"
 DEVICE_TOKEN_EXPIRY_DAYS = 7  # Remember device for 7 days
+
+QA_CACHE_TTL_SECONDS = 60
+QA_CACHE: Dict[str, Dict[str, object]] = {}
+
+def _get_cached_response(cache_key: str):
+    entry = QA_CACHE.get(cache_key)
+    if not entry:
+        return None
+    if time() - entry.get("ts", 0) > QA_CACHE_TTL_SECONDS:
+        return None
+    return entry.get("data")
+
+def _set_cached_response(cache_key: str, data: Dict[str, object]):
+    QA_CACHE[cache_key] = {"ts": time(), "data": data}
+    return data
 
 def load_device_tokens():
     """Load device tokens from persistent storage."""
@@ -679,6 +695,10 @@ async def qa_insights(period: str = "this_week"):
     """Return averages and trajectory data for QA totals (QA App + DE + Non-DE)."""
     try:
         import qa_export
+        cache_key = f"qa_insights:{period}"
+        cached = _get_cached_response(cache_key)
+        if cached is not None:
+            return cached
         start_date, end_date, label = qa_export.get_week_dates(period)
 
         qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
@@ -741,7 +761,7 @@ async def qa_insights(period: str = "this_week"):
         qa_only_avg_per_day = round(qa_only_total / day_count, 1)
         qa_only_avg_per_engineer = round(qa_only_total / active_count, 1) if active_count else 0
 
-        return {
+        result = {
             "period": label,
             "dateRange": f"{start_date} to {end_date}",
             "total": qa_only_total,  # QA only (DE + Non-DE, no sorting)
@@ -759,6 +779,7 @@ async def qa_insights(period: str = "this_week"):
             "avgPerEngineer": qa_only_avg_per_engineer,
             "projection": projection,
         }
+        return _set_cached_response(cache_key, result)
     except Exception as e:
         print(f"QA insights error: {e}")
         return {"error": "Failed to compute QA insights"}
@@ -770,13 +791,19 @@ async def qa_trends(period: str = "this_week"):
         import qa_export
         today = datetime.now().date()
 
+        cache_key = f"qa_trends:{period}"
+        cached = _get_cached_response(cache_key)
+        if cached is not None:
+            return cached
+
         if period == "today":
             hourly = qa_export.get_qa_hourly_totals(today)
-            return {
+            result = {
                 "period": "Today",
                 "granularity": "hour",
                 "series": hourly
             }
+            return _set_cached_response(cache_key, result)
 
         if period == "all_time":
             min_date, max_date = qa_export.get_qa_data_bounds()
@@ -792,11 +819,12 @@ async def qa_trends(period: str = "this_week"):
             start_date, end_date, label = qa_export.get_week_dates(period)
 
         daily = qa_export.get_qa_daily_totals_range(start_date, end_date)
-        return {
+        result = {
             "period": label,
             "granularity": "day",
             "series": daily
         }
+        return _set_cached_response(cache_key, result)
     except Exception as e:
         print(f"QA trends error: {e}")
         return {"error": "Failed to compute QA trends"}
@@ -855,6 +883,10 @@ async def qa_engineer_insights(period: str = "this_week", limit: int = 10):
     """Return per-engineer averages and trends for QA totals."""
     try:
         import qa_export
+        cache_key = f"qa_engineers:{period}:{limit}"
+        cached = _get_cached_response(cache_key)
+        if cached is not None:
+            return cached
         start_date, end_date, label = qa_export.get_week_dates(period)
         day_count = max(1, (end_date - start_date).days + 1)
 
@@ -885,7 +917,8 @@ async def qa_engineer_insights(period: str = "this_week", limit: int = 10):
             })
 
         results.sort(key=lambda x: x["total"], reverse=True)
-        return {"period": label, "data": results[:max(1, limit)]}
+        result = {"period": label, "data": results[:max(1, limit)]}
+        return _set_cached_response(cache_key, result)
     except Exception as e:
         print(f"QA engineer insights error: {e}")
         return {"error": "Failed to compute QA engineer insights"}
@@ -1744,6 +1777,11 @@ async def get_qa_dashboard_data(period: str = "this_week"):
     try:
         import qa_export
         from datetime import date, timedelta
+
+        cache_key = f"qa_dashboard:{period}"
+        cached = _get_cached_response(cache_key)
+        if cached is not None:
+            return cached
         
         # Get date range
         start_date, end_date, period_label = qa_export.get_week_dates(period)
@@ -1755,7 +1793,7 @@ async def get_qa_dashboard_data(period: str = "this_week"):
         
         if not qa_data and not de_qa_data and not non_de_qa_data:
             min_date, max_date = qa_export.get_qa_data_bounds()
-            return {
+            result = {
                 "period": period_label,
                 "dateRange": f"{start_date} to {end_date}",
                 "technicians": [],
@@ -1775,6 +1813,7 @@ async def get_qa_dashboard_data(period: str = "this_week"):
                     "maxDate": str(max_date) if max_date else None
                 }
             }
+            return _set_cached_response(cache_key, result)
         
         # Calculate summary metrics (excluding unassigned)
         total_scans = sum(stats['total'] for name, stats in qa_data.items() if name.lower() != '(unassigned)') if qa_data else 0
@@ -1871,7 +1910,7 @@ async def get_qa_dashboard_data(period: str = "this_week"):
         # Get all-time daily record
         daily_record = qa_export.get_all_time_daily_record()
         
-        return {
+        result = {
             "period": period_label,
             "dateRange": f"{start_date.isoformat()} to {end_date.isoformat()}",
             "technicians": technicians,
@@ -1888,6 +1927,7 @@ async def get_qa_dashboard_data(period: str = "this_week"):
             },
             "topPerformers": top_performers
         }
+        return _set_cached_response(cache_key, result)
     
     except Exception as e:
         print(f"QA dashboard data error: {e}")

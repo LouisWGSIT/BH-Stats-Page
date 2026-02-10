@@ -927,6 +927,27 @@ def _parse_timestamp(value: str | datetime | date | None, fallback_date: str | N
             return None
     return None
 
+def _format_timestamp(value: str | datetime | date | None) -> str | None:
+    parsed = _parse_timestamp(value)
+    if not parsed:
+        return str(value) if value is not None else None
+    return parsed.strftime("%Y-%m-%d %H:%M:%S")
+
+def _format_drive_size_gb(value: object) -> str | None:
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except Exception:
+        return None
+    if numeric <= 0:
+        return None
+    if numeric >= 1_000_000_000:
+        gb = numeric / 1_000_000_000
+    else:
+        gb = numeric
+    return f"{gb:.1f}"
+
 def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str, object]]:
     """Return device history entries (erasure + sorting) between start_date and end_date."""
     history: List[Dict[str, object]] = []
@@ -1273,14 +1294,22 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
     sheets["Daily Breakdown"] = sheet_data
 
     # ============= SHEET 7: Device History =============
-    sheet_data = []
-    sheet_data.append(["DEVICE HISTORY - " + period_label.upper()])
-    sheet_data.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
-    sheet_data.append([])
-    sheet_data.append([
+    history_rows = get_device_history_range(start_date, end_date)
+    grouped_history: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    for row in history_rows:
+        device_key = row.get("serial") or row.get("stockid") or "unknown"
+        grouped_history[str(device_key)].append(row)
+
+    sheet_rows: List[List] = []
+    sheet_groups: List[Tuple[int, int, int, bool]] = []
+
+    sheet_rows.append(["DEVICE HISTORY - " + period_label.upper()])
+    sheet_rows.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_rows.append([])
+    sheet_rows.append([
         "Note: Device-level QA (DE/Non-DE) is not available in audit_master. This log includes erasure + sorting scans only."
     ])
-    sheet_data.append([])
+    sheet_rows.append([])
 
     header = [
         "Timestamp",
@@ -1289,34 +1318,45 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
         "Serial",
         "User/Initials",
         "Location",
-        "Device Type",
         "Manufacturer",
         "Model",
+        "Device Type",
         "Drive Size (GB)",
-        "Drive Type",
-        "Drive Count",
         "Source"
     ]
-    sheet_data.append(header)
 
-    history_rows = get_device_history_range(start_date, end_date)
-    for row in history_rows:
-        sheet_data.append([
-            row.get("timestamp"),
-            row.get("stage"),
-            row.get("stockid"),
-            row.get("serial"),
-            row.get("user"),
-            row.get("location"),
-            row.get("device_type"),
-            row.get("manufacturer"),
-            row.get("model"),
-            row.get("drive_size"),
-            row.get("drive_type"),
-            row.get("drive_count"),
-            row.get("source")
-        ])
+    for device_key in sorted(grouped_history.keys()):
+        entries = grouped_history[device_key]
+        entries.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
 
-    sheets["Device History"] = sheet_data
+        sheet_rows.append([f"DEVICE: {device_key}"])
+        sheet_rows.append(header)
+        data_start = len(sheet_rows) + 1
+
+        for row in entries:
+            sheet_rows.append([
+                _format_timestamp(row.get("timestamp")),
+                row.get("stage"),
+                row.get("stockid"),
+                row.get("serial"),
+                row.get("user"),
+                row.get("location"),
+                row.get("manufacturer"),
+                row.get("model"),
+                row.get("device_type"),
+                _format_drive_size_gb(row.get("drive_size")),
+                row.get("source")
+            ])
+
+        data_end = len(sheet_rows)
+        if data_end >= data_start:
+            sheet_groups.append((data_start, data_end, 1, True))
+
+        sheet_rows.append([])
+
+    sheets["Device History"] = {
+        "rows": sheet_rows,
+        "groups": sheet_groups
+    }
     
     return sheets
