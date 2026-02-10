@@ -192,6 +192,10 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 ## Change Log
 - 2026-02-10: Fixed Power BI daily-stats and engineer-stats endpoints to include today's live data from erasures table (not just daily_stats/engineer_stats tables which only sync periodically).
 - 2026-02-09: Power BI semantic model created with 5 tables (Daily Stats, Engineer Stats, Erasure Events, QA Daily, QA Engineer) and 20 measures. Date table linked. **BLOCKED**: Daily Stats numeric columns stored as Text type; need to convert erased, booked_in, qa, qaApp, deQa, nonDeQa, qaTotal to Whole Number in Power Query before visuals work.
+- 2026-02-10: Separated QA totals from Sorting (qaApp) across all endpoints and UI cards. QA cards now show DE + Non-DE only; Sorting tracked separately.
+- 2026-02-10: Fixed Power BI dynamic date range in M queries (removed hard-coded end_date). Now uses current year (Jan 1 to today).
+- 2026-02-10: Fixed Power BI daily-stats and engineer-stats to always refresh today's data from live erasures table (overwrite stale rows).
+- 2026-02-10: Fixed Power BI daily-stats endpoint to include today's data even when daily_stats table has stale rows.
 - 2026-02-09: Power BI API key configured (87786640-8358-4aad-a092-005a47fb92a8) in Render env vars.
 - 2026-02-09: Added persistent Power BI API key and QA columns on daily-stats.
 - 2026-02-09: Added Power BI API key bypass and QA Power BI endpoints.
@@ -210,8 +214,10 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 - **Tables**: Daily Stats, Engineer Stats, Erasure Events, QA Daily, QA Engineer (all loaded from API endpoints).
 - **Date Table**: Created with Day, Month, Month Name, Year columns. Relationships set (1:* from Date to each fact table).
 - **Measures**: 20 core measures for Erasure (Today, MTD, Rolling 7D, Target Achievement), QA (Today, MTD, Rolling 7D, DE %, Non-DE %), and Targets (Daily Target, Days Elapsed MTD, MTD Target).
-- **BLOCKER**: Daily Stats numeric columns (erased, booked_in, qa, qaApp, deQa, nonDeQa, qaTotal) are **Text type** in the loaded data. Power Query type conversion needed before any visuals will render.
-- **Next**: Fix data types in Power Query, then build Exec dashboard with 4 KPI cards (Today Erased, MTD Erased, Rolling 7D Avg, Target Achievement %), QA KPIs, QA split donut, trend lines, and engineer table.
+- **Data Types**: Fixed in Power Query (erased, booked_in, qa, qaApp, deQa, nonDeQa, qaTotal all converted to Whole Number).
+- **Date Range**: Dynamic M query using Jan 1 of current year to today.
+- **QA vs Sorting**: qaTotal = DE + Non-DE only (QA work); qaApp = Sorting scans (separate).
+- **Next**: Build Exec dashboard with KPI cards, QA split donut, trend lines, and engineer table.
 
 ## Power BI Exec Dashboard Plan
 1. **Row 1**: Today Erased, MTD Erased, Rolling 7D Avg (Erased), Target Achievement %
