@@ -1041,6 +1041,8 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
                 "drive_size": None,
                 "drive_type": None,
                 "drive_count": None,
+                "destination": None,
+                "pallet_id": None,
                 "source": "audit_master",
             })
 
@@ -1051,17 +1053,19 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
                 placeholders = ",".join(["%s"] * len(unique_ids))
                 cursor.execute(
                     f"""
-                    SELECT stockid, serial, manufacturer, model
-                    FROM ITAD_asset_info_blancco
+                    SELECT stockid, serialnumber, manufacturer, description, `condition`, COALESCE(pallet_id, palletID)
+                    FROM ITAD_asset_info
                     WHERE stockid IN ({placeholders})
                     """,
                     unique_ids
                 )
-                for stockid, serial, manufacturer, model in cursor.fetchall():
+                for stockid, serialnumber, manufacturer, description, condition, pallet_id in cursor.fetchall():
                     asset_map[str(stockid)] = {
-                        "serial": serial,
+                        "serial": serialnumber,
                         "manufacturer": manufacturer,
-                        "model": model,
+                        "model": description,
+                        "destination": condition,
+                        "pallet_id": pallet_id,
                     }
 
         for event in events:
@@ -1072,6 +1076,8 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
                     event["serial"] = asset.get("serial")
                 event["manufacturer"] = asset.get("manufacturer")
                 event["model"] = asset.get("model")
+                event["destination"] = asset.get("destination")
+                event["pallet_id"] = asset.get("pallet_id")
 
         cursor.close()
         conn.close()
@@ -1124,6 +1130,8 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
                     "drive_size": None,
                     "drive_type": None,
                     "drive_count": None,
+                    "destination": None,
+                    "pallet_id": None,
                     "source": "ITAD_QA_App",
                     "_sort_key": sort_dt
                 })
@@ -1163,6 +1171,8 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
                 "drive_size": drive_size,
                 "drive_type": drive_type,
                 "drive_count": drive_count,
+                "destination": None,
+                "pallet_id": None,
                 "source": "erasures",
                 "_sort_key": sort_dt
             })
@@ -1170,6 +1180,40 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
         sqlite_conn.close()
     except Exception as e:
         print(f"[QA Export] Error fetching device erasure history: {e}")
+
+    try:
+        asset_conn = get_mariadb_connection()
+        if asset_conn:
+            cursor = asset_conn.cursor()
+            stock_ids = [str(item.get("stockid")) for item in history if item.get("stockid")]
+            unique_ids = list({s for s in stock_ids if s})
+            if unique_ids:
+                placeholders = ",".join(["%s"] * len(unique_ids))
+                cursor.execute(
+                    f"""
+                    SELECT stockid, `condition`, COALESCE(pallet_id, palletID)
+                    FROM ITAD_asset_info
+                    WHERE stockid IN ({placeholders})
+                    """,
+                    unique_ids
+                )
+                asset_map = {
+                    str(stockid): {
+                        "destination": condition,
+                        "pallet_id": pallet_id
+                    }
+                    for stockid, condition, pallet_id in cursor.fetchall()
+                }
+                for item in history:
+                    stock_id = item.get("stockid")
+                    if stock_id and str(stock_id) in asset_map:
+                        asset = asset_map[str(stock_id)]
+                        item["destination"] = asset.get("destination")
+                        item["pallet_id"] = asset.get("pallet_id")
+            cursor.close()
+            asset_conn.close()
+    except Exception as e:
+        print(f"[QA Export] Error fetching destination/pallet data: {e}")
 
     history.sort(key=lambda item: item.get("_sort_key") or datetime.min)
     for item in history:
@@ -1459,6 +1503,8 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
         "Model",
         "Device Type",
         "Drive Size (GB)",
+        "Destination",
+        "Pallet ID",
         "Source"
     ]
 
@@ -1511,6 +1557,8 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
                     row.get("model"),
                     row.get("device_type"),
                     _format_drive_size_gb(row.get("drive_size")),
+                    row.get("destination"),
+                    _normalize_id_value(row.get("pallet_id")),
                     row.get("source")
                 ])
 
@@ -1563,6 +1611,8 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
         "Model",
         "Device Type",
         "Drive Size (GB)",
+        "Destination",
+        "Pallet ID",
         "Source"
     ]
 
@@ -1589,6 +1639,8 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
                 row.get("model"),
                 row.get("device_type"),
                 _format_drive_size_gb(row.get("drive_size")),
+                row.get("destination"),
+                _normalize_id_value(row.get("pallet_id")),
                 row.get("source")
             ])
 
