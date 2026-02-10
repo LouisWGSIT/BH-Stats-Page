@@ -1407,5 +1407,76 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
         "rows": sheet_rows,
         "groups": sheet_groups
     }
+
+    # ============= SHEET 8: Device Log by Engineer =============
+    history_rows = [
+        row for row in get_device_history_range(start_date, end_date)
+        if row.get("stage") != "Erasure"
+    ]
+    grouped_by_engineer: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    for row in history_rows:
+        engineer_key = row.get("user") or "(unassigned)"
+        grouped_by_engineer[str(engineer_key)].append(row)
+
+    sheet_rows = []
+    sheet_groups = []
+
+    sheet_rows.append(["DEVICE LOG BY ENGINEER - " + period_label.upper()])
+    sheet_rows.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_rows.append([])
+    sheet_rows.append([
+        "Note: Device-level QA (DE/Non-DE) is not available in audit_master. This log includes sorting scans only."
+    ])
+    sheet_rows.append([])
+
+    header = [
+        "Timestamp",
+        "Stage",
+        "Stock ID",
+        "Serial",
+        "Location",
+        "Manufacturer",
+        "Model",
+        "Device Type",
+        "Drive Size (GB)",
+        "Source"
+    ]
+
+    for engineer_key in sorted(grouped_by_engineer.keys()):
+        entries = grouped_by_engineer[engineer_key]
+        entries.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
+
+        sheet_rows.append([f"ENGINEER: {engineer_key}"])
+        sheet_rows.append(header)
+        data_start = len(sheet_rows) + 1
+
+        for row in entries:
+            stock_value = row.get("stockid")
+            serial_value = row.get("serial")
+            if stock_value is not None and serial_value is not None and str(stock_value).strip() == str(serial_value).strip():
+                stock_value = None
+            sheet_rows.append([
+                _format_timestamp(row.get("timestamp")),
+                row.get("stage"),
+                _normalize_id_value(stock_value),
+                _normalize_id_value(serial_value),
+                row.get("location"),
+                row.get("manufacturer"),
+                row.get("model"),
+                row.get("device_type"),
+                _format_drive_size_gb(row.get("drive_size")),
+                row.get("source")
+            ])
+
+        data_end = len(sheet_rows)
+        if data_end >= data_start:
+            sheet_groups.append((data_start, data_end, 1, True))
+
+        sheet_rows.append([])
+
+    sheets["Device Log by Engineer"] = {
+        "rows": sheet_rows,
+        "groups": sheet_groups
+    }
     
     return sheets
