@@ -1723,6 +1723,8 @@ async def export_engineer_deepdive(request: Request, period: str = "this_week"):
             "last_month",
             "this_year",
             "last_year",
+            "last_year_h1",
+            "last_year_h2",
             "last_available",
         ]
         if period not in valid_periods:

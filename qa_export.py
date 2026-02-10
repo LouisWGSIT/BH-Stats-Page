@@ -71,6 +71,20 @@ def get_week_dates(period: str) -> Tuple[date, date, str]:
         end = date(last_year, 12, 31)
         label = "Last Year"
         return start, end, label
+
+    if period == "last_year_h1":
+        last_year = today.year - 1
+        start = date(last_year, 1, 1)
+        end = date(last_year, 6, 30)
+        label = "Last Year (Jan-Jun)"
+        return start, end, label
+
+    if period == "last_year_h2":
+        last_year = today.year - 1
+        start = date(last_year, 7, 1)
+        end = date(last_year, 12, 31)
+        label = "Last Year (Jul-Dec)"
+        return start, end, label
     
     if period == "this_week":
         start = today - timedelta(days=today.weekday())
@@ -1834,7 +1848,7 @@ def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
     sheets["Daily Breakdown"] = sheet_data
 
     # ============= SHEET 7/8: Device History + Log by Engineer =============
-    if period in ["this_year", "last_year"]:
+    if period in ["this_year", "last_year", "last_year_h1", "last_year_h2"]:
         for month_start, month_end in _iter_month_ranges(start_date, end_date):
             month_label = month_start.strftime("%b %Y")
             month_suffix = month_start.strftime("%Y-%m")
