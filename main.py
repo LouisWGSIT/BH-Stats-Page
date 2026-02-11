@@ -2281,7 +2281,7 @@ async def get_bottleneck_details(
                         a.stage_current, a.last_update
                     FROM ITAD_asset_info a
                     WHERE a.roller_location = %s
-                      AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                     ORDER BY a.received_date DESC
                     LIMIT %s
                 """, (value, limit))
@@ -2298,7 +2298,7 @@ async def get_bottleneck_details(
                     WHERE a.roller_location IS NOT NULL 
                       AND a.roller_location != ''
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
-                      AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
                     ORDER BY a.received_date DESC
                     LIMIT %s
@@ -2315,7 +2315,7 @@ async def get_bottleneck_details(
                     WHERE a.roller_location IS NOT NULL 
                       AND a.roller_location != ''
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
-                      AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
                     ORDER BY a.de_completed_date DESC
                     LIMIT %s
@@ -2343,14 +2343,14 @@ async def get_bottleneck_details(
             if category == "roller_station" and value:
                 cursor.execute("""
                     SELECT COUNT(*) FROM ITAD_asset_info 
-                    WHERE roller_location = %s AND condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                    WHERE roller_location = %s AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                 """, (value,))
             elif category == "roller_pending":
                 cursor.execute("""
                     SELECT COUNT(*) FROM ITAD_asset_info 
                     WHERE roller_location IS NOT NULL AND roller_location != ''
                       AND LOWER(roller_location) LIKE '%%roller%%'
-                      AND condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND (de_complete IS NULL OR LOWER(de_complete) NOT IN ('yes', 'true', '1'))
                 """)
             else:
@@ -2358,7 +2358,7 @@ async def get_bottleneck_details(
                     SELECT COUNT(*) FROM ITAD_asset_info 
                     WHERE roller_location IS NOT NULL AND roller_location != ''
                       AND LOWER(roller_location) LIKE '%%roller%%'
-                      AND condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND LOWER(COALESCE(de_complete, '')) IN ('yes', 'true', '1')
                 """)
             

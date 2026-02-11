@@ -1415,7 +1415,7 @@ def get_unpalleted_devices(start_date: date, end_date: date) -> List[Dict[str, o
             LEFT JOIN ITAD_QA_App q ON q.stockid = a.stockid
             WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '')
               AND a.received_date >= %s AND a.received_date <= %s
-              AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+              AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
             ORDER BY a.received_date DESC
         """, (start_date.isoformat(), end_date.isoformat()))
         
@@ -1476,7 +1476,7 @@ def get_roller_queue_status() -> Dict[str, object]:
             WHERE roller_location IS NOT NULL 
               AND roller_location != ''
               AND LOWER(roller_location) LIKE '%roller%'
-              AND condition NOT IN ('Disposed', 'Shipped', 'Sold')
+              AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
             GROUP BY roller_location, de_complete
             ORDER BY roller_location, de_complete
         """)
@@ -1513,7 +1513,7 @@ def get_roller_queue_status() -> Dict[str, object]:
             WHERE a.roller_location IS NOT NULL 
               AND a.roller_location != ''
               AND LOWER(a.roller_location) LIKE '%roller%'
-              AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+              AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
               AND LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
               AND q.stockid IS NULL
         """)
@@ -1562,7 +1562,7 @@ def get_stale_devices(days_threshold: int = 7) -> List[Dict[str, object]]:
             WHERE a.last_update IS NOT NULL
               AND a.last_update < %s
               AND (a.process_complete IS NULL OR a.process_complete != 'Yes')
-              AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+              AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
             ORDER BY a.last_update ASC
             LIMIT 500
         """, (cutoff_date.isoformat(),))
