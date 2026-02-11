@@ -1463,15 +1463,12 @@ def normalize_roller_name(roller_location: str) -> str:
     return name
 
 
-def get_roller_queue_status(start_date: date = None, end_date: date = None) -> Dict[str, object]:
-    """Get current status of devices assigned to rollers within a date range.
+def get_roller_queue_status() -> Dict[str, object]:
+    """Get CURRENT status of all devices assigned to rollers.
     
     Returns breakdown of devices per roller station and their erasure status.
-    This provides accurate roller queue tracking independent of pallet assignments.
-    
-    Args:
-        start_date: Filter devices received on or after this date (optional)
-        end_date: Filter devices received on or before this date (optional)
+    This shows the current physical state of rollers - no date filtering,
+    as devices may have been received long ago but still be on rollers.
     """
     conn = get_mariadb_connection()
     if not conn:
@@ -1485,15 +1482,8 @@ def get_roller_queue_status(start_date: date = None, end_date: date = None) -> D
     try:
         cursor = conn.cursor()
         
-        # Build date filter clause
-        date_filter = ""
-        params = []
-        if start_date and end_date:
-            date_filter = "AND received_date >= %s AND received_date <= %s"
-            params = [start_date.isoformat(), end_date.isoformat()]
-        
-        # Get devices currently assigned to a roller location
-        query = f"""
+        # Get ALL devices currently assigned to a roller location (no date filter)
+        cursor.execute("""
             SELECT 
                 roller_location,
                 de_complete,
@@ -1503,11 +1493,9 @@ def get_roller_queue_status(start_date: date = None, end_date: date = None) -> D
               AND roller_location != ''
               AND LOWER(roller_location) LIKE '%roller%'
               AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-              {date_filter}
             GROUP BY roller_location, de_complete
             ORDER BY roller_location, de_complete
-        """
-        cursor.execute(query, params)
+        """)
         
         roller_data = {}
         for row in cursor.fetchall():
@@ -1537,7 +1525,7 @@ def get_roller_queue_status(start_date: date = None, end_date: date = None) -> D
         
         # Also get devices that were erased but not yet QA scanned (on roller, de_complete=Yes, no QA record after erasure)
         # This is a more complex query - devices on roller with de_complete that haven't had a subsequent QA scan
-        waiting_query = f"""
+        cursor.execute("""
             SELECT COUNT(DISTINCT a.stockid)
             FROM ITAD_asset_info a
             LEFT JOIN ITAD_QA_App q ON q.stockid = a.stockid AND q.added_date > a.de_completed_date
@@ -1547,9 +1535,7 @@ def get_roller_queue_status(start_date: date = None, end_date: date = None) -> D
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
               AND LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
               AND q.stockid IS NULL
-              {date_filter.replace('received_date', 'a.received_date') if date_filter else ''}
-        """
-        cursor.execute(waiting_query, params)
+        """)
         waiting_qa_row = cursor.fetchone()
         result["totals"]["waiting_qa"] = waiting_qa_row[0] if waiting_qa_row else 0
         

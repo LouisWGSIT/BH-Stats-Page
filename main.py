@@ -2192,8 +2192,8 @@ def _build_bottleneck_snapshot(days: int = 7, destination: str = None, limit_eng
                 "reason": f"High volume of unpalleted devices ({item['missing_pallet_count']} devices, {int(share*100)}% of total)",
             })
 
-    # Get accurate roller queue status (independent of unpalleted query)
-    roller_status = qa_export.get_roller_queue_status(start_date=start_date, end_date=end_date)
+    # Get accurate roller queue status (shows CURRENT state of all rollers, no date filter)
+    roller_status = qa_export.get_roller_queue_status()
     
     return {
         "lookback_days": days,
@@ -2263,21 +2263,17 @@ async def get_bottleneck_details(
         }
         
         if category == "roller_pending" or category == "roller_erased" or category == "roller_station":
-            # Query roller devices directly
+            # Query roller devices directly - NO date filtering (shows current state of rollers)
             conn = qa_export.get_mariadb_connection()
             if not conn:
                 raise HTTPException(status_code=500, detail="Database connection failed")
             
             cursor = conn.cursor()
             
-            # Build date filter for roller queries
-            date_clause = "AND a.received_date >= %s AND a.received_date <= %s"
-            date_params = [start_date.isoformat(), end_date.isoformat()]
-            
             if category == "roller_station" and value:
                 # Specific roller station - match normalized name (e.g., "IA-ROLLER1" matches "08:IA-ROLLER1")
                 # Use LIKE to match both prefixed and non-prefixed versions
-                cursor.execute(f"""
+                cursor.execute("""
                     SELECT 
                         a.stockid, a.serialnumber, a.manufacturer, a.description,
                         a.condition, a.received_date, a.roller_location,
@@ -2287,13 +2283,12 @@ async def get_bottleneck_details(
                     FROM ITAD_asset_info a
                     WHERE (a.roller_location = %s OR a.roller_location LIKE %s)
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      {date_clause}
                     ORDER BY a.received_date DESC
                     LIMIT %s
-                """, (value, f"%:{value}", *date_params, limit))
+                """, (value, f"%:{value}", limit))
             elif category == "roller_pending":
                 # Devices awaiting erasure
-                cursor.execute(f"""
+                cursor.execute("""
                     SELECT 
                         a.stockid, a.serialnumber, a.manufacturer, a.description,
                         a.condition, a.received_date, a.roller_location,
@@ -2306,12 +2301,11 @@ async def get_bottleneck_details(
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
-                      {date_clause}
                     ORDER BY a.received_date DESC
                     LIMIT %s
-                """, (*date_params, limit))
+                """, (limit,))
             else:  # roller_erased
-                cursor.execute(f"""
+                cursor.execute("""
                     SELECT 
                         a.stockid, a.serialnumber, a.manufacturer, a.description,
                         a.condition, a.received_date, a.roller_location,
@@ -2324,10 +2318,9 @@ async def get_bottleneck_details(
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
-                      {date_clause}
                     ORDER BY a.de_completed_date DESC
                     LIMIT %s
-                """, (*date_params, limit))
+                """, (limit,))
             
             devices = []
             for row in cursor.fetchall():
@@ -2347,32 +2340,29 @@ async def get_bottleneck_details(
                     "last_update": str(row[12]) if row[12] else None,
                 })
             
-            # Get total count
+            # Get total count (no date filtering for rollers)
             if category == "roller_station" and value:
-                cursor.execute(f"""
+                cursor.execute("""
                     SELECT COUNT(*) FROM ITAD_asset_info 
                     WHERE (roller_location = %s OR roller_location LIKE %s)
                       AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND received_date >= %s AND received_date <= %s
-                """, (value, f"%:{value}", *date_params))
+                """, (value, f"%:{value}"))
             elif category == "roller_pending":
-                cursor.execute(f"""
+                cursor.execute("""
                     SELECT COUNT(*) FROM ITAD_asset_info 
                     WHERE roller_location IS NOT NULL AND roller_location != ''
                       AND LOWER(roller_location) LIKE '%%roller%%'
                       AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND (de_complete IS NULL OR LOWER(de_complete) NOT IN ('yes', 'true', '1'))
-                      AND received_date >= %s AND received_date <= %s
-                """, date_params)
+                """)
             else:
-                cursor.execute(f"""
+                cursor.execute("""
                     SELECT COUNT(*) FROM ITAD_asset_info 
                     WHERE roller_location IS NOT NULL AND roller_location != ''
                       AND LOWER(roller_location) LIKE '%%roller%%'
                       AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND LOWER(COALESCE(de_complete, '')) IN ('yes', 'true', '1')
-                      AND received_date >= %s AND received_date <= %s
-                """, date_params)
+                """)
             
             total = cursor.fetchone()[0]
             cursor.close()
