@@ -1372,7 +1372,13 @@ def _iter_month_ranges(start_date: date, end_date: date) -> List[Tuple[date, dat
 
 
 def _build_device_history_sheet(start_date: date, end_date: date, period_label: str) -> Dict[str, object]:
+    # Combine ALL event sources: Sorting, Erasure, AND QA (Data Bearing + Non-Data Bearing)
     history_rows = get_device_history_range(start_date, end_date)
+    history_rows.extend(get_qa_device_events_range(start_date, end_date))
+    
+    # Sort ALL entries chronologically by timestamp
+    history_rows.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
+    
     grouped_by_date: Dict[str, List[Dict[str, object]]] = defaultdict(list)
     for row in history_rows:
         ts = _parse_timestamp(row.get("timestamp"))
@@ -1386,7 +1392,7 @@ def _build_device_history_sheet(start_date: date, end_date: date, period_label: 
     sheet_rows.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
     sheet_rows.append([])
     sheet_rows.append([
-        "Note: Device-level QA (DE/Non-DE) is not available in audit_master. This log includes erasure + sorting scans only."
+        "Complete device history: Sorting scans, Erasure events, and QA checks (Data Bearing + Non-Data Bearing). Sorted chronologically."
     ])
     sheet_rows.append([])
 

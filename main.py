@@ -1754,6 +1754,189 @@ async def export_engineer_deepdive(request: Request, period: str = "this_week"):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/device-lookup/{stock_id}")
+async def device_lookup(stock_id: str, request: Request):
+    """Search for a device across all data sources to trace its journey (manager only)"""
+    require_manager_or_admin(request)
+    
+    results = {
+        "stock_id": stock_id,
+        "found_in": [],
+        "timeline": [],
+        "asset_info": None,
+        "pallet_info": None,
+        "last_known_user": None,
+        "last_known_location": None,
+    }
+    
+    try:
+        import qa_export
+        conn = qa_export.get_mariadb_connection()
+        if not conn:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        
+        cursor = conn.cursor()
+        
+        # 1. Check ITAD_asset_info for asset details
+        cursor.execute("""
+            SELECT stockid, serialnumber, manufacturer, description, `condition`, 
+                   COALESCE(pallet_id, palletID) as pallet_id, added_date, status
+            FROM ITAD_asset_info 
+            WHERE stockid = %s OR serialnumber = %s
+        """, (stock_id, stock_id))
+        row = cursor.fetchone()
+        if row:
+            results["found_in"].append("ITAD_asset_info")
+            results["asset_info"] = {
+                "stock_id": row[0],
+                "serial": row[1],
+                "manufacturer": row[2],
+                "model": row[3],
+                "condition": row[4],
+                "pallet_id": row[5],
+                "added_date": str(row[6]) if row[6] else None,
+                "status": row[7],
+            }
+            if row[5]:  # pallet_id
+                results["pallet_info"] = {"pallet_id": row[5]}
+        
+        # 2. Check Stockbypallet for pallet assignment
+        cursor.execute("""
+            SELECT stockid, pallet_id, date_added
+            FROM Stockbypallet
+            WHERE stockid = %s
+        """, (stock_id,))
+        row = cursor.fetchone()
+        if row:
+            results["found_in"].append("Stockbypallet")
+            if not results["pallet_info"]:
+                results["pallet_info"] = {}
+            results["pallet_info"]["pallet_id"] = row[1]
+            results["pallet_info"]["date_added"] = str(row[2]) if row[2] else None
+        
+        # 3. Get pallet details if we have a pallet_id
+        if results.get("pallet_info", {}).get("pallet_id"):
+            pallet_id = results["pallet_info"]["pallet_id"]
+            cursor.execute("""
+                SELECT pallet_id, destination, pallet_location, pallet_status, date_created
+                FROM ITAD_pallet
+                WHERE pallet_id = %s
+            """, (pallet_id,))
+            row = cursor.fetchone()
+            if row:
+                results["pallet_info"].update({
+                    "destination": row[1],
+                    "location": row[2],
+                    "status": row[3],
+                    "date_created": str(row[4]) if row[4] else None,
+                })
+        
+        # 4. Check ITAD_QA_App for sorting scans
+        cursor.execute("""
+            SELECT added_date, username, scanned_location
+            FROM ITAD_QA_App
+            WHERE stockid = %s
+            ORDER BY added_date ASC
+        """, (stock_id,))
+        for row in cursor.fetchall():
+            results["found_in"].append("ITAD_QA_App") if "ITAD_QA_App" not in results["found_in"] else None
+            results["timeline"].append({
+                "timestamp": str(row[0]),
+                "stage": "Sorting",
+                "user": row[1],
+                "location": row[2],
+                "source": "ITAD_QA_App",
+            })
+            results["last_known_user"] = row[1]
+            results["last_known_location"] = row[2]
+        
+        # 5. Check audit_master for QA submissions
+        cursor.execute("""
+            SELECT date_time, audit_type, user_id, log_description, log_description2
+            FROM audit_master
+            WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload', 
+                                 'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+              AND (log_description LIKE %s OR log_description2 LIKE %s)
+            ORDER BY date_time ASC
+        """, (f'%{stock_id}%', f'%{stock_id}%'))
+        for row in cursor.fetchall():
+            results["found_in"].append("audit_master") if "audit_master" not in results["found_in"] else None
+            stage = "QA Data Bearing" if row[1].startswith("DEAPP_") else "QA Non-Data Bearing"
+            results["timeline"].append({
+                "timestamp": str(row[0]),
+                "stage": stage,
+                "user": row[2],
+                "location": None,
+                "source": "audit_master",
+            })
+            results["last_known_user"] = row[2]
+        
+        # 6. Check ITAD_asset_info_blancco for erasure records
+        cursor.execute("""
+            SELECT job_date, stockid, serial, manufacturer, model, job_status
+            FROM ITAD_asset_info_blancco
+            WHERE stockid = %s OR serial = %s
+            ORDER BY job_date ASC
+        """, (stock_id, stock_id))
+        for row in cursor.fetchall():
+            results["found_in"].append("ITAD_asset_info_blancco") if "ITAD_asset_info_blancco" not in results["found_in"] else None
+            results["timeline"].append({
+                "timestamp": str(row[0]) if row[0] else None,
+                "stage": f"Erasure ({row[5]})" if row[5] else "Erasure",
+                "user": None,
+                "location": None,
+                "source": "ITAD_asset_info_blancco",
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        # 7. Check local SQLite erasures table
+        try:
+            import sqlite3
+            sqlite_conn = sqlite3.connect(db.DB_PATH)
+            sqlite_cursor = sqlite_conn.cursor()
+            sqlite_cursor.execute("""
+                SELECT ts, date, initials, device_type, event
+                FROM erasures
+                WHERE system_serial = ? OR disk_serial = ? OR job_id = ?
+                ORDER BY date ASC, ts ASC
+            """, (stock_id, stock_id, stock_id))
+            for row in sqlite_cursor.fetchall():
+                results["found_in"].append("local_erasures") if "local_erasures" not in results["found_in"] else None
+                results["timeline"].append({
+                    "timestamp": row[0] or row[1],
+                    "stage": f"Erasure ({row[4]})",
+                    "user": row[2],
+                    "location": None,
+                    "source": "local_erasures",
+                })
+                results["last_known_user"] = row[2]
+            sqlite_cursor.close()
+            sqlite_conn.close()
+        except Exception as e:
+            print(f"SQLite lookup error: {e}")
+        
+        # Sort timeline chronologically
+        results["timeline"].sort(key=lambda x: x.get("timestamp") or "")
+        
+        # Summary
+        results["total_events"] = len(results["timeline"])
+        results["data_sources_checked"] = [
+            "ITAD_asset_info", "Stockbypallet", "ITAD_pallet", 
+            "ITAD_QA_App", "audit_master", "ITAD_asset_info_blancco", "local_erasures"
+        ]
+        
+        return results
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Device lookup error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/export/qa-stats")
 async def export_qa_stats(
     request: Request, 
