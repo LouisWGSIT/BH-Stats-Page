@@ -1782,7 +1782,7 @@ async def device_lookup(stock_id: str, request: Request):
         # 1. Check ITAD_asset_info for asset details
         cursor.execute("""
             SELECT stockid, serialnumber, manufacturer, description, `condition`, 
-                   COALESCE(pallet_id, palletID) as pallet_id, added_date, status
+                   COALESCE(pallet_id, palletID) as pallet_id, last_update, location
             FROM ITAD_asset_info 
             WHERE stockid = %s OR serialnumber = %s
         """, (stock_id, stock_id))
@@ -1796,11 +1796,13 @@ async def device_lookup(stock_id: str, request: Request):
                 "model": row[3],
                 "condition": row[4],
                 "pallet_id": row[5],
-                "added_date": str(row[6]) if row[6] else None,
-                "status": row[7],
+                "last_update": str(row[6]) if row[6] else None,
+                "location": row[7],
             }
             if row[5]:  # pallet_id
                 results["pallet_info"] = {"pallet_id": row[5]}
+            if row[7]:  # location
+                results["last_known_location"] = row[7]
         
         # 2. Check Stockbypallet for pallet assignment
         cursor.execute("""
