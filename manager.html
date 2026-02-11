@@ -588,15 +588,9 @@
             <div class="section">
                 <h2>🚧 Bottleneck Radar</h2>
                 <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                    Detect clusters of unpalleted devices, engineer trends, and roller queues.
-                    Identifies patterns and flags engineers with high missing pallet rates.
+                    Real-time warehouse state: unpalleted devices, engineer trends, and roller queues.
+                    Shows current bottlenecks at each stage - Awaiting Erasure, QA, Pallet ID.
                 </p>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="bottleneckDays">Lookback (days):</label>
-                        <input type="number" id="bottleneckDays" value="7" min="1" max="60" style="max-width: 120px;">
-                    </div>
-                </div>
                 <button onclick="runBottleneckRadar()">📡 Run Bottleneck Radar</button>
                 <div id="bottleneckResult" class="result"></div>
                 <div id="bottleneckContent" class="stats" style="display: none; margin-top: 20px;"></div>
@@ -777,7 +771,7 @@
                 ? snapshot.destination_counts.map(item => {
                     const isQuarantine = item.destination.toLowerCase().includes('quarantine');
                     const category = isQuarantine ? 'quarantine' : 'destination';
-                    return `<div class="bottleneck-item clickable" onclick="showBottleneckDetails('${category}', '${item.destination.replace(/'/g, "\\'")}', ${days})">
+                    return `<div class="bottleneck-item clickable" onclick="showBottleneckDetails('${category}', '${item.destination.replace(/'/g, "\\'")}')">
                         ${item.destination}: ${item.count}
                         <span class="view-details">→ view</span>
                     </div>`;
@@ -797,7 +791,7 @@
                     const category = isUnassigned ? 'unassigned' : 'engineer';
                     const value = isUnassigned ? '' : item.engineer;
                     
-                    return `<div class="bottleneck-item clickable" onclick="showBottleneckDetails('${category}', '${value.replace(/'/g, "\\'")}', ${days})">
+                    return `<div class="bottleneck-item clickable" onclick="showBottleneckDetails('${category}', '${value.replace(/'/g, "\\'")}')">
                         ${item.engineer}: ${item.missing_pallet_count}${share} ${trendIcon}
                         <span class="view-details">→ view</span>
                     </div>`;
@@ -807,7 +801,7 @@
             // Flagged engineers (clickable)
             const flagged = Array.isArray(snapshot.flagged_engineers) && snapshot.flagged_engineers.length
                 ? snapshot.flagged_engineers.map(item => {
-                    return `<div class="bottleneck-item clickable" style="background:rgba(239,68,68,0.15);" onclick="showBottleneckDetails('engineer', '${item.engineer.replace(/'/g, "\\'")}', ${days})">
+                    return `<div class="bottleneck-item clickable" style="background:rgba(239,68,68,0.15);" onclick="showBottleneckDetails('engineer', '${item.engineer.replace(/'/g, "\\'")}')">
                         ${item.engineer}: ${item.missing_pallet_count} (${Math.round(item.share * 100)}%) - ${item.reason}
                         <span class="view-details">→ view devices</span>
                     </div>`;
@@ -823,7 +817,7 @@
                     const erasureClass = r.awaiting_erasure > 0 ? 'color:#ef4444;font-weight:700;' : '';
                     const qaClass = r.awaiting_qa > 0 ? 'color:#f59e0b;font-weight:700;' : '';
                     const palletClass = r.awaiting_pallet > 0 ? 'color:#3b82f6;font-weight:700;' : '';
-                    return `<div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_station', '${r.roller.replace(/'/g, "\\'")}', ${days})">
+                    return `<div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_station', '${r.roller.replace(/'/g, "\\'")}')">
                         <strong>${r.roller}:</strong> ${r.total} total
                         <span style="margin-left:8px;${erasureClass}">${r.awaiting_erasure} erasure</span>
                         <span style="margin-left:4px;${qaClass}">${r.awaiting_qa} QA</span>
@@ -859,19 +853,19 @@
                     </div>
                     <div class="bottleneck-grid">
                         <div class="bottleneck-item"><strong>Lookback:</strong> ${days} days</div>
-                        <div class="bottleneck-item clickable" onclick="showBottleneckDetails('unpalleted', '', ${days})">
+                        <div class="bottleneck-item clickable" onclick="showBottleneckDetails('unpalleted', '')">
                             <strong>Total unpalleted:</strong> ${snapshot.total_unpalleted || 0}
                             <span class="view-details">→ view all</span>
                         </div>
-                        <div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_pending', '', ${days})">
+                        <div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_pending', '')">
                             <strong>Awaiting erasure:</strong> <span style="color:${rollerQueue.awaiting_erasure > 0 ? '#ef4444' : 'inherit'};font-weight:${rollerQueue.awaiting_erasure > 0 ? '700' : 'normal'};">${rollerQueue.awaiting_erasure || 0}</span>
                             <span class="view-details">→ view</span>
                         </div>
-                        <div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_awaiting_qa', '', ${days})">
+                        <div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_awaiting_qa', '')">
                             <strong>Awaiting QA:</strong> <span style="color:${rollerQueue.awaiting_qa > 0 ? '#f59e0b' : 'inherit'};font-weight:${rollerQueue.awaiting_qa > 0 ? '700' : 'normal'};">${rollerQueue.awaiting_qa || 0}</span>
                             <span class="view-details">→ view</span>
                         </div>
-                        <div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_awaiting_pallet', '', ${days})">
+                        <div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_awaiting_pallet', '')">
                             <strong>Awaiting pallet:</strong> <span style="color:${rollerQueue.awaiting_pallet > 0 ? '#3b82f6' : 'inherit'};font-weight:${rollerQueue.awaiting_pallet > 0 ? '700' : 'normal'};">${rollerQueue.awaiting_pallet || 0}</span>
                             <span class="view-details">→ view</span>
                         </div>
@@ -1008,18 +1002,16 @@
         }
 
         async function runBottleneckRadar() {
-            const daysValue = parseInt(document.getElementById('bottleneckDays').value || '7', 10);
-            const days = Number.isFinite(daysValue) ? Math.min(Math.max(daysValue, 1), 60) : 7;
             const resultDiv = document.getElementById('bottleneckResult');
             const contentDiv = document.getElementById('bottleneckContent');
 
             resultDiv.className = 'result info';
             resultDiv.style.display = 'block';
-            resultDiv.innerHTML = '<p>📡 Running bottleneck analysis...</p>';
+            resultDiv.innerHTML = '<p>📡 Scanning warehouse for bottlenecks...</p>';
             contentDiv.style.display = 'none';
 
             try {
-                const response = await fetch(`/api/bottlenecks?days=${days}`, {
+                const response = await fetch('/api/bottlenecks', {
                     headers: getAuthHeaders(false)
                 });
                 const data = await response.json();
@@ -1029,7 +1021,7 @@
                 }
 
                 resultDiv.style.display = 'none';
-                contentDiv.innerHTML = renderBottleneck(data, 'Bottleneck Radar (All Destinations)');
+                contentDiv.innerHTML = renderBottleneck(data, 'Bottleneck Radar (Current Warehouse State)');
                 contentDiv.style.display = 'block';
             } catch (error) {
                 showResult(resultDiv, 'error', '❌ Error', error.message);
@@ -1124,7 +1116,7 @@
             return titles[category] || `${category}: ${value}`;
         }
 
-        async function showBottleneckDetails(category, value, days) {
+        async function showBottleneckDetails(category, value) {
             const modal = document.getElementById('detailsModal');
             const headerTitle = document.getElementById('detailsTitle');
             const statsDiv = document.getElementById('detailsStats');
@@ -1147,7 +1139,6 @@
             try {
                 const params = new URLSearchParams({
                     category: category,
-                    days: days,
                     limit: 200
                 });
                 if (value) params.set('value', value);
@@ -1164,6 +1155,7 @@
                 const data = await response.json();
                 
                 // Render stats
+                const lastUpdated = data.snapshot_timestamp ? new Date(data.snapshot_timestamp).toLocaleString() : 'Current';
                 statsDiv.innerHTML = `
                     <div class="details-stat">
                         <div class="details-stat-value">${data.total_count}</div>
@@ -1174,8 +1166,8 @@
                         <div class="details-stat-label">Showing</div>
                     </div>
                     <div class="details-stat">
-                        <div class="details-stat-value">${data.lookback_days}</div>
-                        <div class="details-stat-label">Days Lookback</div>
+                        <div class="details-stat-value">${lastUpdated}</div>
+                        <div class="details-stat-label">Snapshot</div>
                     </div>
                 `;
                 
