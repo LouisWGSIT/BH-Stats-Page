@@ -1175,6 +1175,7 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
     if conn:
         try:
             cursor = conn.cursor()
+            # Use subquery to get only one row per stockid from blancco table
             cursor.execute(
                 """
                 SELECT q.added_date,
@@ -1185,8 +1186,11 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
                        b.manufacturer,
                        b.model
                 FROM ITAD_QA_App q
-                LEFT JOIN ITAD_asset_info_blancco b
-                  ON b.stockid = q.stockid
+                LEFT JOIN (
+                    SELECT stockid, serial, manufacturer, model,
+                           ROW_NUMBER() OVER (PARTITION BY stockid ORDER BY job_date DESC) as rn
+                    FROM ITAD_asset_info_blancco
+                ) b ON b.stockid = q.stockid AND b.rn = 1
                 WHERE DATE(q.added_date) >= %s AND DATE(q.added_date) <= %s
                 ORDER BY q.added_date ASC
                 """,
@@ -1375,6 +1379,21 @@ def _build_device_history_sheet(start_date: date, end_date: date, period_label: 
     # Combine ALL event sources: Sorting, Erasure, AND QA (Data Bearing + Non-Data Bearing)
     history_rows = get_device_history_range(start_date, end_date)
     history_rows.extend(get_qa_device_events_range(start_date, end_date))
+    
+    # Deduplicate: remove exact duplicates based on (timestamp, stockid, stage, user)
+    seen = set()
+    deduped_rows = []
+    for row in history_rows:
+        key = (
+            str(row.get("timestamp")),
+            str(row.get("stockid")),
+            str(row.get("stage")),
+            str(row.get("user")),
+        )
+        if key not in seen:
+            seen.add(key)
+            deduped_rows.append(row)
+    history_rows = deduped_rows
     
     # Sort ALL entries chronologically by timestamp
     history_rows.sort(key=lambda item: _parse_timestamp(item.get("timestamp")) or datetime.min)
