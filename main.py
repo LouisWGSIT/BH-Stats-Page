@@ -14,6 +14,8 @@ import hashlib
 import secrets
 import httpx  # For making API calls to Blancco
 from time import time
+import zipfile
+import io
 
 app = FastAPI(title="Warehouse Stats Service")
 
@@ -1980,7 +1982,51 @@ async def export_qa_stats(
             if start_month < 1 or start_month > 12 or end_month < 1 or end_month > 12:
                 raise HTTPException(status_code=400, detail="Month must be between 1 and 12")
         
-        # Generate the QA engineer breakdown export (new comprehensive version)
+        # For long periods (month+), use chunked export to avoid memory issues
+        long_periods = ["this_month", "last_month", "this_year", "last_year", "last_year_h1", "last_year_h2", "custom_range"]
+        
+        if period in long_periods:
+            # Generate chunked exports (weekly files in a ZIP)
+            chunks = qa_export.generate_qa_engineer_export_chunked(
+                period, 
+                start_year=start_year, 
+                start_month=start_month, 
+                end_year=end_year, 
+                end_month=end_month
+            )
+            
+            # If only one chunk, just return it directly
+            if len(chunks) == 1:
+                suffix, sheets_data = chunks[0]
+                excel_file = excel_export.create_excel_report(sheets_data)
+                period_label = period.replace("_", "-")
+                filename = f"qa-engineer-stats-{period_label}.xlsx"
+                return StreamingResponse(
+                    iter([excel_file.getvalue()]),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                )
+            
+            # Multiple chunks - create ZIP file
+            zip_buffer = io.BytesIO()
+            period_label = period.replace("_", "-")
+            
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for suffix, sheets_data in chunks:
+                    excel_file = excel_export.create_excel_report(sheets_data)
+                    excel_filename = f"qa-engineer-stats-{period_label}{suffix}.xlsx"
+                    zip_file.writestr(excel_filename, excel_file.getvalue())
+            
+            zip_buffer.seek(0)
+            zip_filename = f"qa-engineer-stats-{period_label}-weekly.zip"
+            
+            return StreamingResponse(
+                iter([zip_buffer.getvalue()]),
+                media_type="application/zip",
+                headers={"Content-Disposition": f"attachment; filename={zip_filename}"}
+            )
+        
+        # Short periods - single file export
         sheets_data = qa_export.generate_qa_engineer_export(
             period, 
             start_year=start_year, 

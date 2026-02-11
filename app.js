@@ -3845,12 +3845,22 @@ function renderSVGSparkline(svgElem, data) {
         throw new Error(`Export failed: ${response.statusText}`);
       }
 
+      // Get filename from Content-Disposition header if available (server knows if it's ZIP or XLSX)
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let serverFilename = null;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename=([^;]+)/);
+        if (match) {
+          serverFilename = match[1].replace(/"/g, '').trim();
+        }
+      }
+
       // Convert response to blob and download
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = filename;
+      link.download = serverFilename || filename;
       document.body.appendChild(link);
       link.click();
       link.remove();

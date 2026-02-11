@@ -1903,6 +1903,111 @@ def _build_device_log_by_engineer_sheet(start_date: date, end_date: date, period
         }
     }
 
+
+def get_weekly_chunks(start_date: date, end_date: date) -> List[Tuple[date, date, str]]:
+    """Split a date range into weekly chunks (Mon-Sun or Mon-end_date)"""
+    chunks = []
+    current = start_date
+    
+    # Align to Monday if not already
+    while current.weekday() != 0 and current <= end_date:
+        current += timedelta(days=1)
+    
+    # Handle partial first week if start wasn't Monday
+    if start_date < current and current <= end_date:
+        week_end = current - timedelta(days=1)
+        if week_end >= start_date:
+            label = f"Week {len(chunks)+1} ({start_date.strftime('%b %d')} - {week_end.strftime('%b %d')})"
+            chunks.append((start_date, week_end, label))
+    
+    # Generate full weeks
+    while current <= end_date:
+        week_end = current + timedelta(days=6)
+        if week_end > end_date:
+            week_end = end_date
+        label = f"Week {len(chunks)+1} ({current.strftime('%b %d')} - {week_end.strftime('%b %d')})"
+        chunks.append((current, week_end, label))
+        current = week_end + timedelta(days=1)
+    
+    return chunks
+
+
+def generate_qa_engineer_export_chunked(period: str, start_year: int = None, start_month: int = None, end_year: int = None, end_month: int = None) -> List[Tuple[str, Dict[str, List[List]]]]:
+    """
+    Generate QA engineer export split into weekly chunks to avoid memory issues.
+    Returns list of (filename_suffix, sheets_dict) tuples.
+    """
+    # Handle custom range
+    if period == "custom_range" and start_year and start_month and end_year and end_month:
+        start_date = date(start_year, start_month, 1)
+        last_day = calendar.monthrange(end_year, end_month)[1]
+        end_date = date(end_year, end_month, last_day)
+        period_label = f"{start_date.strftime('%b %Y')} - {end_date.strftime('%b %Y')}"
+    else:
+        start_date, end_date, period_label = get_week_dates(period)
+    
+    # For short periods (<=7 days), just return single export
+    date_span = (end_date - start_date).days
+    if date_span <= 7:
+        return [("", generate_qa_engineer_export(period, start_year, start_month, end_year, end_month))]
+    
+    # Split into weekly chunks
+    chunks = get_weekly_chunks(start_date, end_date)
+    results = []
+    
+    for chunk_start, chunk_end, chunk_label in chunks:
+        # Generate export for this chunk using custom_range internally
+        sheets = {}
+        
+        # Get all QA data types for this chunk
+        de_qa_data = get_de_qa_comparison(chunk_start, chunk_end)
+        non_de_qa_data = get_non_de_qa_comparison(chunk_start, chunk_end)
+        sorting_data = get_weekly_qa_comparison(chunk_start, chunk_end)
+        
+        all_engineers = set()
+        all_engineers.update(de_qa_data.keys())
+        all_engineers.update(non_de_qa_data.keys())
+        all_engineers.update(sorting_data.keys())
+        
+        # ============= SHEET 1: Overall QA Summary =============
+        sheet_data = []
+        sheet_data.append(["QA ENGINEER SUMMARY - " + chunk_label.upper()])
+        sheet_data.append([f"Period: {chunk_start.isoformat()} to {chunk_end.isoformat()}"])
+        sheet_data.append([])
+        
+        header = ["Engineer", "Total QA", "Data Bearing", "Non-Data Bearing", "Sorting", "Avg/Day", "Days Active"]
+        sheet_data.append(header)
+        
+        for engineer in sorted(all_engineers):
+            de_total = de_qa_data.get(engineer, {}).get('total', 0)
+            non_de_total = non_de_qa_data.get(engineer, {}).get('total', 0)
+            sorting_total = sorting_data.get(engineer, {}).get('total', 0)
+            qa_total = de_total + non_de_total
+            
+            days_active = len(set(
+                list(de_qa_data.get(engineer, {}).get('daily', {}).keys()) +
+                list(non_de_qa_data.get(engineer, {}).get('daily', {}).keys()) +
+                list(sorting_data.get(engineer, {}).get('daily', {}).keys())
+            ))
+            
+            avg_per_day = round(qa_total / max(1, days_active), 1) if days_active > 0 else 0
+            sheet_data.append([engineer, qa_total, de_total, non_de_total, sorting_total, avg_per_day, days_active])
+        
+        sheets["Overall QA Summary"] = sheet_data
+        
+        # ============= SHEET 2: Device History (weekly chunk) =============
+        sheets["Device History"] = _build_device_history_sheet(chunk_start, chunk_end, chunk_label)
+        
+        # ============= SHEET 3: Device Log by Engineer (weekly chunk) =============
+        sheets["Device Log by Engineer"] = _build_device_log_by_engineer_sheet(chunk_start, chunk_end, chunk_label)
+        
+        # Create filename suffix from dates
+        suffix = f"_{chunk_start.strftime('%Y%m%d')}-{chunk_end.strftime('%Y%m%d')}"
+        results.append((suffix, sheets))
+    
+    return results
+
+
 def generate_qa_engineer_export(period: str, start_year: int = None, start_month: int = None, end_year: int = None, end_month: int = None) -> Dict[str, List[List]]:
     """Generate comprehensive QA engineer breakdown export with overall, data-bearing, non-data-bearing, sorting, and comparison sections"""
     
