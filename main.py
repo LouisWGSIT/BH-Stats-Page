@@ -1821,7 +1821,7 @@ async def device_lookup(stock_id: str, request: Request):
         if results.get("pallet_info", {}).get("pallet_id"):
             pallet_id = results["pallet_info"]["pallet_id"]
             cursor.execute("""
-                SELECT pallet_id, destination, pallet_location, pallet_status, date_created
+                SELECT pallet_id, destination, pallet_location, pallet_status, create_date
                 FROM ITAD_pallet
                 WHERE pallet_id = %s
             """, (pallet_id,))
@@ -1831,7 +1831,7 @@ async def device_lookup(stock_id: str, request: Request):
                     "destination": row[1],
                     "location": row[2],
                     "status": row[3],
-                    "date_created": str(row[4]) if row[4] else None,
+                    "create_date": str(row[4]) if row[4] else None,
                 })
         
         # 4. Check ITAD_QA_App for sorting scans
@@ -1876,19 +1876,19 @@ async def device_lookup(stock_id: str, request: Request):
         
         # 6. Check ITAD_asset_info_blancco for erasure records
         cursor.execute("""
-            SELECT job_date, stockid, serial, manufacturer, model, job_status
+            SELECT stockid, serial, manufacturer, model, erasure_status
             FROM ITAD_asset_info_blancco
             WHERE stockid = %s OR serial = %s
-            ORDER BY job_date ASC
         """, (stock_id, stock_id))
         for row in cursor.fetchall():
             results["found_in"].append("ITAD_asset_info_blancco") if "ITAD_asset_info_blancco" not in results["found_in"] else None
             results["timeline"].append({
-                "timestamp": str(row[0]) if row[0] else None,
-                "stage": f"Erasure ({row[5]})" if row[5] else "Erasure",
+                "timestamp": None,
+                "stage": f"Erasure ({row[4]})" if row[4] else "Erasure",
                 "user": None,
                 "location": None,
                 "source": "ITAD_asset_info_blancco",
+                "details": f"{row[2]} {row[3]}" if row[2] and row[3] else None,
             })
         
         cursor.close()
