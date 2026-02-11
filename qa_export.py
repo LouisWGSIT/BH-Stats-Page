@@ -1383,8 +1383,12 @@ def _iter_month_ranges(start_date: date, end_date: date) -> List[Tuple[date, dat
     return ranges
 
 
-def get_unpalleted_devices(start_date: date, end_date: date) -> List[Dict[str, object]]:
-    """Find devices that have QA or sorting records but NO pallet assignment."""
+def get_unpalleted_devices(start_date: date = None, end_date: date = None) -> List[Dict[str, object]]:
+    """Find devices that have QA or sorting records but NO pallet assignment.
+    
+    If start_date/end_date are None, returns ALL current unpalleted devices (no date filtering).
+    Otherwise filters to devices received within the date range.
+    """
     conn = get_mariadb_connection()
     if not conn:
         return []
@@ -1392,8 +1396,16 @@ def get_unpalleted_devices(start_date: date, end_date: date) -> List[Dict[str, o
     devices = []
     try:
         cursor = conn.cursor()
+        
+        # Build query with optional date filtering
+        date_clause = ""
+        params = []
+        if start_date and end_date:
+            date_clause = "AND a.received_date >= %s AND a.received_date <= %s"
+            params = [start_date.isoformat(), end_date.isoformat()]
+        
         # Get devices from QA/sorting that have no pallet_id in ITAD_asset_info
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 a.stockid,
                 a.serialnumber,
@@ -1414,10 +1426,10 @@ def get_unpalleted_devices(start_date: date, end_date: date) -> List[Dict[str, o
             FROM ITAD_asset_info a
             LEFT JOIN ITAD_QA_App q ON q.stockid = a.stockid
             WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '')
-              AND a.received_date >= %s AND a.received_date <= %s
+              {date_clause}
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
             ORDER BY a.received_date DESC
-        """, (start_date.isoformat(), end_date.isoformat()))
+        """, params)
         
         for row in cursor.fetchall():
             devices.append({
