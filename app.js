@@ -3830,6 +3830,9 @@ function renderSVGSparkline(svgElem, data) {
         : `engineer-deepdive-${dateScope}.xlsx`;
     }
 
+    // Show loading modal
+    showExportLoading();
+
     try {
       // Fetch with authentication header
       const response = await fetch(exportUrl, {
@@ -3855,7 +3858,19 @@ function renderSVGSparkline(svgElem, data) {
     } catch (error) {
       console.error('Export error:', error);
       alert('Failed to download spreadsheet: ' + error.message);
+    } finally {
+      hideExportLoading();
     }
+  }
+
+  function showExportLoading() {
+    const modal = document.getElementById('exportLoadingModal');
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  function hideExportLoading() {
+    const modal = document.getElementById('exportLoadingModal');
+    if (modal) modal.classList.add('hidden');
   }
 
   // ==================== CUSTOM RANGE PICKER ====================

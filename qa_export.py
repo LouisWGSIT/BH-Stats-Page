@@ -1084,19 +1084,24 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
                 placeholders = ",".join(["%s"] * len(unique_ids))
                 cursor.execute(
                     f"""
-                    SELECT stockid, serialnumber, manufacturer, description, `condition`, COALESCE(pallet_id, palletID)
+                    SELECT stockid, serialnumber, manufacturer, description, `condition`, 
+                           COALESCE(pallet_id, palletID), location, roller_location, last_update
                     FROM ITAD_asset_info
                     WHERE stockid IN ({placeholders})
                     """,
                     unique_ids
                 )
-                for stockid, serialnumber, manufacturer, description, condition, pallet_id in cursor.fetchall():
+                for row in cursor.fetchall():
+                    stockid, serialnumber, manufacturer, description, condition, pallet_id, location, roller_location, last_update = row
                     asset_map[str(stockid)] = {
                         "serial": serialnumber,
                         "manufacturer": manufacturer,
                         "model": description,
                         "destination": condition,
                         "pallet_id": pallet_id,
+                        "asset_location": location,
+                        "roller_location": roller_location,
+                        "last_update": str(last_update) if last_update else None,
                     }
 
                 missing_pallet_ids = [
@@ -1127,6 +1132,9 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
                 event["model"] = asset.get("model")
                 event["destination"] = asset.get("destination")
                 event["pallet_id"] = asset.get("pallet_id")
+                event["asset_location"] = asset.get("asset_location")
+                event["roller_location"] = asset.get("roller_location")
+                event["last_update"] = asset.get("last_update")
 
         pallet_ids = [str(event.get("pallet_id")) for event in events if event.get("pallet_id")]
         unique_pallets = list({p for p in pallet_ids if p})
@@ -1375,6 +1383,233 @@ def _iter_month_ranges(start_date: date, end_date: date) -> List[Tuple[date, dat
     return ranges
 
 
+def get_unpalleted_devices(start_date: date, end_date: date) -> List[Dict[str, object]]:
+    """Find devices that have QA or sorting records but NO pallet assignment."""
+    conn = get_mariadb_connection()
+    if not conn:
+        return []
+    
+    devices = []
+    try:
+        cursor = conn.cursor()
+        # Get devices from QA/sorting that have no pallet_id in ITAD_asset_info
+        cursor.execute("""
+            SELECT 
+                a.stockid,
+                a.serialnumber,
+                a.manufacturer,
+                a.description,
+                a.condition,
+                a.received_date,
+                a.stage_current,
+                a.location,
+                a.roller_location,
+                a.last_update,
+                a.de_complete,
+                a.de_completed_by,
+                a.de_completed_date,
+                q.added_date as qa_date,
+                q.username as qa_user,
+                q.scanned_location as qa_location
+            FROM ITAD_asset_info a
+            LEFT JOIN ITAD_QA_App q ON q.stockid = a.stockid
+            WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '')
+              AND a.received_date >= %s AND a.received_date <= %s
+              AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+            ORDER BY a.received_date DESC
+        """, (start_date.isoformat(), end_date.isoformat()))
+        
+        for row in cursor.fetchall():
+            devices.append({
+                "stockid": row[0],
+                "serial": row[1],
+                "manufacturer": row[2],
+                "model": row[3],
+                "condition": row[4],
+                "received_date": str(row[5]) if row[5] else None,
+                "stage_current": row[6],
+                "location": row[7],
+                "roller_location": row[8],
+                "last_update": str(row[9]) if row[9] else None,
+                "de_complete": row[10],
+                "de_completed_by": row[11],
+                "de_completed_date": str(row[12]) if row[12] else None,
+                "qa_date": str(row[13]) if row[13] else None,
+                "qa_user": row[14],
+                "qa_location": row[15],
+            })
+        
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"[QA Export] Error fetching unpalleted devices: {e}")
+        if conn:
+            conn.close()
+    
+    return devices
+
+
+def get_stale_devices(days_threshold: int = 7) -> List[Dict[str, object]]:
+    """Find devices that haven't had activity in X days but aren't complete."""
+    conn = get_mariadb_connection()
+    if not conn:
+        return []
+    
+    devices = []
+    cutoff_date = (datetime.now() - timedelta(days=days_threshold)).date()
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                a.stockid,
+                a.serialnumber,
+                a.manufacturer,
+                a.description,
+                a.condition,
+                a.received_date,
+                a.stage_current,
+                a.stage_next,
+                a.location,
+                a.roller_location,
+                a.last_update,
+                a.de_complete,
+                a.process_complete,
+                COALESCE(a.pallet_id, a.palletID) as pallet_id,
+                DATEDIFF(CURDATE(), a.last_update) as days_since_update
+            FROM ITAD_asset_info a
+            WHERE a.last_update IS NOT NULL
+              AND a.last_update < %s
+              AND (a.process_complete IS NULL OR a.process_complete != 'Yes')
+              AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+            ORDER BY a.last_update ASC
+            LIMIT 500
+        """, (cutoff_date.isoformat(),))
+        
+        for row in cursor.fetchall():
+            devices.append({
+                "stockid": row[0],
+                "serial": row[1],
+                "manufacturer": row[2],
+                "model": row[3],
+                "condition": row[4],
+                "received_date": str(row[5]) if row[5] else None,
+                "stage_current": row[6],
+                "stage_next": row[7],
+                "location": row[8],
+                "roller_location": row[9],
+                "last_update": str(row[10]) if row[10] else None,
+                "de_complete": row[11],
+                "process_complete": row[12],
+                "pallet_id": row[13],
+                "days_since_update": row[14],
+            })
+        
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"[QA Export] Error fetching stale devices: {e}")
+        if conn:
+            conn.close()
+    
+    return devices
+
+
+def _build_unpalleted_devices_sheet(start_date: date, end_date: date, period_label: str) -> Dict[str, object]:
+    """Build sheet showing devices without pallet assignment."""
+    devices = get_unpalleted_devices(start_date, end_date)
+    
+    sheet_rows = []
+    sheet_rows.append(["UNPALLETED DEVICES AUDIT - " + period_label.upper()])
+    sheet_rows.append([f"Period: {start_date.isoformat()} to {end_date.isoformat()}"])
+    sheet_rows.append([f"Devices received in period with NO pallet assignment. Total: {len(devices)}"])
+    sheet_rows.append([])
+    
+    header = [
+        "Stock ID", "Serial", "Manufacturer", "Model", "Condition",
+        "Received Date", "Current Stage", "Location", "Roller Location",
+        "Last Update", "DE Complete", "DE By", "DE Date",
+        "QA Date", "QA User", "QA Location"
+    ]
+    sheet_rows.append(header)
+    
+    for device in devices:
+        sheet_rows.append([
+            device.get("stockid"),
+            device.get("serial"),
+            device.get("manufacturer"),
+            device.get("model"),
+            device.get("condition"),
+            device.get("received_date"),
+            device.get("stage_current"),
+            device.get("location"),
+            device.get("roller_location"),
+            device.get("last_update"),
+            device.get("de_complete"),
+            device.get("de_completed_by"),
+            device.get("de_completed_date"),
+            device.get("qa_date"),
+            device.get("qa_user"),
+            device.get("qa_location"),
+        ])
+    
+    return {
+        "rows": sheet_rows,
+        "col_widths": {
+            1: 12, 2: 16, 3: 14, 4: 28, 5: 14,
+            6: 12, 7: 14, 8: 12, 9: 14,
+            10: 18, 11: 10, 12: 18, 13: 18,
+            14: 18, 15: 22, 16: 14
+        }
+    }
+
+
+def _build_stale_devices_sheet() -> Dict[str, object]:
+    """Build sheet showing devices with stale activity (no updates in 7+ days)."""
+    devices = get_stale_devices(days_threshold=7)
+    
+    sheet_rows = []
+    sheet_rows.append(["STALE DEVICES REPORT"])
+    sheet_rows.append([f"Devices with no activity in 7+ days (not complete). Total: {len(devices)}"])
+    sheet_rows.append(["Use this to identify devices that may be stuck or lost in the process."])
+    sheet_rows.append([])
+    
+    header = [
+        "Stock ID", "Serial", "Manufacturer", "Model", "Condition",
+        "Received Date", "Current Stage", "Next Stage", "Location", "Roller Location",
+        "Last Update", "Days Since Update", "DE Complete", "Process Complete", "Pallet ID"
+    ]
+    sheet_rows.append(header)
+    
+    for device in devices:
+        sheet_rows.append([
+            device.get("stockid"),
+            device.get("serial"),
+            device.get("manufacturer"),
+            device.get("model"),
+            device.get("condition"),
+            device.get("received_date"),
+            device.get("stage_current"),
+            device.get("stage_next"),
+            device.get("location"),
+            device.get("roller_location"),
+            device.get("last_update"),
+            device.get("days_since_update"),
+            device.get("de_complete"),
+            device.get("process_complete"),
+            device.get("pallet_id"),
+        ])
+    
+    return {
+        "rows": sheet_rows,
+        "col_widths": {
+            1: 12, 2: 16, 3: 14, 4: 28, 5: 14,
+            6: 12, 7: 14, 8: 14, 9: 12, 10: 14,
+            11: 18, 12: 8, 13: 10, 14: 10, 15: 14
+        }
+    }
+
+
 def _build_device_history_sheet(start_date: date, end_date: date, period_label: str) -> Dict[str, object]:
     # Combine ALL event sources: Sorting, Erasure, AND QA (Data Bearing + Non-Data Bearing)
     history_rows = get_device_history_range(start_date, end_date)
@@ -1430,7 +1665,10 @@ def _build_device_history_sheet(start_date: date, end_date: date, period_label: 
         "Pallet ID",
         "Pallet Destination",
         "Pallet Status",
-        "Source"
+        "Source",
+        "Last Asset Loc",
+        "Roller Location",
+        "Days Since Update"
     ]
 
     for date_key in sorted(grouped_by_date.keys()):
@@ -1471,6 +1709,21 @@ def _build_device_history_sheet(start_date: date, end_date: date, period_label: 
                 serial_value = row.get("serial")
                 if stock_value is not None and serial_value is not None and str(stock_value).strip() == str(serial_value).strip():
                     stock_value = None
+                
+                # Calculate days since last update
+                days_since = None
+                last_update = row.get("last_update")
+                if last_update:
+                    try:
+                        if isinstance(last_update, datetime):
+                            update_dt = last_update
+                        else:
+                            update_dt = _parse_timestamp(last_update)
+                        if update_dt:
+                            days_since = (datetime.now() - update_dt).days
+                    except Exception:
+                        pass
+                
                 sheet_rows.append([
                     _format_timestamp(row.get("timestamp")),
                     row.get("stage"),
@@ -1486,7 +1739,10 @@ def _build_device_history_sheet(start_date: date, end_date: date, period_label: 
                     _normalize_id_value(row.get("pallet_id")),
                     row.get("pallet_destination"),
                     row.get("pallet_status"),
-                    row.get("source")
+                    row.get("source"),
+                    row.get("asset_location"),
+                    row.get("roller_location"),
+                    days_since
                 ])
 
             data_end = len(sheet_rows)
@@ -1520,6 +1776,9 @@ def _build_device_history_sheet(start_date: date, end_date: date, period_label: 
             13: 18, # Pallet Destination
             14: 12, # Pallet Status
             15: 14, # Source
+            16: 16, # Last Asset Loc
+            17: 14, # Roller Location
+            18: 16, # Days Since Update
         }
     }
 
@@ -1560,7 +1819,10 @@ def _build_device_log_by_engineer_sheet(start_date: date, end_date: date, period
         "Pallet ID",
         "Pallet Destination",
         "Pallet Status",
-        "Source"
+        "Source",
+        "Last Asset Loc",
+        "Roller Location",
+        "Days Since Update"
     ]
 
     for engineer_key in sorted(grouped_by_engineer.keys()):
@@ -1576,6 +1838,21 @@ def _build_device_log_by_engineer_sheet(start_date: date, end_date: date, period
             serial_value = row.get("serial")
             if stock_value is not None and serial_value is not None and str(stock_value).strip() == str(serial_value).strip():
                 stock_value = None
+            
+            # Calculate days since last update
+            days_since = None
+            last_update = row.get("last_update")
+            if last_update:
+                try:
+                    if isinstance(last_update, datetime):
+                        update_dt = last_update
+                    else:
+                        update_dt = _parse_timestamp(last_update)
+                    if update_dt:
+                        days_since = (datetime.now() - update_dt).days
+                except Exception:
+                    pass
+            
             sheet_rows.append([
                 _format_timestamp(row.get("timestamp")),
                 row.get("stage"),
@@ -1590,7 +1867,10 @@ def _build_device_log_by_engineer_sheet(start_date: date, end_date: date, period
                 _normalize_id_value(row.get("pallet_id")),
                 row.get("pallet_destination"),
                 row.get("pallet_status"),
-                row.get("source")
+                row.get("source"),
+                row.get("asset_location"),
+                row.get("roller_location"),
+                days_since
             ])
 
         data_end = len(sheet_rows)
@@ -1617,6 +1897,9 @@ def _build_device_log_by_engineer_sheet(start_date: date, end_date: date, period
             12: 18, # Pallet Destination
             13: 12, # Pallet Status
             14: 14, # Source
+            15: 16, # Last Asset Loc
+            16: 14, # Roller Location
+            17: 16, # Days Since Update
         }
     }
 
@@ -1899,5 +2182,9 @@ def generate_qa_engineer_export(period: str, start_year: int = None, start_month
     else:
         sheets["Device History"] = _build_device_history_sheet(start_date, end_date, period_label)
         sheets["Device Log by Engineer"] = _build_device_log_by_engineer_sheet(start_date, end_date, period_label)
+    
+    # ============= AUDIT SHEETS: Unpalleted + Stale Devices =============
+    sheets["Unpalleted Devices"] = _build_unpalleted_devices_sheet(start_date, end_date, period_label)
+    sheets["Stale Devices (7+ days)"] = _build_stale_devices_sheet()
     
     return sheets

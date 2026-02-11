@@ -324,7 +324,26 @@
                 <div id="exportResult" class="result"></div>
             </div>
 
-            <!-- Section 6: Connected Devices -->
+            <!-- Section 6: Device Search / Investigation -->
+            <div class="section">
+                <h2>🔍 Device Lookup</h2>
+                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+                    Search for a device by Stock ID or Serial to trace its full journey through the system.
+                    Searches 7 data sources: asset info, pallets, QA records, sorting scans, erasures.
+                </p>
+                <div class="form-group">
+                    <label for="deviceSearchId">Stock ID or Serial:</label>
+                    <input type="text" id="deviceSearchId" placeholder="e.g. 12745375" style="max-width: 200px;">
+                </div>
+                <button onclick="searchDevice()">🔎 Search Device</button>
+                <div id="deviceSearchResult" class="result"></div>
+                <div id="deviceSearchTimeline" class="stats" style="display: none; margin-top: 20px;">
+                    <h3>📍 Device Journey Timeline</h3>
+                    <div id="timelineContent"></div>
+                </div>
+            </div>
+
+            <!-- Section 7: Connected Devices -->
             <div class="section">
                 <h2>🔐 Connected Devices</h2>
                 <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
@@ -706,6 +725,117 @@
                 populateFromDropdown();
             } catch (error) {
                 resultDiv.innerHTML = '<p style="color: #c00;">❌ Error: ' + error.message + '</p>';
+            }
+        }
+
+        async function searchDevice() {
+            const stockId = document.getElementById('deviceSearchId').value.trim();
+            const resultDiv = document.getElementById('deviceSearchResult');
+            const timelineDiv = document.getElementById('deviceSearchTimeline');
+            const timelineContent = document.getElementById('timelineContent');
+
+            if (!stockId) {
+                showResult(resultDiv, 'error', 'Error', 'Please enter a Stock ID or Serial number');
+                timelineDiv.style.display = 'none';
+                return;
+            }
+
+            resultDiv.className = 'result info';
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<p>🔍 Searching across 7 data sources...</p>';
+            timelineDiv.style.display = 'none';
+
+            try {
+                const response = await fetch(`/api/device-lookup/${encodeURIComponent(stockId)}`, {
+                    headers: getAuthHeaders(false)
+                });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showResult(resultDiv, 'error', '❌ Search Failed', data.detail || 'Unable to search for device');
+                    return;
+                }
+
+                // Show summary
+                const foundIn = data.found_in && data.found_in.length > 0 
+                    ? data.found_in.join(', ') 
+                    : 'Not found in any source';
+                
+                let summaryHtml = `<h3>📋 Device: ${stockId}</h3>`;
+                summaryHtml += `<p><strong>Found in:</strong> ${foundIn}</p>`;
+                summaryHtml += `<p><strong>Total events:</strong> ${data.total_events || 0}</p>`;
+                
+                if (data.last_known_user) {
+                    summaryHtml += `<p><strong>Last known user:</strong> ${data.last_known_user}</p>`;
+                }
+                if (data.last_known_location) {
+                    summaryHtml += `<p><strong>Last known location:</strong> ${data.last_known_location}</p>`;
+                }
+                
+                // Asset info
+                if (data.asset_info) {
+                    const a = data.asset_info;
+                    summaryHtml += `<div style="margin-top:10px; padding:10px; background:#f0f0f0; border-radius:6px;">`;
+                    summaryHtml += `<strong>Asset Info:</strong><br>`;
+                    summaryHtml += `• Serial: ${a.serial || 'N/A'}<br>`;
+                    summaryHtml += `• ${a.manufacturer || ''} ${a.model || ''}<br>`;
+                    summaryHtml += `• Condition: ${a.condition || 'N/A'}<br>`;
+                    summaryHtml += `• Status: ${a.status || 'N/A'}<br>`;
+                    if (a.added_date) summaryHtml += `• Added: ${a.added_date}<br>`;
+                    summaryHtml += `</div>`;
+                }
+                
+                // Pallet info
+                if (data.pallet_info && data.pallet_info.pallet_id) {
+                    const p = data.pallet_info;
+                    summaryHtml += `<div style="margin-top:10px; padding:10px; background:#e8f5e9; border-radius:6px;">`;
+                    summaryHtml += `<strong>Pallet Info:</strong><br>`;
+                    summaryHtml += `• Pallet ID: ${p.pallet_id}<br>`;
+                    if (p.destination) summaryHtml += `• Destination: ${p.destination}<br>`;
+                    if (p.location) summaryHtml += `• Location: ${p.location}<br>`;
+                    if (p.status) summaryHtml += `• Status: ${p.status}<br>`;
+                    summaryHtml += `</div>`;
+                } else {
+                    summaryHtml += `<div style="margin-top:10px; padding:10px; background:#fff3cd; border-radius:6px;">`;
+                    summaryHtml += `<strong>⚠️ No Pallet Assignment Found</strong>`;
+                    summaryHtml += `</div>`;
+                }
+
+                resultDiv.innerHTML = summaryHtml;
+                resultDiv.className = 'result info';
+                resultDiv.style.display = 'block';
+
+                // Show timeline
+                if (data.timeline && data.timeline.length > 0) {
+                    let timelineHtml = '<div style="margin-top:15px;">';
+                    data.timeline.forEach((event, idx) => {
+                        const stageColor = event.stage.includes('QA') ? '#667eea' 
+                            : event.stage.includes('Sorting') ? '#10b981'
+                            : event.stage.includes('Erasure') ? '#f59e0b'
+                            : '#666';
+                        timelineHtml += `
+                            <div style="display:flex; gap:15px; margin-bottom:12px; padding:10px; background:white; border-radius:6px; border-left:4px solid ${stageColor};">
+                                <div style="min-width:160px; color:#666; font-size:12px;">${event.timestamp || 'N/A'}</div>
+                                <div style="flex:1;">
+                                    <strong style="color:${stageColor};">${event.stage}</strong>
+                                    ${event.user ? `<span style="margin-left:10px; color:#666;">by ${event.user}</span>` : ''}
+                                    ${event.location ? `<span style="margin-left:10px; color:#999;">@ ${event.location}</span>` : ''}
+                                    <div style="font-size:11px; color:#999;">Source: ${event.source}</div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    timelineHtml += '</div>';
+                    timelineContent.innerHTML = timelineHtml;
+                    timelineDiv.style.display = 'block';
+                } else {
+                    timelineContent.innerHTML = '<p style="color:#999;">No timeline events found for this device.</p>';
+                    timelineDiv.style.display = 'block';
+                }
+
+            } catch (error) {
+                showResult(resultDiv, 'error', '❌ Error', error.message);
+                timelineDiv.style.display = 'none';
             }
         }
 
