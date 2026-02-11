@@ -1806,7 +1806,7 @@ async def device_lookup(stock_id: str, request: Request):
         
         # 2. Check Stockbypallet for pallet assignment
         cursor.execute("""
-            SELECT stockid, pallet_id, date_added
+            SELECT stockid, pallet_id
             FROM Stockbypallet
             WHERE stockid = %s
         """, (stock_id,))
@@ -1816,7 +1816,6 @@ async def device_lookup(stock_id: str, request: Request):
             if not results["pallet_info"]:
                 results["pallet_info"] = {}
             results["pallet_info"]["pallet_id"] = row[1]
-            results["pallet_info"]["date_added"] = str(row[2]) if row[2] else None
         
         # 3. Get pallet details if we have a pallet_id
         if results.get("pallet_info", {}).get("pallet_id"):
