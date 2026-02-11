@@ -2193,7 +2193,7 @@ def _build_bottleneck_snapshot(days: int = 7, destination: str = None, limit_eng
             })
 
     # Get accurate roller queue status (independent of unpalleted query)
-    roller_status = qa_export.get_roller_queue_status()
+    roller_status = qa_export.get_roller_queue_status(start_date=start_date, end_date=end_date)
     
     return {
         "lookback_days": days,
@@ -2270,9 +2270,14 @@ async def get_bottleneck_details(
             
             cursor = conn.cursor()
             
+            # Build date filter for roller queries
+            date_clause = "AND a.received_date >= %s AND a.received_date <= %s"
+            date_params = [start_date.isoformat(), end_date.isoformat()]
+            
             if category == "roller_station" and value:
-                # Specific roller station
-                cursor.execute("""
+                # Specific roller station - match normalized name (e.g., "IA-ROLLER1" matches "08:IA-ROLLER1")
+                # Use LIKE to match both prefixed and non-prefixed versions
+                cursor.execute(f"""
                     SELECT 
                         a.stockid, a.serialnumber, a.manufacturer, a.description,
                         a.condition, a.received_date, a.roller_location,
@@ -2280,14 +2285,15 @@ async def get_bottleneck_details(
                         COALESCE(a.pallet_id, a.palletID) as pallet_id,
                         a.stage_current, a.last_update
                     FROM ITAD_asset_info a
-                    WHERE a.roller_location = %s
+                    WHERE (a.roller_location = %s OR a.roller_location LIKE %s)
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                      {date_clause}
                     ORDER BY a.received_date DESC
                     LIMIT %s
-                """, (value, limit))
+                """, (value, f"%:{value}", *date_params, limit))
             elif category == "roller_pending":
                 # Devices awaiting erasure
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT 
                         a.stockid, a.serialnumber, a.manufacturer, a.description,
                         a.condition, a.received_date, a.roller_location,
@@ -2300,11 +2306,12 @@ async def get_bottleneck_details(
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
+                      {date_clause}
                     ORDER BY a.received_date DESC
                     LIMIT %s
-                """, (limit,))
+                """, (*date_params, limit))
             else:  # roller_erased
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT 
                         a.stockid, a.serialnumber, a.manufacturer, a.description,
                         a.condition, a.received_date, a.roller_location,
@@ -2317,9 +2324,10 @@ async def get_bottleneck_details(
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
+                      {date_clause}
                     ORDER BY a.de_completed_date DESC
                     LIMIT %s
-                """, (limit,))
+                """, (*date_params, limit))
             
             devices = []
             for row in cursor.fetchall():
@@ -2341,26 +2349,30 @@ async def get_bottleneck_details(
             
             # Get total count
             if category == "roller_station" and value:
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT COUNT(*) FROM ITAD_asset_info 
-                    WHERE roller_location = %s AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                """, (value,))
+                    WHERE (roller_location = %s OR roller_location LIKE %s)
+                      AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND received_date >= %s AND received_date <= %s
+                """, (value, f"%:{value}", *date_params))
             elif category == "roller_pending":
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT COUNT(*) FROM ITAD_asset_info 
                     WHERE roller_location IS NOT NULL AND roller_location != ''
                       AND LOWER(roller_location) LIKE '%%roller%%'
                       AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND (de_complete IS NULL OR LOWER(de_complete) NOT IN ('yes', 'true', '1'))
-                """)
+                      AND received_date >= %s AND received_date <= %s
+                """, date_params)
             else:
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT COUNT(*) FROM ITAD_asset_info 
                     WHERE roller_location IS NOT NULL AND roller_location != ''
                       AND LOWER(roller_location) LIKE '%%roller%%'
                       AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND LOWER(COALESCE(de_complete, '')) IN ('yes', 'true', '1')
-                """)
+                      AND received_date >= %s AND received_date <= %s
+                """, date_params)
             
             total = cursor.fetchone()[0]
             cursor.close()

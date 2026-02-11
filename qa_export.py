@@ -1449,11 +1449,29 @@ def get_unpalleted_devices(start_date: date, end_date: date) -> List[Dict[str, o
     return devices
 
 
-def get_roller_queue_status() -> Dict[str, object]:
-    """Get current status of all devices assigned to rollers (regardless of pallet status).
+def normalize_roller_name(roller_location: str) -> str:
+    """Normalize roller location names to consolidate variants like '08:IA-ROLLER1' -> 'IA-ROLLER1'."""
+    if not roller_location:
+        return "Unknown Roller"
+    name = roller_location.strip()
+    # Remove common prefixes like "08:" or similar warehouse codes
+    if ':' in name:
+        parts = name.split(':', 1)
+        # If the part after : contains ROLLER, use that
+        if len(parts) > 1 and 'roller' in parts[1].lower():
+            name = parts[1].strip()
+    return name
+
+
+def get_roller_queue_status(start_date: date = None, end_date: date = None) -> Dict[str, object]:
+    """Get current status of devices assigned to rollers within a date range.
     
     Returns breakdown of devices per roller station and their erasure status.
     This provides accurate roller queue tracking independent of pallet assignments.
+    
+    Args:
+        start_date: Filter devices received on or after this date (optional)
+        end_date: Filter devices received on or before this date (optional)
     """
     conn = get_mariadb_connection()
     if not conn:
@@ -1466,8 +1484,16 @@ def get_roller_queue_status() -> Dict[str, object]:
     
     try:
         cursor = conn.cursor()
-        # Get all devices currently assigned to a roller location
-        cursor.execute("""
+        
+        # Build date filter clause
+        date_filter = ""
+        params = []
+        if start_date and end_date:
+            date_filter = "AND received_date >= %s AND received_date <= %s"
+            params = [start_date.isoformat(), end_date.isoformat()]
+        
+        # Get devices currently assigned to a roller location
+        query = f"""
             SELECT 
                 roller_location,
                 de_complete,
@@ -1477,13 +1503,17 @@ def get_roller_queue_status() -> Dict[str, object]:
               AND roller_location != ''
               AND LOWER(roller_location) LIKE '%roller%'
               AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+              {date_filter}
             GROUP BY roller_location, de_complete
             ORDER BY roller_location, de_complete
-        """)
+        """
+        cursor.execute(query, params)
         
         roller_data = {}
         for row in cursor.fetchall():
-            roller_name = row[0] or "Unknown Roller"
+            roller_name_raw = row[0] or "Unknown Roller"
+            # Normalize roller name to consolidate variants
+            roller_name = normalize_roller_name(roller_name_raw)
             de_complete_raw = row[1]
             count = row[2] or 0
             
@@ -1499,14 +1529,15 @@ def get_roller_queue_status() -> Dict[str, object]:
             else:
                 roller_data[roller_name]["pending_erasure"] += count
         
-        result["rollers"] = list(roller_data.values())
+        # Sort rollers by name for consistent ordering
+        result["rollers"] = sorted(roller_data.values(), key=lambda x: x["roller"])
         result["totals"]["total"] = sum(r["total"] for r in result["rollers"])
         result["totals"]["erased"] = sum(r["erased"] for r in result["rollers"])
         result["totals"]["pending_erasure"] = sum(r["pending_erasure"] for r in result["rollers"])
         
         # Also get devices that were erased but not yet QA scanned (on roller, de_complete=Yes, no QA record after erasure)
         # This is a more complex query - devices on roller with de_complete that haven't had a subsequent QA scan
-        cursor.execute("""
+        waiting_query = f"""
             SELECT COUNT(DISTINCT a.stockid)
             FROM ITAD_asset_info a
             LEFT JOIN ITAD_QA_App q ON q.stockid = a.stockid AND q.added_date > a.de_completed_date
@@ -1516,7 +1547,9 @@ def get_roller_queue_status() -> Dict[str, object]:
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
               AND LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
               AND q.stockid IS NULL
-        """)
+              {date_filter.replace('received_date', 'a.received_date') if date_filter else ''}
+        """
+        cursor.execute(waiting_query, params)
         waiting_qa_row = cursor.fetchone()
         result["totals"]["waiting_qa"] = waiting_qa_row[0] if waiting_qa_row else 0
         
