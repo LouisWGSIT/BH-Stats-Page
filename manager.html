@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel - BH Stats</title>
+    <title>Manager Tools - BH Stats</title>
     <style>
         * {
             margin: 0;
@@ -13,7 +13,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -28,7 +28,7 @@
         }
 
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
             padding: 30px;
             text-align: center;
@@ -100,8 +100,8 @@
 
         input:focus, select:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: #10b981;
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
         }
 
         .form-row {
@@ -116,7 +116,7 @@
         }
 
         button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
             border: none;
             padding: 12px 24px;
@@ -129,7 +129,7 @@
 
         button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3);
         }
 
         button:active {
@@ -276,13 +276,13 @@
             padding: 15px;
             border-radius: 6px;
             text-align: center;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid #10b981;
         }
 
         .stat-value {
             font-size: 24px;
             font-weight: bold;
-            color: #667eea;
+            color: #10b981;
             margin-bottom: 5px;
         }
 
@@ -296,14 +296,16 @@
         .back-link {
             display: inline-block;
             margin-bottom: 20px;
-            color: #667eea;
+            color: white;
             text-decoration: none;
             font-weight: 600;
             font-size: 14px;
+            opacity: 0.9;
         }
 
         .back-link:hover {
             text-decoration: underline;
+            opacity: 1;
         }
 
         .loading {
@@ -319,116 +321,130 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        .export-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .export-card {
+            background: linear-gradient(145deg, #f8f9fa, #e9ecef);
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+        }
+
+        .export-card h3 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .export-card p {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .trend-up { color: #ef4444; }
+        .trend-down { color: #10b981; }
+        .trend-neutral { color: #6b7280; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <a href="index.html" class="back-link">← Back to Dashboard</a>
-            <h1 id="panelTitle">⚙️ Admin Panel</h1>
-            <p id="panelSubtitle">Manage engineer initials and fix data mistakes</p>
+            <h1>📊 Manager Tools</h1>
+            <p>Device tracking, exports, and operational insights</p>
             <div id="roleBadge" class="role-badge" style="display: none;"></div>
         </div>
 
         <div class="content">
-            <!-- Section 1: Assign Unassigned -->
-            <div class="section admin-only">
-                <h2>Assign Unassigned Erasures</h2>
+            <!-- Section 1: Device Lookup -->
+            <div class="section">
+                <h2>🔍 Device Lookup</h2>
                 <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                    Assign all erasures with missing engineer initials to a specific engineer.
+                    Search for a device by Stock ID or Serial to trace its full journey through the system.
+                    Searches 7 data sources: asset info, pallets, QA records, sorting scans, erasures.
                 </p>
                 <div class="form-group">
-                    <label for="assignTo">Engineer Initials:</label>
-                    <input type="text" id="assignTo" placeholder="e.g., MS" maxlength="3" style="max-width: 100px;">
+                    <label for="deviceSearchId">Stock ID or Serial:</label>
+                    <input type="text" id="deviceSearchId" placeholder="e.g. 12745375" style="max-width: 200px;">
                 </div>
-                <button onclick="assignUnassigned()" id="assignBtn">Assign Unassigned</button>
-                <div id="assignResult" class="result"></div>
+                <button onclick="searchDevice()">🔎 Search Device</button>
+                <div id="deviceSearchResult" class="result"></div>
+                <div id="deviceSearchTimeline" class="stats" style="display: none; margin-top: 20px;">
+                    <h3>📍 Device Journey Timeline</h3>
+                    <div id="timelineContent"></div>
+                </div>
             </div>
 
-            <!-- Section 2: Fix Initials -->
-            <div class="section admin-only">
-                <h2>Fix/Correct Initials</h2>
+            <!-- Section 2: Bottleneck Radar -->
+            <div class="section">
+                <h2>🚧 Bottleneck Radar</h2>
                 <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                    Change all erasures from one set of initials to another. Useful for fixing typos or mistakes.
+                    Detect clusters of unpalleted devices, engineer trends, and roller queues.
+                    Identifies patterns and flags engineers with high missing pallet rates.
                 </p>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="fixFrom">From (Wrong Initials):</label>
-                        <select id="fixFrom" style="max-width: 300px;">
-                            <option value="">-- Select initials to change --</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="fixCount">Transfer Count (optional):</label>
-                        <input type="number" id="fixCount" placeholder="e.g., 10" min="1" step="1">
-                        <small id="fixCountHint" style="display:block;color:#888;margin-top:6px;font-size:12px;"></small>
-                    </div>
-                    <div class="form-group">
-                        <label for="fixTo">To (Correct Initials):</label>
-                        <input type="text" id="fixTo" placeholder="e.g., MS" maxlength="3">
+                        <label for="bottleneckDays">Lookback (days):</label>
+                        <input type="number" id="bottleneckDays" value="7" min="1" max="60" style="max-width: 120px;">
                     </div>
                 </div>
-                <button onclick="fixInitials()" id="fixBtn">Fix Initials</button>
-                <button onclick="undoLastInitials()" id="undoFixBtn" style="margin-left:10px;">Undo Last Transfer</button>
-                <div id="fixResult" class="result"></div>
-                <div id="undoFixResult" class="result"></div>
+                <button onclick="runBottleneckRadar()">📡 Run Bottleneck Radar</button>
+                <div id="bottleneckResult" class="result"></div>
+                <div id="bottleneckContent" class="stats" style="display: none; margin-top: 20px;"></div>
             </div>
 
-            <!-- Section 3: Initials Breakdown -->
-            <div class="section admin-only">
-                <h2>Current Initials in Database</h2>
-                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                    See all unique engineer initials and their counts. Use this to identify what initials to target for fixing.
-                </p>
-                <button onclick="loadInitialsList()">📋 Load Initials List</button>
-                <div id="initialsContainer" class="stats" style="display: none; margin-top: 20px;">
-                    <h3>Engineers & Unassigned Records</h3>
-                    <div id="initialsContent"></div>
-                </div>
-            </div>
-
-            <!-- Section 4: Stats -->
-            <div class="section admin-only">
-                <h2>Engineer Statistics</h2>
-                <button onclick="loadStats()">📊 Refresh Stats</button>
-                <div id="statsContainer" class="stats" style="display: none; margin-top: 20px;">
-                    <h3>Engineer Breakdown</h3>
-                    <div id="statsContent"></div>
-                </div>
-            </div>
-
-            <!-- Section 5: Engineer Deep Dive Export -->
-            <div class="section admin-only">
-                <h2>📊 Engineer Deep Dive Export</h2>
-                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                    Download comprehensive Excel reports analyzing each engineer's performance, device breakdown, manufacturers, models, and daily activity.
-                </p>
-                <div class="form-group">
-                    <label for="exportPeriod">Time Period:</label>
-                    <select id="exportPeriod" style="max-width: 200px;">
-                        <option value="this_week">This Week</option>
-                        <option value="last_week">Last Week</option>
-                        <option value="this_month">This Month</option>
-                        <option value="last_month">Last Month</option>
-                        <option value="this_year">This Year</option>
-                        <option value="last_year">Last Year</option>
-                    </select>
-                </div>
-                <button onclick="downloadEngineerDeepDive()">📥 Download Report</button>
-                <div id="exportResult" class="result"></div>
-            </div>
-
-
-            <!-- Section 6: Connected Devices -->
+            <!-- Section 3: Exports -->
             <div class="section">
-                <h2>🔐 Connected Devices</h2>
+                <h2>📥 Data Exports</h2>
                 <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                    View devices with active sessions and revoke access if needed.
+                    Download comprehensive Excel reports for erasure and QA performance analysis.
                 </p>
-                <button onclick="loadConnectedDevices()">🔄 Refresh Devices</button>
-                <div id="devicesContainer" class="stats" style="display: none; margin-top: 20px;">
-                    <h3>Active Sessions</h3>
-                    <div id="devicesContent"></div>
+
+                <div class="export-cards">
+                    <!-- Erasure Deep Dive Export -->
+                    <div class="export-card">
+                        <h3>📊 Engineer Deep Dive (Erasures)</h3>
+                        <p>Comprehensive erasure analysis: engineer performance, device breakdown, manufacturers, models, and daily activity.</p>
+                        <div class="form-group">
+                            <label for="erasureExportPeriod">Time Period:</label>
+                            <select id="erasureExportPeriod">
+                                <option value="this_week">This Week</option>
+                                <option value="last_week">Last Week</option>
+                                <option value="this_month">This Month</option>
+                                <option value="last_month">Last Month</option>
+                                <option value="this_year">This Year</option>
+                                <option value="last_year">Last Year</option>
+                            </select>
+                        </div>
+                        <button onclick="downloadErasureExport()">📥 Download Erasure Report</button>
+                        <div id="erasureExportResult" class="result"></div>
+                    </div>
+
+                    <!-- QA Stats Export -->
+                    <div class="export-card">
+                        <h3>📋 QA Stats Export</h3>
+                        <p>QA engineer breakdown: data-bearing, non-data-bearing, sorting scans, device history, and unpalleted audits.</p>
+                        <div class="form-group">
+                            <label for="qaExportPeriod">Time Period:</label>
+                            <select id="qaExportPeriod">
+                                <option value="this_week">This Week</option>
+                                <option value="last_week">Last Week</option>
+                                <option value="this_month">This Month</option>
+                                <option value="last_month">Last Month</option>
+                                <option value="this_year">This Year</option>
+                                <option value="last_year">Last Year</option>
+                            </select>
+                        </div>
+                        <button onclick="downloadQAExport()">📥 Download QA Report</button>
+                        <div id="qaExportResult" class="result"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -439,7 +455,7 @@
         let userRole = null;
 
         async function ensureManagerAccess() {
-            const existingToken = sessionStorage.getItem('authToken');
+            const existingToken = sessionStorage.getItem('authToken') || localStorage.getItem('deviceToken');
             if (existingToken) {
                 try {
                     const statusRes = await fetch('/auth/status', {
@@ -494,24 +510,10 @@
 
         function applyRoleVisibility() {
             const roleBadge = document.getElementById('roleBadge');
-            const panelTitle = document.getElementById('panelTitle');
-            const panelSubtitle = document.getElementById('panelSubtitle');
-
             if (roleBadge && userRole) {
                 roleBadge.textContent = userRole;
                 roleBadge.style.display = 'inline-block';
             }
-
-            if (panelTitle && userRole === 'manager') {
-                panelTitle.textContent = 'Manager Tools';
-                if (panelSubtitle) {
-                    panelSubtitle.textContent = 'Device lookup and exports for managers';
-                }
-            }
-
-            document.querySelectorAll('.admin-only').forEach(section => {
-                section.style.display = (userRole === 'admin') ? '' : 'none';
-            });
         }
 
         function getAuthHeaders(isJson = true) {
@@ -520,143 +522,6 @@
                 headers['Content-Type'] = 'application/json';
             }
             return headers;
-        }
-
-        async function assignUnassigned() {
-            const initials = document.getElementById('assignTo').value.trim().toUpperCase();
-            const resultDiv = document.getElementById('assignResult');
-            const btn = document.getElementById('assignBtn');
-
-            if (!initials) {
-                showResult(resultDiv, 'error', 'Error', 'Please enter engineer initials');
-                return;
-            }
-
-            btn.disabled = true;
-            btn.innerHTML = '<span class="loading"></span> Processing...';
-
-            try {
-                const response = await fetch('/admin/assign-unassigned?to=' + encodeURIComponent(initials), {
-                    method: 'POST',
-                    headers: getAuthHeaders(true)
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    showResult(resultDiv, 'success', '✅ Success!', 
-                        `Assigned ${data.affected_records} unassigned erasures to engineer ${data.to_initials}`);
-                    document.getElementById('assignTo').value = '';
-                    loadStats();
-                } else {
-                    showResult(resultDiv, 'error', '❌ Error', data.detail || 'Failed to assign records');
-                }
-            } catch (error) {
-                showResult(resultDiv, 'error', '❌ Error', error.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'Assign Unassigned';
-            }
-        }
-
-        async function fixInitials() {
-            const fromInitials = document.getElementById('fixFrom').value;
-            const toInitials = document.getElementById('fixTo').value.trim().toUpperCase();
-            const resultDiv = document.getElementById('fixResult');
-            const btn = document.getElementById('fixBtn');
-
-            if (!fromInitials || !toInitials) {
-                showResult(resultDiv, 'error', 'Error', 'Please select from initials and enter to initials');
-                return;
-            }
-
-            if (fromInitials === toInitials) {
-                showResult(resultDiv, 'error', 'Error', 'From and to initials must be different');
-                return;
-            }
-
-            btn.disabled = true;
-            btn.innerHTML = '<span class="loading"></span> Processing...';
-
-            try {
-                // Use the actual value from database (could be empty string or special value)
-                const countInput = document.getElementById('fixCount');
-                const limitValue = countInput.value;
-                const maxAvailable = parseInt(countInput.max || '0', 10);
-                const payload = {
-                    from: fromInitials,
-                    to: toInitials
-                };
-                if (limitValue) {
-                    let parsed = parseInt(limitValue, 10);
-                    if (maxAvailable && parsed > maxAvailable) {
-                        parsed = maxAvailable;
-                        countInput.value = maxAvailable;
-                    }
-                    payload.limit = parsed;
-                }
-
-                const response = await fetch('/admin/fix-initials', {
-                    method: 'POST',
-                    headers: getAuthHeaders(true),
-                    body: JSON.stringify(payload)
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    showResult(resultDiv, 'success', '✅ Success!', 
-                        `Fixed ${data.affected_records} erasures: ${fromInitials || '(blank)'} → ${data.to_initials}`);
-                    document.getElementById('fixFrom').value = '';
-                    document.getElementById('fixTo').value = '';
-                    loadStats();
-                    loadInitialsList();
-                    populateFromDropdown(); // Refresh the dropdown
-                } else {
-                    showResult(resultDiv, 'error', '❌ Error', data.detail || data.message || 'Failed to fix records');
-                }
-            } catch (error) {
-                showResult(resultDiv, 'error', '❌ Error', error.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'Fix Initials';
-            }
-        }
-
-        async function loadStats() {
-            const container = document.getElementById('statsContainer');
-            const content = document.getElementById('statsContent');
-
-            try {
-                const response = await fetch('/metrics/engineers/leaderboard?scope=all&limit=20', {
-                    headers: getAuthHeaders(false)
-                });
-
-                const data = await response.json();
-                const engineers = data.items || [];
-
-                if (engineers.length === 0) {
-                    content.innerHTML = '<p style="color: #999;">No engineer data available yet.</p>';
-                } else {
-                    let html = '<div class="stats-grid">';
-                    engineers.forEach(eng => {
-                        const initials = eng.initials || '(unassigned)';
-                        html += `
-                            <div class="stat-card">
-                                <div class="stat-value">${eng.count || 0}</div>
-                                <div class="stat-label">${initials}</div>
-                            </div>
-                        `;
-                    });
-                    html += '</div>';
-                    content.innerHTML = html;
-                }
-
-                container.style.display = 'block';
-            } catch (error) {
-                content.innerHTML = '<p style="color: #c00;">Error loading stats: ' + error.message + '</p>';
-                container.style.display = 'block';
-            }
         }
 
         function showResult(div, type, title, message) {
@@ -713,13 +578,31 @@
             const engineers = Array.isArray(snapshot.engineer_missing_pallets) && snapshot.engineer_missing_pallets.length
                 ? snapshot.engineer_missing_pallets.map(item => {
                     const share = Number.isFinite(item.share) ? ` (${Math.round(item.share * 100)}%)` : '';
-                    return `<div class="bottleneck-item">${item.engineer}: ${item.missing_pallet_count}${share}</div>`;
+                    const trend = item.trend_direction || '';
+                    let trendIcon = '';
+                    if (trend === 'up') trendIcon = '<span class="trend-up">↑</span>';
+                    else if (trend === 'down') trendIcon = '<span class="trend-down">↓</span>';
+                    return `<div class="bottleneck-item">${item.engineer}: ${item.missing_pallet_count}${share} ${trendIcon}</div>`;
                 }).join('')
                 : '<div class="bottleneck-item">No engineer signals</div>';
             const flagged = Array.isArray(snapshot.flagged_engineers) && snapshot.flagged_engineers.length
-                ? snapshot.flagged_engineers.map(item => `<div class="bottleneck-item">${item.engineer}: ${item.missing_pallet_count} (${Math.round(item.share * 100)}%)</div>`).join('')
+                ? snapshot.flagged_engineers.map(item => `<div class="bottleneck-item" style="background:rgba(239,68,68,0.15);">${item.engineer}: ${item.missing_pallet_count} (${Math.round(item.share * 100)}%) - ${item.reason}</div>`).join('')
                 : '<div class="bottleneck-item">No flagged engineers</div>';
             const rollerQueue = snapshot.roller_queue || {};
+
+            let baselineHtml = '';
+            if (snapshot.baseline_comparison) {
+                const bc = snapshot.baseline_comparison;
+                const changeClass = bc.change_percent > 20 ? 'trend-up' : bc.change_percent < -10 ? 'trend-down' : 'trend-neutral';
+                baselineHtml = `
+                    <div style="margin-top:10px; font-size:12px; font-weight:700;">Baseline Comparison (vs prior ${bc.baseline_days || 28} days)</div>
+                    <div class="bottleneck-grid">
+                        <div class="bottleneck-item"><strong>Current:</strong> ${bc.current_count}</div>
+                        <div class="bottleneck-item"><strong>Baseline avg:</strong> ${bc.baseline_avg}</div>
+                        <div class="bottleneck-item"><strong>Change:</strong> <span class="${changeClass}">${bc.change_percent > 0 ? '+' : ''}${bc.change_percent}%</span></div>
+                    </div>
+                `;
+            }
 
             return `
                 <div class="bottleneck-card">
@@ -734,6 +617,7 @@
                         <div class="bottleneck-item"><strong>Roller waiting erasure:</strong> ${rollerQueue.waiting_erasure || 0}</div>
                         <div class="bottleneck-item"><strong>Roller waiting QA:</strong> ${rollerQueue.waiting_qa || 0}</div>
                     </div>
+                    ${baselineHtml}
                     <div style="margin-top:10px; font-size:12px; font-weight:700;">Top destinations</div>
                     <div class="bottleneck-list">${destinations}</div>
                     <div style="margin-top:10px; font-size:12px; font-weight:700;">Engineers with missing pallets</div>
@@ -744,176 +628,12 @@
             `;
         }
 
-        // Load stats on page load
+        // Page load
         window.addEventListener('load', async () => {
             const ok = await ensureManagerAccess();
             if (!ok) return;
             applyRoleVisibility();
-            if (userRole === 'admin') {
-                loadStats();
-                loadInitialsList();
-                populateFromDropdown();
-                loadConnectedDevices();
-            }
         });
-
-        async function populateFromDropdown() {
-            const dropdown = document.getElementById('fixFrom');
-            
-            try {
-                const response = await fetch('/admin/initials-list', {
-                    headers: getAuthHeaders(false)
-                });
-
-                const data = await response.json();
-                const initials = data.initials || [];
-
-                // Clear existing options except the first one
-                dropdown.innerHTML = '<option value="">-- Select initials to change --</option>';
-
-                // Add all initials as options
-                initials.forEach(item => {
-                    const option = document.createElement('option');
-                    
-                    // Store the actual database value
-                    if (item.initials === '(unassigned)' || !item.initials || item.initials.trim() === '') {
-                        option.value = '';  // Empty string for database query
-                        option.textContent = `(No Initials) - ${item.count} erasures`;
-                    } else {
-                        option.value = item.initials;
-                        option.textContent = `${item.initials} - ${item.count} erasures`;
-                    }
-                    option.dataset.count = item.count;
-                    
-                    dropdown.appendChild(option);
-                });
-
-                dropdown.addEventListener('change', () => {
-                    const selected = dropdown.options[dropdown.selectedIndex];
-                    const count = parseInt(selected.dataset.count || '0', 10);
-                    const countInput = document.getElementById('fixCount');
-                    const hint = document.getElementById('fixCountHint');
-                    if (countInput) {
-                        countInput.max = count || '';
-                        countInput.value = '';
-                    }
-                    if (hint) {
-                        hint.textContent = count ? `Max available: ${count}` : '';
-                    }
-                });
-            } catch (error) {
-                console.error('Error loading initials dropdown:', error);
-            }
-        }
-
-        async function loadInitialsList() {
-            const container = document.getElementById('initialsContainer');
-            const content = document.getElementById('initialsContent');
-
-            try {
-                const response = await fetch('/admin/initials-list', {
-                    headers: getAuthHeaders(false)
-                });
-
-                const data = await response.json();
-                const initials = data.initials || [];
-
-                if (initials.length === 0) {
-                    content.innerHTML = '<p style="color: #999;">No data available.</p>';
-                } else {
-                    let html = '<div class="stats-grid">';
-                    initials.forEach(item => {
-                        // Handle empty/blank initials display
-                        let displayName = item.initials;
-                        let bgColor = '';
-                        
-                        if (item.initials === '(unassigned)' || !item.initials || item.initials.trim() === '') {
-                            displayName = '❌ No Name';
-                            bgColor = 'border-left-color: #ff6b6b;';
-                        }
-                        
-                        html += `
-                            <div class="stat-card" style="${bgColor}">
-                                <div class="stat-value">${item.count}</div>
-                                <div class="stat-label">${displayName}</div>
-                            </div>
-                        `;
-                    });
-                    html += '</div>';
-                    content.innerHTML = html;
-                }
-
-                container.style.display = 'block';
-            } catch (error) {
-                content.innerHTML = '<p style="color: #c00;">Error loading initials: ' + error.message + '</p>';
-                container.style.display = 'block';
-            }
-        }
-
-        async function downloadEngineerDeepDive() {
-            const period = document.getElementById('exportPeriod').value;
-            const resultDiv = document.getElementById('exportResult');
-            
-            resultDiv.innerHTML = '<p style="color: #667eea;">⏳ Generating report...</p>';
-            
-            try {
-                const response = await fetch(`/export/engineer-deepdive?period=${period}`, {
-                    headers: getAuthHeaders(false)
-                });
-                if (!response.ok) {
-                    throw new Error(`Export failed (HTTP ${response.status})`);
-                }
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `engineer-deepdive-${period.replace('_', '-')}.xlsx`;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                window.URL.revokeObjectURL(url);
-
-                const periodLabels = {
-                    'this_week': 'This Week',
-                    'last_week': 'Last Week',
-                    'this_month': 'This Month',
-                    'last_month': 'Last Month',
-                    'this_year': 'This Year',
-                    'last_year': 'Last Year'
-                };
-                resultDiv.innerHTML = `<p style="color: #10b981;">✅ Download started for ${periodLabels[period]}!</p>`;
-                setTimeout(() => {
-                    resultDiv.innerHTML = '';
-                }, 3000);
-            } catch (error) {
-                resultDiv.innerHTML = '<p style="color: #c00;">❌ Error: ' + error.message + '</p>';
-            }
-        }
-
-        async function undoLastInitials() {
-            const resultDiv = document.getElementById('undoFixResult');
-            resultDiv.innerHTML = '<p style="color: #667eea;">⏳ Undoing last transfer...</p>';
-            try {
-                const response = await fetch('/admin/undo-last-initials', {
-                    method: 'POST',
-                    headers: getAuthHeaders(true)
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.detail || 'Undo failed');
-                }
-                if (data.undone === 0) {
-                    resultDiv.innerHTML = '<p style="color: #999;">No undo history available.</p>';
-                } else {
-                    resultDiv.innerHTML = `<p style="color: #10b981;">✅ Restored ${data.undone} records (${data.from_initials} ← ${data.to_initials})</p>`;
-                }
-                loadStats();
-                loadInitialsList();
-                populateFromDropdown();
-            } catch (error) {
-                resultDiv.innerHTML = '<p style="color: #c00;">❌ Error: ' + error.message + '</p>';
-            }
-        }
 
         async function searchDevice() {
             const stockId = document.getElementById('deviceSearchId').value.trim();
@@ -943,7 +663,6 @@
                     return;
                 }
 
-                // Show summary
                 const foundIn = data.found_in && data.found_in.length > 0 
                     ? data.found_in.join(', ') 
                     : 'Not found in any source';
@@ -959,7 +678,6 @@
                     summaryHtml += `<p><strong>Last known location:</strong> ${data.last_known_location}</p>`;
                 }
                 
-                // Asset info
                 if (data.asset_info) {
                     const a = data.asset_info;
                     summaryHtml += `<div style="margin-top:10px; padding:10px; background:#f0f0f0; border-radius:6px;">`;
@@ -968,11 +686,11 @@
                     summaryHtml += `• ${a.manufacturer || ''} ${a.model || ''}<br>`;
                     summaryHtml += `• Condition: ${a.condition || 'N/A'}<br>`;
                     summaryHtml += `• Status: ${a.status || 'N/A'}<br>`;
+                    if (a.roller_location) summaryHtml += `• Roller: ${a.roller_location}<br>`;
                     if (a.added_date) summaryHtml += `• Added: ${a.added_date}<br>`;
                     summaryHtml += `</div>`;
                 }
                 
-                // Pallet info
                 if (data.pallet_info && data.pallet_info.pallet_id) {
                     const p = data.pallet_info;
                     summaryHtml += `<div style="margin-top:10px; padding:10px; background:#e8f5e9; border-radius:6px;">`;
@@ -995,7 +713,6 @@
                 resultDiv.className = 'result info';
                 resultDiv.style.display = 'block';
 
-                // Show timeline
                 if (data.timeline && data.timeline.length > 0) {
                     let timelineHtml = '<div style="margin-top:15px;">';
                     data.timeline.forEach((event, idx) => {
@@ -1058,55 +775,74 @@
             }
         }
 
-        async function loadConnectedDevices() {
-            const container = document.getElementById('devicesContainer');
-            const content = document.getElementById('devicesContent');
-
+        async function downloadErasureExport() {
+            const period = document.getElementById('erasureExportPeriod').value;
+            const resultDiv = document.getElementById('erasureExportResult');
+            
+            resultDiv.className = 'result info';
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<p>⏳ Generating erasure report...</p>';
+            
             try {
-                const response = await fetch('/admin/connected-devices', {
+                const response = await fetch(`/export/engineer-deepdive?period=${period}`, {
                     headers: getAuthHeaders(false)
                 });
-                const data = await response.json();
-                const devices = data.devices || [];
-
-                if (devices.length === 0) {
-                    content.innerHTML = '<p style="color: #999;">No active device sessions.</p>';
-                } else {
-                    let html = '<div class="stats-grid">';
-                    devices.forEach(device => {
-                        const tokenSuffix = device.token ? device.token.slice(-8) : 'unknown';
-                        html += `
-                            <div class="stat-card" style="text-align:left;">
-                                <div style="font-weight:700;color:#333;">${device.role || 'unknown'} (${tokenSuffix})</div>
-                                <div style="font-size:12px;color:#666;margin-top:6px;">IP: ${device.client_ip || 'n/a'}</div>
-                                <div style="font-size:12px;color:#666;">UA: ${device.user_agent || 'n/a'}</div>
-                                <div style="font-size:12px;color:#666;">Expiry: ${device.expiry || 'n/a'}</div>
-                                <button style="margin-top:10px;" onclick="revokeDevice('${device.token}')">Revoke</button>
-                            </div>
-                        `;
-                    });
-                    html += '</div>';
-                    content.innerHTML = html;
+                if (!response.ok) {
+                    throw new Error(`Export failed (HTTP ${response.status})`);
                 }
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `engineer-deepdive-${period.replace('_', '-')}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(url);
 
-                container.style.display = 'block';
+                showResult(resultDiv, 'success', '✅ Download Started', `Erasure report for ${period.replace('_', ' ')} is downloading.`);
+                setTimeout(() => { resultDiv.style.display = 'none'; }, 3000);
             } catch (error) {
-                content.innerHTML = '<p style="color: #c00;">Error loading devices: ' + error.message + '</p>';
-                container.style.display = 'block';
+                showResult(resultDiv, 'error', '❌ Export Failed', error.message);
             }
         }
 
-        async function revokeDevice(token) {
-            if (!confirm('Revoke this device session?')) return;
+        async function downloadQAExport() {
+            const period = document.getElementById('qaExportPeriod').value;
+            const resultDiv = document.getElementById('qaExportResult');
+            
+            resultDiv.className = 'result info';
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<p>⏳ Generating QA report...</p>';
+            
             try {
-                await fetch('/admin/revoke-device', {
-                    method: 'POST',
-                    headers: getAuthHeaders(true),
-                    body: JSON.stringify({ token })
+                const response = await fetch(`/export/qa-stats?period=${period}`, {
+                    headers: getAuthHeaders(false)
                 });
-                loadConnectedDevices();
+                if (!response.ok) {
+                    throw new Error(`Export failed (HTTP ${response.status})`);
+                }
+                const blob = await response.blob();
+                const contentDisposition = response.headers.get('Content-Disposition') || '';
+                let filename = `qa-stats-${period.replace('_', '-')}.xlsx`;
+                const filenameMatch = contentDisposition.match(/filename=([^;]+)/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1].replace(/"/g, '');
+                }
+                
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(url);
+
+                showResult(resultDiv, 'success', '✅ Download Started', `QA report for ${period.replace('_', ' ')} is downloading.`);
+                setTimeout(() => { resultDiv.style.display = 'none'; }, 3000);
             } catch (error) {
-                alert('Failed to revoke device: ' + error.message);
+                showResult(resultDiv, 'error', '❌ Export Failed', error.message);
             }
         }
     </script>

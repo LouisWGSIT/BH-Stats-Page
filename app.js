@@ -222,22 +222,26 @@ function renderSVGSparkline(svgElem, data) {
   function applyRolePermissions() {
     const userRole = sessionStorage.getItem('userRole') || 'viewer';
     const downloadBtn = document.getElementById('downloadBtn');
+    const managerBtn = document.querySelector('.manager-btn');
     const adminBtn = document.querySelector('.admin-btn');
     const loginUpgradeIcon = document.getElementById('loginUpgradeIcon');
     
     if (userRole === 'viewer') {
-      // Viewer mode: hide export and admin, show upgrade icon
+      // Viewer mode: hide export, manager, admin; show upgrade icon
       if (downloadBtn) downloadBtn.style.display = 'none';
+      if (managerBtn) managerBtn.style.display = 'none';
       if (adminBtn) adminBtn.style.display = 'none';
       if (loginUpgradeIcon) loginUpgradeIcon.style.display = 'inline-block';
     } else if (userRole === 'manager') {
-      // Manager mode: export only
+      // Manager mode: export + manager tools
       if (downloadBtn) downloadBtn.style.display = 'inline-block';
+      if (managerBtn) managerBtn.style.display = 'inline-block';
       if (adminBtn) adminBtn.style.display = 'none';
       if (loginUpgradeIcon) loginUpgradeIcon.style.display = 'inline-block';
     } else if (userRole === 'admin') {
-      // Admin mode: export + admin
+      // Admin mode: export + manager + admin
       if (downloadBtn) downloadBtn.style.display = 'inline-block';
+      if (managerBtn) managerBtn.style.display = 'inline-block';
       if (adminBtn) adminBtn.style.display = 'inline-block';
       if (loginUpgradeIcon) loginUpgradeIcon.style.display = 'none';
     }

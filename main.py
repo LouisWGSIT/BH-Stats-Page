@@ -1780,13 +1780,28 @@ async def device_lookup(stock_id: str, request: Request):
         cursor = conn.cursor()
         
         # 1. Check ITAD_asset_info for asset details
-        cursor.execute("""
-            SELECT stockid, serialnumber, manufacturer, description, `condition`, 
-                   COALESCE(pallet_id, palletID) as pallet_id, last_update, location
-            FROM ITAD_asset_info 
-            WHERE stockid = %s OR serialnumber = %s
-        """, (stock_id, stock_id))
-        row = cursor.fetchone()
+        asset_row = None
+        try:
+            cursor.execute("""
+                SELECT stockid, serialnumber, manufacturer, description, `condition`, 
+                       COALESCE(pallet_id, palletID) as pallet_id, last_update, location,
+                       roller_location, stage_current, stage_next, received_date,
+                       quarantine, quarantine_reason, process_complete,
+                       de_complete, de_completed_by, de_completed_date
+                FROM ITAD_asset_info 
+                WHERE stockid = %s OR serialnumber = %s
+            """, (stock_id, stock_id))
+            asset_row = cursor.fetchone()
+        except Exception:
+            # Fallback for schemas without newer columns
+            cursor.execute("""
+                SELECT stockid, serialnumber, manufacturer, description, `condition`, 
+                       COALESCE(pallet_id, palletID) as pallet_id, last_update, location
+                FROM ITAD_asset_info 
+                WHERE stockid = %s OR serialnumber = %s
+            """, (stock_id, stock_id))
+            asset_row = cursor.fetchone()
+        row = asset_row
         if row:
             results["found_in"].append("ITAD_asset_info")
             results["asset_info"] = {
@@ -1799,6 +1814,19 @@ async def device_lookup(stock_id: str, request: Request):
                 "last_update": str(row[6]) if row[6] else None,
                 "location": row[7],
             }
+            if len(row) > 8:
+                results["asset_info"].update({
+                    "roller_location": row[8],
+                    "stage_current": row[9],
+                    "stage_next": row[10],
+                    "received_date": str(row[11]) if row[11] else None,
+                    "quarantine": row[12],
+                    "quarantine_reason": row[13],
+                    "process_complete": row[14],
+                    "de_complete": row[15] if len(row) > 15 else None,
+                    "de_completed_by": row[16] if len(row) > 16 else None,
+                    "de_completed_date": str(row[17]) if len(row) > 17 and row[17] else None,
+                })
             if row[5]:  # pallet_id
                 results["pallet_info"] = {"pallet_id": row[5]}
             if row[7]:  # location
@@ -1920,9 +1948,158 @@ async def device_lookup(stock_id: str, request: Request):
         except Exception as e:
             print(f"SQLite lookup error: {e}")
         
+        # De-dupe timeline events that are identical across sources/rows
+        deduped_timeline = []
+        seen_events = set()
+        for event in results["timeline"]:
+            key = (
+                event.get("timestamp"),
+                event.get("stage"),
+                event.get("user"),
+                event.get("location"),
+                event.get("source"),
+                event.get("details"),
+            )
+            if key in seen_events:
+                continue
+            seen_events.add(key)
+            deduped_timeline.append(event)
+
         # Sort timeline chronologically
-        results["timeline"].sort(key=lambda x: x.get("timestamp") or "")
-        
+        deduped_timeline.sort(key=lambda x: x.get("timestamp") or "")
+        results["timeline"] = deduped_timeline
+
+        # Build smart insights (simple prediction + risk signals)
+        from datetime import datetime
+
+        def parse_timestamp(value):
+            if not value:
+                return None
+            if isinstance(value, datetime):
+                return value
+            raw = str(value).strip()
+            if not raw:
+                return None
+            try:
+                return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except Exception:
+                pass
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                try:
+                    return datetime.strptime(raw, fmt)
+                except Exception:
+                    continue
+            return None
+
+        last_activity_dt = None
+        last_activity_label = None
+        for event in reversed(results["timeline"]):
+            ts = parse_timestamp(event.get("timestamp"))
+            if ts:
+                last_activity_dt = ts
+                last_activity_label = event.get("timestamp")
+                break
+        if not last_activity_dt and results.get("asset_info"):
+            asset_last = parse_timestamp(results["asset_info"].get("last_update"))
+            if asset_last:
+                last_activity_dt = asset_last
+                last_activity_label = results["asset_info"].get("last_update")
+
+        hours_since = None
+        if last_activity_dt:
+            try:
+                delta = datetime.now(last_activity_dt.tzinfo) - last_activity_dt
+                hours_since = round(delta.total_seconds() / 3600, 1)
+            except Exception:
+                hours_since = None
+
+        asset_info = results.get("asset_info") or {}
+        stage_next = asset_info.get("stage_next")
+        stage_current = asset_info.get("stage_current")
+        pallet_id = (results.get("pallet_info") or {}).get("pallet_id")
+        has_qa = any((evt.get("stage") or "").lower().startswith("qa") for evt in results["timeline"])
+        has_erasure = any("erasure" in (evt.get("stage") or "").lower() for evt in results["timeline"])
+        last_stage = None
+        if results["timeline"]:
+            last_stage = results["timeline"][-1].get("stage")
+
+        predicted_next = None
+        confidence = 0.35
+        if stage_next:
+            predicted_next = stage_next
+            confidence = 0.78
+        elif last_stage:
+            stage_lower = last_stage.lower()
+            if "erasure" in stage_lower:
+                predicted_next = "QA Review"
+                confidence = 0.6
+            elif stage_lower.startswith("qa"):
+                predicted_next = "Pallet Assignment" if not pallet_id else "Pallet Move / Shipping"
+                confidence = 0.65
+            elif "sorting" in stage_lower:
+                predicted_next = "QA Review"
+                confidence = 0.55
+        elif stage_current:
+            predicted_next = "Continue workflow"
+            confidence = 0.4
+
+        signals = []
+        recommendations = []
+        risk_score = 10
+        risk_level = "low"
+
+        if hours_since is not None and hours_since >= 48:
+            signals.append(f"No activity for {hours_since} hours")
+            recommendations.append("Investigate current location and assign owner")
+            risk_score += 35
+        if has_qa and not pallet_id:
+            signals.append("QA complete but no pallet assignment")
+            recommendations.append("Assign pallet or confirm destination")
+            risk_score += 30
+        if asset_info.get("quarantine"):
+            signals.append("Device is in quarantine")
+            if asset_info.get("quarantine_reason"):
+                signals.append(f"Quarantine reason: {asset_info.get('quarantine_reason')}")
+            recommendations.append("Resolve quarantine before next stage")
+            risk_score += 40
+
+        roller_location = (asset_info.get("roller_location") or "").strip()
+        if roller_location and "roller" in roller_location.lower():
+            de_complete = str(asset_info.get("de_complete") or "").lower() in ("yes", "true", "1")
+            if de_complete or has_erasure:
+                signals.append(f"Roller status: {roller_location} (erased, waiting QA)")
+                recommendations.append("Prioritize QA scan to clear roller queue")
+                risk_score += 15
+            else:
+                signals.append(f"Roller status: {roller_location} (waiting erasure)")
+                recommendations.append("Route to erasure queue or verify intake")
+                risk_score += 20
+
+        if risk_score >= 70:
+            risk_level = "high"
+        elif risk_score >= 35:
+            risk_level = "medium"
+
+        results["insights"] = {
+            "predicted_next_step": predicted_next,
+            "confidence": confidence,
+            "risk_score": min(risk_score, 100),
+            "risk_level": risk_level,
+            "last_activity": last_activity_label,
+            "hours_since_activity": hours_since,
+            "signals": signals,
+            "recommendations": recommendations,
+        }
+
+        # Bottleneck snapshot (same destination, recent window)
+        destination_label = asset_info.get("condition") or asset_info.get("destination")
+        if destination_label:
+            results["bottleneck"] = _build_bottleneck_snapshot(
+                days=7,
+                destination=destination_label,
+                limit_engineers=5
+            )
+
         # Summary
         results["total_events"] = len(results["timeline"])
         results["data_sources_checked"] = [
@@ -1938,6 +2115,105 @@ async def device_lookup(stock_id: str, request: Request):
         print(f"Device lookup error: {e}")
         import traceback
         traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _build_bottleneck_snapshot(days: int = 7, destination: str = None, limit_engineers: int = 5) -> Dict[str, object]:
+    """Summarize bottleneck patterns for unpalleted devices in a lookback window."""
+    from datetime import datetime, timedelta
+    import qa_export
+
+    end_date = datetime.now().date()
+    start_date = (datetime.now() - timedelta(days=days)).date()
+    devices = qa_export.get_unpalleted_devices(start_date, end_date)
+
+    def normalize_destination(value: object) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    if destination:
+        destination_norm = normalize_destination(destination).lower()
+        devices = [
+            d for d in devices
+            if normalize_destination(d.get("condition")).lower() == destination_norm
+        ]
+    else:
+        destination_norm = None
+
+    total_unpalleted = len(devices)
+    destination_counts: Dict[str, int] = {}
+    engineer_counts: Dict[str, int] = {}
+    roller_waiting_erasure = 0
+    roller_waiting_qa = 0
+    roller_total = 0
+
+    for device in devices:
+        dest_label = normalize_destination(device.get("condition")) or "Unknown"
+        destination_counts[dest_label] = destination_counts.get(dest_label, 0) + 1
+
+        qa_user = (device.get("qa_user") or "Unassigned").strip() or "Unassigned"
+        engineer_counts[qa_user] = engineer_counts.get(qa_user, 0) + 1
+
+        roller_location = (device.get("roller_location") or "").strip()
+        if roller_location and "roller" in roller_location.lower():
+            roller_total += 1
+            de_complete = str(device.get("de_complete") or "").lower() in ("yes", "true", "1")
+            if de_complete:
+                roller_waiting_qa += 1
+            else:
+                roller_waiting_erasure += 1
+
+    top_destinations = sorted(
+        [{"destination": k, "count": v} for k, v in destination_counts.items()],
+        key=lambda x: x["count"],
+        reverse=True
+    )
+
+    top_engineers = sorted(
+        [{"engineer": k, "missing_pallet_count": v} for k, v in engineer_counts.items()],
+        key=lambda x: x["missing_pallet_count"],
+        reverse=True
+    )
+
+    flagged_engineers = []
+    for item in top_engineers[:limit_engineers]:
+        share = (item["missing_pallet_count"] / total_unpalleted) if total_unpalleted else 0
+        item["share"] = round(share, 2)
+        if item["missing_pallet_count"] >= 5 and share >= 0.2:
+            flagged_engineers.append({
+                "engineer": item["engineer"],
+                "missing_pallet_count": item["missing_pallet_count"],
+                "share": item["share"],
+                "reason": "High share of missing pallet assignments",
+            })
+
+    return {
+        "lookback_days": days,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "destination": destination if destination_norm else None,
+        "total_unpalleted": total_unpalleted,
+        "destination_counts": top_destinations,
+        "engineer_missing_pallets": top_engineers[:limit_engineers],
+        "flagged_engineers": flagged_engineers,
+        "roller_queue": {
+            "total": roller_total,
+            "waiting_erasure": roller_waiting_erasure,
+            "waiting_qa": roller_waiting_qa,
+        },
+    }
+
+
+@app.get("/api/bottlenecks")
+async def get_bottleneck_snapshot(request: Request, days: int = 7):
+    """Return bottleneck snapshot for recent unpalleted devices (manager only)."""
+    require_manager_or_admin(request)
+    days = max(1, min(days, 60))
+    try:
+        return _build_bottleneck_snapshot(days=days, destination=None, limit_engineers=8)
+    except Exception as e:
+        print(f"Bottleneck snapshot error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/export/qa-stats")
