@@ -1595,9 +1595,18 @@ def _build_device_log_by_engineer_sheet(start_date: date, end_date: date, period
         }
     }
 
-def generate_qa_engineer_export(period: str) -> Dict[str, List[List]]:
+def generate_qa_engineer_export(period: str, start_year: int = None, start_month: int = None, end_year: int = None, end_month: int = None) -> Dict[str, List[List]]:
     """Generate comprehensive QA engineer breakdown export with overall, data-bearing, non-data-bearing, sorting, and comparison sections"""
-    start_date, end_date, period_label = get_week_dates(period)
+    
+    # Handle custom range
+    if period == "custom_range" and start_year and start_month and end_year and end_month:
+        start_date = date(start_year, start_month, 1)
+        # End date is last day of end_month
+        last_day = calendar.monthrange(end_year, end_month)[1]
+        end_date = date(end_year, end_month, last_day)
+        period_label = f"{start_date.strftime('%b %Y')} - {end_date.strftime('%b %Y')}"
+    else:
+        start_date, end_date, period_label = get_week_dates(period)
     
     sheets = {}
     

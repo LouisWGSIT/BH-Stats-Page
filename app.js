@@ -3790,24 +3790,44 @@ function renderSVGSparkline(svgElem, data) {
 
   async function downloadExcel() {
     const dateScope = document.getElementById('dateSelector')?.value || 'this-week';
+
+    // Handle custom range - show modal if not yet selected
+    if (dateScope === 'custom-range' && !customRangeData) {
+      showCustomRangeModal();
+      return;
+    }
+
     let period = dateScope.replace(/-/g, '_');
 
     // Determine export URL and filename
     let exportUrl, filename;
+
+    // Build custom range query params if applicable
+    let customParams = '';
+    if (dateScope === 'custom-range' && customRangeData) {
+      const { startYear, startMonth, endYear, endMonth } = customRangeData;
+      customParams = `&start_year=${startYear}&start_month=${startMonth + 1}&end_year=${endYear}&end_month=${endMonth + 1}`;
+      period = 'custom_range';
+    }
+
     if (currentDashboard === 1) {
       // QA dashboard export
       if (period === 'last_available') {
         period = 'last_available';
       }
-      exportUrl = `/export/qa-stats?period=${period}`;
-      filename = `qa-stats-${dateScope}.xlsx`;
+      exportUrl = `/export/qa-stats?period=${period}${customParams}`;
+      filename = customRangeData 
+        ? `qa-stats-${customRangeData.startYear}-${customRangeData.startMonth + 1}-to-${customRangeData.endYear}-${customRangeData.endMonth + 1}.xlsx`
+        : `qa-stats-${dateScope}.xlsx`;
     } else {
       // Erasure dashboard export (engineer deep dive)
       if (dateScope === 'last-available') {
         period = 'this_week';
       }
-      exportUrl = `/export/engineer-deepdive?period=${period}`;
-      filename = `engineer-deepdive-${dateScope}.xlsx`;
+      exportUrl = `/export/engineer-deepdive?period=${period}${customParams}`;
+      filename = customRangeData
+        ? `engineer-deepdive-${customRangeData.startYear}-${customRangeData.startMonth + 1}-to-${customRangeData.endYear}-${customRangeData.endMonth + 1}.xlsx`
+        : `engineer-deepdive-${dateScope}.xlsx`;
     }
 
     try {
@@ -3837,6 +3857,106 @@ function renderSVGSparkline(svgElem, data) {
       alert('Failed to download spreadsheet: ' + error.message);
     }
   }
+
+  // ==================== CUSTOM RANGE PICKER ====================
+  let customRangeData = null; // stores {startYear, startMonth, endYear, endMonth}
+
+  function populateMonthOptions() {
+    const startSelect = document.getElementById('rangeStartMonth');
+    const endSelect = document.getElementById('rangeEndMonth');
+    if (!startSelect || !endSelect) return;
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    // Generate options for last 2 years plus current year (up to current month)
+    const options = [];
+    for (let year = currentYear - 2; year <= currentYear; year++) {
+      const maxMonth = year === currentYear ? currentMonth : 11;
+      for (let month = 0; month <= maxMonth; month++) {
+        options.push({ year, month, label: `${months[month]} ${year}` });
+      }
+    }
+
+    // Populate both selects
+    startSelect.innerHTML = options.map(opt =>
+      `<option value="${opt.year}-${opt.month}">${opt.label}</option>`
+    ).join('');
+
+    endSelect.innerHTML = options.map(opt =>
+      `<option value="${opt.year}-${opt.month}">${opt.label}</option>`
+    ).join('');
+
+    // Default: start = Jan of current year, end = current month
+    startSelect.value = `${currentYear}-0`;
+    endSelect.value = `${currentYear}-${currentMonth}`;
+  }
+
+  function showCustomRangeModal() {
+    const modal = document.getElementById('customRangeModal');
+    if (!modal) return;
+    populateMonthOptions();
+    modal.classList.remove('hidden');
+  }
+
+  function hideCustomRangeModal(revertSelector = true) {
+    const modal = document.getElementById('customRangeModal');
+    if (modal) modal.classList.add('hidden');
+    // Revert dropdown to previous value if cancelled
+    if (revertSelector) {
+      const selector = document.getElementById('dateSelector');
+      if (selector && !customRangeData) {
+        selector.value = 'this-week';
+      }
+    }
+  }
+
+  function handleCustomRangeConfirm() {
+    const startSelect = document.getElementById('rangeStartMonth');
+    const endSelect = document.getElementById('rangeEndMonth');
+    if (!startSelect || !endSelect) return;
+
+    const [startYear, startMonth] = startSelect.value.split('-').map(Number);
+    const [endYear, endMonth] = endSelect.value.split('-').map(Number);
+
+    // Validate: start must be before or equal to end
+    if (startYear > endYear || (startYear === endYear && startMonth > endMonth)) {
+      alert('Start month must be before or equal to end month');
+      return;
+    }
+
+    customRangeData = { startYear, startMonth, endYear, endMonth };
+    hideCustomRangeModal(false);
+
+    // Update dropdown text to show selection
+    const selector = document.getElementById('dateSelector');
+    const customOption = selector?.querySelector('option[value="custom-range"]');
+    if (customOption) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      customOption.textContent = `${months[startMonth]} ${startYear} - ${months[endMonth]} ${endYear}`;
+    }
+
+    // Trigger the download
+    downloadExcel();
+  }
+
+  // Hook up custom range modal events
+  document.getElementById('rangeCancel')?.addEventListener('click', () => hideCustomRangeModal(true));
+  document.getElementById('rangeConfirm')?.addEventListener('click', handleCustomRangeConfirm);
+
+  // Close modal on backdrop click
+  document.getElementById('customRangeModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'customRangeModal') hideCustomRangeModal(true);
+  });
+
+  // Intercept dateSelector changes for custom-range
+  document.getElementById('dateSelector')?.addEventListener('change', (e) => {
+    if (e.target.value === 'custom-range') {
+      showCustomRangeModal();
+    }
+  });
 
   // Add button listener
   document.getElementById('downloadBtn')?.addEventListener('click', downloadExcel);

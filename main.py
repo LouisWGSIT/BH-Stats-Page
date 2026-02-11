@@ -1755,7 +1755,14 @@ async def export_engineer_deepdive(request: Request, period: str = "this_week"):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/export/qa-stats")
-async def export_qa_stats(request: Request, period: str = "this_week"):
+async def export_qa_stats(
+    request: Request, 
+    period: str = "this_week",
+    start_year: int = None,
+    start_month: int = None,
+    end_year: int = None,
+    end_month: int = None
+):
     """Generate QA stats Excel export for a specific period from MariaDB (manager only)"""
     require_manager_or_admin(request)
     
@@ -1777,13 +1784,27 @@ async def export_qa_stats(request: Request, period: str = "this_week"):
             "last_year_h1",
             "last_year_h2",
             "last_available",
+            "custom_range",
         ]
         if period not in valid_periods:
             print(f"QA export invalid period: {period}")
             raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}")
         
+        # Validate custom range parameters if specified
+        if period == "custom_range":
+            if not all([start_year, start_month, end_year, end_month]):
+                raise HTTPException(status_code=400, detail="Custom range requires start_year, start_month, end_year, end_month")
+            if start_month < 1 or start_month > 12 or end_month < 1 or end_month > 12:
+                raise HTTPException(status_code=400, detail="Month must be between 1 and 12")
+        
         # Generate the QA engineer breakdown export (new comprehensive version)
-        sheets_data = qa_export.generate_qa_engineer_export(period)
+        sheets_data = qa_export.generate_qa_engineer_export(
+            period, 
+            start_year=start_year, 
+            start_month=start_month, 
+            end_year=end_year, 
+            end_month=end_month
+        )
         
         # Create Excel file
         excel_file = excel_export.create_excel_report(sheets_data)

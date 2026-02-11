@@ -28,10 +28,7 @@
           <option value="last-week">Last Week</option>
           <option value="this-month">This Month</option>
           <option value="last-month">Last Month</option>
-          <option value="this-year">This Year</option>
-          <option value="last-year">Last Year</option>
-          <option value="last-year-h1">Last Year (Jan-Jun)</option>
-          <option value="last-year-h2">Last Year (Jul-Dec)</option>
+          <option value="custom-range">Custom Range...</option>
           <option value="last-available">Last Available (QA)</option>
         </select>
         <button id="loginUpgradeIcon" class="login-upgrade-icon" title="Upgrade to manager access" style="display: none;">🔐</button>
@@ -755,6 +752,28 @@
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.0/dist/confetti.browser.min.js"></script>
   <script src="app.js"></script>
   
+  <!-- Custom Range Modal -->
+  <div id="customRangeModal" class="modal hidden">
+    <div class="modal-content range-modal">
+      <h2>Select Export Range</h2>
+      <p class="range-hint">Choose start and end months for your export</p>
+      <div class="range-pickers">
+        <div class="range-field">
+          <label for="rangeStartMonth">From</label>
+          <select id="rangeStartMonth" class="range-select"></select>
+        </div>
+        <div class="range-field">
+          <label for="rangeEndMonth">To</label>
+          <select id="rangeEndMonth" class="range-select"></select>
+        </div>
+      </div>
+      <div class="range-buttons">
+        <button id="rangeCancel" class="btn-secondary">Cancel</button>
+        <button id="rangeConfirm" class="btn-primary">Export</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Login Modal for External Access -->
   <div id="loginModal" class="modal hidden">
     <div class="modal-content login-modal">
