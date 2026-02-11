@@ -1711,6 +1711,7 @@ async def export_engineer_deepdive(request: Request, period: str = "this_week"):
     
     try:
         import engineer_export
+        period = period.replace("-", "_")
         
         # Ensure database schema is up-to-date
         db.init_db()
@@ -1760,6 +1761,7 @@ async def export_qa_stats(request: Request, period: str = "this_week"):
     
     try:
         import qa_export
+        period = period.replace("-", "_")
         
         # Ensure database schema is up-to-date
         db.init_db()
@@ -1772,9 +1774,12 @@ async def export_qa_stats(request: Request, period: str = "this_week"):
             "last_month",
             "this_year",
             "last_year",
+            "last_year_h1",
+            "last_year_h2",
             "last_available",
         ]
         if period not in valid_periods:
+            print(f"QA export invalid period: {period}")
             raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}")
         
         # Generate the QA engineer breakdown export (new comprehensive version)
