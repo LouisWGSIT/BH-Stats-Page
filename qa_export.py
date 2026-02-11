@@ -1449,6 +1449,87 @@ def get_unpalleted_devices(start_date: date, end_date: date) -> List[Dict[str, o
     return devices
 
 
+def get_roller_queue_status() -> Dict[str, object]:
+    """Get current status of all devices assigned to rollers (regardless of pallet status).
+    
+    Returns breakdown of devices per roller station and their erasure status.
+    This provides accurate roller queue tracking independent of pallet assignments.
+    """
+    conn = get_mariadb_connection()
+    if not conn:
+        return {"rollers": [], "totals": {"total": 0, "erased": 0, "pending_erasure": 0, "waiting_qa": 0}}
+    
+    result = {
+        "rollers": [],
+        "totals": {"total": 0, "erased": 0, "pending_erasure": 0, "waiting_qa": 0}
+    }
+    
+    try:
+        cursor = conn.cursor()
+        # Get all devices currently assigned to a roller location
+        cursor.execute("""
+            SELECT 
+                roller_location,
+                de_complete,
+                COUNT(*) as device_count
+            FROM ITAD_asset_info
+            WHERE roller_location IS NOT NULL 
+              AND roller_location != ''
+              AND LOWER(roller_location) LIKE '%roller%'
+              AND condition NOT IN ('Disposed', 'Shipped', 'Sold')
+            GROUP BY roller_location, de_complete
+            ORDER BY roller_location, de_complete
+        """)
+        
+        roller_data = {}
+        for row in cursor.fetchall():
+            roller_name = row[0] or "Unknown Roller"
+            de_complete_raw = row[1]
+            count = row[2] or 0
+            
+            # Normalize de_complete to boolean
+            is_erased = str(de_complete_raw or "").lower() in ("yes", "true", "1")
+            
+            if roller_name not in roller_data:
+                roller_data[roller_name] = {"roller": roller_name, "total": 0, "erased": 0, "pending_erasure": 0}
+            
+            roller_data[roller_name]["total"] += count
+            if is_erased:
+                roller_data[roller_name]["erased"] += count
+            else:
+                roller_data[roller_name]["pending_erasure"] += count
+        
+        result["rollers"] = list(roller_data.values())
+        result["totals"]["total"] = sum(r["total"] for r in result["rollers"])
+        result["totals"]["erased"] = sum(r["erased"] for r in result["rollers"])
+        result["totals"]["pending_erasure"] = sum(r["pending_erasure"] for r in result["rollers"])
+        
+        # Also get devices that were erased but not yet QA scanned (on roller, de_complete=Yes, no QA record after erasure)
+        # This is a more complex query - devices on roller with de_complete that haven't had a subsequent QA scan
+        cursor.execute("""
+            SELECT COUNT(DISTINCT a.stockid)
+            FROM ITAD_asset_info a
+            LEFT JOIN ITAD_QA_App q ON q.stockid = a.stockid AND q.added_date > a.de_completed_date
+            WHERE a.roller_location IS NOT NULL 
+              AND a.roller_location != ''
+              AND LOWER(a.roller_location) LIKE '%roller%'
+              AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+              AND LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
+              AND q.stockid IS NULL
+        """)
+        waiting_qa_row = cursor.fetchone()
+        result["totals"]["waiting_qa"] = waiting_qa_row[0] if waiting_qa_row else 0
+        
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"[QA Export] Error fetching roller queue status: {e}")
+        if conn:
+            conn.close()
+    
+    return result
+
+
 def get_stale_devices(days_threshold: int = 7) -> List[Dict[str, object]]:
     """Find devices that haven't had activity in X days but aren't complete."""
     conn = get_mariadb_connection()

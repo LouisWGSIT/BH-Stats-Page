@@ -2119,7 +2119,14 @@ async def device_lookup(stock_id: str, request: Request):
 
 
 def _build_bottleneck_snapshot(days: int = 7, destination: str = None, limit_engineers: int = 5) -> Dict[str, object]:
-    """Summarize bottleneck patterns for unpalleted devices in a lookback window."""
+    """Summarize bottleneck patterns for unpalleted devices in a lookback window.
+    
+    Key clarifications:
+    - 'Unpalleted devices' = devices with QA/sorting records but no pallet_id
+    - 'Engineers with missing pallets' = QA users who processed these devices
+    - 'Unassigned' = devices where qa_user field is blank (not attributed to any QA engineer)
+    - Roller queue now uses a dedicated query for accurate tracking
+    """
     from datetime import datetime, timedelta
     import qa_export
 
@@ -2144,25 +2151,16 @@ def _build_bottleneck_snapshot(days: int = 7, destination: str = None, limit_eng
     total_unpalleted = len(devices)
     destination_counts: Dict[str, int] = {}
     engineer_counts: Dict[str, int] = {}
-    roller_waiting_erasure = 0
-    roller_waiting_qa = 0
-    roller_total = 0
 
     for device in devices:
         dest_label = normalize_destination(device.get("condition")) or "Unknown"
         destination_counts[dest_label] = destination_counts.get(dest_label, 0) + 1
 
-        qa_user = (device.get("qa_user") or "Unassigned").strip() or "Unassigned"
+        # Track which QA user processed the device (blank = unassigned)
+        qa_user = (device.get("qa_user") or "").strip()
+        if not qa_user:
+            qa_user = "Unassigned (no QA user recorded)"
         engineer_counts[qa_user] = engineer_counts.get(qa_user, 0) + 1
-
-        roller_location = (device.get("roller_location") or "").strip()
-        if roller_location and "roller" in roller_location.lower():
-            roller_total += 1
-            de_complete = str(device.get("de_complete") or "").lower() in ("yes", "true", "1")
-            if de_complete:
-                roller_waiting_qa += 1
-            else:
-                roller_waiting_erasure += 1
 
     top_destinations = sorted(
         [{"destination": k, "count": v} for k, v in destination_counts.items()],
@@ -2176,18 +2174,27 @@ def _build_bottleneck_snapshot(days: int = 7, destination: str = None, limit_eng
         reverse=True
     )
 
+    # Only flag REAL engineers (not unassigned/system entries) with high share
     flagged_engineers = []
     for item in top_engineers[:limit_engineers]:
         share = (item["missing_pallet_count"] / total_unpalleted) if total_unpalleted else 0
         item["share"] = round(share, 2)
-        if item["missing_pallet_count"] >= 5 and share >= 0.2:
+        
+        engineer_name = item["engineer"].lower()
+        # Skip flagging unassigned, NO USER, system entries
+        is_system_entry = any(x in engineer_name for x in ["unassigned", "no user", "system", "unknown"])
+        
+        if not is_system_entry and item["missing_pallet_count"] >= 10 and share >= 0.25:
             flagged_engineers.append({
                 "engineer": item["engineer"],
                 "missing_pallet_count": item["missing_pallet_count"],
                 "share": item["share"],
-                "reason": "High share of missing pallet assignments",
+                "reason": f"High volume of unpalleted devices ({item['missing_pallet_count']} devices, {int(share*100)}% of total)",
             })
 
+    # Get accurate roller queue status (independent of unpalleted query)
+    roller_status = qa_export.get_roller_queue_status()
+    
     return {
         "lookback_days": days,
         "start_date": start_date.isoformat(),
@@ -2197,11 +2204,8 @@ def _build_bottleneck_snapshot(days: int = 7, destination: str = None, limit_eng
         "destination_counts": top_destinations,
         "engineer_missing_pallets": top_engineers[:limit_engineers],
         "flagged_engineers": flagged_engineers,
-        "roller_queue": {
-            "total": roller_total,
-            "waiting_erasure": roller_waiting_erasure,
-            "waiting_qa": roller_waiting_qa,
-        },
+        "roller_queue": roller_status["totals"],
+        "roller_breakdown": roller_status["rollers"],
     }
 
 
@@ -2215,6 +2219,217 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
     except Exception as e:
         print(f"Bottleneck snapshot error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/bottlenecks/details")
+async def get_bottleneck_details(
+    request: Request,
+    category: str,
+    value: str = None,
+    days: int = 7,
+    limit: int = 100
+):
+    """
+    Get detailed device list for a specific bottleneck category.
+    
+    Categories:
+    - unassigned: Devices without a QA user recorded
+    - unpalleted: All unpalleted devices
+    - destination: Filter by destination/condition (value = destination name)
+    - engineer: Filter by QA user (value = engineer email/name)
+    - roller_pending: Devices on rollers awaiting erasure
+    - roller_erased: Devices on rollers that have been erased (awaiting QA)
+    - roller_station: Specific roller (value = roller name like "IA Roller 1")
+    - quarantine: Devices in quarantine status
+    """
+    require_manager_or_admin(request)
+    days = max(1, min(days, 60))
+    limit = max(1, min(limit, 500))
+    
+    import qa_export
+    from datetime import datetime, timedelta
+    
+    end_date = datetime.now().date()
+    start_date = (datetime.now() - timedelta(days=days)).date()
+    
+    try:
+        result = {
+            "category": category,
+            "value": value,
+            "lookback_days": days,
+            "devices": [],
+            "total_count": 0,
+            "showing": 0,
+        }
+        
+        if category == "roller_pending" or category == "roller_erased" or category == "roller_station":
+            # Query roller devices directly
+            conn = qa_export.get_mariadb_connection()
+            if not conn:
+                raise HTTPException(status_code=500, detail="Database connection failed")
+            
+            cursor = conn.cursor()
+            
+            if category == "roller_station" and value:
+                # Specific roller station
+                cursor.execute("""
+                    SELECT 
+                        a.stockid, a.serialnumber, a.manufacturer, a.description,
+                        a.condition, a.received_date, a.roller_location,
+                        a.de_complete, a.de_completed_by, a.de_completed_date,
+                        COALESCE(a.pallet_id, a.palletID) as pallet_id,
+                        a.stage_current, a.last_update
+                    FROM ITAD_asset_info a
+                    WHERE a.roller_location = %s
+                      AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                    ORDER BY a.received_date DESC
+                    LIMIT %s
+                """, (value, limit))
+            elif category == "roller_pending":
+                # Devices awaiting erasure
+                cursor.execute("""
+                    SELECT 
+                        a.stockid, a.serialnumber, a.manufacturer, a.description,
+                        a.condition, a.received_date, a.roller_location,
+                        a.de_complete, a.de_completed_by, a.de_completed_date,
+                        COALESCE(a.pallet_id, a.palletID) as pallet_id,
+                        a.stage_current, a.last_update
+                    FROM ITAD_asset_info a
+                    WHERE a.roller_location IS NOT NULL 
+                      AND a.roller_location != ''
+                      AND LOWER(a.roller_location) LIKE '%%roller%%'
+                      AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
+                    ORDER BY a.received_date DESC
+                    LIMIT %s
+                """, (limit,))
+            else:  # roller_erased
+                cursor.execute("""
+                    SELECT 
+                        a.stockid, a.serialnumber, a.manufacturer, a.description,
+                        a.condition, a.received_date, a.roller_location,
+                        a.de_complete, a.de_completed_by, a.de_completed_date,
+                        COALESCE(a.pallet_id, a.palletID) as pallet_id,
+                        a.stage_current, a.last_update
+                    FROM ITAD_asset_info a
+                    WHERE a.roller_location IS NOT NULL 
+                      AND a.roller_location != ''
+                      AND LOWER(a.roller_location) LIKE '%%roller%%'
+                      AND a.condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
+                    ORDER BY a.de_completed_date DESC
+                    LIMIT %s
+                """, (limit,))
+            
+            devices = []
+            for row in cursor.fetchall():
+                devices.append({
+                    "stockid": row[0],
+                    "serial": row[1],
+                    "manufacturer": row[2],
+                    "model": row[3],
+                    "condition": row[4],
+                    "received_date": str(row[5]) if row[5] else None,
+                    "roller_location": row[6],
+                    "de_complete": row[7],
+                    "de_completed_by": row[8],
+                    "de_completed_date": str(row[9]) if row[9] else None,
+                    "pallet_id": row[10],
+                    "stage_current": row[11],
+                    "last_update": str(row[12]) if row[12] else None,
+                })
+            
+            # Get total count
+            if category == "roller_station" and value:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM ITAD_asset_info 
+                    WHERE roller_location = %s AND condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                """, (value,))
+            elif category == "roller_pending":
+                cursor.execute("""
+                    SELECT COUNT(*) FROM ITAD_asset_info 
+                    WHERE roller_location IS NOT NULL AND roller_location != ''
+                      AND LOWER(roller_location) LIKE '%%roller%%'
+                      AND condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND (de_complete IS NULL OR LOWER(de_complete) NOT IN ('yes', 'true', '1'))
+                """)
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM ITAD_asset_info 
+                    WHERE roller_location IS NOT NULL AND roller_location != ''
+                      AND LOWER(roller_location) LIKE '%%roller%%'
+                      AND condition NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND LOWER(COALESCE(de_complete, '')) IN ('yes', 'true', '1')
+                """)
+            
+            total = cursor.fetchone()[0]
+            cursor.close()
+            conn.close()
+            
+            result["devices"] = devices
+            result["total_count"] = total
+            result["showing"] = len(devices)
+            
+        else:
+            # Use unpalleted devices query with filters
+            all_devices = qa_export.get_unpalleted_devices(start_date, end_date)
+            
+            filtered = []
+            for d in all_devices:
+                qa_user = (d.get("qa_user") or "").strip()
+                condition = (d.get("condition") or "").strip()
+                
+                if category == "unassigned":
+                    if not qa_user:
+                        filtered.append(d)
+                elif category == "unpalleted":
+                    filtered.append(d)
+                elif category == "destination" and value:
+                    if condition.lower() == value.lower():
+                        filtered.append(d)
+                elif category == "engineer" and value:
+                    if qa_user.lower() == value.lower():
+                        filtered.append(d)
+                elif category == "quarantine":
+                    if "quarantine" in condition.lower():
+                        filtered.append(d)
+            
+            result["total_count"] = len(filtered)
+            result["devices"] = filtered[:limit]
+            result["showing"] = len(result["devices"])
+        
+        # Add summary stats for the category
+        if result["devices"]:
+            # Count by manufacturer
+            mfg_counts = {}
+            condition_counts = {}
+            for d in result["devices"]:
+                mfg = d.get("manufacturer") or "Unknown"
+                mfg_counts[mfg] = mfg_counts.get(mfg, 0) + 1
+                cond = d.get("condition") or "Unknown"
+                condition_counts[cond] = condition_counts.get(cond, 0) + 1
+            
+            result["breakdown"] = {
+                "by_manufacturer": sorted(
+                    [{"name": k, "count": v} for k, v in mfg_counts.items()],
+                    key=lambda x: x["count"], reverse=True
+                )[:10],
+                "by_condition": sorted(
+                    [{"name": k, "count": v} for k, v in condition_counts.items()],
+                    key=lambda x: x["count"], reverse=True
+                )[:10],
+            }
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Bottleneck details error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/export/qa-stats")
 async def export_qa_stats(
