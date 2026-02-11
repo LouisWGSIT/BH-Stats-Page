@@ -816,18 +816,23 @@
             
             const rollerQueue = snapshot.roller_queue || {};
 
-            // Build roller breakdown if available (clickable)
+            // Build roller breakdown if available (clickable) - shows workflow stages
             let rollerBreakdownHtml = '';
             if (Array.isArray(snapshot.roller_breakdown) && snapshot.roller_breakdown.length > 0) {
                 const rollerItems = snapshot.roller_breakdown.map(r => {
-                    const pendingClass = r.pending_erasure > 0 ? 'style="color:#f59e0b;font-weight:700;"' : '';
+                    const erasureClass = r.awaiting_erasure > 0 ? 'color:#ef4444;font-weight:700;' : '';
+                    const qaClass = r.awaiting_qa > 0 ? 'color:#f59e0b;font-weight:700;' : '';
+                    const palletClass = r.awaiting_pallet > 0 ? 'color:#3b82f6;font-weight:700;' : '';
                     return `<div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_station', '${r.roller.replace(/'/g, "\\'")}', ${days})">
-                        ${r.roller}: ${r.total} total (${r.erased} erased, <span ${pendingClass}>${r.pending_erasure} pending</span>)
+                        <strong>${r.roller}:</strong> ${r.total} total
+                        <span style="margin-left:8px;${erasureClass}">${r.awaiting_erasure} erasure</span>
+                        <span style="margin-left:4px;${qaClass}">${r.awaiting_qa} QA</span>
+                        <span style="margin-left:4px;${palletClass}">${r.awaiting_pallet} pallet</span>
                         <span class="view-details">→ view</span>
                     </div>`;
                 }).join('');
                 rollerBreakdownHtml = `
-                    <div style="margin-top:10px; font-size:12px; font-weight:700;">Roller Station Breakdown</div>
+                    <div style="margin-top:10px; font-size:12px; font-weight:700;">Roller Station Breakdown <span style="font-weight:normal;opacity:0.7;">(awaiting erasure → QA → pallet)</span></div>
                     <div class="bottleneck-list">${rollerItems}</div>
                 `;
             }
@@ -859,15 +864,18 @@
                             <span class="view-details">→ view all</span>
                         </div>
                         <div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_pending', '', ${days})">
-                            <strong>Awaiting erasure:</strong> <span style="color:${rollerQueue.pending_erasure > 0 ? '#f59e0b' : 'inherit'};font-weight:${rollerQueue.pending_erasure > 0 ? '700' : 'normal'};">${rollerQueue.pending_erasure || 0}</span>
+                            <strong>Awaiting erasure:</strong> <span style="color:${rollerQueue.awaiting_erasure > 0 ? '#ef4444' : 'inherit'};font-weight:${rollerQueue.awaiting_erasure > 0 ? '700' : 'normal'};">${rollerQueue.awaiting_erasure || 0}</span>
                             <span class="view-details">→ view</span>
                         </div>
-                        <div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_erased', '', ${days})">
-                            <strong>Erased (on roller):</strong> ${rollerQueue.erased || 0}
+                        <div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_awaiting_qa', '', ${days})">
+                            <strong>Awaiting QA:</strong> <span style="color:${rollerQueue.awaiting_qa > 0 ? '#f59e0b' : 'inherit'};font-weight:${rollerQueue.awaiting_qa > 0 ? '700' : 'normal'};">${rollerQueue.awaiting_qa || 0}</span>
+                            <span class="view-details">→ view</span>
+                        </div>
+                        <div class="bottleneck-item clickable" onclick="showBottleneckDetails('roller_awaiting_pallet', '', ${days})">
+                            <strong>Awaiting pallet:</strong> <span style="color:${rollerQueue.awaiting_pallet > 0 ? '#3b82f6' : 'inherit'};font-weight:${rollerQueue.awaiting_pallet > 0 ? '700' : 'normal'};">${rollerQueue.awaiting_pallet || 0}</span>
                             <span class="view-details">→ view</span>
                         </div>
                         <div class="bottleneck-item"><strong>Roller queue total:</strong> ${rollerQueue.total || 0}</div>
-                        <div class="bottleneck-item"><strong>Waiting QA scan:</strong> ${rollerQueue.waiting_qa || 0}</div>
                     </div>
                     ${rollerBreakdownHtml}
                     ${baselineHtml}
@@ -1108,8 +1116,9 @@
                 'quarantine': 'Quarantine Devices',
                 'destination': `Devices by Destination: ${value}`,
                 'engineer': `Devices Processed by: ${value}`,
-                'roller_pending': 'Devices Awaiting Erasure (On Rollers)',
-                'roller_erased': 'Erased Devices Still on Rollers',
+                'roller_pending': 'Data-Bearing Devices Awaiting Erasure',
+                'roller_awaiting_qa': 'Devices Awaiting QA Scan (On Rollers)',
+                'roller_awaiting_pallet': 'Devices Awaiting Pallet ID (On Rollers)',
                 'roller_station': `Roller Station: ${value}`,
             };
             return titles[category] || `${category}: ${value}`;
@@ -1207,7 +1216,7 @@
                         <th>Model</th>
                         <th>Condition</th>
                         <th>Received</th>
-                        ${isRollerCategory ? '<th>Roller</th><th>Erasure Status</th>' : '<th>QA User</th><th>QA Date</th>'}
+                        ${isRollerCategory ? '<th>Roller</th><th>Stage</th>' : '<th>QA User</th><th>QA Date</th>'}
                     </tr></thead><tbody>`;
                     
                     data.devices.forEach(d => {
@@ -1216,21 +1225,31 @@
                         const conditionClass = isQuarantine ? 'tag tag-quarantine' : '';
                         
                         if (isRollerCategory) {
-                            const deComplete = String(d.de_complete || '').toLowerCase();
-                            const isErased = ['yes', 'true', '1'].includes(deComplete);
-                            const statusTag = isErased 
-                                ? `<span class="tag tag-complete">Erased</span>` 
-                                : `<span class="tag tag-pending">Pending</span>`;
+                            // Use workflow_stage from server, with fallback
+                            const stage = d.workflow_stage || 'Unknown';
+                            let stageTag = '';
+                            if (stage === 'Awaiting Erasure') {
+                                stageTag = `<span class="tag" style="background:#dc2626;color:#fff;">Erasure</span>`;
+                            } else if (stage === 'Awaiting QA') {
+                                stageTag = `<span class="tag" style="background:#f59e0b;color:#000;">QA</span>`;
+                            } else if (stage === 'Awaiting Pallet') {
+                                stageTag = `<span class="tag" style="background:#3b82f6;color:#fff;">Pallet</span>`;
+                            } else {
+                                stageTag = `<span class="tag">${stage}</span>`;
+                            }
+                            
+                            // Show data-bearing indicator if available
+                            const dbIndicator = d.is_data_bearing === false ? ' <span style="font-size:10px;opacity:0.6;">(non-DB)</span>' : '';
                             
                             tableHtml += `<tr>
                                 <td><strong>${d.stockid || '-'}</strong></td>
                                 <td>${d.serial || '-'}</td>
                                 <td>${d.manufacturer || '-'}</td>
-                                <td>${d.model || '-'}</td>
+                                <td>${d.model || '-'}${dbIndicator}</td>
                                 <td><span class="${conditionClass}">${condition}</span></td>
                                 <td>${d.received_date || '-'}</td>
                                 <td>${d.roller_location || '-'}</td>
-                                <td>${statusTag}${d.de_completed_by ? ` by ${d.de_completed_by}` : ''}</td>
+                                <td>${stageTag}</td>
                             </tr>`;
                         } else {
                             tableHtml += `<tr>

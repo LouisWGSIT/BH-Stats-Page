@@ -2262,7 +2262,10 @@ async def get_bottleneck_details(
             "showing": 0,
         }
         
-        if category == "roller_pending" or category == "roller_erased" or category == "roller_station":
+        # Data-bearing device types
+        DATA_BEARING_TYPES = ('lt', 'laptop', 'dt', 'desktop', 'server', 'switch', 'tablet', 'mobile', 'misc. network', 'misc network', 'network')
+        
+        if category in ("roller_pending", "roller_awaiting_qa", "roller_awaiting_pallet", "roller_station"):
             # Query roller devices directly - NO date filtering (shows current state of rollers)
             conn = qa_export.get_mariadb_connection()
             if not conn:
@@ -2270,60 +2273,99 @@ async def get_bottleneck_details(
             
             cursor = conn.cursor()
             
+            # Base query for devices on rollers without pallet ID
+            base_select = """
+                SELECT 
+                    a.stockid, a.serialnumber, a.manufacturer, a.description,
+                    a.condition, a.received_date, a.roller_location,
+                    a.de_complete, a.de_completed_by, a.de_completed_date,
+                    COALESCE(a.pallet_id, a.palletID) as pallet_id,
+                    a.stage_current, a.last_update,
+                    (SELECT MAX(q.added_date) FROM ITAD_QA_App q WHERE q.stockid = a.stockid) as last_qa_date
+                FROM ITAD_asset_info a
+            """
+            
             if category == "roller_station" and value:
-                # Specific roller station - match normalized name (e.g., "IA-ROLLER1" matches "08:IA-ROLLER1")
-                # Use LIKE to match both prefixed and non-prefixed versions
-                cursor.execute("""
-                    SELECT 
-                        a.stockid, a.serialnumber, a.manufacturer, a.description,
-                        a.condition, a.received_date, a.roller_location,
-                        a.de_complete, a.de_completed_by, a.de_completed_date,
-                        COALESCE(a.pallet_id, a.palletID) as pallet_id,
-                        a.stage_current, a.last_update
-                    FROM ITAD_asset_info a
+                # Specific roller station - show all devices without pallet
+                cursor.execute(f"""
+                    {base_select}
                     WHERE (a.roller_location = %s OR a.roller_location LIKE %s)
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
                     ORDER BY a.received_date DESC
                     LIMIT %s
                 """, (value, f"%:{value}", limit))
             elif category == "roller_pending":
-                # Devices awaiting erasure
-                cursor.execute("""
-                    SELECT 
-                        a.stockid, a.serialnumber, a.manufacturer, a.description,
-                        a.condition, a.received_date, a.roller_location,
-                        a.de_complete, a.de_completed_by, a.de_completed_date,
-                        COALESCE(a.pallet_id, a.palletID) as pallet_id,
-                        a.stage_current, a.last_update
-                    FROM ITAD_asset_info a
+                # Data-bearing devices awaiting erasure (not erased, no pallet)
+                # Build OR condition for data-bearing types
+                type_conditions = " OR ".join([f"LOWER(a.description) LIKE '%%{t}%%'" for t in DATA_BEARING_TYPES])
+                cursor.execute(f"""
+                    {base_select}
                     WHERE a.roller_location IS NOT NULL 
                       AND a.roller_location != ''
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
                       AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
+                      AND ({type_conditions})
                     ORDER BY a.received_date DESC
                     LIMIT %s
                 """, (limit,))
-            else:  # roller_erased
-                cursor.execute("""
-                    SELECT 
-                        a.stockid, a.serialnumber, a.manufacturer, a.description,
-                        a.condition, a.received_date, a.roller_location,
-                        a.de_complete, a.de_completed_by, a.de_completed_date,
-                        COALESCE(a.pallet_id, a.palletID) as pallet_id,
-                        a.stage_current, a.last_update
-                    FROM ITAD_asset_info a
+            elif category == "roller_awaiting_qa":
+                # Devices that are erased (or non-data-bearing) but haven't had QA scan
+                # On roller, no pallet, and either:
+                #   - Data-bearing: erased but no QA after erasure
+                #   - Non-data-bearing: no QA scan at all
+                cursor.execute(f"""
+                    {base_select}
                     WHERE a.roller_location IS NOT NULL 
                       AND a.roller_location != ''
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
-                    ORDER BY a.de_completed_date DESC
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
+                      AND (
+                        (LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
+                         AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid AND q.added_date > a.de_completed_date))
+                        OR
+                        (LOWER(COALESCE(a.de_complete, '')) NOT IN ('yes', 'true', '1')
+                         AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid))
+                      )
+                    ORDER BY a.received_date DESC
+                    LIMIT %s
+                """, (limit,))
+            else:  # roller_awaiting_pallet
+                # Devices that have been QA'd but don't have a pallet yet
+                cursor.execute(f"""
+                    {base_select}
+                    WHERE a.roller_location IS NOT NULL 
+                      AND a.roller_location != ''
+                      AND LOWER(a.roller_location) LIKE '%%roller%%'
+                      AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
+                      AND EXISTS (
+                        SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid 
+                        AND (a.de_completed_date IS NULL OR q.added_date > a.de_completed_date)
+                      )
+                    ORDER BY a.received_date DESC
                     LIMIT %s
                 """, (limit,))
             
             devices = []
             for row in cursor.fetchall():
+                desc = row[3] or ""
+                is_data_bearing = any(t in desc.lower() for t in DATA_BEARING_TYPES)
+                is_erased = str(row[7] or "").lower() in ("yes", "true", "1")
+                last_qa = row[13]
+                de_completed = row[9]
+                
+                # Determine workflow stage
+                if is_data_bearing and not is_erased:
+                    stage = "Awaiting Erasure"
+                elif last_qa and (not de_completed or last_qa > de_completed):
+                    stage = "Awaiting Pallet"
+                else:
+                    stage = "Awaiting QA"
+                
                 devices.append({
                     "stockid": row[0],
                     "serial": row[1],
@@ -2338,30 +2380,58 @@ async def get_bottleneck_details(
                     "pallet_id": row[10],
                     "stage_current": row[11],
                     "last_update": str(row[12]) if row[12] else None,
+                    "workflow_stage": stage,
+                    "is_data_bearing": is_data_bearing,
                 })
             
-            # Get total count (no date filtering for rollers)
+            # Get total count based on category
             if category == "roller_station" and value:
                 cursor.execute("""
                     SELECT COUNT(*) FROM ITAD_asset_info 
                     WHERE (roller_location = %s OR roller_location LIKE %s)
                       AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND (COALESCE(pallet_id, palletID, '') = '' OR COALESCE(pallet_id, palletID) IS NULL)
                 """, (value, f"%:{value}"))
             elif category == "roller_pending":
-                cursor.execute("""
+                # Count data-bearing devices awaiting erasure
+                type_conditions = " OR ".join([f"LOWER(description) LIKE '%%{t}%%'" for t in DATA_BEARING_TYPES])
+                cursor.execute(f"""
                     SELECT COUNT(*) FROM ITAD_asset_info 
                     WHERE roller_location IS NOT NULL AND roller_location != ''
                       AND LOWER(roller_location) LIKE '%%roller%%'
                       AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND (COALESCE(pallet_id, palletID, '') = '' OR COALESCE(pallet_id, palletID) IS NULL)
                       AND (de_complete IS NULL OR LOWER(de_complete) NOT IN ('yes', 'true', '1'))
+                      AND ({type_conditions})
                 """)
-            else:
+            elif category == "roller_awaiting_qa":
+                # Count devices awaiting QA
                 cursor.execute("""
-                    SELECT COUNT(*) FROM ITAD_asset_info 
-                    WHERE roller_location IS NOT NULL AND roller_location != ''
-                      AND LOWER(roller_location) LIKE '%%roller%%'
-                      AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND LOWER(COALESCE(de_complete, '')) IN ('yes', 'true', '1')
+                    SELECT COUNT(*) FROM ITAD_asset_info a
+                    WHERE a.roller_location IS NOT NULL AND a.roller_location != ''
+                      AND LOWER(a.roller_location) LIKE '%%roller%%'
+                      AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
+                      AND (
+                        (LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
+                         AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid AND q.added_date > a.de_completed_date))
+                        OR
+                        (LOWER(COALESCE(a.de_complete, '')) NOT IN ('yes', 'true', '1')
+                         AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid))
+                      )
+                """)
+            else:  # roller_awaiting_pallet
+                # Count devices with QA but no pallet
+                cursor.execute("""
+                    SELECT COUNT(*) FROM ITAD_asset_info a
+                    WHERE a.roller_location IS NOT NULL AND a.roller_location != ''
+                      AND LOWER(a.roller_location) LIKE '%%roller%%'
+                      AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
+                      AND EXISTS (
+                        SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid 
+                        AND (a.de_completed_date IS NULL OR q.added_date > a.de_completed_date)
+                      )
                 """)
             
             total = cursor.fetchone()[0]

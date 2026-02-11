@@ -1463,81 +1463,141 @@ def normalize_roller_name(roller_location: str) -> str:
     return name
 
 
+# Data-bearing device types that require erasure
+DATA_BEARING_TYPES = [
+    'lt', 'laptop', 'dt', 'desktop', 'server', 'switch', 
+    'tablet', 'mobile', 'misc. network', 'misc network', 'network'
+]
+
+
+def is_data_bearing_device(description: str) -> bool:
+    """Check if a device type requires data erasure based on description."""
+    if not description:
+        return False
+    desc_lower = description.lower()
+    # Check if any data-bearing type keyword is in the description
+    for dtype in DATA_BEARING_TYPES:
+        if dtype in desc_lower:
+            return True
+    return False
+
+
 def get_roller_queue_status() -> Dict[str, object]:
-    """Get CURRENT status of all devices assigned to rollers.
+    """Get CURRENT status of all devices assigned to rollers with workflow stages.
     
-    Returns breakdown of devices per roller station and their erasure status.
-    This shows the current physical state of rollers - no date filtering,
-    as devices may have been received long ago but still be on rollers.
+    Workflow stages:
+    - Data-bearing: Awaiting Erasure → Awaiting QA → Awaiting Pallet ID → Done
+    - Non-data-bearing: Awaiting QA → Awaiting Pallet ID → Done
+    
+    A device is "done" when it has a pallet ID assigned.
     """
     conn = get_mariadb_connection()
     if not conn:
-        return {"rollers": [], "totals": {"total": 0, "erased": 0, "pending_erasure": 0, "waiting_qa": 0}}
+        return {
+            "rollers": [], 
+            "totals": {
+                "total": 0, 
+                "awaiting_erasure": 0,  # Data-bearing, not erased yet
+                "awaiting_qa": 0,       # Erased (or non-data-bearing) but no QA scan
+                "awaiting_pallet": 0,   # QA'd but no pallet ID
+            }
+        }
     
     result = {
         "rollers": [],
-        "totals": {"total": 0, "erased": 0, "pending_erasure": 0, "waiting_qa": 0}
+        "totals": {
+            "total": 0, 
+            "awaiting_erasure": 0,
+            "awaiting_qa": 0,
+            "awaiting_pallet": 0,
+        }
     }
     
     try:
         cursor = conn.cursor()
         
-        # Get ALL devices currently assigned to a roller location (no date filter)
+        # Get all devices currently on rollers that don't have a pallet ID (not "done")
+        # Include QA info to determine workflow stage
         cursor.execute("""
             SELECT 
-                roller_location,
-                de_complete,
-                COUNT(*) as device_count
-            FROM ITAD_asset_info
-            WHERE roller_location IS NOT NULL 
-              AND roller_location != ''
-              AND LOWER(roller_location) LIKE '%roller%'
-              AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-            GROUP BY roller_location, de_complete
-            ORDER BY roller_location, de_complete
-        """)
-        
-        roller_data = {}
-        for row in cursor.fetchall():
-            roller_name_raw = row[0] or "Unknown Roller"
-            # Normalize roller name to consolidate variants
-            roller_name = normalize_roller_name(roller_name_raw)
-            de_complete_raw = row[1]
-            count = row[2] or 0
-            
-            # Normalize de_complete to boolean
-            is_erased = str(de_complete_raw or "").lower() in ("yes", "true", "1")
-            
-            if roller_name not in roller_data:
-                roller_data[roller_name] = {"roller": roller_name, "total": 0, "erased": 0, "pending_erasure": 0}
-            
-            roller_data[roller_name]["total"] += count
-            if is_erased:
-                roller_data[roller_name]["erased"] += count
-            else:
-                roller_data[roller_name]["pending_erasure"] += count
-        
-        # Sort rollers by name for consistent ordering
-        result["rollers"] = sorted(roller_data.values(), key=lambda x: x["roller"])
-        result["totals"]["total"] = sum(r["total"] for r in result["rollers"])
-        result["totals"]["erased"] = sum(r["erased"] for r in result["rollers"])
-        result["totals"]["pending_erasure"] = sum(r["pending_erasure"] for r in result["rollers"])
-        
-        # Also get devices that were erased but not yet QA scanned (on roller, de_complete=Yes, no QA record after erasure)
-        # This is a more complex query - devices on roller with de_complete that haven't had a subsequent QA scan
-        cursor.execute("""
-            SELECT COUNT(DISTINCT a.stockid)
+                a.stockid,
+                a.roller_location,
+                a.description,
+                a.de_complete,
+                COALESCE(a.pallet_id, a.palletID) as pallet_id,
+                (SELECT MAX(q.added_date) FROM ITAD_QA_App q WHERE q.stockid = a.stockid) as last_qa_date,
+                a.de_completed_date
             FROM ITAD_asset_info a
-            LEFT JOIN ITAD_QA_App q ON q.stockid = a.stockid AND q.added_date > a.de_completed_date
             WHERE a.roller_location IS NOT NULL 
               AND a.roller_location != ''
               AND LOWER(a.roller_location) LIKE '%roller%'
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-              AND LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
-              AND q.stockid IS NULL
+              AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
         """)
-        waiting_qa_row = cursor.fetchone()
-        result["totals"]["waiting_qa"] = waiting_qa_row[0] if waiting_qa_row else 0
+        
+        roller_data = {}
+        
+        for row in cursor.fetchall():
+            stockid = row[0]
+            roller_name_raw = row[1] or "Unknown Roller"
+            roller_name = normalize_roller_name(roller_name_raw)
+            description = row[2] or ""
+            de_complete_raw = row[3]
+            pallet_id = row[4]
+            last_qa_date = row[5]
+            de_completed_date = row[6]
+            
+            # Skip if has pallet (shouldn't happen due to WHERE, but safety check)
+            if pallet_id and str(pallet_id).strip():
+                continue
+            
+            is_erased = str(de_complete_raw or "").lower() in ("yes", "true", "1")
+            is_data_bearing = is_data_bearing_device(description)
+            
+            # Determine workflow stage
+            # QA happened after erasure (or device is non-data-bearing and was QA'd)
+            has_qa_after_erasure = False
+            if last_qa_date:
+                if is_data_bearing:
+                    # For data-bearing, QA must be after erasure
+                    if de_completed_date and last_qa_date > de_completed_date:
+                        has_qa_after_erasure = True
+                else:
+                    # For non-data-bearing, any QA counts
+                    has_qa_after_erasure = True
+            
+            if is_data_bearing and not is_erased:
+                stage = "awaiting_erasure"
+            elif has_qa_after_erasure:
+                stage = "awaiting_pallet"  # QA'd, just needs pallet
+            else:
+                stage = "awaiting_qa"  # Erased (or non-DB), needs QA
+            
+            # Initialize roller if needed
+            if roller_name not in roller_data:
+                roller_data[roller_name] = {
+                    "roller": roller_name, 
+                    "total": 0, 
+                    "awaiting_erasure": 0,
+                    "awaiting_qa": 0,
+                    "awaiting_pallet": 0,
+                    "data_bearing": 0,
+                    "non_data_bearing": 0,
+                }
+            
+            roller_data[roller_name]["total"] += 1
+            roller_data[roller_name][stage] += 1
+            if is_data_bearing:
+                roller_data[roller_name]["data_bearing"] += 1
+            else:
+                roller_data[roller_name]["non_data_bearing"] += 1
+        
+        # Sort rollers by name for consistent ordering
+        result["rollers"] = sorted(roller_data.values(), key=lambda x: x["roller"])
+        result["totals"]["total"] = sum(r["total"] for r in result["rollers"])
+        result["totals"]["awaiting_erasure"] = sum(r["awaiting_erasure"] for r in result["rollers"])
+        result["totals"]["awaiting_qa"] = sum(r["awaiting_qa"] for r in result["rollers"])
+        result["totals"]["awaiting_pallet"] = sum(r["awaiting_pallet"] for r in result["rollers"])
         
         cursor.close()
         conn.close()
