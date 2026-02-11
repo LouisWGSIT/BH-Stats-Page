@@ -108,9 +108,33 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 - All-time QA trend uses last 30 days window (not full historical).
 
 ## Current Focus
+- Device tracking improvements to prevent lost devices (like 12745375 that went missing July 2025).
+- Audit sheets for operational visibility: Unpalleted Devices, Stale Devices.
+- Location enrichment in exports to show where devices are.
 - QA Stats UX polish (more visual summary, reduce raw data exposure on UI).
 - Verify export correctness for weekly/monthly periods.
 - Power BI API endpoints exist but need refresh/validation.
+
+## Device Tracking Features (Feb 2026)
+
+### Device Search (Admin Panel)
+- Search any stock ID to see complete timeline across all data sources.
+- Data sources queried: ITAD_asset_info, Stockbypallet, ITAD_pallet, ITAD_QA_App, audit_master (DE+Non-DE), ITAD_asset_info_blancco, local SQLite erasures.
+- Timeline shows: timestamp, source table, stage, user, and details.
+- Color-coded by stage: sorting (blue), QA (green), erasure (orange), info (gray).
+- Endpoint: /api/device-lookup/{stock_id}
+
+### New Export Sheets
+1. **Unpalleted Devices Audit** - devices that completed QA but have no pallet assigned. Helps catch devices falling through the cracks.
+2. **Stale Devices Report** - devices with last activity 7+ days ago. Flags potentially lost or stuck devices.
+
+### Enhanced Device History Columns
+- **Last Asset Loc**: location field from ITAD_asset_info.
+- **Roller Location**: roller_location field from ITAD_asset_info.
+- **Days Since Update**: calculated days since last_update field.
+
+### MariaDB Fields Discovered (Future Use)
+From ITAD_asset_info: location, roller_location, last_update, stage_current, stage_next, received_date, quarantine, quarantine_reason, quarantine_raised_by, current_stage_raised_by, next_stage_raised_by, process_complete.
 
 ## Current Focus
 - QA Stats UX polish (more visual summary, reduce raw data exposure on UI).
@@ -191,6 +215,15 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 - For Copilot in Power BI: requires admin to enable; in the meantime I can provide DAX/M snippets here.
 
 ## Change Log
+- 2026-02-11: Added Device Search UI to admin panel - search any stock ID to see timeline across 7 data sources (ITAD_asset_info, Stockbypallet, ITAD_pallet, ITAD_QA_App, audit_master, ITAD_asset_info_blancco, local_erasures). Color-coded by stage type.
+- 2026-02-11: Added /api/device-lookup/{stock_id} endpoint for device timeline queries.
+- 2026-02-11: Added Unpalleted Devices Audit sheet to QA export (devices that completed QA but have no pallet assigned).
+- 2026-02-11: Added Stale Devices Report sheet to QA export (devices inactive for 7+ days).
+- 2026-02-11: Added Last Asset Location, Roller Location, Days Since Update columns to Device History and Device Log by Engineer sheets.
+- 2026-02-11: Added export loading modal with spinner for long-running exports.
+- 2026-02-11: Fixed Device History duplicates when merging QA events - added Python-side deduplication by (timestamp, stockid, stage, user).
+- 2026-02-11: Database exploration: discovered useful unused fields in ITAD_asset_info (location, roller_location, last_update, stage_current, stage_next, received_date, quarantine fields).
+- 2026-02-11: Enriched QA device events with ITAD_asset_info location data (asset_location, roller_location, last_update).
 - 2026-02-10: Fixed Power BI daily-stats and engineer-stats endpoints to include today's live data from erasures table (not just daily_stats/engineer_stats tables which only sync periodically).
 - 2026-02-10: Added device history export sheet (erasure + sorting) and Power BI device-history endpoint.
 - 2026-02-10: Device history export grouped by date, collapsed by default, with shaded DATE/DEVICE headers.
