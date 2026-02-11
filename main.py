@@ -2118,21 +2118,19 @@ async def device_lookup(stock_id: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _build_bottleneck_snapshot(days: int = 7, destination: str = None, limit_engineers: int = 5) -> Dict[str, object]:
-    """Summarize bottleneck patterns for unpalleted devices in a lookback window.
+def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5) -> Dict[str, object]:
+    """Summarize CURRENT bottleneck patterns - no lookback, shows warehouse state NOW.
     
-    Key clarifications:
-    - 'Unpalleted devices' = devices with QA/sorting records but no pallet_id
-    - 'Engineers with missing pallets' = QA users who processed these devices
-    - 'Unassigned' = devices where qa_user field is blank (not attributed to any QA engineer)
-    - Roller queue now uses a dedicated query for accurate tracking
+    Shows:
+    - Current unpalleted devices (regardless of when received)
+    - Current roller queue status (devices awaiting erasure/QA/pallet)
+    - Roller station breakdown by workflow stage
+    - Engineers with unpalleted devices assigned to them
     """
-    from datetime import datetime, timedelta
     import qa_export
 
-    end_date = datetime.now().date()
-    start_date = (datetime.now() - timedelta(days=days)).date()
-    devices = qa_export.get_unpalleted_devices(start_date, end_date)
+    # Get ALL unpalleted devices (no date filtering) - current state
+    devices = qa_export.get_unpalleted_devices(start_date=None, end_date=None)
 
     def normalize_destination(value: object) -> str:
         if value is None:
@@ -2192,13 +2190,11 @@ def _build_bottleneck_snapshot(days: int = 7, destination: str = None, limit_eng
                 "reason": f"High volume of unpalleted devices ({item['missing_pallet_count']} devices, {int(share*100)}% of total)",
             })
 
-    # Get accurate roller queue status (shows CURRENT state of all rollers, no date filter)
+    # Get accurate roller queue status (shows CURRENT state of all rollers)
     roller_status = qa_export.get_roller_queue_status()
     
     return {
-        "lookback_days": days,
-        "start_date": start_date.isoformat(),
-        "end_date": end_date.isoformat(),
+        "timestamp": datetime.now().isoformat(),
         "destination": destination if destination_norm else None,
         "total_unpalleted": total_unpalleted,
         "destination_counts": top_destinations,
@@ -2210,12 +2206,11 @@ def _build_bottleneck_snapshot(days: int = 7, destination: str = None, limit_eng
 
 
 @app.get("/api/bottlenecks")
-async def get_bottleneck_snapshot(request: Request, days: int = 7):
-    """Return bottleneck snapshot for recent unpalleted devices (manager only)."""
+async def get_bottleneck_snapshot(request: Request):
+    """Return CURRENT bottleneck snapshot - warehouse state NOW (manager only)."""
     require_manager_or_admin(request)
-    days = max(1, min(days, 60))
     try:
-        return _build_bottleneck_snapshot(days=days, destination=None, limit_engineers=8)
+        return _build_bottleneck_snapshot(destination=None, limit_engineers=8)
     except Exception as e:
         print(f"Bottleneck snapshot error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2226,37 +2221,33 @@ async def get_bottleneck_details(
     request: Request,
     category: str,
     value: str = None,
-    days: int = 7,
     limit: int = 100
 ):
     """
-    Get detailed device list for a specific bottleneck category.
+    Get detailed device list for a specific bottleneck category - CURRENT state (no lookback).
     
     Categories:
     - unassigned: Devices without a QA user recorded
-    - unpalleted: All unpalleted devices
+    - unpalleted: All unpalleted devices (current)
     - destination: Filter by destination/condition (value = destination name)
     - engineer: Filter by QA user (value = engineer email/name)
-    - roller_pending: Devices on rollers awaiting erasure
-    - roller_erased: Devices on rollers that have been erased (awaiting QA)
-    - roller_station: Specific roller (value = roller name like "IA Roller 1")
+    - roller_pending: Data-bearing devices on rollers awaiting erasure
+    - roller_awaiting_qa: Devices on rollers awaiting QA scan
+    - roller_awaiting_pallet: Devices on rollers awaiting pallet ID
+    - roller_station: Specific roller (value = roller name like "IA-ROLLER1")
     - quarantine: Devices in quarantine status
     """
     require_manager_or_admin(request)
-    days = max(1, min(days, 60))
     limit = max(1, min(limit, 500))
     
     import qa_export
-    from datetime import datetime, timedelta
-    
-    end_date = datetime.now().date()
-    start_date = (datetime.now() - timedelta(days=days)).date()
+    from datetime import datetime
     
     try:
         result = {
             "category": category,
             "value": value,
-            "lookback_days": days,
+            "snapshot_timestamp": datetime.now().isoformat(),
             "devices": [],
             "total_count": 0,
             "showing": 0,
@@ -2443,8 +2434,8 @@ async def get_bottleneck_details(
             result["showing"] = len(devices)
             
         else:
-            # Use unpalleted devices query with filters
-            all_devices = qa_export.get_unpalleted_devices(start_date, end_date)
+            # Use unpalleted devices query with filters (no date filtering - current state)
+            all_devices = qa_export.get_unpalleted_devices()
             
             filtered = []
             for d in all_devices:
