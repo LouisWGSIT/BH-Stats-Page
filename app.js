@@ -209,14 +209,32 @@ function renderSVGSparkline(svgElem, data) {
     const dismissBtn = document.getElementById('dismissLoginBtn');
     if (dismissBtn && !dismissBtn.dataset.bound) {
       dismissBtn.dataset.bound = 'true';
-      dismissBtn.addEventListener('click', (e) => {
+      dismissBtn.addEventListener('click', async (e) => {
         e.preventDefault();
-        // Mark dismissed for this session and grant viewer UI
+        // Mark dismissed for this session
         sessionStorage.setItem('loginDismissed', '1');
         sessionStorage.setItem('userRole', 'viewer');
-        // Provide a short-lived session token so app initialization continues
-        sessionStorage.setItem('authToken', 'viewer-dismissed');
         applyRolePermissions();
+        // Request a viewer device token from the server so API calls succeed and the device appears in connected list
+        try {
+          const res = await fetch('/auth/ephemeral-viewer', { method: 'POST' });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.device_token) {
+              // Persist so refreshes keep the viewer logged in
+              localStorage.setItem('deviceToken', data.device_token);
+              sessionStorage.setItem('authToken', data.token || data.device_token);
+              setupAuthHeaders(data.token || data.device_token);
+            }
+          } else {
+            // Fall back to session-only viewer token (no API access)
+            sessionStorage.setItem('authToken', 'viewer-dismissed');
+          }
+        } catch (err) {
+          console.warn('Ephemeral viewer token request failed:', err);
+          sessionStorage.setItem('authToken', 'viewer-dismissed');
+        }
+
         modal.classList.add('hidden');
       });
     }

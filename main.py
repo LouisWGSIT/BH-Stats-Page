@@ -1807,6 +1807,37 @@ async def login(request: Request):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
+@app.post('/auth/ephemeral-viewer')
+async def create_ephemeral_viewer(request: Request):
+    """Create a short-lived viewer device token for dismissing the login modal (no password).
+
+    Returns a device_token that can be used as a Bearer token for viewer access.
+    Admins can revoke/lock these tokens via the admin panel.
+    """
+    try:
+        client_ip = get_client_ip(request)
+        ua = request.headers.get('User-Agent', 'Unknown')[:512]
+        # Generate token and store with expiry (use DEVICE_TOKEN_EXPIRY_DAYS)
+        token = generate_device_token(ua, client_ip)
+        tokens = load_device_tokens()
+        tokens[token] = {
+            'created': datetime.now().isoformat(),
+            'expiry': (datetime.now() + timedelta(days=DEVICE_TOKEN_EXPIRY_DAYS)).isoformat(),
+            'user_agent': ua,
+            'client_ip': client_ip,
+            'client_ips': get_client_ips(request),
+            'last_client_ip': client_ip,
+            'last_seen': datetime.now().isoformat(),
+            'role': 'viewer',
+            'ephemeral': True,
+            'locked': False,
+        }
+        save_device_tokens(tokens)
+        return {'device_token': token, 'token': token, 'role': 'viewer', 'message': 'Viewer token issued'}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/export/excel")
 async def export_excel(req: Request):
     """Generate multi-sheet Excel export of warehouse stats (manager only)"""
