@@ -1110,25 +1110,27 @@
                     content.innerHTML = '<p style="color: #999;">No active device sessions.</p>';
                 } else {
                     let html = '<div class="stats-grid">';
-                    devices.forEach(device => {
-                        const tokenSuffix = device.token ? device.token.slice(-8) : 'unknown';
-                        const locked = device.locked ? true : false;
-                        html += `
-                            <div class="stat-card" style="text-align:left;">
-                                <div style="display:flex;justify-content:space-between;align-items:center;">
-                                  <div style="font-weight:700;color:#333;">${device.role || 'unknown'} (${tokenSuffix})</div>
-                                  <div style="font-size:12px;color:${locked ? '#c00' : '#0a84ff'};font-weight:700;">${locked ? 'Locked' : 'Active'}</div>
-                                </div>
-                                <div style="font-size:12px;color:#666;margin-top:6px;">IP: ${device.client_ip || 'n/a'}</div>
-                                <div style="font-size:12px;color:#666;">UA: ${device.user_agent || 'n/a'}</div>
-                                <div style="font-size:12px;color:#666;">Expiry: ${device.expiry || 'n/a'}</div>
-                                <div style="margin-top:10px;display:flex;gap:8px;">
-                                  <button onclick="revokeDevice('${device.token}')">Revoke</button>
-                                  <button onclick="toggleLockDevice('${device.token}', ${locked ? 'false' : 'true'})">${locked ? 'Unlock' : 'Lock'}</button>
-                                </div>
-                            </div>
-                        `;
-                    });
+                                        devices.forEach(device => {
+                                                const tokenSuffix = device.token ? device.token.slice(-8) : 'unknown';
+                                                const locked = device.locked ? true : false;
+                                                const displayName = device.name ? (device.name + ' (' + (device.role || 'viewer') + ')') : ((device.role || 'unknown') + ' (' + tokenSuffix + ')');
+                                                html += `
+                                                        <div class="stat-card" style="text-align:left;">
+                                                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                                                    <div style="font-weight:700;color:#333;">${displayName}</div>
+                                                                    <div style="font-size:12px;color:${locked ? '#c00' : '#0a84ff'};font-weight:700;">${locked ? 'Locked' : 'Active'}</div>
+                                                                </div>
+                                                                <div style="font-size:12px;color:#666;margin-top:6px;">IP: ${device.client_ip || 'n/a'}</div>
+                                                                <div style="font-size:12px;color:#666;">UA: ${device.user_agent || 'n/a'}</div>
+                                                                <div style="font-size:12px;color:#666;">Expiry: ${device.expiry || 'n/a'}</div>
+                                                                <div style="margin-top:10px;display:flex;gap:8px;">
+                                                                    <button onclick="revokeDevice('${device.token}')">Revoke</button>
+                                                                    <button onclick="toggleLockDevice('${device.token}', ${locked ? 'false' : 'true'})">${locked ? 'Unlock' : 'Lock'}</button>
+                                                                    <button onclick="setDeviceNamePrompt('${device.token}')">Rename</button>
+                                                                </div>
+                                                        </div>
+                                                `;
+                                        });
                     html += '</div>';
                     content.innerHTML = html;
                 }
@@ -1170,6 +1172,25 @@
                 loadConnectedDevices();
             } catch (error) {
                 alert('Failed to change lock state: ' + error.message);
+            }
+        }
+
+        async function setDeviceNamePrompt(token) {
+            const name = window.prompt('Enter a name for this device (leave blank to clear):', '');
+            if (name === null) return; // cancelled
+            try {
+                const response = await fetch('/admin/set-device-name', {
+                    method: 'POST',
+                    headers: getAuthHeaders(true),
+                    body: JSON.stringify({ token, name })
+                });
+                if (!response.ok) {
+                    const d = await response.json().catch(() => ({}));
+                    throw new Error(d.detail || 'Failed to set name');
+                }
+                loadConnectedDevices();
+            } catch (err) {
+                alert('Failed to set device name: ' + err.message);
             }
         }
     </script>

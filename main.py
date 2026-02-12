@@ -1449,6 +1449,7 @@ async def admin_connected_devices(req: Request):
         devices.append({
             "token": token,
             "role": info.get("role"),
+            "name": info.get("name") or info.get("device_name") or None,
             "client_ip": info.get("client_ip"),
             "user_agent": info.get("user_agent"),
             "created": info.get("created"),
@@ -1818,6 +1819,15 @@ async def create_ephemeral_viewer(request: Request):
     try:
         client_ip = get_client_ip(request)
         ua = request.headers.get('User-Agent', 'Unknown')[:512]
+        # accept optional name in request body
+        name = None
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                name = body.get('name') or body.get('device_name') or None
+        except Exception:
+            name = None
+
         # Generate token and store with expiry (use DEVICE_TOKEN_EXPIRY_DAYS)
         token = generate_device_token(ua, client_ip)
         tokens = load_device_tokens()
@@ -1832,9 +1842,10 @@ async def create_ephemeral_viewer(request: Request):
             'role': 'viewer',
             'ephemeral': True,
             'locked': False,
+            'name': name,
         }
         save_device_tokens(tokens)
-        return {'device_token': token, 'token': token, 'role': 'viewer', 'message': 'Viewer token issued'}
+        return {'device_token': token, 'token': token, 'role': 'viewer', 'name': name, 'message': 'Viewer token issued'}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1878,6 +1889,7 @@ async def admin_connected_devices(request: Request):
         devices.append({
             'token': t,
             'role': info.get('role'),
+            'name': info.get('name') or info.get('device_name') or None,
             'created': info.get('created'),
             'expiry': info.get('expiry'),
             'user_agent': info.get('user_agent'),
@@ -1925,6 +1937,33 @@ async def admin_lock_device(request: Request):
         tokens[token]['locked'] = lock
         save_device_tokens(tokens)
         return {'token': token, 'locked': lock}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post('/admin/set-device-name')
+async def admin_set_device_name(request: Request):
+    """Set or clear a human-friendly name for a device token (admin only)."""
+    require_admin(request)
+    try:
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        token = body.get('token')
+        name = body.get('name')
+        if not token:
+            raise HTTPException(status_code=400, detail='token required')
+        tokens = load_device_tokens()
+        if token not in tokens:
+            raise HTTPException(status_code=404, detail='token not found')
+        # allow clearing name by passing empty string or null
+        tokens[token]['name'] = name or None
+        save_device_tokens(tokens)
+        return {'token': token, 'name': tokens[token].get('name')}
     except HTTPException:
         raise
     except Exception as e:

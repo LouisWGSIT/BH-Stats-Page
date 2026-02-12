@@ -217,7 +217,15 @@ function renderSVGSparkline(svgElem, data) {
         applyRolePermissions();
         // Request a viewer device token from the server so API calls succeed and the device appears in connected list
         try {
-          const res = await fetch('/auth/ephemeral-viewer', { method: 'POST' });
+          // Prompt for an optional device name to make it easier to identify TVs/devices in admin
+          let deviceName = '';
+          try {
+            deviceName = (window.prompt && window.prompt('Name this device (optional):', '')) || '';
+          } catch (e) {
+            deviceName = '';
+          }
+
+          const res = await fetch('/auth/ephemeral-viewer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: deviceName }) });
           if (res.ok) {
             const data = await res.json();
             if (data.device_token) {
