@@ -1649,6 +1649,9 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
 
     result = {
         "total_unpalleted": 0,
+        "awaiting_erasure": 0,
+        "awaiting_qa": 0,
+        "awaiting_pallet": 0,
         "destination_counts": {},
         "engineer_counts": {},
     }
@@ -1666,6 +1669,29 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
         )
         row = cursor.fetchone()
         result["total_unpalleted"] = int(row[0]) if row and row[0] is not None else 0
+
+        # Calculate workflow stages for unpalleted devices
+        cursor.execute(
+            f"""
+            SELECT 
+                COUNT(DISTINCT CASE WHEN a.description IS NOT NULL AND 
+                                         (LOWER(COALESCE(a.de_complete, '')) NOT IN ('yes','true','1') AND 
+                                          COALESCE(b.blancco_count, 0) = 0) THEN src.stockid END) as awaiting_erasure,
+                COUNT(DISTINCT CASE WHEN (LOWER(COALESCE(a.de_complete, '')) IN ('yes','true','1') OR 
+                                          COALESCE(b.blancco_count, 0) > 0) AND
+                                         (SELECT MAX(q.added_date) FROM ITAD_QA_App q WHERE q.stockid = src.stockid) IS NULL THEN src.stockid END) as awaiting_qa,
+                COUNT(DISTINCT CASE WHEN (SELECT MAX(q.added_date) FROM ITAD_QA_App q WHERE q.stockid = src.stockid) IS NOT NULL AND
+                                         COALESCE(a.pallet_id, a.palletID, '') = '' THEN src.stockid END) as awaiting_pallet
+            {base_from}
+            {base_where}
+            """,
+            params
+        )
+        workflow_row = cursor.fetchone()
+        if workflow_row:
+            result["awaiting_erasure"] = int(workflow_row[0] or 0)
+            result["awaiting_qa"] = int(workflow_row[1] or 0)
+            result["awaiting_pallet"] = int(workflow_row[2] or 0)
 
         cursor.execute(
             f"""
@@ -1741,7 +1767,7 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
     - Data-bearing: Awaiting Erasure → Awaiting QA → Awaiting Pallet ID → Done
     - Non-data-bearing: Awaiting QA → Awaiting Pallet ID → Done
     
-    A device is "done" when it has a pallet ID assigned.
+    Devices remain on rollers throughout the process until physically moved.
     """
     conn = get_mariadb_connection()
     if not conn:
@@ -1768,7 +1794,7 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
     try:
         cursor = conn.cursor()
         
-        # Get all devices currently on rollers that don't have a pallet ID (not "done")
+        # Get ALL devices currently on rollers (regardless of pallet status)
         # Include QA info to determine workflow stage
         cursor.execute("""
             SELECT 
@@ -1793,12 +1819,7 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
               AND a.roller_location != ''
               AND LOWER(a.roller_location) LIKE '%%roller%%'
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-              AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
               AND YEARWEEK(COALESCE(a.last_update, CURDATE()), 1) = YEARWEEK(CURDATE(), 1)
-              AND (
-                  LOWER(COALESCE(a.de_complete, '')) IN ('yes','true','1')
-                  OR COALESCE(b.blancco_count, 0) > 0
-              )
         """)
         
         roller_data = {}
@@ -1819,8 +1840,9 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             destination_norm = (str(destination_raw).strip() if destination_raw is not None else '')
             
             # Skip if has pallet (shouldn't happen due to WHERE, but safety check)
-            if pallet_id and str(pallet_id).strip():
-                continue
+            # Actually, devices stay on rollers even after pallet assignment, so don't skip
+            # if pallet_id and str(pallet_id).strip():
+            #     continue
             
             is_data_bearing = is_data_bearing_device(description)
             # Consider device erased if there is a blancco job or DE flag/date present
@@ -1828,23 +1850,23 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             has_blancco = blancco_count > 0 or (blancco_last_job is not None)
             has_erasures = has_blancco or is_erased_flag or (de_completed_date is not None)
             has_qa = bool(last_qa_date)
+            has_pallet = bool(pallet_id and str(pallet_id).strip())
             destination_assigned = bool(destination_norm and destination_norm.lower() not in ("unknown", "", "none"))
 
             # Determine workflow stage using user's definitions:
             # - Awaiting Erasure: data-bearing AND no blancco/erasure record AND located on a roller
-            # - Awaiting QA: has erasure report (or non-data-bearing) but NO destination assigned
-            # - Awaiting Sortation (awaiting_pallet): has QA scan but no pallet ID
+            # - Awaiting QA: has erasure report (or non-data-bearing) but NO QA scan
+            # - Awaiting Pallet: has QA scan but no pallet ID assigned
             if is_data_bearing and not has_erasures:
                 stage = "awaiting_erasure"
-            elif has_qa:
+            elif has_erasures and not has_qa:
+                stage = "awaiting_qa"
+            elif has_qa and not has_pallet:
                 stage = "awaiting_pallet"
             else:
-                # No QA yet
-                if (is_data_bearing and has_erasures and not destination_assigned) or (not is_data_bearing and not destination_assigned):
-                    stage = "awaiting_qa"
-                else:
-                    # Fallback: treat as awaiting pallet if destination assigned but no QA
-                    stage = "awaiting_pallet"
+                # Device is complete (has pallet) but still on roller
+                # For bottleneck purposes, we might not want to count these
+                continue
             
             # Initialize roller if needed
             if roller_name not in roller_data:

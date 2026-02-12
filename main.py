@@ -2460,6 +2460,9 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
         summary = {"total_unpalleted": 0, "destination_counts": {}, "engineer_counts": {}}
 
     total_unpalleted = summary.get("total_unpalleted", 0)
+    awaiting_erasure = summary.get("awaiting_erasure", 0)
+    awaiting_qa = summary.get("awaiting_qa", 0)
+    awaiting_pallet = summary.get("awaiting_pallet", 0)
     destination_counts = summary.get("destination_counts", {})
     engineer_counts = summary.get("engineer_counts", {})
 
@@ -2512,6 +2515,9 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
         "timestamp": datetime.now().isoformat(),
         "filter_period": "this_week",  # Changed from lookback_days
         "total_unpalleted": total_unpalleted,
+        "awaiting_erasure": awaiting_erasure,
+        "awaiting_qa": awaiting_qa,
+        "awaiting_pallet": awaiting_pallet,
         "destination_counts": top_destinations,
         "engineer_missing_pallets": top_engineers[:limit_engineers],
         "flagged_engineers": flagged_engineers,
