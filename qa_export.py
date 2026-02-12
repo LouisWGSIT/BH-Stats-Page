@@ -1774,9 +1774,9 @@ def is_data_bearing_device(description: str) -> bool:
 def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
     """Get CURRENT status of all devices assigned to rollers with workflow stages.
     
-    Workflow stages:
-    - Data-bearing: Awaiting Erasure → Awaiting QA → Awaiting Pallet ID → Done
-    - Non-data-bearing: Awaiting QA → Awaiting Pallet ID → Done
+    Workflow stages (focusing on what we can reliably track):
+    - Awaiting QA: has erasure report but NO QA scan
+    - Awaiting Sorting: has QA scan but no pallet ID assigned
     
     Devices remain on rollers throughout the process until physically moved.
     """
@@ -1786,9 +1786,8 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             "rollers": [], 
             "totals": {
                 "total": 0, 
-                "awaiting_erasure": 0,  # Data-bearing, not erased yet
-                "awaiting_qa": 0,       # Erased (or non-data-bearing) but no QA scan
-                "awaiting_pallet": 0,   # QA'd but no pallet ID
+                "awaiting_qa": 0,       # Erased but no QA scan
+                "awaiting_sorting": 0,  # QA'd but no pallet ID
             }
         }
     
@@ -1796,9 +1795,8 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
         "rollers": [],
         "totals": {
             "total": 0, 
-            "awaiting_erasure": 0,
-            "awaiting_qa": 0,
-            "awaiting_pallet": 0,
+            "awaiting_qa": 0,       # Erased but no QA scan
+            "awaiting_sorting": 0,  # QA'd but no pallet ID
         }
     }
     
@@ -1863,21 +1861,22 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             has_pallet = bool(pallet_id and str(pallet_id).strip() and str(pallet_id).strip().lower() not in ('none', 'null', ''))
             destination_assigned = bool(destination_norm and destination_norm.lower() not in ("unknown", "", "none"))
 
-            # Determine workflow stage using user's definitions:
-            # - Awaiting Erasure: data-bearing AND no blancco/erasure record AND located on a roller
+            # Determine workflow stage - focus on what we can reliably track:
             # - Awaiting QA: has erasure report (or non-data-bearing) but NO QA scan
-            # - Awaiting Pallet: has QA scan but no pallet ID assigned
+            # - Awaiting Sorting: has QA scan but no pallet ID assigned
             
             # If device has a pallet assigned, it's complete - exclude from bottleneck counts
             if has_pallet:
                 continue
                 
-            if is_data_bearing and not has_erasures:
-                stage = "awaiting_erasure"
-            elif has_erasures and not has_qa:
+            # Skip devices that haven't been erased yet (awaiting erasure) - we can't track IA reliably
+            if not has_erasures:
+                continue
+                
+            if has_erasures and not has_qa:
                 stage = "awaiting_qa"
             elif has_qa and not has_pallet:
-                stage = "awaiting_pallet"
+                stage = "awaiting_sorting"
             else:
                 # This shouldn't happen with the has_pallet check above, but keep for safety
                 continue
@@ -1887,9 +1886,8 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
                 roller_data[roller_name] = {
                     "roller": roller_name, 
                     "total": 0, 
-                    "awaiting_erasure": 0,
                     "awaiting_qa": 0,
-                    "awaiting_pallet": 0,
+                    "awaiting_sorting": 0,
                     "data_bearing": 0,
                     "non_data_bearing": 0,
                     "samples": [],  # sample device rows for quick inspection
@@ -1917,9 +1915,8 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
         # Sort rollers by name for consistent ordering
         result["rollers"] = sorted(roller_data.values(), key=lambda x: x["roller"])
         result["totals"]["total"] = sum(r["total"] for r in result["rollers"])
-        result["totals"]["awaiting_erasure"] = sum(r["awaiting_erasure"] for r in result["rollers"])
         result["totals"]["awaiting_qa"] = sum(r["awaiting_qa"] for r in result["rollers"])
-        result["totals"]["awaiting_pallet"] = sum(r["awaiting_pallet"] for r in result["rollers"])
+        result["totals"]["awaiting_sorting"] = sum(r["awaiting_sorting"] for r in result["rollers"])
         
         cursor.close()
         conn.close()
