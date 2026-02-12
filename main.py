@@ -2580,8 +2580,23 @@ async def get_bottleneck_details(
             "showing": 0,
         }
         
-        # Data-bearing device types
-        DATA_BEARING_TYPES = ('lt', 'laptop', 'dt', 'desktop', 'server', 'switch', 'tablet', 'mobile', 'misc. network', 'misc network', 'network')
+        # Data-bearing device types (updated to match qa_export.py)
+        DATA_BEARING_TYPES = [
+            # Laptops
+            'laptop', 'notebook', 'elitebook', 'probook', 'latitude', 'precision', 'xps', 'thinkpad', 'macbook', 'surface',
+            # Desktops
+            'desktop', 'optiplex', 'prodesk', 'precision', 'thinkcentre', 'imac', 'mac mini', 'mac pro',
+            # Servers
+            'server', 'blade', 'rackmount',
+            # Network devices
+            'switch', 'router', 'firewall', 'access point', 'network', 'hub',
+            # Mobile devices
+            'tablet', 'phone', 'mobile', 'smartphone', 'ipad', 'iphone', 'android', 'galaxy', 'handset', 'dect',
+            # Storage devices
+            'hard drive', 'ssd', 'hdd', 'nas', 'san',
+            # Other computing devices
+            'workstation', 'thin client', 'all-in-one'
+        ]
         
         if category in ("roller_pending", "roller_awaiting_qa", "roller_awaiting_pallet", "roller_station"):
             # Query roller devices directly with recent activity window
