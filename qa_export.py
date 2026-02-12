@@ -1569,7 +1569,7 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
             ON q.stockid = last_q.stockid AND q.added_date = last_q.last_added
     """
 
-        base_where = f"""
+    base_where = f"""
         WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '')
           AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
             {recency_clause}
