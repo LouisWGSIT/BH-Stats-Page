@@ -1,0 +1,164 @@
+wrote C:\Users\Louisw\Documents\BH Stats Page\scripts\inspect_summary.json (stocks: 10)
+"12961674": {
+    "stockid": []
+  },
+  "12956106": {
+    "stockid": [],
+    "ITAD_asset_info_blancco": [
+      {
+        "id": 95253,
+        "stockid": "12956106",
+        "blancco": true
+      }
+    ],
+    "audit_master": [
+      {
+        "id": 6301929
+      },
+      {
+        "id": 6301931
+      },
+      {
+        "id": 6311375
+      },
+      {
+        "id": 6311699
+      },
+      {
+        "id": 6311830
+      },
+      {
+        "id": 6314174
+      },
+      {
+        "id": 6314301
+      }
+    ]
+  },
+  "12958425": {
+    "stockid": []
+  },
+  "12960356": {
+    "stockid": []
+  },
+  "12961123": {
+    "stockid": []
+  },
+  "12960382": {
+    "stockid": [],
+    "ITAD_asset_info": [
+      {
+        "de_complete": "Yes",
+        "de_completed_date": "2026-02-12 11:12:00",
+        "last_update": "2026-02-12 11:22:16",
+        "stockid": "12960382"
+      }
+    ],
+    "ITAD_asset_info_blancco": [
+      {
+        "id": 95396,
+        "stockid": "12960382",
+        "blancco": true
+      }
+    ],
+    "audit_master": [
+      {
+        "id": 6318507
+      },
+      {
+        "id": 6318549
+      },
+      {
+        "id": 6318551
+      },
+      {
+        "id": 6318552
+      },
+      {
+        "id": 6318553
+      }
+    ],
+    "Stockbypallet": [
+      {
+        "de_complete": "Yes",
+        "stockid": "12960382"
+      }
+    ]
+  },
+  "12958672": {
+    "stockid": [],
+    "ITAD_asset_info": [
+      {
+        "de_complete": "Yes",
+        "de_completed_date": "2026-02-12 11:07:50",
+        "last_update": "2026-02-12 11:22:16",
+        "stockid": "12958672"
+      }
+    ],
+    "ITAD_asset_info_blancco": [
+      {
+        "id": 95395,
+        "stockid": "12958672",
+        "blancco": true
+      }
+    ],
+    "audit_master": [
+      {
+        "id": 6318474
+      },
+      {
+        "id": 6318504
+      },
+      {
+        "id": 6318505
+      },
+      {
+        "id": 6318506
+      }
+    ],
+    "Stockbypallet": [
+      {
+        "de_complete": "Yes",
+        "stockid": "12958672"
+      }
+    ]
+  },
+  "12961241": {
+    "stockid": [],
+    "ITAD_asset_info": [
+      {
+        "de_complete": "Yes",
+        "de_completed_date": "2026-02-12 11:06:49",
+        "last_update": "2026-02-12 11:22:16",
+        "stockid": "12961241"
+      }
+    ],
+    "ITAD_asset_info_blancco": [
+      {
+        "id": 95394,
+        "stockid": "12961241",
+        "blancco": true
+      }
+    ],
+    "audit_master": [
+      {
+        "id": 6318468
+      },
+      {
+        "id": 6318471
+      },
+      {
+        "id": 6318472
+      },
+      {
+        "id": 6318473
+      }
+    ],
+    "Stockbypallet": [
+      {
+        "de_complete": "Yes",
+        "stockid": "12961241"
+      }
+    ]
+  }
+}

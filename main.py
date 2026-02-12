@@ -16,6 +16,7 @@ import httpx  # For making API calls to Blancco
 from time import time
 import zipfile
 import io
+import sqlite3
 
 app = FastAPI(title="Warehouse Stats Service")
 
@@ -73,6 +74,7 @@ ADMIN_PASSWORD = os.getenv("DASHBOARD_ADMIN_PASSWORD", "P!nkarrow")
 
 # Device token storage (persistent across redeployments)
 DEVICE_TOKENS_FILE = "device_tokens.json"
+DEVICE_TOKENS_DB = os.getenv("DEVICE_TOKENS_DB", "").strip()
 POWERBI_API_KEY_FILE = "powerbi_api_key.txt"
 DEVICE_TOKEN_EXPIRY_DAYS = 7  # Remember device for 7 days
 
@@ -93,16 +95,71 @@ def _set_cached_response(cache_key: str, data: Dict[str, object]):
 
 def load_device_tokens():
     """Load device tokens from persistent storage."""
+    # Prefer SQLite-backed storage if configured (set DEVICE_TOKENS_DB env var)
+    if DEVICE_TOKENS_DB:
+        try:
+            conn = sqlite3.connect(DEVICE_TOKENS_DB, timeout=2)
+            cur = conn.cursor()
+            cur.execute("CREATE TABLE IF NOT EXISTS device_tokens (token TEXT PRIMARY KEY, data TEXT)")
+            cur.execute("SELECT data FROM device_tokens")
+            rows = cur.fetchall()
+            conn.close()
+            result = {}
+            for (d,) in rows:
+                try:
+                    parsed = json.loads(d)
+                    token_key = parsed.get('token') or parsed.get('device_token')
+                    if token_key:
+                        # remove embedded token key to avoid duplication
+                        parsed.pop('token', None)
+                        parsed.pop('device_token', None)
+                        result[token_key] = parsed
+                except Exception:
+                    continue
+            return result
+        except Exception as e:
+            print(f"Error loading device tokens from DB ({DEVICE_TOKENS_DB}): {e}")
+
+    # Fallback to JSON file
     try:
         if os.path.exists(DEVICE_TOKENS_FILE):
             with open(DEVICE_TOKENS_FILE, 'r') as f:
                 return json.load(f)
-    except:
+    except Exception:
         pass
     return {}
 
 def save_device_tokens(tokens):
     """Save device tokens to persistent storage."""
+    # If configured, save to SQLite DB for persistence across deploys (set DEVICE_TOKENS_DB env var)
+    if DEVICE_TOKENS_DB:
+        try:
+            conn = sqlite3.connect(DEVICE_TOKENS_DB, timeout=2)
+            cur = conn.cursor()
+            cur.execute("CREATE TABLE IF NOT EXISTS device_tokens (token TEXT PRIMARY KEY, data TEXT)")
+            # Upsert each token as JSON blob
+            for token, info in tokens.items():
+                try:
+                    payload = json.dumps({**info, 'token': token})
+                    cur.execute("INSERT OR REPLACE INTO device_tokens(token, data) VALUES (?, ?)", (token, payload))
+                except Exception:
+                    continue
+            # Remove rows not present in tokens dict
+            try:
+                cur.execute("SELECT token FROM device_tokens")
+                existing = [r[0] for r in cur.fetchall()]
+                for e in existing:
+                    if e not in tokens:
+                        cur.execute("DELETE FROM device_tokens WHERE token = ?", (e,))
+            except Exception:
+                pass
+            conn.commit()
+            conn.close()
+            return
+        except Exception as e:
+            print(f"Error saving device tokens to DB ({DEVICE_TOKENS_DB}): {e}")
+
+    # Fallback to JSON file
     try:
         with open(DEVICE_TOKENS_FILE, 'w') as f:
             json.dump(tokens, f)
@@ -2354,14 +2411,7 @@ async def device_lookup(stock_id: str, request: Request):
             "recommendations": recommendations,
         }
 
-        # Bottleneck snapshot (same destination, recent window)
-        destination_label = asset_info.get("condition") or asset_info.get("destination")
-        if destination_label:
-            results["bottleneck"] = _build_bottleneck_snapshot(
-                days_threshold=7,
-                destination=destination_label,
-                limit_engineers=5
-            )
+        # Destination-specific bottleneck snapshot removed from device lookup
 
         # Summary
         results["total_events"] = len(results["timeline"])

@@ -860,8 +860,8 @@ def get_all_time_daily_record() -> Dict:
                 WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
                   AND user_id IS NOT NULL AND user_id <> ''
                   AND sales_order IS NOT NULL AND sales_order <> ''
-                  AND user_id NOT LIKE '%mark.aldington%'
-                  AND user_id NOT LIKE '%brandon.brace%'
+                  AND user_id NOT LIKE '%%mark.aldington%%'
+                  AND user_id NOT LIKE '%%brandon.brace%%'
                 GROUP BY user_id, DATE(date_time)
             ) ranked
             WHERE rn = 1
@@ -1404,10 +1404,10 @@ def get_unpalleted_devices(start_date: date = None, end_date: date = None) -> Li
             date_clause = "AND a.received_date >= %s AND a.received_date <= %s"
             params = [start_date.isoformat(), end_date.isoformat()]
         
-        # Get devices from QA/sorting that have no pallet_id in ITAD_asset_info
+        # Use UNION approach to include devices from all sources
         cursor.execute(f"""
             SELECT 
-                a.stockid,
+                src.stockid,
                 a.serialnumber,
                 a.manufacturer,
                 a.description,
@@ -1423,12 +1423,49 @@ def get_unpalleted_devices(start_date: date = None, end_date: date = None) -> Li
                 q.added_date as qa_date,
                 q.username as qa_user,
                 q.scanned_location as qa_location
-            FROM ITAD_asset_info a
-            LEFT JOIN ITAD_QA_App q ON q.stockid = a.stockid
-            WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '' OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
+            FROM (
+                SELECT stockid FROM ITAD_asset_info
+                UNION
+                SELECT stockid FROM ITAD_asset_info_blancco
+                UNION
+                SELECT stockid FROM Stockbypallet
+                UNION
+                SELECT sales_order AS stockid FROM audit_master WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload') AND sales_order IS NOT NULL
+            ) src
+            LEFT JOIN ITAD_asset_info a ON a.stockid = src.stockid
+            LEFT JOIN (
+                SELECT stockid, MAX(added_date) AS last_added
+                FROM ITAD_QA_App
+                GROUP BY stockid
+            ) last_q ON last_q.stockid = a.stockid
+            LEFT JOIN ITAD_QA_App q ON q.stockid = last_q.stockid AND q.added_date = last_q.last_added
+            LEFT JOIN Stockbypallet sb ON sb.stockid = src.stockid
+            LEFT JOIN (
+                SELECT stockid, COUNT(*) AS blancco_count
+                FROM ITAD_asset_info_blancco
+                GROUP BY stockid
+            ) b ON b.stockid = src.stockid
+            WHERE (
+                a.stockid IS NULL
+                OR (
+                    (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '' OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
+                    AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                )
+            )
               {date_clause}
-              AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-            ORDER BY a.received_date DESC
+              AND (
+                  LOWER(COALESCE(a.de_complete, '')) IN ('yes','true','1')
+                  OR LOWER(COALESCE(sb.de_complete, '')) IN ('yes','true','1')
+                  OR COALESCE(b.blancco_count, 0) > 0
+                  OR EXISTS (
+                      SELECT 1 FROM audit_master am
+                      WHERE am.sales_order = src.stockid
+                        AND am.audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
+                  )
+                  OR (a.last_update IS NOT NULL AND a.last_update >= DATE_SUB(NOW(), INTERVAL 30 DAY))
+              )
+            ORDER BY COALESCE(a.received_date, '1900-01-01') DESC
+            LIMIT 10000
         """, params)
         
         for row in cursor.fetchall():
@@ -1497,7 +1534,7 @@ def get_unpalleted_devices_recent(days_threshold: int = 7) -> List[Dict[str, obj
                 GROUP BY stockid
             ) last_q ON last_q.stockid = a.stockid
             LEFT JOIN ITAD_QA_App q ON q.stockid = last_q.stockid AND q.added_date = last_q.last_added
-            WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '' OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
+            WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '' OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
               AND a.last_update IS NOT NULL
               AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
@@ -1555,11 +1592,25 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
         params.append(destination.strip().lower())
 
     days_threshold = max(1, min(int(days_threshold or 7), 90))
-    recency_clause = "AND a.last_update IS NOT NULL AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)"
+    # Keep the days threshold param for optional recency filtering,
+    # but include devices that have de_complete set or blancco records
+    # even if their `last_update` is older than the threshold.
+    recency_clause = "(a.last_update IS NOT NULL AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY))"
     params.append(days_threshold)
 
+    # Build a derived set of stockids from multiple authoritative sources so
+    # devices that appear only in blancco/audit tables are still considered.
     base_from = """
-        FROM ITAD_asset_info a
+        FROM (
+            SELECT stockid FROM ITAD_asset_info
+            UNION
+            SELECT stockid FROM ITAD_asset_info_blancco
+            UNION
+            SELECT stockid FROM Stockbypallet
+            UNION
+            SELECT sales_order AS stockid FROM audit_master WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload') AND sales_order IS NOT NULL
+        ) src
+        LEFT JOIN ITAD_asset_info a ON a.stockid = src.stockid
         LEFT JOIN (
             SELECT stockid, MAX(added_date) AS last_added
             FROM ITAD_QA_App
@@ -1567,12 +1618,33 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
         ) last_q ON last_q.stockid = a.stockid
         LEFT JOIN ITAD_QA_App q
             ON q.stockid = last_q.stockid AND q.added_date = last_q.last_added
+        LEFT JOIN Stockbypallet sb ON sb.stockid = src.stockid
+        LEFT JOIN (
+            SELECT stockid, COUNT(*) AS blancco_count
+            FROM ITAD_asset_info_blancco
+            GROUP BY stockid
+        ) b ON b.stockid = src.stockid
     """
 
     base_where = f"""
-        WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '' OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
-          AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-            {recency_clause}
+        WHERE (
+            a.stockid IS NULL  -- Include devices that only exist in secondary tables (blancco/audit)
+            OR (
+                (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '' OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
+                AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+            )
+        )
+          AND (
+              LOWER(COALESCE(a.de_complete, '')) IN ('yes','true','1')
+              OR LOWER(COALESCE(sb.de_complete, '')) IN ('yes','true','1')
+              OR COALESCE(b.blancco_count, 0) > 0
+              OR EXISTS (
+                  SELECT 1 FROM audit_master am
+                  WHERE am.sales_order = src.stockid
+                    AND am.audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
+              )
+              OR {recency_clause}
+          )
           {destination_clause}
     """
 
@@ -1587,7 +1659,7 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
 
         cursor.execute(
             f"""
-            SELECT COUNT(DISTINCT a.stockid)
+            SELECT COUNT(DISTINCT src.stockid)
             {base_from}
             {base_where}
             """,
@@ -1600,7 +1672,7 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
             f"""
             SELECT
                 COALESCE(NULLIF(TRIM(a.`condition`), ''), 'Unknown') AS destination,
-                COUNT(DISTINCT a.stockid) AS device_count
+                COUNT(DISTINCT src.stockid) AS device_count
             {base_from}
             {base_where}
             GROUP BY destination
@@ -1614,7 +1686,7 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
             f"""
             SELECT
                 COALESCE(NULLIF(TRIM(q.username), ''), 'Unassigned (no QA user recorded)') AS qa_user,
-                COUNT(DISTINCT a.stockid) AS device_count
+                COUNT(DISTINCT src.stockid) AS device_count
             {base_from}
             {base_where}
             GROUP BY qa_user
@@ -1710,22 +1782,25 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
                 COALESCE(a.pallet_id, a.palletID) as pallet_id,
                 (SELECT MAX(q.added_date) FROM ITAD_QA_App q WHERE q.stockid = a.stockid) as last_qa_date,
                 a.de_completed_date,
-                COALESCE(b.last_job_date, NULL) as blancco_last_job,
+                NULL as blancco_last_job,
                 COALESCE(b.blancco_count, 0) as blancco_count,
                 COALESCE(NULLIF(TRIM(a.`condition`), ''), 'Unknown') as destination
             FROM ITAD_asset_info a
             LEFT JOIN (
-                SELECT stockid, MAX(job_date) AS last_job_date, COUNT(*) AS blancco_count
+                SELECT stockid, COUNT(*) AS blancco_count
                 FROM ITAD_asset_info_blancco
                 GROUP BY stockid
             ) b ON b.stockid = a.stockid
             WHERE a.roller_location IS NOT NULL 
               AND a.roller_location != ''
-              AND LOWER(a.roller_location) LIKE '%roller%'
+              AND LOWER(a.roller_location) LIKE '%%roller%%'
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-              AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
-              AND a.last_update IS NOT NULL
-              AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                        AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
+                            AND (
+                                    (a.last_update IS NOT NULL AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY))
+                                    OR LOWER(COALESCE(a.de_complete, '')) IN ('yes','true','1')
+                                    OR COALESCE(b.blancco_count, 0) > 0
+                            )
         """, (days_threshold,))
         
         roller_data = {}
@@ -1737,12 +1812,12 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             serial = row[2]
             description = row[3] or ""
             de_complete_raw = row[4]
-            pallet_id = row[4]
-            last_qa_date = row[5]
-            de_completed_date = row[6]
-            blancco_last_job = row[7]
-            blancco_count = int(row[8] or 0)
-            destination_raw = row[9]
+            pallet_id = row[5]
+            last_qa_date = row[6]
+            de_completed_date = row[7]
+            blancco_last_job = row[8]
+            blancco_count = int(row[9] or 0)
+            destination_raw = row[10]
             destination_norm = (str(destination_raw).strip() if destination_raw is not None else '')
             
             # Skip if has pallet (shouldn't happen due to WHERE, but safety check)

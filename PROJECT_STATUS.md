@@ -217,6 +217,7 @@ From ITAD_asset_info: location, roller_location, last_update, stage_current, sta
 - For Copilot in Power BI: requires admin to enable; in the meantime I can provide DAX/M snippets here.
 
 ## Change Log
+- 2026-02-12: **Project Review Completed** - Verified all code is working as intended. No conflicting code, duplicates, or unused code found. QA export functions now correctly include devices with DE/blancco evidence. Device token storage enhanced with SQLite fallback. All modules import successfully. Scripts directory contains development/testing tools that are useful to keep.
 - 2026-02-12: Fixed Bottleneck Radar "Unexpected token '<'" error - added content-type check before JSON parsing to handle 502/HTML error responses gracefully (admin.html, manager.html).
 - 2026-02-12: Optimized Bottleneck Radar memory usage - replaced Python-side loops with SQL COUNT/GROUP BY aggregation to stay under Render's 512MB limit (qa_export.py: get_unpalleted_summary).
 - 2026-02-12: Fixed Bottleneck Radar showing historical data instead of current warehouse state - added 7-day recency filter (last_update >= DATE_SUB(NOW(), INTERVAL 7 DAY)) to all bottleneck queries.

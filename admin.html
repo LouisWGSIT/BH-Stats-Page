@@ -319,6 +319,33 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        /* Connected devices layout */
+        .devices-row {
+            display: flex;
+            gap: 16px;
+            overflow-x: auto;
+            padding: 12px 4px;
+            align-items: flex-start;
+        }
+
+        .device-card {
+            flex: 0 0 300px;
+            min-width: 260px;
+            max-width: 360px;
+            background: #fff;
+            border-radius: 10px;
+            padding: 12px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+            border-left: 6px solid #667eea;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .device-meta { font-size: 12px; color: #444; }
+        .device-actions { display:flex; gap:8px; margin-top:6px; }
+        .device-actions button { flex: 1; }
     </style>
 </head>
 <body>
@@ -1109,28 +1136,28 @@
                 if (devices.length === 0) {
                     content.innerHTML = '<p style="color: #999;">No active device sessions.</p>';
                 } else {
-                    let html = '<div class="stats-grid">';
-                                        devices.forEach(device => {
-                                                const tokenSuffix = device.token ? device.token.slice(-8) : 'unknown';
-                                                const locked = device.locked ? true : false;
-                                                const displayName = device.name ? (device.name + ' (' + (device.role || 'viewer') + ')') : ((device.role || 'unknown') + ' (' + tokenSuffix + ')');
-                                                html += `
-                                                        <div class="stat-card" style="text-align:left;">
-                                                                <div style="display:flex;justify-content:space-between;align-items:center;">
-                                                                    <div style="font-weight:700;color:#333;">${displayName}</div>
-                                                                    <div style="font-size:12px;color:${locked ? '#c00' : '#0a84ff'};font-weight:700;">${locked ? 'Locked' : 'Active'}</div>
-                                                                </div>
-                                                                <div style="font-size:12px;color:#666;margin-top:6px;">IP: ${device.client_ip || 'n/a'}</div>
-                                                                <div style="font-size:12px;color:#666;">UA: ${device.user_agent || 'n/a'}</div>
-                                                                <div style="font-size:12px;color:#666;">Expiry: ${device.expiry || 'n/a'}</div>
-                                                                <div style="margin-top:10px;display:flex;gap:8px;">
-                                                                    <button onclick="revokeDevice('${device.token}')">Revoke</button>
-                                                                    <button onclick="toggleLockDevice('${device.token}', ${locked ? 'false' : 'true'})">${locked ? 'Unlock' : 'Lock'}</button>
-                                                                    <button onclick="setDeviceNamePrompt('${device.token}')">Rename</button>
-                                                                </div>
-                                                        </div>
-                                                `;
-                                        });
+                    let html = '<div class="devices-row">';
+                    devices.forEach(device => {
+                        const tokenSuffix = device.token ? device.token.slice(-8) : 'unknown';
+                        const locked = device.locked ? true : false;
+                        const displayName = device.name ? (device.name + ' (' + (device.role || 'viewer') + ')') : ((device.role || 'unknown') + ' (' + tokenSuffix + ')');
+                        html += `
+                            <div class="device-card">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <div style="font-weight:700;color:#222;">${displayName}</div>
+                                    <div style="font-size:12px;color:${locked ? '#c00' : '#0a84ff'};font-weight:700;">${locked ? 'Locked' : 'Active'}</div>
+                                </div>
+                                <div class="device-meta">IP: ${device.client_ip || 'n/a'}</div>
+                                <div class="device-meta">UA: ${device.user_agent || 'n/a'}</div>
+                                <div class="device-meta">Expiry: ${device.expiry || 'n/a'}</div>
+                                <div class="device-actions">
+                                    <button onclick="revokeDevice('${device.token}')">Revoke</button>
+                                    <button onclick="toggleLockDevice('${device.token}', ${locked ? 'false' : 'true'})">${locked ? 'Unlock' : 'Lock'}</button>
+                                    <button onclick="setDeviceNamePrompt('${device.token}')">Rename</button>
+                                </div>
+                            </div>
+                        `;
+                    });
                     html += '</div>';
                     content.innerHTML = html;
                 }
