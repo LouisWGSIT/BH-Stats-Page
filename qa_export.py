@@ -1869,8 +1869,9 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             if has_pallet:
                 continue
                 
-            # Skip devices that haven't been erased yet (awaiting erasure) - we can't track IA reliably
-            if not has_erasures:
+            # Skip devices that haven't been erased AND haven't been QA'd
+            # (Allow QA'd devices even if not erased - they might be non-data-bearing)
+            if not has_erasures and not has_qa:
                 continue
                 
             if has_erasures and not has_qa:
