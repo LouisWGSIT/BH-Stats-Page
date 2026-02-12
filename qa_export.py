@@ -1743,8 +1743,20 @@ def normalize_roller_name(roller_location: str) -> str:
 
 # Data-bearing device types that require erasure
 DATA_BEARING_TYPES = [
-    'lt', 'laptop', 'dt', 'desktop', 'server', 'switch', 
-    'tablet', 'mobile', 'misc. network', 'misc network', 'network'
+    # Laptops
+    'laptop', 'notebook', 'elitebook', 'probook', 'latitude', 'precision', 'xps', 'thinkpad', 'macbook', 'surface',
+    # Desktops
+    'desktop', 'optiplex', 'prodesk', 'precision', 'thinkcentre', 'imac', 'mac mini', 'mac pro',
+    # Servers
+    'server', 'blade', 'rackmount',
+    # Network devices
+    'switch', 'router', 'firewall', 'access point', 'network', 'hub',
+    # Mobile devices
+    'tablet', 'phone', 'mobile', 'smartphone', 'ipad', 'iphone', 'android', 'galaxy', 'handset', 'dect',
+    # Storage devices
+    'hard drive', 'ssd', 'hdd', 'nas', 'san',
+    # Other computing devices
+    'workstation', 'thin client', 'all-in-one'
 ]
 
 
@@ -1819,7 +1831,6 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
               AND a.roller_location != ''
               AND LOWER(a.roller_location) LIKE '%%roller%%'
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-              AND YEARWEEK(COALESCE(a.last_update, CURDATE()), 1) = YEARWEEK(CURDATE(), 1)
         """)
         
         roller_data = {}
