@@ -1087,13 +1087,20 @@
                     let html = '<div class="stats-grid">';
                     devices.forEach(device => {
                         const tokenSuffix = device.token ? device.token.slice(-8) : 'unknown';
+                        const locked = device.locked ? true : false;
                         html += `
                             <div class="stat-card" style="text-align:left;">
-                                <div style="font-weight:700;color:#333;">${device.role || 'unknown'} (${tokenSuffix})</div>
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                  <div style="font-weight:700;color:#333;">${device.role || 'unknown'} (${tokenSuffix})</div>
+                                  <div style="font-size:12px;color:${locked ? '#c00' : '#0a84ff'};font-weight:700;">${locked ? 'Locked' : 'Active'}</div>
+                                </div>
                                 <div style="font-size:12px;color:#666;margin-top:6px;">IP: ${device.client_ip || 'n/a'}</div>
                                 <div style="font-size:12px;color:#666;">UA: ${device.user_agent || 'n/a'}</div>
                                 <div style="font-size:12px;color:#666;">Expiry: ${device.expiry || 'n/a'}</div>
-                                <button style="margin-top:10px;" onclick="revokeDevice('${device.token}')">Revoke</button>
+                                <div style="margin-top:10px;display:flex;gap:8px;">
+                                  <button onclick="revokeDevice('${device.token}')">Revoke</button>
+                                  <button onclick="toggleLockDevice('${device.token}', ${locked ? 'false' : 'true'})">${locked ? 'Unlock' : 'Lock'}</button>
+                                </div>
                             </div>
                         `;
                     });
@@ -1119,6 +1126,25 @@
                 loadConnectedDevices();
             } catch (error) {
                 alert('Failed to revoke device: ' + error.message);
+            }
+        }
+
+        async function toggleLockDevice(token, lock) {
+            const action = lock ? 'Lock' : 'Unlock';
+            if (!confirm(`${action} this device token?`)) return;
+            try {
+                const response = await fetch('/admin/lock-device', {
+                    method: 'POST',
+                    headers: getAuthHeaders(true),
+                    body: JSON.stringify({ token, lock })
+                });
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.detail || 'Failed to change lock state');
+                }
+                loadConnectedDevices();
+            } catch (error) {
+                alert('Failed to change lock state: ' + error.message);
             }
         }
     </script>

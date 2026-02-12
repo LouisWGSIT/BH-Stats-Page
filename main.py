@@ -145,14 +145,62 @@ def is_device_token_valid(token: str) -> bool:
     """Check if a device token is valid and not expired."""
     tokens = load_device_tokens()
     if token in tokens:
-        expiry = datetime.fromisoformat(tokens[token]['expiry'])
+        entry = tokens[token]
+        # Respect explicit lock flag: locked tokens are invalid for automatic login
+        if entry.get('locked'):
+            return False
+        try:
+            expiry = datetime.fromisoformat(entry['expiry'])
+        except Exception:
+            # Malformed expiry, treat as invalid
+            try:
+                del tokens[token]
+                save_device_tokens(tokens)
+            except Exception:
+                pass
+            return False
         if datetime.now() < expiry:
             return True
         else:
             # Token expired, remove it
-            del tokens[token]
-            save_device_tokens(tokens)
+            try:
+                del tokens[token]
+                save_device_tokens(tokens)
+            except Exception:
+                pass
     return False
+
+def touch_device_token(token: str, client_ips: list | None = None, user_agent: str | None = None):
+    """Update metadata for a device token when it is used (last_seen, last_client_ip, client_ips).
+
+    This helps the admin panel display current connections and allows locking/revoking.
+    """
+    if not token:
+        return
+    tokens = load_device_tokens()
+    if token not in tokens:
+        return
+    entry = tokens[token]
+    entry['last_seen'] = datetime.now().isoformat()
+    if user_agent:
+        entry['user_agent'] = user_agent
+    if client_ips:
+        # store last_client_ip and accumulate a small history
+        try:
+            # preserve existing client_ips list
+            existing = entry.get('client_ips') or []
+            for ip in client_ips:
+                if ip not in existing:
+                    existing.append(ip)
+            entry['client_ips'] = existing[-10:]
+            entry['last_client_ip'] = client_ips[-1]
+        except Exception:
+            pass
+    try:
+        tokens[token] = entry
+        save_device_tokens(tokens)
+    except Exception:
+        pass
 
 def is_local_network(client_ip: str) -> bool:
     """Check if client IP is on local network (no auth needed)."""
@@ -271,6 +319,12 @@ async def auth_middleware(request: Request, call_next):
         if is_device_token_valid(token):
             tokens = load_device_tokens()
             role = tokens.get(token, {}).get("role")
+            # update last_seen and client_ips for admin visibility
+            try:
+                ua = request.headers.get('User-Agent', '')
+                touch_device_token(token, get_client_ips(request), ua)
+            except Exception:
+                pass
             if request.url.path.startswith("/admin") and role != "admin":
                 return JSONResponse(status_code=403, content={"detail": "Admin access required."})
             return await call_next(request)
@@ -1616,6 +1670,12 @@ async def auth_status(request: Request):
         elif is_device_token_valid(token):
             tokens = load_device_tokens()
             role = tokens.get(token, {}).get("role") or role
+            # update token metadata for admin panel
+            try:
+                ua = request.headers.get('User-Agent', '')
+                touch_device_token(token, get_client_ips(request), ua)
+            except Exception:
+                pass
             is_authenticated = True
     
     # Log for debugging
@@ -1658,6 +1718,10 @@ async def login(request: Request):
                 "expiry": (datetime.now() + timedelta(days=DEVICE_TOKEN_EXPIRY_DAYS)).isoformat(),
                 "user_agent": user_agent,
                 "client_ip": client_ip,
+                "client_ips": [client_ip],
+                "last_client_ip": client_ip,
+                "last_seen": datetime.now().isoformat(),
+                "locked": False,
                 "role": "admin"
             }
             save_device_tokens(tokens)
@@ -1683,6 +1747,10 @@ async def login(request: Request):
                 "expiry": (datetime.now() + timedelta(days=DEVICE_TOKEN_EXPIRY_DAYS)).isoformat(),
                 "user_agent": user_agent,
                 "client_ip": client_ip,
+                "client_ips": [client_ip],
+                "last_client_ip": client_ip,
+                "last_seen": datetime.now().isoformat(),
+                "locked": False,
                 "role": "manager"
             }
             save_device_tokens(tokens)
@@ -1728,6 +1796,76 @@ async def export_excel(req: Request):
     except Exception as e:
         print(f"Excel export error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Admin: list connected device tokens
+@app.get("/admin/connected-devices")
+async def admin_connected_devices(request: Request):
+    require_admin(request)
+    tokens = load_device_tokens()
+    devices = []
+    for t, info in tokens.items():
+        # Only include non-expired tokens
+        try:
+            expiry = datetime.fromisoformat(info.get('expiry'))
+        except Exception:
+            continue
+        if datetime.now() > expiry:
+            continue
+        devices.append({
+            'token': t,
+            'role': info.get('role'),
+            'created': info.get('created'),
+            'expiry': info.get('expiry'),
+            'user_agent': info.get('user_agent'),
+            'client_ip': info.get('last_client_ip') or info.get('client_ip'),
+            'client_ips': info.get('client_ips') or [],
+            'last_seen': info.get('last_seen'),
+            'locked': info.get('locked', False),
+        })
+    # Sort by last_seen desc
+    devices.sort(key=lambda d: d.get('last_seen') or '', reverse=True)
+    return {'devices': devices}
+
+
+@app.post('/admin/revoke-device')
+async def admin_revoke_device(request: Request):
+    require_admin(request)
+    try:
+        body = await request.json()
+        token = body.get('token')
+        if not token:
+            raise HTTPException(status_code=400, detail='token required')
+        tokens = load_device_tokens()
+        if token in tokens:
+            del tokens[token]
+            save_device_tokens(tokens)
+        return {'revoked': True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post('/admin/lock-device')
+async def admin_lock_device(request: Request):
+    require_admin(request)
+    try:
+        body = await request.json()
+        token = body.get('token')
+        lock = bool(body.get('lock', True))
+        if not token:
+            raise HTTPException(status_code=400, detail='token required')
+        tokens = load_device_tokens()
+        if token not in tokens:
+            raise HTTPException(status_code=404, detail='token not found')
+        tokens[token]['locked'] = lock
+        save_device_tokens(tokens)
+        return {'token': token, 'locked': lock}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/export/engineer-deepdive")
 async def export_engineer_deepdive(request: Request, period: str = "this_week"):
