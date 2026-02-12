@@ -2118,7 +2118,7 @@ async def device_lookup(stock_id: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5) -> Dict[str, object]:
+def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5, days_threshold: int = 7) -> Dict[str, object]:
     """Summarize CURRENT bottleneck patterns - no lookback, shows warehouse state NOW.
     
     Shows:
@@ -2134,8 +2134,12 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
             return ""
         return str(value).strip()
 
+    days_threshold = max(1, min(int(days_threshold or 7), 90))
     destination_norm = normalize_destination(destination).lower() if destination else None
-    summary = qa_export.get_unpalleted_summary(destination=destination_norm)
+    summary = qa_export.get_unpalleted_summary(
+        destination=destination_norm,
+        days_threshold=days_threshold
+    )
 
     total_unpalleted = summary.get("total_unpalleted", 0)
     destination_counts = summary.get("destination_counts", {})
@@ -2172,11 +2176,12 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
             })
 
     # Get accurate roller queue status (shows CURRENT state of all rollers)
-    roller_status = qa_export.get_roller_queue_status()
+    roller_status = qa_export.get_roller_queue_status(days_threshold=days_threshold)
     
     return {
         "timestamp": datetime.now().isoformat(),
         "destination": destination if destination_norm else None,
+        "lookback_days": days_threshold,
         "total_unpalleted": total_unpalleted,
         "destination_counts": top_destinations,
         "engineer_missing_pallets": top_engineers[:limit_engineers],
@@ -2187,11 +2192,12 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
 
 
 @app.get("/api/bottlenecks")
-async def get_bottleneck_snapshot(request: Request):
+async def get_bottleneck_snapshot(request: Request, days: int = 7):
     """Return CURRENT bottleneck snapshot - warehouse state NOW (manager only)."""
     require_manager_or_admin(request)
     try:
-        return _build_bottleneck_snapshot(destination=None, limit_engineers=8)
+        days = max(1, min(int(days or 7), 90))
+        return _build_bottleneck_snapshot(destination=None, limit_engineers=8, days_threshold=days)
     except Exception as e:
         print(f"Bottleneck snapshot error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2202,7 +2208,8 @@ async def get_bottleneck_details(
     request: Request,
     category: str,
     value: str = None,
-    limit: int = 100
+    limit: int = 100,
+    days: int = 7
 ):
     """
     Get detailed device list for a specific bottleneck category - CURRENT state (no lookback).
@@ -2220,6 +2227,7 @@ async def get_bottleneck_details(
     """
     require_manager_or_admin(request)
     limit = max(1, min(limit, 500))
+    days = max(1, min(int(days or 7), 90))
     
     import qa_export
     from datetime import datetime
@@ -2238,7 +2246,7 @@ async def get_bottleneck_details(
         DATA_BEARING_TYPES = ('lt', 'laptop', 'dt', 'desktop', 'server', 'switch', 'tablet', 'mobile', 'misc. network', 'misc network', 'network')
         
         if category in ("roller_pending", "roller_awaiting_qa", "roller_awaiting_pallet", "roller_station"):
-            # Query roller devices directly - NO date filtering (shows current state of rollers)
+            # Query roller devices directly with recent activity window
             conn = qa_export.get_mariadb_connection()
             if not conn:
                 raise HTTPException(status_code=500, detail="Database connection failed")
@@ -2256,6 +2264,7 @@ async def get_bottleneck_details(
                     (SELECT MAX(q.added_date) FROM ITAD_QA_App q WHERE q.stockid = a.stockid) as last_qa_date
                 FROM ITAD_asset_info a
             """
+            recent_clause = "AND a.last_update IS NOT NULL AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)"
             
             if category == "roller_station" and value:
                 # Specific roller station - show all devices without pallet
@@ -2264,9 +2273,10 @@ async def get_bottleneck_details(
                     WHERE (a.roller_location = %s OR a.roller_location LIKE %s)
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
+                                            {recent_clause}
                     ORDER BY a.received_date DESC
                     LIMIT %s
-                """, (value, f"%:{value}", limit))
+                                """, (value, f"%:{value}", days, limit))
             elif category == "roller_pending":
                 # Data-bearing devices awaiting erasure (not erased, no pallet)
                 # Build OR condition for data-bearing types
@@ -2280,9 +2290,10 @@ async def get_bottleneck_details(
                       AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
                       AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
                       AND ({type_conditions})
+                                            {recent_clause}
                     ORDER BY a.received_date DESC
                     LIMIT %s
-                """, (limit,))
+                                """, (days, limit))
             elif category == "roller_awaiting_qa":
                 # Devices that are erased (or non-data-bearing) but haven't had QA scan
                 # On roller, no pallet, and either:
@@ -2302,9 +2313,10 @@ async def get_bottleneck_details(
                         (LOWER(COALESCE(a.de_complete, '')) NOT IN ('yes', 'true', '1')
                          AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid))
                       )
+                                            {recent_clause}
                     ORDER BY a.received_date DESC
                     LIMIT %s
-                """, (limit,))
+                                """, (days, limit))
             else:  # roller_awaiting_pallet
                 # Devices that have been QA'd but don't have a pallet yet
                 cursor.execute(f"""
@@ -2318,9 +2330,10 @@ async def get_bottleneck_details(
                         SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid 
                         AND (a.de_completed_date IS NULL OR q.added_date > a.de_completed_date)
                       )
+                                            {recent_clause}
                     ORDER BY a.received_date DESC
                     LIMIT %s
-                """, (limit,))
+                                """, (days, limit))
             
             devices = []
             for row in cursor.fetchall():
@@ -2363,7 +2376,9 @@ async def get_bottleneck_details(
                     WHERE (roller_location = %s OR roller_location LIKE %s)
                       AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
                       AND (COALESCE(pallet_id, palletID, '') = '' OR COALESCE(pallet_id, palletID) IS NULL)
-                """, (value, f"%:{value}"))
+                                            AND last_update IS NOT NULL
+                                            AND last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                                """, (value, f"%:{value}", days))
             elif category == "roller_pending":
                 # Count data-bearing devices awaiting erasure
                 type_conditions = " OR ".join([f"LOWER(description) LIKE '%%{t}%%'" for t in DATA_BEARING_TYPES])
@@ -2375,7 +2390,9 @@ async def get_bottleneck_details(
                       AND (COALESCE(pallet_id, palletID, '') = '' OR COALESCE(pallet_id, palletID) IS NULL)
                       AND (de_complete IS NULL OR LOWER(de_complete) NOT IN ('yes', 'true', '1'))
                       AND ({type_conditions})
-                """)
+                                            AND last_update IS NOT NULL
+                                            AND last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                                """, (days,))
             elif category == "roller_awaiting_qa":
                 # Count devices awaiting QA
                 cursor.execute("""
@@ -2391,7 +2408,9 @@ async def get_bottleneck_details(
                         (LOWER(COALESCE(a.de_complete, '')) NOT IN ('yes', 'true', '1')
                          AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid))
                       )
-                """)
+                                            AND a.last_update IS NOT NULL
+                                            AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                                """, (days,))
             else:  # roller_awaiting_pallet
                 # Count devices with QA but no pallet
                 cursor.execute("""
@@ -2404,7 +2423,9 @@ async def get_bottleneck_details(
                         SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid 
                         AND (a.de_completed_date IS NULL OR q.added_date > a.de_completed_date)
                       )
-                """)
+                                            AND a.last_update IS NOT NULL
+                                            AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                                """, (days,))
             
             total = cursor.fetchone()[0]
             cursor.close()
@@ -2415,8 +2436,8 @@ async def get_bottleneck_details(
             result["showing"] = len(devices)
             
         else:
-            # Use unpalleted devices query with filters (no date filtering - current state)
-            all_devices = qa_export.get_unpalleted_devices()
+            # Use recent unpalleted devices query with filters
+            all_devices = qa_export.get_unpalleted_devices_recent(days_threshold=days)
             
             filtered = []
             for d in all_devices:

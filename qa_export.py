@@ -1461,7 +1461,81 @@ def get_unpalleted_devices(start_date: date = None, end_date: date = None) -> Li
     return devices
 
 
-def get_unpalleted_summary(destination: str = None) -> Dict[str, object]:
+def get_unpalleted_devices_recent(days_threshold: int = 7) -> List[Dict[str, object]]:
+    """Find current unpalleted devices based on recent activity."""
+    conn = get_mariadb_connection()
+    if not conn:
+        return []
+
+    devices = []
+    days_threshold = max(1, min(int(days_threshold or 7), 90))
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                a.stockid,
+                a.serialnumber,
+                a.manufacturer,
+                a.description,
+                a.condition,
+                a.received_date,
+                a.stage_current,
+                a.location,
+                a.roller_location,
+                a.last_update,
+                a.de_complete,
+                a.de_completed_by,
+                a.de_completed_date,
+                q.added_date as qa_date,
+                q.username as qa_user,
+                q.scanned_location as qa_location
+            FROM ITAD_asset_info a
+            LEFT JOIN (
+                SELECT stockid, MAX(added_date) AS last_added
+                FROM ITAD_QA_App
+                GROUP BY stockid
+            ) last_q ON last_q.stockid = a.stockid
+            LEFT JOIN ITAD_QA_App q ON q.stockid = last_q.stockid AND q.added_date = last_q.last_added
+            WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '')
+              AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+              AND a.last_update IS NOT NULL
+              AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            ORDER BY a.last_update DESC
+            LIMIT 2000
+        """, (days_threshold,))
+
+        for row in cursor.fetchall():
+            devices.append({
+                "stockid": row[0],
+                "serial": row[1],
+                "manufacturer": row[2],
+                "model": row[3],
+                "condition": row[4],
+                "received_date": str(row[5]) if row[5] else None,
+                "stage_current": row[6],
+                "location": row[7],
+                "roller_location": row[8],
+                "last_update": str(row[9]) if row[9] else None,
+                "de_complete": row[10],
+                "de_completed_by": row[11],
+                "de_completed_date": str(row[12]) if row[12] else None,
+                "qa_date": str(row[13]) if row[13] else None,
+                "qa_user": row[14],
+                "qa_location": row[15],
+            })
+
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"[QA Export] Error fetching recent unpalleted devices: {e}")
+        if conn:
+            conn.close()
+
+    return devices
+
+
+def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> Dict[str, object]:
     """Return aggregated counts for current unpalleted devices.
 
     This avoids loading the full device list into memory.
@@ -1480,6 +1554,10 @@ def get_unpalleted_summary(destination: str = None) -> Dict[str, object]:
         destination_clause = "AND LOWER(a.`condition`) = %s"
         params.append(destination.strip().lower())
 
+    days_threshold = max(1, min(int(days_threshold or 7), 90))
+    recency_clause = "AND a.last_update IS NOT NULL AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)"
+    params.append(days_threshold)
+
     base_from = """
         FROM ITAD_asset_info a
         LEFT JOIN (
@@ -1491,9 +1569,10 @@ def get_unpalleted_summary(destination: str = None) -> Dict[str, object]:
             ON q.stockid = last_q.stockid AND q.added_date = last_q.last_added
     """
 
-    base_where = f"""
+        base_where = f"""
         WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '')
           AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+            {recency_clause}
           {destination_clause}
     """
 
@@ -1584,7 +1663,7 @@ def is_data_bearing_device(description: str) -> bool:
     return False
 
 
-def get_roller_queue_status() -> Dict[str, object]:
+def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
     """Get CURRENT status of all devices assigned to rollers with workflow stages.
     
     Workflow stages:
@@ -1620,6 +1699,7 @@ def get_roller_queue_status() -> Dict[str, object]:
         
         # Get all devices currently on rollers that don't have a pallet ID (not "done")
         # Include QA info to determine workflow stage
+        days_threshold = max(1, min(int(days_threshold or 7), 90))
         cursor.execute("""
             SELECT 
                 a.stockid,
@@ -1635,7 +1715,9 @@ def get_roller_queue_status() -> Dict[str, object]:
               AND LOWER(a.roller_location) LIKE '%roller%'
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
               AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
-        """)
+              AND a.last_update IS NOT NULL
+              AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
+        """, (days_threshold,))
         
         roller_data = {}
         
