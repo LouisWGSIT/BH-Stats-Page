@@ -1704,6 +1704,7 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             SELECT 
                 a.stockid,
                 a.roller_location,
+                a.serialnumber,
                 a.description,
                 a.de_complete,
                 COALESCE(a.pallet_id, a.palletID) as pallet_id,
@@ -1733,8 +1734,9 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             stockid = row[0]
             roller_name_raw = row[1] or "Unknown Roller"
             roller_name = normalize_roller_name(roller_name_raw)
-            description = row[2] or ""
-            de_complete_raw = row[3]
+            serial = row[2]
+            description = row[3] or ""
+            de_complete_raw = row[4]
             pallet_id = row[4]
             last_qa_date = row[5]
             de_completed_date = row[6]
@@ -1781,6 +1783,7 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
                     "awaiting_pallet": 0,
                     "data_bearing": 0,
                     "non_data_bearing": 0,
+                    "samples": [],  # sample device rows for quick inspection
                 }
             
             roller_data[roller_name]["total"] += 1
@@ -1789,6 +1792,18 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
                 roller_data[roller_name]["data_bearing"] += 1
             else:
                 roller_data[roller_name]["non_data_bearing"] += 1
+            # Append a small sample for admin inspection
+            if len(roller_data[roller_name]["samples"]) < 6:
+                roller_data[roller_name]["samples"].append({
+                    "stockid": stockid,
+                    "serial": serial,
+                    "description": description,
+                    "de_complete": de_complete_raw,
+                    "de_completed_date": str(de_completed_date) if de_completed_date else None,
+                    "last_qa_date": str(last_qa_date) if last_qa_date else None,
+                    "blancco_count": blancco_count,
+                    "destination": destination_norm,
+                })
         
         # Sort rollers by name for consistent ordering
         result["rollers"] = sorted(roller_data.values(), key=lambda x: x["roller"])

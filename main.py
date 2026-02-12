@@ -1681,7 +1681,39 @@ async def auth_status(request: Request):
     # Log for debugging
     forwarded_for = request.headers.get("X-Forwarded-For", "")
     print(f"Auth check - Client IP: {client_ip}, Is Local: {is_local}, Is TV: {is_tv_browser}, Role: {role}, X-Forwarded-For: {forwarded_for}")
-    
+    # If local or TV browser and no explicit token provided, record an ephemeral viewer session
+    try:
+        auth_header = request.headers.get("Authorization", "")
+        if (is_local or is_tv_browser) and not auth_header.startswith("Bearer "):
+            ua = request.headers.get('User-Agent', '')[:512]
+            fingerprint = hashlib.sha256(f"{ua}:{client_ip}".encode()).hexdigest()
+            tokens = load_device_tokens()
+            found = None
+            for t, info in tokens.items():
+                if info.get('fingerprint') == fingerprint and info.get('ephemeral'):
+                    found = t
+                    break
+            if found:
+                touch_device_token(found, get_client_ips(request), ua)
+            else:
+                anon_token = 'ephemeral-' + secrets.token_urlsafe(12)
+                tokens[anon_token] = {
+                    'created': datetime.now().isoformat(),
+                    'expiry': (datetime.now() + timedelta(hours=24)).isoformat(),
+                    'user_agent': ua,
+                    'client_ip': client_ip,
+                    'client_ips': get_client_ips(request),
+                    'last_client_ip': client_ip,
+                    'last_seen': datetime.now().isoformat(),
+                    'role': 'viewer',
+                    'ephemeral': True,
+                    'fingerprint': fingerprint,
+                    'locked': False,
+                }
+                save_device_tokens(tokens)
+    except Exception:
+        pass
+
     return {
         "authenticated": is_authenticated,
         "role": role,
@@ -2297,10 +2329,16 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
 
     days_threshold = max(1, min(int(days_threshold or 7), 90))
     destination_norm = normalize_destination(destination).lower() if destination else None
-    summary = qa_export.get_unpalleted_summary(
-        destination=destination_norm,
-        days_threshold=days_threshold
-    )
+    try:
+        summary = qa_export.get_unpalleted_summary(
+            destination=destination_norm,
+            days_threshold=days_threshold
+        )
+    except Exception as ex:
+        print(f"[Bottleneck] get_unpalleted_summary failed: {ex}")
+        import traceback as _tb
+        _tb.print_exc()
+        summary = {"total_unpalleted": 0, "destination_counts": {}, "engineer_counts": {}}
 
     total_unpalleted = summary.get("total_unpalleted", 0)
     destination_counts = summary.get("destination_counts", {})
@@ -2337,7 +2375,19 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
             })
 
     # Get accurate roller queue status (shows CURRENT state of all rollers)
-    roller_status = qa_export.get_roller_queue_status(days_threshold=days_threshold)
+    try:
+        roller_status = qa_export.get_roller_queue_status(days_threshold=days_threshold)
+        # Ensure totals/rollers structure exists
+        if not isinstance(roller_status, dict):
+            roller_status = {"totals": {}, "rollers": []}
+        roller_totals = roller_status.get("totals", {})
+        roller_rollers = roller_status.get("rollers", [])
+    except Exception as ex:
+        print(f"[Bottleneck] get_roller_queue_status failed: {ex}")
+        import traceback as _tb
+        _tb.print_exc()
+        roller_totals = {"total": 0, "awaiting_erasure": 0, "awaiting_qa": 0, "awaiting_pallet": 0}
+        roller_rollers = []
     
     return {
         "timestamp": datetime.now().isoformat(),
@@ -2347,8 +2397,8 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
         "destination_counts": top_destinations,
         "engineer_missing_pallets": top_engineers[:limit_engineers],
         "flagged_engineers": flagged_engineers,
-        "roller_queue": roller_status["totals"],
-        "roller_breakdown": roller_status["rollers"],
+        "roller_queue": roller_totals,
+        "roller_breakdown": roller_rollers,
     }
 
 
@@ -2360,8 +2410,11 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
         days = max(1, min(int(days or 7), 90))
         return _build_bottleneck_snapshot(destination=None, limit_engineers=8, days_threshold=days)
     except Exception as e:
-        print(f"Bottleneck snapshot error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Log full traceback but return a safe JSON error to clients
+        import traceback as _tb
+        print("Bottleneck snapshot error:")
+        _tb.print_exc()
+        return JSONResponse(status_code=500, content={"detail": "Bottleneck snapshot failed (server error). Check server logs."})
 
 
 @app.get("/api/bottlenecks/details")

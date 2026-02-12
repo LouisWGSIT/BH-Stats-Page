@@ -703,6 +703,15 @@
 
         function renderBottleneck(snapshot, title) {
             if (!snapshot) return '';
+            function escapeHtml(str) {
+                if (str === null || str === undefined) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
             const headerTitle = title || 'Bottleneck Radar';
             const destinationLabel = snapshot.destination ? `Destination: ${snapshot.destination}` : 'All destinations';
             const destinations = Array.isArray(snapshot.destination_counts) && snapshot.destination_counts.length
@@ -718,6 +727,7 @@
                 ? snapshot.flagged_engineers.map(item => `<div class="bottleneck-item">${item.engineer}: ${item.missing_pallet_count} (${Math.round(item.share * 100)}%)</div>`).join('')
                 : '<div class="bottleneck-item">No flagged engineers</div>';
             const rollerQueue = snapshot.roller_queue || {};
+            const rollerBreakdown = Array.isArray(snapshot.roller_breakdown) ? snapshot.roller_breakdown : [];
 
             return `
                 <div class="bottleneck-card">
@@ -729,8 +739,9 @@
                         <div class="bottleneck-item"><strong>Lookback:</strong> ${snapshot.lookback_days} days</div>
                         <div class="bottleneck-item"><strong>Total unpalleted:</strong> ${snapshot.total_unpalleted || 0}</div>
                         <div class="bottleneck-item"><strong>Roller queue:</strong> ${rollerQueue.total || 0}</div>
-                        <div class="bottleneck-item"><strong>Roller waiting erasure:</strong> ${rollerQueue.waiting_erasure || 0}</div>
-                        <div class="bottleneck-item"><strong>Roller waiting QA:</strong> ${rollerQueue.waiting_qa || 0}</div>
+                        <div class="bottleneck-item"><strong>Roller waiting erasure:</strong> ${rollerQueue.awaiting_erasure || 0}</div>
+                        <div class="bottleneck-item"><strong>Roller waiting QA:</strong> ${rollerQueue.awaiting_qa || 0}</div>
+                        <div class="bottleneck-item"><strong>Roller awaiting pallet:</strong> ${rollerQueue.awaiting_pallet || 0}</div>
                     </div>
                     <div style="margin-top:10px; font-size:12px; font-weight:700;">Top destinations</div>
                     <div class="bottleneck-list">${destinations}</div>
@@ -738,6 +749,20 @@
                     <div class="bottleneck-list">${engineers}</div>
                     <div style="margin-top:10px; font-size:12px; font-weight:700;">Flagged engineers</div>
                     <div class="bottleneck-list">${flagged}</div>
+                    <div style="margin-top:10px; font-size:12px; font-weight:700;">Roller breakdown (samples)</div>
+                    <div class="bottleneck-list">
+                        ${rollerBreakdown.length ? rollerBreakdown.map(r => {
+                            const samples = Array.isArray(r.samples) ? r.samples : [];
+                            const sampleHtml = samples.length ? `<div style="margin-top:6px; font-size:12px; color:#333;">` + samples.map(s => {
+                                return `<div style="padding:6px; background:#fff; border-radius:6px; margin-bottom:6px; border-left:4px solid #eee;">
+                                            <div style="font-weight:700;">${escapeHtml(s.stockid || '')} ${s.serial ? '('+escapeHtml(s.serial)+')' : ''}</div>
+                                            <div style="font-size:12px; color:#666;">DE: ${escapeHtml(s.de_complete||'')}${s.de_completed_date ? ' • DE Date: '+escapeHtml(s.de_completed_date) : ''} • QA: ${escapeHtml(s.last_qa_date||'')}</div>
+                                            <div style="font-size:11px; color:#777;">Destination: ${escapeHtml(s.destination||'')}</div>
+                                        </div>`;
+                            }).join('') + `</div>` : '<div style="color:#999; font-size:12px;">No samples</div>';
+                            return `<div style="margin-bottom:8px;"><strong>${escapeHtml(r.roller)}</strong> — total: ${r.total || 0} — awaiting_erasure: ${r.awaiting_erasure || 0} — awaiting_qa: ${r.awaiting_qa || 0} — awaiting_pallet: ${r.awaiting_pallet || 0}${sampleHtml}</div>`;
+                        }).join('') : '<div style="color:#999;">No roller data available</div>'}
+                    </div>
                 </div>
             `;
         }
