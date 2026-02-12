@@ -157,17 +157,40 @@ def is_device_token_valid(token: str) -> bool:
 def is_local_network(client_ip: str) -> bool:
     """Check if client IP is on local network (no auth needed)."""
     try:
-        ip = ipaddress.ip_address(client_ip)
-        return any(ip in network for network in LOCAL_NETWORKS)
-    except ValueError:
-        return False
+        # Accept either a single IP string or an iterable of IPs
+        ips = client_ip if isinstance(client_ip, (list, tuple)) else [client_ip]
+        for ip_str in ips:
+            try:
+                ip = ipaddress.ip_address(ip_str)
+                if any(ip in network for network in LOCAL_NETWORKS):
+                    return True
+            except ValueError:
+                continue
+    except Exception:
+        pass
+    return False
 
 def get_client_ip(request: Request) -> str:
     """Get real client IP from X-Forwarded-For header or request client."""
-    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    # Keep for compatibility: return the first IP in X-Forwarded-For (original behaviour)
+    forwarded_for = request.headers.get("X-Forwarded-For", "") or request.headers.get("x-forwarded-for", "")
     if forwarded_for:
+        # Return the full list (comma-separated) as a list when needed elsewhere
+        # Historically callers expected a single IP string; keep returning the first for backwards compatibility
         return forwarded_for.split(",")[0].strip()
     return request.client.host if request.client else "0.0.0.0"
+
+def get_client_ips(request: Request) -> list:
+    """Return a list of client IPs from X-Forwarded-For or request.client.host.
+
+    Some reverse proxies append multiple IPs; check all entries to detect a private/local client IP.
+    """
+    forwarded_for = request.headers.get("X-Forwarded-For", "") or request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        return [p.strip() for p in forwarded_for.split(",") if p.strip()]
+    if request.client and getattr(request.client, 'host', None):
+        return [request.client.host]
+    return ["0.0.0.0"]
 
 def get_role_from_request(request: Request) -> str | None:
     """Resolve role from request auth header or device token."""

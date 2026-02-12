@@ -102,10 +102,22 @@ function renderSVGSparkline(svgElem, data) {
       }
 
       console.log('External access requires password');
+      // If the user previously dismissed the prompt for this session, treat as viewer
+      if (sessionStorage.getItem('loginDismissed')) {
+        sessionStorage.setItem('userRole', 'viewer');
+        applyRolePermissions();
+        return true;
+      }
       showLoginModal();
       return false;
     } catch (err) {
       console.error('Auth check failed:', err);
+      // On error, allow user to dismiss and continue as viewer for the session
+      if (sessionStorage.getItem('loginDismissed')) {
+        sessionStorage.setItem('userRole', 'viewer');
+        applyRolePermissions();
+        return true;
+      }
       showLoginModal();
       return false;
     }
@@ -190,6 +202,22 @@ function renderSVGSparkline(svgElem, data) {
           accessMsg.textContent = 'Connection error. Please try again.';
           accessMsg.style.color = '#f44336';
         }
+      });
+    }
+
+    // Bind dismiss button to allow view-only access without token for this session
+    const dismissBtn = document.getElementById('dismissLoginBtn');
+    if (dismissBtn && !dismissBtn.dataset.bound) {
+      dismissBtn.dataset.bound = 'true';
+      dismissBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Mark dismissed for this session and grant viewer UI
+        sessionStorage.setItem('loginDismissed', '1');
+        sessionStorage.setItem('userRole', 'viewer');
+        // Provide a short-lived session token so app initialization continues
+        sessionStorage.setItem('authToken', 'viewer-dismissed');
+        applyRolePermissions();
+        modal.classList.add('hidden');
       });
     }
     

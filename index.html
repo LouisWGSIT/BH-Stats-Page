@@ -792,7 +792,10 @@
         <p id="accessMessage">Checking access...</p>
         <form id="loginForm" style="display: none;">
           <input type="password" id="passwordInput" placeholder="Enter password" autocomplete="off" />
-          <button type="submit" class="btn-primary">Access Dashboard</button>
+          <div class="login-actions">
+            <button type="submit" class="btn-primary">Access Dashboard</button>
+            <button type="button" id="dismissLoginBtn" class="btn-secondary">Continue as Viewer</button>
+          </div>
         </form>
         <div id="accessGranted" style="display: none;">
           <p style="color: #4CAF50; font-weight: bold;">✓ Access Granted</p>
