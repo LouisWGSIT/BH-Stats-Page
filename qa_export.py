@@ -1461,6 +1461,96 @@ def get_unpalleted_devices(start_date: date = None, end_date: date = None) -> Li
     return devices
 
 
+def get_unpalleted_summary(destination: str = None) -> Dict[str, object]:
+    """Return aggregated counts for current unpalleted devices.
+
+    This avoids loading the full device list into memory.
+    """
+    conn = get_mariadb_connection()
+    if not conn:
+        return {
+            "total_unpalleted": 0,
+            "destination_counts": {},
+            "engineer_counts": {},
+        }
+
+    params = []
+    destination_clause = ""
+    if destination:
+        destination_clause = "AND LOWER(a.`condition`) = %s"
+        params.append(destination.strip().lower())
+
+    base_from = """
+        FROM ITAD_asset_info a
+        LEFT JOIN (
+            SELECT stockid, MAX(added_date) AS last_added
+            FROM ITAD_QA_App
+            GROUP BY stockid
+        ) last_q ON last_q.stockid = a.stockid
+        LEFT JOIN ITAD_QA_App q
+            ON q.stockid = last_q.stockid AND q.added_date = last_q.last_added
+    """
+
+    base_where = f"""
+        WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '')
+          AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+          {destination_clause}
+    """
+
+    result = {
+        "total_unpalleted": 0,
+        "destination_counts": {},
+        "engineer_counts": {},
+    }
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            f"""
+            SELECT COUNT(DISTINCT a.stockid)
+            {base_from}
+            {base_where}
+            """,
+            params
+        )
+        row = cursor.fetchone()
+        result["total_unpalleted"] = int(row[0]) if row and row[0] is not None else 0
+
+        cursor.execute(
+            f"""
+            SELECT
+                COALESCE(NULLIF(TRIM(a.`condition`), ''), 'Unknown') AS destination,
+                COUNT(DISTINCT a.stockid) AS device_count
+            {base_from}
+            {base_where}
+            GROUP BY destination
+            """,
+            params
+        )
+        for dest, count in cursor.fetchall():
+            result["destination_counts"][dest] = int(count)
+
+        cursor.execute(
+            f"""
+            SELECT
+                COALESCE(NULLIF(TRIM(q.username), ''), 'Unassigned (no QA user recorded)') AS qa_user,
+                COUNT(DISTINCT a.stockid) AS device_count
+            {base_from}
+            {base_where}
+            GROUP BY qa_user
+            """,
+            params
+        )
+        for qa_user, count in cursor.fetchall():
+            result["engineer_counts"][qa_user] = int(count)
+
+    finally:
+        conn.close()
+
+    return result
+
+
 def normalize_roller_name(roller_location: str) -> str:
     """Normalize roller location names to consolidate variants like '08:IA-ROLLER1' -> 'IA-ROLLER1'."""
     if not roller_location:

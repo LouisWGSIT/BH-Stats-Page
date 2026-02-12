@@ -2129,36 +2129,17 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
     """
     import qa_export
 
-    # Get ALL unpalleted devices (no date filtering) - current state
-    devices = qa_export.get_unpalleted_devices(start_date=None, end_date=None)
-
     def normalize_destination(value: object) -> str:
         if value is None:
             return ""
         return str(value).strip()
 
-    if destination:
-        destination_norm = normalize_destination(destination).lower()
-        devices = [
-            d for d in devices
-            if normalize_destination(d.get("condition")).lower() == destination_norm
-        ]
-    else:
-        destination_norm = None
+    destination_norm = normalize_destination(destination).lower() if destination else None
+    summary = qa_export.get_unpalleted_summary(destination=destination_norm)
 
-    total_unpalleted = len(devices)
-    destination_counts: Dict[str, int] = {}
-    engineer_counts: Dict[str, int] = {}
-
-    for device in devices:
-        dest_label = normalize_destination(device.get("condition")) or "Unknown"
-        destination_counts[dest_label] = destination_counts.get(dest_label, 0) + 1
-
-        # Track which QA user processed the device (blank = unassigned)
-        qa_user = (device.get("qa_user") or "").strip()
-        if not qa_user:
-            qa_user = "Unassigned (no QA user recorded)"
-        engineer_counts[qa_user] = engineer_counts.get(qa_user, 0) + 1
+    total_unpalleted = summary.get("total_unpalleted", 0)
+    destination_counts = summary.get("destination_counts", {})
+    engineer_counts = summary.get("engineer_counts", {})
 
     top_destinations = sorted(
         [{"destination": k, "count": v} for k, v in destination_counts.items()],
