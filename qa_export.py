@@ -1708,8 +1708,16 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
                 a.de_complete,
                 COALESCE(a.pallet_id, a.palletID) as pallet_id,
                 (SELECT MAX(q.added_date) FROM ITAD_QA_App q WHERE q.stockid = a.stockid) as last_qa_date,
-                a.de_completed_date
+                a.de_completed_date,
+                COALESCE(b.last_job_date, NULL) as blancco_last_job,
+                COALESCE(b.blancco_count, 0) as blancco_count,
+                COALESCE(NULLIF(TRIM(a.`condition`), ''), 'Unknown') as destination
             FROM ITAD_asset_info a
+            LEFT JOIN (
+                SELECT stockid, MAX(job_date) AS last_job_date, COUNT(*) AS blancco_count
+                FROM ITAD_asset_info_blancco
+                GROUP BY stockid
+            ) b ON b.stockid = a.stockid
             WHERE a.roller_location IS NOT NULL 
               AND a.roller_location != ''
               AND LOWER(a.roller_location) LIKE '%roller%'
@@ -1730,32 +1738,38 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             pallet_id = row[4]
             last_qa_date = row[5]
             de_completed_date = row[6]
+            blancco_last_job = row[7]
+            blancco_count = int(row[8] or 0)
+            destination_raw = row[9]
+            destination_norm = (str(destination_raw).strip() if destination_raw is not None else '')
             
             # Skip if has pallet (shouldn't happen due to WHERE, but safety check)
             if pallet_id and str(pallet_id).strip():
                 continue
             
-            is_erased = str(de_complete_raw or "").lower() in ("yes", "true", "1")
             is_data_bearing = is_data_bearing_device(description)
-            
-            # Determine workflow stage
-            # QA happened after erasure (or device is non-data-bearing and was QA'd)
-            has_qa_after_erasure = False
-            if last_qa_date:
-                if is_data_bearing:
-                    # For data-bearing, QA must be after erasure
-                    if de_completed_date and last_qa_date > de_completed_date:
-                        has_qa_after_erasure = True
-                else:
-                    # For non-data-bearing, any QA counts
-                    has_qa_after_erasure = True
-            
-            if is_data_bearing and not is_erased:
+            # Consider device erased if there is a blancco job or DE flag/date present
+            is_erased_flag = str(de_complete_raw or "").lower() in ("yes", "true", "1")
+            has_blancco = blancco_count > 0 or (blancco_last_job is not None)
+            has_erasures = has_blancco or is_erased_flag or (de_completed_date is not None)
+            has_qa = bool(last_qa_date)
+            destination_assigned = bool(destination_norm and destination_norm.lower() not in ("unknown", "", "none"))
+
+            # Determine workflow stage using user's definitions:
+            # - Awaiting Erasure: data-bearing AND no blancco/erasure record AND located on a roller
+            # - Awaiting QA: has erasure report (or non-data-bearing) but NO destination assigned
+            # - Awaiting Sortation (awaiting_pallet): has QA scan but no pallet ID
+            if is_data_bearing and not has_erasures:
                 stage = "awaiting_erasure"
-            elif has_qa_after_erasure:
-                stage = "awaiting_pallet"  # QA'd, just needs pallet
+            elif has_qa:
+                stage = "awaiting_pallet"
             else:
-                stage = "awaiting_qa"  # Erased (or non-DB), needs QA
+                # No QA yet
+                if (is_data_bearing and has_erasures and not destination_assigned) or (not is_data_bearing and not destination_assigned):
+                    stage = "awaiting_qa"
+                else:
+                    # Fallback: treat as awaiting pallet if destination assigned but no QA
+                    stage = "awaiting_pallet"
             
             # Initialize roller if needed
             if roller_name not in roller_data:
