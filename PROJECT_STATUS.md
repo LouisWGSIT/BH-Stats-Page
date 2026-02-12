@@ -62,6 +62,8 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 - /api/qa-trends?period=... (today, this_week, all_time)
 - /api/insights/qa?period=...
 - /api/insights/qa-engineers?period=... (per-engineer trends)
+- /api/bottlenecks?days=7 (current warehouse bottleneck snapshot - manager/admin only)
+- /api/bottlenecks/details?category=...&days=7 (detailed device list by category)
 
 ## Erasure Endpoints (Common)
 - /metrics/summary (supports date range for monthly reporting)
@@ -215,6 +217,11 @@ From ITAD_asset_info: location, roller_location, last_update, stage_current, sta
 - For Copilot in Power BI: requires admin to enable; in the meantime I can provide DAX/M snippets here.
 
 ## Change Log
+- 2026-02-12: Fixed Bottleneck Radar "Unexpected token '<'" error - added content-type check before JSON parsing to handle 502/HTML error responses gracefully (admin.html, manager.html).
+- 2026-02-12: Optimized Bottleneck Radar memory usage - replaced Python-side loops with SQL COUNT/GROUP BY aggregation to stay under Render's 512MB limit (qa_export.py: get_unpalleted_summary).
+- 2026-02-12: Fixed Bottleneck Radar showing historical data instead of current warehouse state - added 7-day recency filter (last_update >= DATE_SUB(NOW(), INTERVAL 7 DAY)) to all bottleneck queries.
+- 2026-02-12: Added days_threshold parameter to /api/bottlenecks endpoint (1-90 days, default 7).
+- 2026-02-12: Added new functions: get_unpalleted_summary() (SQL aggregation), get_unpalleted_devices_recent() (recency-filtered list).
 - 2026-02-11: Added Device Search UI to admin panel - search any stock ID to see timeline across 7 data sources (ITAD_asset_info, Stockbypallet, ITAD_pallet, ITAD_QA_App, audit_master, ITAD_asset_info_blancco, local_erasures). Color-coded by stage type.
 - 2026-02-11: Added /api/device-lookup/{stock_id} endpoint for device timeline queries.
 - 2026-02-11: Added Unpalleted Devices Audit sheet to QA export (devices that completed QA but have no pallet assigned).
