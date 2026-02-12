@@ -1592,8 +1592,9 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
         params.append(destination.strip().lower())
 
     days_threshold = max(1, min(int(days_threshold or 7), 90))
-    # Removed YEARWEEK filtering to show current warehouse state for all unpalleted devices
-    # recency_clause = "YEARWEEK(COALESCE(a.last_update, CURDATE()), 1) = YEARWEEK(CURDATE(), 1)"
+    # Filter to devices active in recent weeks to avoid showing very old historical data
+    # but still show current bottlenecks that may have started recently
+    recency_clause = "YEARWEEK(COALESCE(a.last_update, CURDATE()), 1) >= YEARWEEK(CURDATE(), 1) - 4"
 
     # Build a derived set of stockids from multiple authoritative sources so
     # devices that appear only in blancco/audit tables are still considered.
@@ -1631,6 +1632,7 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
                 AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
             )
         )
+          AND {recency_clause}
           AND (
               LOWER(COALESCE(a.de_complete, '')) IN ('yes','true','1')
               OR LOWER(COALESCE(sb.de_complete, '')) IN ('yes','true','1')
