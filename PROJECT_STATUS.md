@@ -222,6 +222,7 @@ From ITAD_asset_info: location, roller_location, last_update, stage_current, sta
 - 2026-02-12: Fixed Bottleneck Radar showing historical data instead of current warehouse state - added 7-day recency filter (last_update >= DATE_SUB(NOW(), INTERVAL 7 DAY)) to all bottleneck queries.
 - 2026-02-12: Added days_threshold parameter to /api/bottlenecks endpoint (1-90 days, default 7).
 - 2026-02-12: Added new functions: get_unpalleted_summary() (SQL aggregation), get_unpalleted_devices_recent() (recency-filtered list).
+- 2026-02-12: Refined Bottleneck Radar roller logic to use Blancco/erasure presence for "Awaiting Erasure" detection and to classify devices as: Awaiting Erasure (data-bearing, no blancco/erasure), Awaiting QA (erased or non-data-bearing but no destination), Awaiting Sortation (QA'd but no pallet ID). Updated `get_roller_queue_status` in `qa_export.py` to include these rules.
 - 2026-02-11: Added Device Search UI to admin panel - search any stock ID to see timeline across 7 data sources (ITAD_asset_info, Stockbypallet, ITAD_pallet, ITAD_QA_App, audit_master, ITAD_asset_info_blancco, local_erasures). Color-coded by stage type.
 - 2026-02-11: Added /api/device-lookup/{stock_id} endpoint for device timeline queries.
 - 2026-02-11: Added Unpalleted Devices Audit sheet to QA export (devices that completed QA but have no pallet assigned).
