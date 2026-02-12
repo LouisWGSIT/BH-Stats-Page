@@ -1830,8 +1830,6 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
               AND a.roller_location != ''
               AND LOWER(a.roller_location) LIKE '%%roller%%'
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-              AND a.last_update IS NOT NULL 
-              AND a.last_update >= DATE_SUB(CURDATE(), INTERVAL 3 DAY)
         """)
         
         roller_data = {}
@@ -1862,13 +1860,18 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             has_blancco = blancco_count > 0 or (blancco_last_job is not None)
             has_erasures = has_blancco or is_erased_flag or (de_completed_date is not None)
             has_qa = bool(last_qa_date)
-            has_pallet = bool(pallet_id and str(pallet_id).strip())
+            has_pallet = bool(pallet_id and str(pallet_id).strip() and str(pallet_id).strip().lower() not in ('none', 'null', ''))
             destination_assigned = bool(destination_norm and destination_norm.lower() not in ("unknown", "", "none"))
 
             # Determine workflow stage using user's definitions:
             # - Awaiting Erasure: data-bearing AND no blancco/erasure record AND located on a roller
             # - Awaiting QA: has erasure report (or non-data-bearing) but NO QA scan
             # - Awaiting Pallet: has QA scan but no pallet ID assigned
+            
+            # If device has a pallet assigned, it's complete - exclude from bottleneck counts
+            if has_pallet:
+                continue
+                
             if is_data_bearing and not has_erasures:
                 stage = "awaiting_erasure"
             elif has_erasures and not has_qa:
@@ -1876,8 +1879,7 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             elif has_qa and not has_pallet:
                 stage = "awaiting_pallet"
             else:
-                # Device is complete (has pallet) but still on roller
-                # For bottleneck purposes, we might not want to count these
+                # This shouldn't happen with the has_pallet check above, but keep for safety
                 continue
             
             # Initialize roller if needed
