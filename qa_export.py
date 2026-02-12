@@ -1592,9 +1592,8 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
         params.append(destination.strip().lower())
 
     days_threshold = max(1, min(int(days_threshold or 7), 90))
-    # Filter to devices with recent last_update to avoid showing very old historical data
-    # Only show devices that have been actively updated in the last 2 weeks
-    recency_clause = "a.last_update IS NOT NULL AND YEARWEEK(a.last_update, 1) >= YEARWEEK(CURDATE(), 1) - 1"
+    # Filter to devices updated ONLY this week to avoid showing old historical data
+    recency_clause = "a.last_update IS NOT NULL AND YEARWEEK(a.last_update, 1) = YEARWEEK(CURDATE(), 1)"
 
     # Build a derived set of stockids from multiple authoritative sources so
     # devices that appear only in blancco/audit tables are still considered.
@@ -1832,7 +1831,7 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
               AND LOWER(a.roller_location) LIKE '%%roller%%'
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
               AND a.last_update IS NOT NULL 
-              AND YEARWEEK(a.last_update, 1) >= YEARWEEK(CURDATE(), 1) - 1
+              AND YEARWEEK(a.last_update, 1) = YEARWEEK(CURDATE(), 1)
         """)
         
         roller_data = {}
