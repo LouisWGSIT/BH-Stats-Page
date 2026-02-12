@@ -1592,11 +1592,9 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
         params.append(destination.strip().lower())
 
     days_threshold = max(1, min(int(days_threshold or 7), 90))
-    # Keep the days threshold param for optional recency filtering,
-    # but include devices that have de_complete set or blancco records
-    # even if their `last_update` is older than the threshold.
-    recency_clause = "(a.last_update IS NOT NULL AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY))"
-    params.append(days_threshold)
+    # Use YEARWEEK for "this week" filtering instead of last N days
+    # This ensures we only show devices active in the current week
+    recency_clause = "YEARWEEK(COALESCE(a.last_update, CURDATE()), 1) = YEARWEEK(CURDATE(), 1)"
 
     # Build a derived set of stockids from multiple authoritative sources so
     # devices that appear only in blancco/audit tables are still considered.
@@ -1634,6 +1632,7 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
                 AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
             )
         )
+          AND {recency_clause}
           AND (
               LOWER(COALESCE(a.de_complete, '')) IN ('yes','true','1')
               OR LOWER(COALESCE(sb.de_complete, '')) IN ('yes','true','1')
@@ -1642,8 +1641,8 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
                   SELECT 1 FROM audit_master am
                   WHERE am.sales_order = src.stockid
                     AND am.audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
+                    AND YEARWEEK(am.date_time, 1) = YEARWEEK(CURDATE(), 1)
               )
-              OR {recency_clause}
           )
           {destination_clause}
     """
@@ -1771,7 +1770,6 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
         
         # Get all devices currently on rollers that don't have a pallet ID (not "done")
         # Include QA info to determine workflow stage
-        days_threshold = max(1, min(int(days_threshold or 7), 90))
         cursor.execute("""
             SELECT 
                 a.stockid,
@@ -1795,13 +1793,13 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
               AND a.roller_location != ''
               AND LOWER(a.roller_location) LIKE '%%roller%%'
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                        AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
-                            AND (
-                                    (a.last_update IS NOT NULL AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY))
-                                    OR LOWER(COALESCE(a.de_complete, '')) IN ('yes','true','1')
-                                    OR COALESCE(b.blancco_count, 0) > 0
-                            )
-        """, (days_threshold,))
+              AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL)
+              AND YEARWEEK(COALESCE(a.last_update, CURDATE()), 1) = YEARWEEK(CURDATE(), 1)
+              AND (
+                  LOWER(COALESCE(a.de_complete, '')) IN ('yes','true','1')
+                  OR COALESCE(b.blancco_count, 0) > 0
+              )
+        """)
         
         roller_data = {}
         

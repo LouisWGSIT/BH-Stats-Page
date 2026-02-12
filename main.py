@@ -2432,10 +2432,10 @@ async def device_lookup(stock_id: str, request: Request):
 
 
 def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5, days_threshold: int = 7) -> Dict[str, object]:
-    """Summarize CURRENT bottleneck patterns - no lookback, shows warehouse state NOW.
+    """Summarize CURRENT bottleneck patterns - shows warehouse state for THIS WEEK.
     
     Shows:
-    - Current unpalleted devices (regardless of when received)
+    - Current unpalleted devices active this week
     - Current roller queue status (devices awaiting erasure/QA/pallet)
     - Roller station breakdown by workflow stage
     - Engineers with unpalleted devices assigned to them
@@ -2447,12 +2447,11 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
             return ""
         return str(value).strip()
 
-    days_threshold = max(1, min(int(days_threshold or 7), 90))
     destination_norm = normalize_destination(destination).lower() if destination else None
     try:
         summary = qa_export.get_unpalleted_summary(
             destination=destination_norm,
-            days_threshold=days_threshold
+            days_threshold=7  # This is now ignored, uses "this week" filtering
         )
     except Exception as ex:
         print(f"[Bottleneck] get_unpalleted_summary failed: {ex}")
@@ -2494,9 +2493,9 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
                 "reason": f"High volume of unpalleted devices ({item['missing_pallet_count']} devices, {int(share*100)}% of total)",
             })
 
-    # Get accurate roller queue status (shows CURRENT state of all rollers)
+    # Get accurate roller queue status (shows CURRENT state of all rollers this week)
     try:
-        roller_status = qa_export.get_roller_queue_status(days_threshold=days_threshold)
+        roller_status = qa_export.get_roller_queue_status(days_threshold=7)  # This is now ignored, uses "this week" filtering
         # Ensure totals/rollers structure exists
         if not isinstance(roller_status, dict):
             roller_status = {"totals": {}, "rollers": []}
@@ -2511,8 +2510,7 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
     
     return {
         "timestamp": datetime.now().isoformat(),
-        "destination": destination if destination_norm else None,
-        "lookback_days": days_threshold,
+        "filter_period": "this_week",  # Changed from lookback_days
         "total_unpalleted": total_unpalleted,
         "destination_counts": top_destinations,
         "engineer_missing_pallets": top_engineers[:limit_engineers],
@@ -2527,8 +2525,8 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
     """Return CURRENT bottleneck snapshot - warehouse state NOW (manager only)."""
     require_manager_or_admin(request)
     try:
-        days = max(1, min(int(days or 7), 90))
-        return _build_bottleneck_snapshot(destination=None, limit_engineers=8, days_threshold=days)
+        # Note: days parameter is kept for API compatibility but now uses "this week" filtering
+        return _build_bottleneck_snapshot(destination=None, limit_engineers=8, days_threshold=7)
     except Exception as e:
         # Log full traceback but return a safe JSON error to clients
         import traceback as _tb
