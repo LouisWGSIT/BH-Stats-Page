@@ -1042,6 +1042,20 @@
                 const response = await fetch(`/api/bottlenecks?days=${days}`, {
                     headers: getAuthHeaders(false)
                 });
+                const contentType = response.headers.get('content-type') || '';
+
+                if (!contentType.includes('application/json')) {
+                    const fallbackText = await response.text();
+                    const message = response.ok
+                        ? 'Unexpected server response (non-JSON).'
+                        : `HTTP ${response.status} ${response.statusText || ''}`.trim();
+                    showResult(resultDiv, 'error', '❌ Bottleneck Failed', message);
+                    if (!response.ok && fallbackText) {
+                        console.warn('Bottleneck response (non-JSON):', fallbackText.slice(0, 300));
+                    }
+                    return;
+                }
+
                 const data = await response.json();
                 if (!response.ok) {
                     showResult(resultDiv, 'error', '❌ Bottleneck Failed', data.detail || 'Unable to load bottleneck data');
