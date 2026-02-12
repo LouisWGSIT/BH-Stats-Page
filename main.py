@@ -2358,7 +2358,7 @@ async def device_lookup(stock_id: str, request: Request):
         destination_label = asset_info.get("condition") or asset_info.get("destination")
         if destination_label:
             results["bottleneck"] = _build_bottleneck_snapshot(
-                days=7,
+                days_threshold=7,
                 destination=destination_label,
                 limit_engineers=5
             )
