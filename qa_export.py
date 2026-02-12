@@ -1425,7 +1425,7 @@ def get_unpalleted_devices(start_date: date = None, end_date: date = None) -> Li
                 q.scanned_location as qa_location
             FROM ITAD_asset_info a
             LEFT JOIN ITAD_QA_App q ON q.stockid = a.stockid
-            WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '')
+            WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '' OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
               {date_clause}
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
             ORDER BY a.received_date DESC
@@ -1497,7 +1497,7 @@ def get_unpalleted_devices_recent(days_threshold: int = 7) -> List[Dict[str, obj
                 GROUP BY stockid
             ) last_q ON last_q.stockid = a.stockid
             LEFT JOIN ITAD_QA_App q ON q.stockid = last_q.stockid AND q.added_date = last_q.last_added
-            WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '')
+            WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '' OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
               AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
               AND a.last_update IS NOT NULL
               AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
@@ -1570,7 +1570,7 @@ def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> 
     """
 
     base_where = f"""
-        WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '')
+        WHERE (a.pallet_id IS NULL OR a.pallet_id = '' OR a.palletID IS NULL OR a.palletID = '' OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
           AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
             {recency_clause}
           {destination_clause}
