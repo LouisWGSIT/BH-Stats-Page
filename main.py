@@ -2848,23 +2848,26 @@ async def get_bottleneck_details(
                     ORDER BY a.received_date DESC
                     LIMIT %s
                                 """, (value, f"%:{value}", days, limit))
-            elif category == "roller_pending":
-                # Data-bearing devices awaiting erasure (not erased, no pallet)
-                # Build OR condition for data-bearing types
-                type_conditions = " OR ".join([f"LOWER(a.description) LIKE '%%{t}%%'" for t in DATA_BEARING_TYPES])
-                cursor.execute(f"""
-                    {base_select}
-                    WHERE a.roller_location IS NOT NULL 
-                      AND a.roller_location != ''
-                      AND LOWER(a.roller_location) LIKE '%%roller%%'
-                      AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
-                      AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
-                      AND ({type_conditions})
-                                            {recent_clause}
-                    ORDER BY a.received_date DESC
-                    LIMIT %s
-                                """, (days, limit))
+                        elif category == "roller_pending":
+                                # Data-bearing devices awaiting erasure (not erased, no pallet)
+                                # Build parameterized OR condition for data-bearing types to avoid
+                                # passing raw '%' characters into pymysql's mogrify formatting.
+                                types = DATA_BEARING_TYPES
+                                type_clause = " OR ".join(["LOWER(a.description) LIKE %s" for _ in types])
+                                type_params = tuple([f"%{t}%" for t in types])
+                                cursor.execute(f"""
+                                        {base_select}
+                                        WHERE a.roller_location IS NOT NULL 
+                                            AND a.roller_location != ''
+                                            AND LOWER(a.roller_location) LIKE '%%roller%%'
+                                            AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                                            AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
+                                            AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
+                                            AND ({type_clause})
+                                                                                        {recent_clause}
+                                        ORDER BY a.received_date DESC
+                                        LIMIT %s
+                                                                """, (*type_params, days, limit))
             elif category == "roller_awaiting_qa":
                 # Devices that are erased (or non-data-bearing) but haven't had QA scan
                 # On roller, no pallet, and either:
@@ -2952,18 +2955,20 @@ async def get_bottleneck_details(
                                 """, (value, f"%:{value}", days))
             elif category == "roller_pending":
                 # Count data-bearing devices awaiting erasure
-                type_conditions = " OR ".join([f"LOWER(description) LIKE '%%{t}%%'" for t in DATA_BEARING_TYPES])
-                cursor.execute(f"""
-                    SELECT COUNT(*) FROM ITAD_asset_info 
-                    WHERE roller_location IS NOT NULL AND roller_location != ''
-                      AND LOWER(roller_location) LIKE '%%roller%%'
-                      AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND (COALESCE(pallet_id, palletID, '') = '' OR COALESCE(pallet_id, palletID) IS NULL OR COALESCE(pallet_id, palletID) LIKE 'NOPOST%')
-                      AND (de_complete IS NULL OR LOWER(de_complete) NOT IN ('yes', 'true', '1'))
-                      AND ({type_conditions})
-                                            AND last_update IS NOT NULL
-                                            AND last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                                """, (days,))
+                                types = DATA_BEARING_TYPES
+                                type_clause = " OR ".join(["LOWER(description) LIKE %s" for _ in types])
+                                type_params = tuple([f"%{t}%" for t in types])
+                                cursor.execute(f"""
+                                        SELECT COUNT(*) FROM ITAD_asset_info 
+                                        WHERE roller_location IS NOT NULL AND roller_location != ''
+                                            AND LOWER(roller_location) LIKE '%%roller%%'
+                                            AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                                            AND (COALESCE(pallet_id, palletID, '') = '' OR COALESCE(pallet_id, palletID) IS NULL OR COALESCE(pallet_id, palletID) LIKE 'NOPOST%')
+                                            AND (de_complete IS NULL OR LOWER(de_complete) NOT IN ('yes', 'true', '1'))
+                                            AND ({type_clause})
+                                                                                        AND last_update IS NOT NULL
+                                                                                        AND last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                                                                """, (*type_params, days,))
             elif category == "roller_awaiting_qa":
                 # Count devices awaiting QA
                 cursor.execute("""
