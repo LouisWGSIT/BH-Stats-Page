@@ -22,8 +22,25 @@ import logging
 
 # Configure root logger to ensure logs appear in Render stdout
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
-
 app = FastAPI(title="Warehouse Stats Service")
+
+from uuid import uuid4
+import request_context
+
+# Middleware: add a request-id to each incoming HTTP request for log correlation
+@app.middleware("http")
+async def add_request_id_middleware(request: Request, call_next):
+    rid = uuid4().hex
+    # store in contextvar for other modules (e.g., DB logging) to read
+    request_context.request_id.set(rid)
+    # include header for clients
+    try:
+        response = await call_next(request)
+        response.headers['X-Request-ID'] = rid
+    finally:
+        # clear contextvar to avoid leaking across requests in long-lived tasks
+        request_context.request_id.set(None)
+    return response
 
 # ============= BLANCCO API CONFIG =============
 BLANCCO_API_URL = os.getenv("BLANCCO_API_URL", "")  # Set this if Blancco has an API

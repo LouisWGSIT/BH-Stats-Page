@@ -13,6 +13,7 @@ import time
 from contextlib import contextmanager
 
 logger = logging.getLogger("qa_export")
+import request_context
 from contextlib import contextmanager
 
 # MariaDB Connection Config - read from environment for security
@@ -62,11 +63,13 @@ def get_mariadb_connection():
                             rowcount = getattr(self._real, 'rowcount', None)
                         except Exception:
                             rowcount = None
-                        logger.info("DB execute (%.3fs): %s rows=%s", duration, (query[:200] + ('...' if len(query) > 200 else '')), rowcount)
+                        rid = request_context.request_id.get()
+                        logger.info("DB execute (%.3fs) req=%s rows=%s: %s", duration, rid, rowcount, (query[:200] + ('...' if len(query) > 200 else '')))
                         return res
                     except Exception as e:
                         duration = time.time() - start
-                        logger.exception("DB execute failed (%.3fs): %s -> %s", duration, (query[:200] + ('...' if len(query) > 200 else '')), e)
+                        rid = request_context.request_id.get()
+                        logger.exception("DB execute failed (%.3fs) req=%s: %s -> %s", duration, rid, (query[:200] + ('...' if len(query) > 200 else '')), e)
                         raise
 
                 def executemany(self, query, seq_params):
@@ -74,11 +77,13 @@ def get_mariadb_connection():
                     try:
                         res = self._real.executemany(query, seq_params)
                         duration = time.time() - start
-                        logger.info("DB executemany (%.3fs): %s", duration, (query[:200] + ('...' if len(query) > 200 else '')))
+                        rid = request_context.request_id.get()
+                        logger.info("DB executemany (%.3fs) req=%s: %s", duration, rid, (query[:200] + ('...' if len(query) > 200 else '')))
                         return res
                     except Exception as e:
                         duration = time.time() - start
-                        logger.exception("DB executemany failed (%.3fs): %s -> %s", duration, (query[:200] + ('...' if len(query) > 200 else '')), e)
+                        rid = request_context.request_id.get()
+                        logger.exception("DB executemany failed (%.3fs) req=%s: %s -> %s", duration, rid, (query[:200] + ('...' if len(query) > 200 else '')), e)
                         raise
 
                 def fetchall(self):
@@ -89,14 +94,16 @@ def get_mariadb_connection():
                         count = len(rows)
                     except Exception:
                         count = None
-                    logger.info("DB fetchall (%.3fs): rows=%s", duration, count)
+                    rid = request_context.request_id.get()
+                    logger.info("DB fetchall (%.3fs) req=%s: rows=%s", duration, rid, count)
                     return rows
 
                 def fetchone(self):
                     start = time.time()
                     row = self._real.fetchone()
                     duration = time.time() - start
-                    logger.info("DB fetchone (%.3fs): returned=%s", duration, 1 if row else 0)
+                    rid = request_context.request_id.get()
+                    logger.info("DB fetchone (%.3fs) req=%s: returned=%s", duration, rid, 1 if row else 0)
                     return row
 
                 def __getattr__(self, name):
