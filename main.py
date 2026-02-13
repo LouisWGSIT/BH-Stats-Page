@@ -2765,7 +2765,9 @@ async def get_bottleneck_details(
     category: str,
     value: str = None,
     limit: int = 100,
-    days: int = 7
+    days: int = 7,
+    page: int = 1,
+    page_size: int = 20
 ):
     """
     Get detailed device list for a specific bottleneck category - CURRENT state (no lookback).
@@ -2782,7 +2784,9 @@ async def get_bottleneck_details(
     - quarantine: Devices in quarantine status
     """
     require_manager_or_admin(request)
-    limit = max(1, min(limit, 500))
+    # pagination: normalize page and page_size; keep legacy `limit` as fallback
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or limit or 20), 500))
     days = max(1, min(int(days or 7), 90))
     
     import qa_export
@@ -2839,15 +2843,16 @@ async def get_bottleneck_details(
             
             if category == "roller_station" and value:
                 # Specific roller station - show all devices without pallet
+                offset = (page - 1) * page_size
                 cursor.execute(f"""
-                    {base_select}
-                    WHERE (a.roller_location = %s OR a.roller_location LIKE %s)
-                      AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
-                                            {recent_clause}
-                    ORDER BY a.received_date DESC
-                    LIMIT %s
-                                """, (value, f"%:{value}", days, limit))
+                        {base_select}
+                        WHERE (a.roller_location = %s OR a.roller_location LIKE %s)
+                            AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                            AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
+                            {recent_clause}
+                        ORDER BY a.received_date DESC
+                        LIMIT %s OFFSET %s
+                                                """, (value, f"%:{value}", days, page_size, offset))
             elif category == "roller_pending":
                 # Data-bearing devices awaiting erasure (not erased, no pallet)
                 # Build parameterized OR condition for data-bearing types to avoid
@@ -2855,19 +2860,20 @@ async def get_bottleneck_details(
                 types = DATA_BEARING_TYPES
                 type_clause = " OR ".join(["LOWER(a.description) LIKE %s" for _ in types])
                 type_params = tuple([f"%{t}%" for t in types])
+                offset = (page - 1) * page_size
                 cursor.execute(f"""
-                    {base_select}
-                    WHERE a.roller_location IS NOT NULL 
-                      AND a.roller_location != ''
-                      AND LOWER(a.roller_location) LIKE '%%roller%%'
-                      AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
-                      AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
-                      AND ({type_clause})
-                                            {recent_clause}
-                    ORDER BY a.received_date DESC
-                    LIMIT %s
-                                """, (*type_params, days, limit))
+                        {base_select}
+                        WHERE a.roller_location IS NOT NULL 
+                            AND a.roller_location != ''
+                            AND LOWER(a.roller_location) LIKE '%%roller%%'
+                            AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                            AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
+                            AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
+                            AND ({type_clause})
+                            {recent_clause}
+                        ORDER BY a.received_date DESC
+                        LIMIT %s OFFSET %s
+                                                """, (*type_params, days, page_size, offset))
             elif category == "roller_awaiting_qa":
                 # Devices that are erased (or non-data-bearing) but haven't had QA scan
                 # On roller, no pallet, and either:
@@ -2892,12 +2898,12 @@ async def get_bottleneck_details(
                                                  AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid))
                                             )
                                                                                         {recent_clause}
-                                        ORDER BY a.received_date DESC
-                                        LIMIT %s
-                                                                """, (days, limit))
+                                                                                ORDER BY a.received_date DESC
+                                                                                LIMIT %s OFFSET %s
+                                                                                                                                """, (days, page_size, (page-1)*page_size))
             else:  # roller_awaiting_pallet
                 # Devices that have been QA'd but don't have a pallet yet
-                cursor.execute(f"""
+                                cursor.execute(f"""
                     {base_select}
                     WHERE a.roller_location IS NOT NULL 
                       AND a.roller_location != ''
@@ -2909,9 +2915,9 @@ async def get_bottleneck_details(
                         AND (a.de_completed_date IS NULL OR q.added_date > a.de_completed_date)
                       )
                                             {recent_clause}
-                    ORDER BY a.received_date DESC
-                    LIMIT %s
-                                """, (days, limit))
+                                        ORDER BY a.received_date DESC
+                                        LIMIT %s OFFSET %s
+                                                                """, (days, page_size, (page-1)*page_size))
             
             devices = []
             for row in cursor.fetchall():
