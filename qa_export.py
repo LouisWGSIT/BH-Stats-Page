@@ -1803,8 +1803,8 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
     try:
         cursor = conn.cursor()
         
-        # Get ALL devices currently on rollers (regardless of pallet status)
-        # Include QA info to determine workflow stage
+        # Get devices from ITAD_asset_info. We will also consider recent audit_master QA entries
+        # so that QA scans which haven't updated ITAD_asset_info.roll er_location are still counted.
         cursor.execute("""
             SELECT 
                 a.stockid,
@@ -1824,10 +1824,7 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
                 FROM ITAD_asset_info_blancco
                 GROUP BY stockid
             ) b ON b.stockid = a.stockid
-            WHERE a.roller_location IS NOT NULL 
-              AND a.roller_location != ''
-              AND LOWER(a.roller_location) LIKE '%%roller%%'
-              AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+            WHERE a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
         """)
         
         roller_data = {}
@@ -1858,6 +1855,31 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             has_blancco = blancco_count > 0 or (blancco_last_job is not None)
             has_erasures = has_blancco or is_erased_flag or (de_completed_date is not None)
             has_qa = bool(last_qa_date)
+            # If we don't have ITAD_QA_App QA date, check audit_master for recent QA submissions
+            if not has_qa:
+                try:
+                    am_cur = conn.cursor()
+                    am_cur.execute(
+                        """
+                        SELECT 1 FROM audit_master am
+                        WHERE am.sales_order = %s
+                          AND am.audit_type IN (
+                              'DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
+                              'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload'
+                          )
+                          AND am.date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                        LIMIT 1
+                        """,
+                        (stockid, days_threshold)
+                    )
+                    has_qa = bool(am_cur.fetchone())
+                except Exception:
+                    has_qa = False
+                finally:
+                    try:
+                        am_cur.close()
+                    except Exception:
+                        pass
             has_pallet = bool(pallet_id and str(pallet_id).strip() and str(pallet_id).strip().lower() not in ('none', 'null', ''))
             destination_assigned = bool(destination_norm and destination_norm.lower() not in ("unknown", "", "none"))
 
@@ -1874,6 +1896,45 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             if not has_erasures and not has_qa:
                 continue
                 
+            # If roller name missing, attempt to find roller/destination info in audit_master
+            if not roller_name_raw or roller_name_raw.strip() == '':
+                try:
+                    am_cur = conn.cursor()
+                    am_cur.execute(
+                        """
+                        SELECT am.log_description
+                        FROM audit_master am
+                        WHERE am.sales_order = %s
+                          AND am.audit_type IN (
+                              'DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
+                              'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload'
+                          )
+                        ORDER BY am.date_time DESC
+                        LIMIT 1
+                        """,
+                        (stockid,)
+                    )
+                    am_row = am_cur.fetchone()
+                    if am_row and am_row[0]:
+                        log_desc = str(am_row[0])
+                        # Try to find IA-ROLLER pattern
+                        m = re.search(r'(IA-ROLLER\d+)', log_desc, re.IGNORECASE)
+                        if m:
+                            roller_name = normalize_roller_name(m.group(1))
+                        else:
+                            # try XML <location> tag
+                            m2 = re.search(r'<location>([^<]+)</location>', log_desc, re.IGNORECASE)
+                            if m2 and m2.group(1).strip():
+                                roller_name = normalize_roller_name(m2.group(1).strip())
+                            else:
+                                roller_name = 'Unknown Roller'
+                except Exception:
+                    roller_name = 'Unknown Roller'
+                finally:
+                    try:
+                        am_cur.close()
+                    except Exception:
+                        pass
             if has_erasures and not has_qa:
                 stage = "awaiting_qa"
             elif has_qa and not has_pallet:

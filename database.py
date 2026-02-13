@@ -1673,5 +1673,6 @@ def sync_engineer_stats_from_erasures(date_str: str = None):
     
     return synced_count
 
-# Initialize DB on import
-init_db()
+# Initialize DB only when run as a script (do not run on import)
+if __name__ == '__main__':
+    init_db()
