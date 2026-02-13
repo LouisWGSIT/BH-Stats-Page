@@ -2564,17 +2564,40 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
     Returns simple counts: awaiting_qa and awaiting_sorting plus small QA/erasure samples.
     """
     from datetime import date as _date, datetime as _dt
+    import time
+
+    # Initialize a short-lived in-memory cache for identical dashboard queries
+    global _bottleneck_dashboard_cache
+    try:
+        _bottleneck_dashboard_cache
+    except NameError:
+        _bottleneck_dashboard_cache = {}
+
+    CACHE_TTL = 60  # seconds
+
+    target_date = date if date else _date.today().isoformat()
+    cache_key = f"{target_date}|{(qa_user or '').lower()}|default"
+    print(f"[Bottleneck-From-Dashboard] request date={target_date} qa_user={(qa_user or '')} cache_key={cache_key}")
+    cache_entry = _bottleneck_dashboard_cache.get(cache_key)
+    if cache_entry and (time.time() - cache_entry.get('ts', 0) < CACHE_TTL):
+        print(f"[Bottleneck-From-Dashboard] cache hit for {cache_key}")
+        return JSONResponse(status_code=200, content=cache_entry['value'])
+    print(f"[Bottleneck-From-Dashboard] cache miss for {cache_key}; calling dashboard endpoints")
 
     try:
-        target_date = date if date else _date.today().isoformat()
 
         # Get merged daily stats (includes erased, qaApp, deQa, nonDeQa, qaTotal)
+        print("[Bottleneck-From-Dashboard] calling powerbi_daily_stats")
         daily_resp = await powerbi_daily_stats(start_date=target_date, end_date=target_date)
         daily_rows = daily_resp.get("data", []) if isinstance(daily_resp, dict) else []
         daily = daily_rows[0] if daily_rows else {}
+        print(f"[Bottleneck-From-Dashboard] powerbi_daily_stats rows={len(daily_rows)}")
 
         # Get QA dashboard today to fetch per-engineer counts
+        print("[Bottleneck-From-Dashboard] calling get_qa_dashboard_data")
         qa_dash = await get_qa_dashboard_data(period="today")
+        if isinstance(qa_dash, dict) and qa_dash.get('technicians'):
+            print(f"[Bottleneck-From-Dashboard] qa_dash technicians={len(qa_dash.get('technicians', []))}")
 
         # Compute combined QA totals
         qa_total = daily.get("qaTotal") or qa_dash.get("summary", {}).get("combinedScans") or 0
@@ -2593,8 +2616,10 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
                     break
 
         # Get erasure events for the day and aggregate by initials
+        print("[Bottleneck-From-Dashboard] calling powerbi_erasure_events")
         erasures_resp = await powerbi_erasure_events(start_date=target_date, end_date=target_date)
         erasures = erasures_resp.get("data", []) if isinstance(erasures_resp, dict) else []
+        print(f"[Bottleneck-From-Dashboard] erasures rows={len(erasures)}")
         erasure_by_initials = {}
         for ev in erasures:
             init = ev.get("initials") or ""
@@ -2603,8 +2628,10 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
             erasure_by_initials[init] = erasure_by_initials.get(init, 0) + 1
 
         # Find a sample pallet-scan by Owen in device history (stage == 'Sorting')
+        print("[Bottleneck-From-Dashboard] calling powerbi_device_history")
         device_hist = await powerbi_device_history(start_date=target_date, end_date=target_date)
         hist_rows = device_hist.get("data", []) if isinstance(device_hist, dict) else []
+        print(f"[Bottleneck-From-Dashboard] device_history rows={len(hist_rows)}")
         owen_pallet_sample = None
         for row in hist_rows:
             user = str(row.get("user") or "")
@@ -2633,6 +2660,12 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
             "note": "Data sourced from dashboard PowerBI and QA endpoints (today-only)."
         }
 
+        print(f"[Bottleneck-From-Dashboard] computed awaiting_qa={awaiting_qa} awaiting_sorting={awaiting_sorting}")
+        try:
+            _bottleneck_dashboard_cache[cache_key] = {"ts": time.time(), "value": result}
+            print(f"[Bottleneck-From-Dashboard] cached result for {cache_key}")
+        except Exception:
+            print("[Bottleneck-From-Dashboard] cache write failed")
         return JSONResponse(status_code=200, content=result)
     except Exception as e:
         print(f"[Bottleneck-From-Dashboard] error: {e}")
