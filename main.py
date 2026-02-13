@@ -2882,7 +2882,7 @@ async def get_bottleneck_details(
                                             AND a.roller_location != ''
                                             AND LOWER(a.roller_location) LIKE '%%roller%%'
                                             AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                                            AND LOWER(COALESCE(a.`condition`, '')) NOT LIKE '%quarantine%'
+                                              AND LOWER(COALESCE(a.`condition`, '')) NOT LIKE '%%quarantine%%'
                                             AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
                                             AND (
                                                 (LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
