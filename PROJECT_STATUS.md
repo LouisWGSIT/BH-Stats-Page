@@ -109,6 +109,46 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 - Period handling differs across endpoints; verify all periods are supported consistently.
 - All-time QA trend uses last 30 days window (not full historical).
 
+
+## Database Safety: MariaDB transactions
+
+- Severity: HIGH — long-held MariaDB transactions can acquire locks that block other updates and cause timeouts (we observed a 2-hour lock incident). Treat this as a first-class operational risk.
+- Rules to follow:
+  - Always use explicit `commit()` or `rollback()` after any transaction that modifies data. Do not rely on process exit to flush transactions.
+  - Keep transactions as short as possible: fetch required values first, then open a transaction only for the minimal set of writes.
+  - For read-only queries, prefer running them outside explicit transactions (autocommit / read-only connection) to avoid accidental lock escalation.
+  - Wrap DB work in try/except/finally blocks and ensure `conn.close()` in the `finally` block.
+  - Use sensible connection timeouts and server-side statement timeouts where available to avoid runaway queries.
+  - Avoid long-running SELECT ... FOR UPDATE unless strictly necessary — they escalate locks.
+  - Monitor for locks: use `SHOW PROCESSLIST` and `INFORMATION_SCHEMA.INNODB_LOCKS` when investigating live issues; be prepared to `KILL` problematic sessions cautiously.
+
+- Example Python pattern (use in `qa_export.py` or any MariaDB write path):
+
+```python
+conn = get_mariadb_connection()
+try:
+   cur = conn.cursor()
+   # Keep transactional work minimal
+   cur.execute("UPDATE my_table SET x=%s WHERE id=%s", (val, id_))
+   conn.commit()
+except Exception:
+   conn.rollback()
+   raise
+finally:
+   try:
+      cur.close()
+   except Exception:
+      pass
+   conn.close()
+```
+
+- Operational action items:
+  - Add connection/statement timeouts in production (Render env) and enable query logging for long-running statements.
+  - Add a lightweight health endpoint that performs a quick read-only check against MariaDB and fails fast if the DB is unresponsive.
+  - When running any maintenance or long exports, notify the team and run during off-peak windows.
+
+Treat the above as mandatory guidelines — commit/rollback discipline and short transactions will prevent cross-team outages.
+
 ## Current Focus
 - Device tracking improvements to prevent lost devices (like 12745375 that went missing July 2025).
 - Audit sheets for operational visibility: Unpalleted Devices, Stale Devices.

@@ -8,6 +8,7 @@ from collections import defaultdict, Counter
 import calendar
 import re
 import database as db
+from contextlib import contextmanager
 
 # MariaDB Connection Config - read from environment for security
 # Set these in your deployment environment or a .env file (do NOT commit secrets)
@@ -27,12 +28,106 @@ def get_mariadb_connection():
             database=MARIADB_DB,
             port=MARIADB_PORT,
             connect_timeout=10,
-            read_timeout=30
+            read_timeout=30,
+            write_timeout=30
         )
+        # Ensure autocommit by default to avoid unintentionally holding transactions open
+        try:
+            conn.autocommit(True)
+        except Exception:
+            # older pymysql versions may not support autocommit() as a method
+            try:
+                conn.autocommit = True
+            except Exception:
+                pass
         return conn
     except Exception as e:
         print(f"[QA Export] MariaDB connection error: {e}")
         return None
+
+
+@contextmanager
+def mariadb_transaction():
+    """Context manager for safe write transactions against MariaDB.
+
+    Usage:
+        with mariadb_transaction() as cur:
+            cur.execute("UPDATE ...", params)
+    Commits on success, rolls back on exception, and always closes connection/cursor.
+    """
+    conn = get_mariadb_connection()
+    if not conn:
+        raise RuntimeError("MariaDB connection failed")
+
+    cur = None
+    try:
+        # Ensure explicit transaction for writes
+        try:
+            conn.autocommit(False)
+        except Exception:
+            pass
+        cur = conn.cursor()
+        yield cur
+        try:
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            if cur:
+                cur.close()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def safe_write(query: str, params: tuple = None):
+    """Execute a write query safely using the transaction context manager.
+
+    Returns cursor.lastrowid when available.
+    """
+    with mariadb_transaction() as cur:
+        cur.execute(query, params or ())
+        try:
+            return getattr(cur, 'lastrowid', None)
+        except Exception:
+            return None
+
+
+def safe_read(query: str, params: tuple = None):
+    """Execute a read-only query with an independent short-lived connection.
+
+    Returns fetched rows as a list of tuples.
+    """
+    conn = get_mariadb_connection()
+    if not conn:
+        return []
+    try:
+        cur = conn.cursor()
+        cur.execute(query, params or ())
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return rows
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        raise
 
 def get_week_dates(period: str) -> Tuple[date, date, str]:
     """Get Monday-Friday dates for a given period"""
