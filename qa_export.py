@@ -1,5 +1,6 @@
 """QA Dashboard Stats - MariaDB Integration for Quality Assurance Metrics"""
 import pymysql
+import os
 import sqlite3
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Tuple
@@ -8,12 +9,13 @@ import calendar
 import re
 import database as db
 
-# MariaDB Connection Config
-MARIADB_HOST = "77.68.90.229"
-MARIADB_USER = "louiswhitehouse"
-MARIADB_PASSWORD = "Gr33nsafeIT2026"
-MARIADB_DB = "zaptest_"
-MARIADB_PORT = 3306
+# MariaDB Connection Config - read from environment for security
+# Set these in your deployment environment or a .env file (do NOT commit secrets)
+MARIADB_HOST = os.getenv("MARIADB_HOST", "")
+MARIADB_USER = os.getenv("MARIADB_USER", "")
+MARIADB_PASSWORD = os.getenv("MARIADB_PASSWORD", "")
+MARIADB_DB = os.getenv("MARIADB_DB", "")
+MARIADB_PORT = int(os.getenv("MARIADB_PORT", "3306"))
 
 def get_mariadb_connection():
     """Create and return a MariaDB connection"""

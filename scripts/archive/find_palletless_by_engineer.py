@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Query QA records for specific engineers and show pallet/roller info for a date range.
+"""ARCHIVE: moved from project root scripts — kept for reference.
+Query QA records for specific engineers and show pallet/roller info for a date range.
 
-Usage: run from repo root: python scripts/find_palletless_by_engineer.py
+This file was archived to reduce repository noise. It is not used by the application.
 """
 import datetime
 

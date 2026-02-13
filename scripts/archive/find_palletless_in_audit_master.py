@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Query audit_master for QA submissions by engineers and check pallet/roller in ITAD_asset_info.
+"""ARCHIVE: moved from project root scripts — kept for reference.
+Query audit_master for QA submissions by engineers and check pallet/roller in ITAD_asset_info.
 
-Usage: python scripts/find_palletless_in_audit_master.py
+This file was archived to reduce repository noise. It is not used by the application.
 """
 import datetime
 from qa_export import get_mariadb_connection
