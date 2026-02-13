@@ -1773,13 +1773,16 @@ def is_data_bearing_device(description: str) -> bool:
     return False
 
 
-def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
-    """Get CURRENT status of all devices assigned to rollers with workflow stages.
-    
+def get_roller_queue_status(days_threshold: int = 1) -> Dict[str, object]:
+    """Get CURRENT status of devices on rollers with workflow stages.
+
+    Default behaviour is to show only recent devices (today) to avoid
+    long-running scans. Use `days_threshold` to expand the window.
+
     Workflow stages (focusing on what we can reliably track):
     - Awaiting QA: has erasure report but NO QA scan
     - Awaiting Sorting: has QA scan but no pallet ID assigned
-    
+
     Devices remain on rollers throughout the process until physically moved.
     """
     conn = get_mariadb_connection()
@@ -1807,6 +1810,8 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
         
         # Get devices from ITAD_asset_info. We will also consider recent audit_master QA entries
         # so that QA scans which haven't updated ITAD_asset_info.roll er_location are still counted.
+        # Restrict to recently-updated assets to avoid scanning the entire table.
+        # Default `days_threshold=1` limits to today's updates; increase if needed.
         cursor.execute("""
             SELECT 
                 a.stockid,
@@ -1827,11 +1832,64 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
                 GROUP BY stockid
             ) b ON b.stockid = a.stockid
             WHERE a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-        """)
+              AND a.last_update IS NOT NULL
+              AND a.last_update >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+        """, (days_threshold,))
         
+        # Fetch all rows first, then bulk-query audit_master for recent QA info.
+        asset_rows = cursor.fetchall()
+
         roller_data = {}
-        
-        for row in cursor.fetchall():
+
+        # Build a set of stockids to check in audit_master
+        stockids = [str(r[0]) for r in asset_rows if r and r[0]]
+        unique_stockids = list({s for s in stockids if s})
+        audit_map: Dict[str, Dict[str, object]] = {}
+
+        if unique_stockids:
+            try:
+                am_cur = conn.cursor()
+                placeholders = ",".join(["%s"] * len(unique_stockids))
+                # Subquery to get latest date per sales_order, then join to fetch log_description
+                am_query = f"""
+                    SELECT t.sales_order, am.log_description, t.dt
+                    FROM (
+                        SELECT sales_order, MAX(date_time) as dt
+                        FROM audit_master
+                        WHERE audit_type IN (
+                            'DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
+                            'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload'
+                        )
+                          AND sales_order IN ({placeholders})
+                          AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                        GROUP BY sales_order
+                    ) t
+                    JOIN audit_master am ON am.sales_order = t.sales_order AND am.date_time = t.dt
+                """.replace('{placeholders}', placeholders)
+
+                params = unique_stockids + [days_threshold]
+                # MySQL parameter ordering: placeholders first, then days_threshold
+                # but we constructed params accordingly
+                # To be safe, reorder to match query: sales_order placeholders then days_threshold
+                params = unique_stockids + [days_threshold]
+
+                am_cur.execute(am_query, params)
+                for sales_order, log_description, dt in am_cur.fetchall():
+                    key = str(sales_order)
+                    audit_map[key] = {
+                        'has_qa': True,
+                        'log_description': str(log_description) if log_description is not None else None,
+                        'last_date': dt,
+                    }
+            except Exception:
+                audit_map = {}
+            finally:
+                try:
+                    am_cur.close()
+                except Exception:
+                    pass
+
+        for row in asset_rows:
             stockid = row[0]
             roller_name_raw = row[1] or "Unknown Roller"
             roller_name = normalize_roller_name(roller_name_raw)
@@ -1845,125 +1903,68 @@ def get_roller_queue_status(days_threshold: int = 7) -> Dict[str, object]:
             blancco_count = int(row[9] or 0)
             destination_raw = row[10]
             destination_norm = (str(destination_raw).strip() if destination_raw is not None else '')
-            
-            # Skip if has pallet (shouldn't happen due to WHERE, but safety check)
-            # Actually, devices stay on rollers even after pallet assignment, so don't skip
-            # if pallet_id and str(pallet_id).strip():
-            #     continue
-            
+
             is_data_bearing = is_data_bearing_device(description)
-            # Consider device erased if there is a blancco job or DE flag/date present
             is_erased_flag = str(de_complete_raw or "").lower() in ("yes", "true", "1")
             has_blancco = blancco_count > 0 or (blancco_last_job is not None)
             has_erasures = has_blancco or is_erased_flag or (de_completed_date is not None)
             has_qa = bool(last_qa_date)
-            # If we don't have ITAD_QA_App QA date, check audit_master for recent QA submissions
-            if not has_qa:
-                try:
-                    am_cur = conn.cursor()
-                    am_cur.execute(
-                        """
-                        SELECT 1 FROM audit_master am
-                        WHERE am.sales_order = %s
-                          AND am.audit_type IN (
-                              'DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
-                              'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload'
-                          )
-                          AND am.date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                        LIMIT 1
-                        """,
-                        (stockid, days_threshold)
-                    )
-                    has_qa = bool(am_cur.fetchone())
-                except Exception:
-                    has_qa = False
-                finally:
-                    try:
-                        am_cur.close()
-                    except Exception:
-                        pass
-            has_pallet = bool(pallet_id and str(pallet_id).strip() and str(pallet_id).strip().lower() not in ('none', 'null', ''))
-            destination_assigned = bool(destination_norm and destination_norm.lower() not in ("unknown", "", "none"))
 
-            # Determine workflow stage - focus on what we can reliably track:
-            # - Awaiting QA: has erasure report (or non-data-bearing) but NO QA scan
-            # - Awaiting Sorting: has QA scan but no pallet ID assigned
-            
-            # If device has a pallet assigned, it's complete - exclude from bottleneck counts
+            # Use bulk audit_master results if ITAD_QA_App doesn't show QA
+            if not has_qa and stockid and str(stockid) in audit_map:
+                has_qa = True
+                # adopt audit_master last_date for reference if needed
+                last_qa_date = audit_map.get(str(stockid)).get('last_date')
+
+            has_pallet = bool(pallet_id and str(pallet_id).strip() and str(pallet_id).strip().lower() not in ('none', 'null', ''))
+
+            # Skip devices with pallet assigned
             if has_pallet:
                 continue
-                
+
             # Skip devices that haven't been erased AND haven't been QA'd
-            # (Allow QA'd devices even if not erased - they might be non-data-bearing)
             if not has_erasures and not has_qa:
                 continue
-                
-            # If roller name missing, attempt to find roller/destination info in audit_master
-            if not roller_name_raw or roller_name_raw.strip() == '':
-                try:
-                    am_cur = conn.cursor()
-                    am_cur.execute(
-                        """
-                        SELECT am.log_description
-                        FROM audit_master am
-                        WHERE am.sales_order = %s
-                          AND am.audit_type IN (
-                              'DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
-                              'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload'
-                          )
-                        ORDER BY am.date_time DESC
-                        LIMIT 1
-                        """,
-                        (stockid,)
-                    )
-                    am_row = am_cur.fetchone()
-                    if am_row and am_row[0]:
-                        log_desc = str(am_row[0])
-                        # Try to find IA-ROLLER pattern
-                        m = re.search(r'(IA-ROLLER\d+)', log_desc, re.IGNORECASE)
-                        if m:
-                            roller_name = normalize_roller_name(m.group(1))
+
+            # If roller name missing, attempt to find roller/destination info from audit_master map
+            if (not roller_name_raw or roller_name_raw.strip() == '') and stockid and str(stockid) in audit_map:
+                log_desc = audit_map.get(str(stockid)).get('log_description')
+                if log_desc:
+                    m = re.search(r'(IA-ROLLER\d+)', log_desc, re.IGNORECASE)
+                    if m:
+                        roller_name = normalize_roller_name(m.group(1))
+                    else:
+                        m2 = re.search(r'<location>([^<]+)</location>', log_desc, re.IGNORECASE)
+                        if m2 and m2.group(1).strip():
+                            roller_name = normalize_roller_name(m2.group(1).strip())
                         else:
-                            # try XML <location> tag
-                            m2 = re.search(r'<location>([^<]+)</location>', log_desc, re.IGNORECASE)
-                            if m2 and m2.group(1).strip():
-                                roller_name = normalize_roller_name(m2.group(1).strip())
-                            else:
-                                roller_name = 'Unknown Roller'
-                except Exception:
-                    roller_name = 'Unknown Roller'
-                finally:
-                    try:
-                        am_cur.close()
-                    except Exception:
-                        pass
+                            roller_name = 'Unknown Roller'
+
             if has_erasures and not has_qa:
                 stage = "awaiting_qa"
             elif has_qa and not has_pallet:
                 stage = "awaiting_sorting"
             else:
-                # This shouldn't happen with the has_pallet check above, but keep for safety
                 continue
-            
-            # Initialize roller if needed
+
             if roller_name not in roller_data:
                 roller_data[roller_name] = {
-                    "roller": roller_name, 
-                    "total": 0, 
+                    "roller": roller_name,
+                    "total": 0,
                     "awaiting_qa": 0,
                     "awaiting_sorting": 0,
                     "data_bearing": 0,
                     "non_data_bearing": 0,
-                    "samples": [],  # sample device rows for quick inspection
+                    "samples": [],
                 }
-            
+
             roller_data[roller_name]["total"] += 1
             roller_data[roller_name][stage] += 1
             if is_data_bearing:
                 roller_data[roller_name]["data_bearing"] += 1
             else:
                 roller_data[roller_name]["non_data_bearing"] += 1
-            # Append a small sample for admin inspection
+
             if len(roller_data[roller_name]["samples"]) < 6:
                 roller_data[roller_name]["samples"].append({
                     "stockid": stockid,
