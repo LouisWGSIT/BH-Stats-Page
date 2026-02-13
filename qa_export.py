@@ -1773,7 +1773,7 @@ def is_data_bearing_device(description: str) -> bool:
     return False
 
 
-def get_roller_queue_status(days_threshold: int = 1) -> Dict[str, object]:
+def get_roller_queue_status(days_threshold: int = 1, target_date: date | None = None, roller_whitelist: List[str] | None = None, qa_user_filter: List[str] | None = None) -> Dict[str, object]:
     """Get CURRENT status of devices on rollers with workflow stages.
 
     Default behaviour is to show only recent devices (today) to avoid
@@ -1811,8 +1811,15 @@ def get_roller_queue_status(days_threshold: int = 1) -> Dict[str, object]:
         # Get devices from ITAD_asset_info. We will also consider recent audit_master QA entries
         # so that QA scans which haven't updated ITAD_asset_info.roll er_location are still counted.
         # Restrict to recently-updated assets to avoid scanning the entire table.
-        # Default `days_threshold=1` limits to today's updates; increase if needed.
-        cursor.execute("""
+        # If `target_date` provided, restrict to that day's last_update; otherwise use days_threshold window.
+        if target_date:
+            date_clause = "AND DATE(a.last_update) = %s"
+            params_for_assets = (target_date.isoformat(),)
+        else:
+            date_clause = "AND a.last_update IS NOT NULL AND a.last_update >= DATE_SUB(CURDATE(), INTERVAL %s DAY)"
+            params_for_assets = (days_threshold,)
+
+        cursor.execute(f"""
             SELECT 
                 a.stockid,
                 a.roller_location,
@@ -1821,6 +1828,7 @@ def get_roller_queue_status(days_threshold: int = 1) -> Dict[str, object]:
                 a.de_complete,
                 COALESCE(a.pallet_id, a.palletID) as pallet_id,
                 (SELECT MAX(q.added_date) FROM ITAD_QA_App q WHERE q.stockid = a.stockid) as last_qa_date,
+                (SELECT q2.username FROM ITAD_QA_App q2 WHERE q2.stockid = a.stockid ORDER BY q2.added_date DESC LIMIT 1) as last_qa_user,
                 a.de_completed_date,
                 NULL as blancco_last_job,
                 COALESCE(b.blancco_count, 0) as blancco_count,
@@ -1832,9 +1840,8 @@ def get_roller_queue_status(days_threshold: int = 1) -> Dict[str, object]:
                 GROUP BY stockid
             ) b ON b.stockid = a.stockid
             WHERE a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-              AND a.last_update IS NOT NULL
-              AND a.last_update >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
-        """, (days_threshold,))
+              {date_clause}
+        """, params_for_assets)
         
         # Fetch all rows first, then bulk-query audit_master for recent QA info.
         asset_rows = cursor.fetchall()
@@ -1852,7 +1859,7 @@ def get_roller_queue_status(days_threshold: int = 1) -> Dict[str, object]:
                 placeholders = ",".join(["%s"] * len(unique_stockids))
                 # Subquery to get latest date per sales_order, then join to fetch log_description
                 am_query = f"""
-                    SELECT t.sales_order, am.log_description, t.dt
+                    SELECT t.sales_order, am.log_description, am.user_id, t.dt
                     FROM (
                         SELECT sales_order, MAX(date_time) as dt
                         FROM audit_master
@@ -1861,25 +1868,25 @@ def get_roller_queue_status(days_threshold: int = 1) -> Dict[str, object]:
                             'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload'
                         )
                           AND sales_order IN ({placeholders})
-                          AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                          {"AND DATE(date_time) = %s" if target_date else "AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)"}
                         GROUP BY sales_order
                     ) t
                     JOIN audit_master am ON am.sales_order = t.sales_order AND am.date_time = t.dt
                 """.replace('{placeholders}', placeholders)
 
-                params = unique_stockids + [days_threshold]
-                # MySQL parameter ordering: placeholders first, then days_threshold
-                # but we constructed params accordingly
-                # To be safe, reorder to match query: sales_order placeholders then days_threshold
-                params = unique_stockids + [days_threshold]
+                if target_date:
+                    params = unique_stockids + [target_date.isoformat()]
+                else:
+                    params = unique_stockids + [days_threshold]
 
                 am_cur.execute(am_query, params)
-                for sales_order, log_description, dt in am_cur.fetchall():
+                for sales_order, log_description, user_id, dt in am_cur.fetchall():
                     key = str(sales_order)
                     audit_map[key] = {
                         'has_qa': True,
                         'log_description': str(log_description) if log_description is not None else None,
                         'last_date': dt,
+                        'user_id': user_id,
                     }
             except Exception:
                 audit_map = {}
@@ -1889,19 +1896,28 @@ def get_roller_queue_status(days_threshold: int = 1) -> Dict[str, object]:
                 except Exception:
                     pass
 
+        # Normalize whitelist if provided
+        normalized_whitelist = None
+        if roller_whitelist:
+            normalized_whitelist = {normalize_roller_name(r) for r in roller_whitelist}
+
         for row in asset_rows:
             stockid = row[0]
             roller_name_raw = row[1] or "Unknown Roller"
             roller_name = normalize_roller_name(roller_name_raw)
+            # If whitelist provided, skip rollers not in it
+            if normalized_whitelist is not None and roller_name not in normalized_whitelist:
+                continue
             serial = row[2]
             description = row[3] or ""
             de_complete_raw = row[4]
             pallet_id = row[5]
             last_qa_date = row[6]
-            de_completed_date = row[7]
-            blancco_last_job = row[8]
-            blancco_count = int(row[9] or 0)
-            destination_raw = row[10]
+            last_qa_user = row[7] if len(row) > 7 else None
+            de_completed_date = row[8]
+            blancco_last_job = row[9]
+            blancco_count = int(row[10] or 0)
+            destination_raw = row[11]
             destination_norm = (str(destination_raw).strip() if destination_raw is not None else '')
 
             is_data_bearing = is_data_bearing_device(description)
@@ -1911,10 +1927,21 @@ def get_roller_queue_status(days_threshold: int = 1) -> Dict[str, object]:
             has_qa = bool(last_qa_date)
 
             # Use bulk audit_master results if ITAD_QA_App doesn't show QA
-            if not has_qa and stockid and str(stockid) in audit_map:
-                has_qa = True
-                # adopt audit_master last_date for reference if needed
-                last_qa_date = audit_map.get(str(stockid)).get('last_date')
+            audit_entry = audit_map.get(str(stockid)) if stockid else None
+            if not has_qa and audit_entry:
+                # If QA user filter provided, ensure the audit_master user matches
+                am_user = (audit_entry.get('user_id') or '').lower() if audit_entry.get('user_id') else None
+                if qa_user_filter:
+                    matches = any((u.lower() in (am_user or '') or u.lower() == (last_qa_user or '').lower()) for u in qa_user_filter)
+                    if not matches:
+                        # audit_master QA exists but not from the requested QA user(s)
+                        has_qa = False
+                    else:
+                        has_qa = True
+                        last_qa_date = audit_entry.get('last_date')
+                else:
+                    has_qa = True
+                    last_qa_date = audit_entry.get('last_date')
 
             has_pallet = bool(pallet_id and str(pallet_id).strip() and str(pallet_id).strip().lower() not in ('none', 'null', ''))
 
