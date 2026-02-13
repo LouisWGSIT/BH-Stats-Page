@@ -2848,26 +2848,26 @@ async def get_bottleneck_details(
                     ORDER BY a.received_date DESC
                     LIMIT %s
                                 """, (value, f"%:{value}", days, limit))
-                        elif category == "roller_pending":
-                                # Data-bearing devices awaiting erasure (not erased, no pallet)
-                                # Build parameterized OR condition for data-bearing types to avoid
-                                # passing raw '%' characters into pymysql's mogrify formatting.
-                                types = DATA_BEARING_TYPES
-                                type_clause = " OR ".join(["LOWER(a.description) LIKE %s" for _ in types])
-                                type_params = tuple([f"%{t}%" for t in types])
-                                cursor.execute(f"""
-                                        {base_select}
-                                        WHERE a.roller_location IS NOT NULL 
-                                            AND a.roller_location != ''
-                                            AND LOWER(a.roller_location) LIKE '%%roller%%'
-                                            AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                                            AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
-                                            AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
-                                            AND ({type_clause})
-                                                                                        {recent_clause}
-                                        ORDER BY a.received_date DESC
-                                        LIMIT %s
-                                                                """, (*type_params, days, limit))
+            elif category == "roller_pending":
+                # Data-bearing devices awaiting erasure (not erased, no pallet)
+                # Build parameterized OR condition for data-bearing types to avoid
+                # passing raw '%' characters into pymysql's mogrify formatting.
+                types = DATA_BEARING_TYPES
+                type_clause = " OR ".join(["LOWER(a.description) LIKE %s" for _ in types])
+                type_params = tuple([f"%{t}%" for t in types])
+                cursor.execute(f"""
+                    {base_select}
+                    WHERE a.roller_location IS NOT NULL 
+                      AND a.roller_location != ''
+                      AND LOWER(a.roller_location) LIKE '%%roller%%'
+                      AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
+                      AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
+                      AND ({type_clause})
+                                            {recent_clause}
+                    ORDER BY a.received_date DESC
+                    LIMIT %s
+                                """, (*type_params, days, limit))
             elif category == "roller_awaiting_qa":
                 # Devices that are erased (or non-data-bearing) but haven't had QA scan
                 # On roller, no pallet, and either:
