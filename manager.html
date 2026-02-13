@@ -594,6 +594,7 @@
                 <button onclick="runBottleneckRadar()">📡 Run Bottleneck Radar</button>
                 <div id="bottleneckResult" class="result"></div>
                 <div id="bottleneckContent" class="stats" style="display: none; margin-top: 20px;"></div>
+                <div id="bottleneckDetails" class="stats" style="display: block; margin-top: 12px;"></div>
             </div>
 
             <!-- Section 3: Exports -->
@@ -1062,15 +1063,57 @@
                     <div class="bottleneck-card">
                         <div class="bottleneck-header"><strong>Bottleneck Snapshot (Today)</strong><span style="font-size:12px;color:#9aa;">${data.date}</span></div>
                         <div class="bottleneck-grid">
-                            <div class="bottleneck-item"><div style="font-size:20px;font-weight:700;color:#ffd166;">${data.awaiting_qa}</div><div style="font-size:12px;color:#cbd5e1;">Awaiting QA</div></div>
-                            <div class="bottleneck-item"><div style="font-size:20px;font-weight:700;color:#60a5fa;">${data.awaiting_sorting}</div><div style="font-size:12px;color:#cbd5e1;">Awaiting Sorting</div></div>
+                            <div class="bottleneck-item">
+                                <div style="font-size:20px;font-weight:700;color:#ffd166;">${data.awaiting_qa}</div>
+                                <div style="font-size:12px;color:#cbd5e1;">Awaiting QA</div>
+                                <div style="margin-top:8px;"><button class="small" onclick="viewBottleneckDetails('roller_awaiting_qa')">See more</button></div>
+                            </div>
+                            <div class="bottleneck-item">
+                                <div style="font-size:20px;font-weight:700;color:#60a5fa;">${data.awaiting_sorting}</div>
+                                <div style="font-size:12px;color:#cbd5e1;">Awaiting Sorting</div>
+                                <div style="margin-top:8px;"><button class="small" onclick="viewBottleneckDetails('roller_awaiting_pallet')">See more</button></div>
+                            </div>
                         </div>
                         <div style="margin-top:8px;font-size:12px;color:#94a3b8;">Note: counts sourced from dashboard endpoints (short cache ${60}s).</div>
                     </div>
                 `;
                 contentDiv.style.display = 'block';
+                // Clear any previous details
+                const detailsDiv = document.getElementById('bottleneckDetails');
+                if (detailsDiv) detailsDiv.innerHTML = '';
             } catch (error) {
                 showResult(resultDiv, 'error', '❌ Error', error.message);
+            }
+        }
+
+        async function viewBottleneckDetails(category) {
+            const detailsDiv = document.getElementById('bottleneckDetails');
+            detailsDiv.innerHTML = '<p>⏳ Loading details...</p>';
+            try {
+                const params = new URLSearchParams({ category: category, days: 1, limit: 200 });
+                const resp = await fetch(`/api/bottlenecks/details?${params.toString()}`, { headers: getAuthHeaders(false) });
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    detailsDiv.innerHTML = `<div class="result error">Failed to load details: ${err.detail || resp.status}</div>`;
+                    return;
+                }
+                const data = await resp.json();
+                const devices = data.devices || [];
+                if (devices.length === 0) {
+                    detailsDiv.innerHTML = '<p style="color:#999;">No devices found for this category.</p>';
+                    return;
+                }
+                let html = `<div style="margin-top:12px;"><strong>Showing ${data.showing} / ${data.total_count} devices</strong>`;
+                html += '<table class="table" style="width:100%;margin-top:8px;">';
+                html += '<thead><tr><th>StockID</th><th>Serial</th><th>Manufacturer</th><th>Condition</th><th>Roller</th><th>Stage</th></tr></thead><tbody>';
+                devices.forEach(d => {
+                    html += `<tr><td>${d.stockid || ''}</td><td>${d.serial || ''}</td><td>${d.manufacturer || ''}</td><td>${d.condition || ''}</td><td>${d.roller_location || d.location || ''}</td><td>${d.workflow_stage || d.stage_current || ''}</td></tr>`;
+                });
+                html += '</tbody></table></div>';
+                detailsDiv.innerHTML = html;
+                detailsDiv.scrollIntoView({ behavior: 'smooth' });
+            } catch (e) {
+                detailsDiv.innerHTML = `<div class="result error">Error loading details: ${e.message}</div>`;
             }
         }
 
