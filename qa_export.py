@@ -1762,6 +1762,124 @@ def get_unpalleted_devices_recent(days_threshold: int = 7) -> List[Dict[str, obj
     return devices
 
 
+def get_awaiting_qa_counts_for_date(target_date: date) -> Dict[str, int]:
+    """Return counts for erasures on `target_date` that are still awaiting QA.
+
+    Strategy:
+    - Read today's successful erasures from local SQLite (job_id/system_serial/disk_serial).
+    - Map serial -> stockid using ITAD_asset_info_blancco in MariaDB.
+    - For each mapped stockid, fetch the latest QA timestamp from ITAD_QA_App and the latest audit_master date_time.
+    - Consider an erasure matched if either QA/audit timestamp exists and is >= erasure timestamp.
+    - Return a small dict: { 'total_erasures': int, 'matched': int, 'awaiting_qa': int }
+
+    This uses short read-only queries and groups by stockid to avoid per-row DB churn.
+    """
+    # Defaults
+    result = {"total_erasures": 0, "matched": 0, "awaiting_qa": 0}
+
+    try:
+        # 1) Read local erasures for the date
+        sqlite_conn = sqlite3.connect(db.DB_PATH)
+        cur = sqlite_conn.cursor()
+        cur.execute(
+            """
+            SELECT ts, system_serial, disk_serial, job_id
+            FROM erasures
+            WHERE date = ? AND event = 'success'
+            ORDER BY ts ASC
+            """,
+            (target_date.isoformat(),)
+        )
+        rows = cur.fetchall()
+        cur.close()
+        sqlite_conn.close()
+
+        if not rows:
+            return result
+
+        # Build list of erasures with parsed timestamps and serial value
+        erasures = []
+        for ts, system_serial, disk_serial, job_id in rows:
+            serial_value = system_serial or disk_serial or job_id
+            if not serial_value:
+                # If we have no serial/job id, count as awaiting (can't match)
+                erasures.append({"serial": None, "ts": _parse_timestamp(ts)})
+            else:
+                erasures.append({"serial": str(serial_value).strip(), "ts": _parse_timestamp(ts)})
+
+        result["total_erasures"] = len(erasures)
+
+        # 2) Map serial -> stockid via ITAD_asset_info_blancco
+        serials = [e["serial"] for e in erasures if e.get("serial")]
+        stockid_map = {}
+        if serials:
+            # de-dup and limit to reasonable batch size
+            unique_serials = list({s for s in serials if s})
+            # Use safe_read to fetch mappings
+            placeholders = ",".join(["%s"] * len(unique_serials))
+            query = f"SELECT stockid, serial FROM ITAD_asset_info_blancco WHERE serial IN ({placeholders})"
+            try:
+                rows = safe_read(query, tuple(unique_serials))
+                for stockid, serial in rows:
+                    if serial:
+                        stockid_map[str(serial)] = stockid
+            except Exception:
+                # If MariaDB unavailable, return early and leave awaiting_qa as default based on totals
+                return result
+
+        # 3) For all found stockids get latest QA/audit timestamps
+        stockids = list({v for v in stockid_map.values() if v})
+        qa_latest = {}
+        audit_latest = {}
+        if stockids:
+            placeholders = ",".join(["%s"] * len(stockids))
+            # ITAD_QA_App latest added_date per stockid
+            try:
+                q_rows = safe_read(f"SELECT stockid, MAX(added_date) FROM ITAD_QA_App WHERE stockid IN ({placeholders}) GROUP BY stockid", tuple(stockids))
+                for stockid, max_dt in q_rows:
+                    qa_latest[str(stockid)] = max_dt
+            except Exception:
+                pass
+
+            # audit_master latest date_time per sales_order (DEAPP submissions)
+            try:
+                a_rows = safe_read(f"SELECT sales_order, MAX(date_time) FROM audit_master WHERE sales_order IN ({placeholders}) AND audit_type IN ('DEAPP_Submission','DEAPP_Submission_EditStock_Payload') GROUP BY sales_order", tuple(stockids))
+                for sales_order, max_dt in a_rows:
+                    audit_latest[str(sales_order)] = max_dt
+            except Exception:
+                pass
+
+        # 4) Compare per erasure whether there is a QA/audit after erasure ts
+        matched = 0
+        for e in erasures:
+            er_ts = e.get("ts")
+            serial = e.get("serial")
+            if not serial:
+                # No serial => cannot match, treat as awaiting
+                continue
+            stockid = stockid_map.get(serial)
+            if not stockid:
+                # No mapping found => awaiting
+                continue
+            latest = None
+            qa_dt = qa_latest.get(str(stockid))
+            aud_dt = audit_latest.get(str(stockid))
+            if qa_dt and (not latest or qa_dt > latest):
+                latest = qa_dt
+            if aud_dt and (not latest or aud_dt > latest):
+                latest = aud_dt
+            if latest and er_ts and latest >= er_ts:
+                matched += 1
+
+        result["matched"] = matched
+        result["awaiting_qa"] = max(0, result["total_erasures"] - matched)
+        return result
+
+    except Exception as e:
+        print(f"[QA Export] Error computing awaiting QA counts: {e}")
+        return result
+
+
 def get_unpalleted_summary(destination: str = None, days_threshold: int = 7) -> Dict[str, object]:
     """Return aggregated counts for current unpalleted devices.
 

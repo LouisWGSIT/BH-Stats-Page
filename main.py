@@ -2131,26 +2131,51 @@ async def device_lookup(stock_id: str, request: Request):
         
         # 1. Check ITAD_asset_info for asset details
         asset_row = None
+        # Some deployments have newer optional columns (quarantine, etc.).
+        # Probe INFORMATION_SCHEMA for the presence of the `quarantine` column
+        # to avoid issuing a SELECT that references missing columns (which
+        # caused the "Unknown column 'quarantine'" error previously).
         try:
-            cursor.execute("""
-                SELECT stockid, serialnumber, manufacturer, description, `condition`, 
-                       COALESCE(pallet_id, palletID) as pallet_id, last_update, location,
-                       roller_location, stage_current, stage_next, received_date,
-                       quarantine, quarantine_reason, process_complete,
-                       de_complete, de_completed_by, de_completed_date
-                FROM ITAD_asset_info 
-                WHERE stockid = %s OR serialnumber = %s
-            """, (stock_id, stock_id))
+            try:
+                cursor.execute(
+                    "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = %s AND TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = %s",
+                    ("ITAD_asset_info", "quarantine")
+                )
+                has_quarantine = cursor.fetchone() is not None
+            except Exception:
+                # If the probe fails (lack of privilege), default to safe path
+                has_quarantine = False
+
+            if has_quarantine:
+                cursor.execute("""
+                    SELECT stockid, serialnumber, manufacturer, description, `condition`, 
+                           COALESCE(pallet_id, palletID) as pallet_id, last_update, location,
+                           roller_location, stage_current, stage_next, received_date,
+                           quarantine, quarantine_reason, process_complete,
+                           de_complete, de_completed_by, de_completed_date
+                    FROM ITAD_asset_info 
+                    WHERE stockid = %s OR serialnumber = %s
+                """, (stock_id, stock_id))
+            else:
+                cursor.execute("""
+                    SELECT stockid, serialnumber, manufacturer, description, `condition`, 
+                           COALESCE(pallet_id, palletID) as pallet_id, last_update, location
+                    FROM ITAD_asset_info 
+                    WHERE stockid = %s OR serialnumber = %s
+                """, (stock_id, stock_id))
             asset_row = cursor.fetchone()
         except Exception:
-            # Fallback for schemas without newer columns
-            cursor.execute("""
-                SELECT stockid, serialnumber, manufacturer, description, `condition`, 
-                       COALESCE(pallet_id, palletID) as pallet_id, last_update, location
-                FROM ITAD_asset_info 
-                WHERE stockid = %s OR serialnumber = %s
-            """, (stock_id, stock_id))
-            asset_row = cursor.fetchone()
+            # As a final fallback, try the minimal projection to avoid hard failures
+            try:
+                cursor.execute("""
+                    SELECT stockid, serialnumber, manufacturer, description, `condition`, 
+                           COALESCE(pallet_id, palletID) as pallet_id, last_update, location
+                    FROM ITAD_asset_info 
+                    WHERE stockid = %s OR serialnumber = %s
+                """, (stock_id, stock_id))
+                asset_row = cursor.fetchone()
+            except Exception:
+                asset_row = None
         row = asset_row
         if row:
             results["found_in"].append("ITAD_asset_info")
@@ -2634,8 +2659,27 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
         qa_app = daily.get("qaApp") or qa_dash.get("summary", {}).get("totalScans") or 0
         erased = daily.get("erased") or 0
 
+        # Default lightweight calculation (bounded to dashboard totals)
         awaiting_qa = max(0, int(erased) - int(qa_total))
         awaiting_sorting = max(0, int(qa_total) - int(qa_app))
+
+        # Attempt a more precise, device-level awaiting QA count by mapping
+        # today's erasures (local SQLite) to stockids (MariaDB) and checking
+        # for a QA/audit timestamp >= erasure timestamp. This is read-only
+        # and grouped; if it fails we fall back to dashboard totals above.
+        try:
+            from datetime import date as _date
+            precise = qa_export.get_awaiting_qa_counts_for_date(_date.fromisoformat(target_date))
+            if precise and isinstance(precise, dict):
+                # Use the precise awaiting_qa where available (keeps value bounded by erased)
+                awaiting_qa = int(precise.get("awaiting_qa", awaiting_qa))
+                # Attach diagnostic fields to the result later
+                precise_meta = precise
+            else:
+                precise_meta = None
+        except Exception as _e:
+            print(f"[Bottleneck-From-Dashboard] precise awaiting_qa check failed: {_e}")
+            precise_meta = None
 
         # Use dashboard-derived counts only (erased - qa_total) to keep bottleneck
         # bounded by today's data captured on the Erasure/QA dashboards.
@@ -2692,6 +2736,14 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
             "owen_pallet_sample": owen_pallet_sample,
             "note": "Data sourced from dashboard PowerBI and QA endpoints (today-only)."
         }
+
+        # Include precise matching diagnostics when available
+        if 'precise_meta' in locals() and precise_meta:
+            result.update({
+                "precise_total_erasures": int(precise_meta.get("total_erasures", 0)),
+                "precise_matched_qas": int(precise_meta.get("matched", 0)),
+                "precise_awaiting_qa": int(precise_meta.get("awaiting_qa", 0)),
+            })
 
         print(f"[Bottleneck-From-Dashboard] computed awaiting_qa={awaiting_qa} awaiting_sorting={awaiting_sorting}")
         try:
