@@ -19,9 +19,10 @@ import io
 import sqlite3
 import qa_export
 import logging
+from logging_config import configure_logging
 
-# Configure root logger to ensure logs appear in Render stdout
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+# Configure root logger to emit structured JSON logs (includes request_id)
+configure_logging(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")))
 app = FastAPI(title="Warehouse Stats Service")
 
 from uuid import uuid4
