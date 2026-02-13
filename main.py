@@ -2637,22 +2637,8 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
         awaiting_qa = max(0, int(erased) - int(qa_total))
         awaiting_sorting = max(0, int(qa_total) - int(qa_app))
 
-        # If the simple dashboard-derived calculation reports zero awaiting QA,
-        # try a lightweight, focused summary from `qa_export.get_unpalleted_summary`
-        # which computes awaiting_qa via MariaDB aggregations (safer and more accurate).
-        # This is a targeted fallback for counts only (not the heavy full snapshot).
-        try:
-            import qa_export as _qa_fallback
-            try:
-                _summary = _qa_fallback.get_unpalleted_summary(days_threshold=3)
-                _fallback_awaiting = int(_summary.get('awaiting_qa', 0) or 0)
-                if _fallback_awaiting > awaiting_qa:
-                    awaiting_qa = _fallback_awaiting
-            except Exception:
-                # If the fallback query fails, keep the dashboard-derived value
-                pass
-        except Exception:
-            pass
+        # Use dashboard-derived counts only (erased - qa_total) to keep bottleneck
+        # bounded by today's data captured on the Erasure/QA dashboards.
 
         # Find QA counts for requested qa_user (e.g., 'solomon')
         user_count = None
