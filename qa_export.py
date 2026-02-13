@@ -2155,9 +2155,14 @@ def get_roller_queue_status(days_threshold: int = 1, target_date: date | None = 
                         else:
                             roller_name = 'Unknown Roller'
 
-            if has_erasures and not has_qa:
+            # Determine latest erasure vs QA timestamps to assign stage.
+            last_erasure_ts = _parse_timestamp(de_completed_date) if de_completed_date else None
+            last_qa_ts = _parse_timestamp(last_qa_date) if last_qa_date else None
+
+            # If we have an explicit erasure timestamp newer than QA, or we have blancco/erasure flags but no QA, mark awaiting QA.
+            if (last_erasure_ts and (not last_qa_ts or last_erasure_ts >= last_qa_ts)) or (has_blancco and not last_qa_ts) or (is_erased_flag and not last_qa_ts):
                 stage = "awaiting_qa"
-            elif has_qa and not has_pallet:
+            elif last_qa_ts and not has_pallet:
                 stage = "awaiting_sorting"
             else:
                 continue
