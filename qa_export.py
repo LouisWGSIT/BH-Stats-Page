@@ -1086,8 +1086,8 @@ def get_all_time_daily_record() -> Dict:
                 WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
                   AND user_id IS NOT NULL AND user_id <> ''
                   AND sales_order IS NOT NULL AND sales_order <> ''
-                  AND user_id NOT LIKE '%mark.aldington%'
-                  AND user_id NOT LIKE '%brandon.brace%'
+                  AND user_id NOT LIKE '%%mark.aldington%%'
+                  AND user_id NOT LIKE '%%brandon.brace%%'
                 GROUP BY user_id, DATE(date_time)
             ) ranked
             WHERE rn = 1

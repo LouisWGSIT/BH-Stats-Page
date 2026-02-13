@@ -21,11 +21,11 @@ def main():
         print('NOPOST counts:')
         pprint(counts)
 
-        cursor.execute("SELECT COUNT(*) FROM ITAD_asset_info WHERE pallet_id LIKE 'NOPOST%'")
+        cursor.execute("SELECT COUNT(*) FROM ITAD_asset_info WHERE pallet_id LIKE 'NOPOST%%'")
         total_nopost = cursor.fetchone()[0]
         print('Total NOPOST* rows:', total_nopost)
 
-        cursor.execute("SELECT stockid, serialnumber, roller_location, last_update, de_complete, pallet_id, description FROM ITAD_asset_info WHERE pallet_id LIKE 'NOPOST%' LIMIT 20")
+        cursor.execute("SELECT stockid, serialnumber, roller_location, last_update, de_complete, pallet_id, description FROM ITAD_asset_info WHERE pallet_id LIKE 'NOPOST%%' LIMIT 20")
         rows = cursor.fetchall()
         cols = [d[0] for d in cursor.description]
         print('Sample NOPOST rows:')

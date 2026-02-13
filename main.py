@@ -2843,7 +2843,7 @@ async def get_bottleneck_details(
                     {base_select}
                     WHERE (a.roller_location = %s OR a.roller_location LIKE %s)
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
                                             {recent_clause}
                     ORDER BY a.received_date DESC
                     LIMIT %s
@@ -2861,7 +2861,7 @@ async def get_bottleneck_details(
                       AND a.roller_location != ''
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
                       AND (a.de_complete IS NULL OR LOWER(a.de_complete) NOT IN ('yes', 'true', '1'))
                       AND ({type_clause})
                                             {recent_clause}
@@ -2879,7 +2879,7 @@ async def get_bottleneck_details(
                       AND a.roller_location != ''
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
                       AND (
                         (LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
                          AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid AND q.added_date > a.de_completed_date))
@@ -2899,7 +2899,7 @@ async def get_bottleneck_details(
                       AND a.roller_location != ''
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
                       AND EXISTS (
                         SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid 
                         AND (a.de_completed_date IS NULL OR q.added_date > a.de_completed_date)
@@ -2949,7 +2949,7 @@ async def get_bottleneck_details(
                     SELECT COUNT(*) FROM ITAD_asset_info 
                     WHERE (roller_location = %s OR roller_location LIKE %s)
                       AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND (COALESCE(pallet_id, palletID, '') = '' OR COALESCE(pallet_id, palletID) IS NULL OR COALESCE(pallet_id, palletID) LIKE 'NOPOST%')
+                      AND (COALESCE(pallet_id, palletID, '') = '' OR COALESCE(pallet_id, palletID) IS NULL OR COALESCE(pallet_id, palletID) LIKE 'NOPOST%%')
                                             AND last_update IS NOT NULL
                                             AND last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
                                 """, (value, f"%:{value}", days))
@@ -2963,7 +2963,7 @@ async def get_bottleneck_details(
                                         WHERE roller_location IS NOT NULL AND roller_location != ''
                                             AND LOWER(roller_location) LIKE '%%roller%%'
                                             AND `condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                                            AND (COALESCE(pallet_id, palletID, '') = '' OR COALESCE(pallet_id, palletID) IS NULL OR COALESCE(pallet_id, palletID) LIKE 'NOPOST%')
+                                            AND (COALESCE(pallet_id, palletID, '') = '' OR COALESCE(pallet_id, palletID) IS NULL OR COALESCE(pallet_id, palletID) LIKE 'NOPOST%%')
                                             AND (de_complete IS NULL OR LOWER(de_complete) NOT IN ('yes', 'true', '1'))
                                             AND ({type_clause})
                                                                                         AND last_update IS NOT NULL
@@ -2976,7 +2976,7 @@ async def get_bottleneck_details(
                     WHERE a.roller_location IS NOT NULL AND a.roller_location != ''
                       AND LOWER(a.roller_location) LIKE '%%roller%%'
                       AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%')
+                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
                       AND (
                         (LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
                          AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid AND q.added_date > a.de_completed_date))
