@@ -2557,6 +2557,90 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
         return JSONResponse(status_code=500, content={"detail": "Bottleneck snapshot failed (server error). Check server logs."})
 
 
+@app.get("/api/bottlenecks/from-dashboard")
+async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
+    """Lightweight bottleneck snapshot built from existing dashboard endpoints (today-only by default).
+
+    Returns simple counts: awaiting_qa and awaiting_sorting plus small QA/erasure samples.
+    """
+    from datetime import date as _date, datetime as _dt
+
+    try:
+        target_date = date if date else _date.today().isoformat()
+
+        # Get merged daily stats (includes erased, qaApp, deQa, nonDeQa, qaTotal)
+        daily_resp = await powerbi_daily_stats(start_date=target_date, end_date=target_date)
+        daily_rows = daily_resp.get("data", []) if isinstance(daily_resp, dict) else []
+        daily = daily_rows[0] if daily_rows else {}
+
+        # Get QA dashboard today to fetch per-engineer counts
+        qa_dash = await get_qa_dashboard_data(period="today")
+
+        # Compute combined QA totals
+        qa_total = daily.get("qaTotal") or qa_dash.get("summary", {}).get("combinedScans") or 0
+        qa_app = daily.get("qaApp") or qa_dash.get("summary", {}).get("totalScans") or 0
+        erased = daily.get("erased") or 0
+
+        awaiting_qa = max(0, int(erased) - int(qa_total))
+        awaiting_sorting = max(0, int(qa_total) - int(qa_app))
+
+        # Find QA counts for requested qa_user (e.g., 'solomon')
+        user_count = None
+        if qa_user and qa_dash and qa_dash.get("technicians"):
+            for tech in qa_dash["technicians"]:
+                if qa_user.lower() in str(tech.get("name", "")).lower():
+                    user_count = tech.get("combinedScans")
+                    break
+
+        # Get erasure events for the day and aggregate by initials
+        erasures_resp = await powerbi_erasure_events(start_date=target_date, end_date=target_date)
+        erasures = erasures_resp.get("data", []) if isinstance(erasures_resp, dict) else []
+        erasure_by_initials = {}
+        for ev in erasures:
+            init = ev.get("initials") or ""
+            if not init:
+                continue
+            erasure_by_initials[init] = erasure_by_initials.get(init, 0) + 1
+
+        # Find a sample pallet-scan by Owen in device history (stage == 'Sorting')
+        device_hist = await powerbi_device_history(start_date=target_date, end_date=target_date)
+        hist_rows = device_hist.get("data", []) if isinstance(device_hist, dict) else []
+        owen_pallet_sample = None
+        for row in hist_rows:
+            user = str(row.get("user") or "")
+            stage = str(row.get("stage") or "")
+            if "owen" in user.lower() and stage.lower() == "sorting":
+                owen_pallet_sample = {
+                    "timestamp": row.get("timestamp"),
+                    "stockid": row.get("stockid"),
+                    "user": user,
+                    "stage": stage,
+                    "location": row.get("location")
+                }
+                break
+
+        result = {
+            "timestamp": _dt.now().isoformat(),
+            "date": target_date,
+            "awaiting_qa": awaiting_qa,
+            "awaiting_sorting": awaiting_sorting,
+            "erased": int(erased),
+            "qa_total": int(qa_total),
+            "qa_app": int(qa_app),
+            "user_combined_scans": user_count,
+            "erasure_by_initials": erasure_by_initials,
+            "owen_pallet_sample": owen_pallet_sample,
+            "note": "Data sourced from dashboard PowerBI and QA endpoints (today-only)."
+        }
+
+        return JSONResponse(status_code=200, content=result)
+    except Exception as e:
+        print(f"[Bottleneck-From-Dashboard] error: {e}")
+        import traceback as _tb
+        _tb.print_exc()
+        return JSONResponse(status_code=500, content={"detail": "Failed to build bottleneck from dashboard."})
+
+
 @app.get("/api/bottlenecks/details")
 async def get_bottleneck_details(
     request: Request,
