@@ -22,6 +22,37 @@ from typing import List, Tuple, Dict
 from pathlib import Path
 import os
 from collections import defaultdict
+from contextlib import contextmanager
+
+
+# SQLite transaction helper to ensure commits/rollbacks and proper closing
+@contextmanager
+def sqlite_transaction(db_path=None, timeout=5.0):
+    """Context manager yielding a (conn, cursor) tuple.
+
+    Commits on success, rolls back on exception, and always closes connection.
+    """
+    path = db_path or DB_PATH
+    conn = sqlite3.connect(path, timeout=timeout)
+    cur = conn.cursor()
+    try:
+        yield conn, cur
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 # --- ALL TIME AGGREGATION ---
 def get_all_time_totals(group_by: str = None):
@@ -84,42 +115,37 @@ def get_monthly_momentum() -> Dict:
 # --- SYNC FUNCTION: Populate engineer_stats_type from erasures ---
 def sync_engineer_stats_type_from_erasures(date_str: str = None):
     """Populate engineer_stats_type from erasures for a date (or all recent dates if None)"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    if date_str:
-        # Just one date
-        cursor.execute("""
-            SELECT DISTINCT initials, device_type FROM erasures WHERE date = ? AND initials IS NOT NULL AND device_type IS NOT NULL
-        """, (date_str,))
-        records = [(date_str, row[0], row[1]) for row in cursor.fetchall()]
-    else:
-        # All recent dates with data (last 30 days)
-        cursor.execute("""
-            SELECT DISTINCT date, initials, device_type FROM erasures 
-            WHERE initials IS NOT NULL AND device_type IS NOT NULL AND date >= date('now', '-30 days')
-        """)
-        records = cursor.fetchall()
     synced_count = 0
-    for record in records:
+    # Use safe sqlite transaction context
+    with sqlite_transaction() as (conn, cursor):
         if date_str:
-            target_date, initials, device_type = record
+            cursor.execute("""
+                SELECT DISTINCT initials, device_type FROM erasures WHERE date = ? AND initials IS NOT NULL AND device_type IS NOT NULL
+            """, (date_str,))
+            records = [(date_str, row[0], row[1]) for row in cursor.fetchall()]
         else:
+            cursor.execute("""
+                SELECT DISTINCT date, initials, device_type FROM erasures 
+                WHERE initials IS NOT NULL AND device_type IS NOT NULL AND date >= date('now', '-30 days')
+            """)
+            records = cursor.fetchall()
+
+        for record in records:
             target_date, initials, device_type = record
-        # Count successful erasures for this date+engineer+device_type
-        cursor.execute("""
-            SELECT COUNT(1)
-            FROM erasures
-            WHERE date = ? AND initials = ? AND device_type = ? AND event = 'success'
-        """, (target_date, initials, device_type))
-        count = cursor.fetchone()[0]
-        # Insert or replace in engineer_stats_type
-        cursor.execute("""
-            INSERT OR REPLACE INTO engineer_stats_type (date, device_type, initials, count)
-            VALUES (?, ?, ?, ?)
-        """, (target_date, device_type, initials, count))
-        synced_count += 1
-    conn.commit()
-    conn.close()
+            # Count successful erasures for this date+engineer+device_type
+            cursor.execute("""
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ? AND initials = ? AND device_type = ? AND event = 'success'
+            """, (target_date, initials, device_type))
+            count = cursor.fetchone()[0]
+            # Insert or replace in engineer_stats_type
+            cursor.execute("""
+                INSERT OR REPLACE INTO engineer_stats_type (date, device_type, initials, count)
+                VALUES (?, ?, ?, ?)
+            """, (target_date, device_type, initials, count))
+            synced_count += 1
+
     if synced_count > 0:
         print(f"[DB Sync] Synced {synced_count} engineer_stats_type records")
     return synced_count
@@ -129,128 +155,123 @@ DB_PATH = os.getenv("STATS_DB_PATH", str(Path(__file__).parent / "warehouse_stat
 
 def init_db():
     """Initialize database with required tables"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Daily stats table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS daily_stats (
-            date TEXT PRIMARY KEY,
-            booked_in INTEGER DEFAULT 0,
-            erased INTEGER DEFAULT 0,
-            qa INTEGER DEFAULT 0
-        )
-    """)
-    
-    # Engineer stats table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS engineer_stats (
-            date TEXT,
-            initials TEXT,
-            count INTEGER DEFAULT 0,
-            PRIMARY KEY (date, initials)
-        )
-    """)
+    with sqlite_transaction() as (conn, cursor):
+        # Daily stats table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS daily_stats (
+                date TEXT PRIMARY KEY,
+                booked_in INTEGER DEFAULT 0,
+                erased INTEGER DEFAULT 0,
+                qa INTEGER DEFAULT 0
+            )
+        """)
 
-    # Engineer stats by device type
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS engineer_stats_type (
-            date TEXT,
-            device_type TEXT,
-            initials TEXT,
-            count INTEGER DEFAULT 0,
-            PRIMARY KEY (date, device_type, initials)
-        )
-    """)
-    
-    # Seen IDs table for deduplication
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS seen_ids (
-            date TEXT,
-            job_id TEXT,
-            PRIMARY KEY (date, job_id)
-        )
-    """)
+        # Engineer stats table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS engineer_stats (
+                date TEXT,
+                initials TEXT,
+                count INTEGER DEFAULT 0,
+                PRIMARY KEY (date, initials)
+            )
+        """)
 
-    # Detailed erasure events
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS erasures (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts TEXT,
-            date TEXT,
-            month TEXT,
-            event TEXT,             -- success|failure|connected
-            device_type TEXT,       -- laptops_desktops|servers|loose_drives|macs|mobiles
-            initials TEXT,
-            duration_sec INTEGER,
-            error_type TEXT,
-            job_id TEXT,
-            manufacturer TEXT,      -- Device manufacturer (e.g., HP, Dell, Apple)
-            model TEXT,             -- Device model (e.g., EliteBook 840 G5)
-            system_serial TEXT,     -- System serial number
-            disk_serial TEXT,       -- Disk serial number
-            drive_size INTEGER,     -- Total drive capacity in GB
-            drive_count INTEGER,    -- Number of drives
-            drive_type TEXT         -- HDD, SSD, or NVMe
-        )
-    """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_date ON erasures(date)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_month ON erasures(month)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_type ON erasures(device_type)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_initials ON erasures(initials)")
-    
-    # Add new columns if they don't exist (migration)
-    try:
-        cursor.execute("ALTER TABLE erasures ADD COLUMN manufacturer TEXT")
-    except:
-        pass
-    try:
-        cursor.execute("ALTER TABLE erasures ADD COLUMN model TEXT")
-    except:
-        pass
-    try:
-        cursor.execute("ALTER TABLE erasures ADD COLUMN system_serial TEXT")
-    except:
-        pass
-    try:
-        cursor.execute("ALTER TABLE erasures ADD COLUMN disk_serial TEXT")
-    except:
-        pass
-    try:
-        cursor.execute("ALTER TABLE erasures ADD COLUMN drive_size INTEGER")
-    except:
-        pass
-    try:
-        cursor.execute("ALTER TABLE erasures ADD COLUMN drive_count INTEGER")
-    except:
-        pass
-    try:
-        cursor.execute("ALTER TABLE erasures ADD COLUMN drive_type TEXT")
-    except:
-        pass
+        # Engineer stats by device type
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS engineer_stats_type (
+                date TEXT,
+                device_type TEXT,
+                initials TEXT,
+                count INTEGER DEFAULT 0,
+                PRIMARY KEY (date, device_type, initials)
+            )
+        """)
 
-    # Admin action history for undo support
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS admin_actions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            action TEXT,
-            from_initials TEXT,
-            to_initials TEXT,
-            created_at TEXT,
-            affected INTEGER DEFAULT 0
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS admin_action_rows (
-            action_id INTEGER,
-            rowid INTEGER,
-            old_initials TEXT
-        )
-    """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_action_rows_action ON admin_action_rows(action_id)")
-    
-    conn.commit()
-    conn.close()
+        # Seen IDs table for deduplication
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS seen_ids (
+                date TEXT,
+                job_id TEXT,
+                PRIMARY KEY (date, job_id)
+            )
+        """)
+
+        # Detailed erasure events
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS erasures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT,
+                date TEXT,
+                month TEXT,
+                event TEXT,             -- success|failure|connected
+                device_type TEXT,       -- laptops_desktops|servers|loose_drives|macs|mobiles
+                initials TEXT,
+                duration_sec INTEGER,
+                error_type TEXT,
+                job_id TEXT,
+                manufacturer TEXT,      -- Device manufacturer (e.g., HP, Dell, Apple)
+                model TEXT,             -- Device model (e.g., EliteBook 840 G5)
+                system_serial TEXT,     -- System serial number
+                disk_serial TEXT,       -- Disk serial number
+                drive_size INTEGER,     -- Total drive capacity in GB
+                drive_count INTEGER,    -- Number of drives
+                drive_type TEXT         -- HDD, SSD, or NVMe
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_date ON erasures(date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_month ON erasures(month)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_type ON erasures(device_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_initials ON erasures(initials)")
+
+        # Add new columns if they don't exist (migration)
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN manufacturer TEXT")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN model TEXT")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN system_serial TEXT")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN disk_serial TEXT")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN drive_size INTEGER")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN drive_count INTEGER")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN drive_type TEXT")
+        except:
+            pass
+
+        # Admin action history for undo support
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT,
+                from_initials TEXT,
+                to_initials TEXT,
+                created_at TEXT,
+                affected INTEGER DEFAULT 0
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_action_rows (
+                action_id INTEGER,
+                rowid INTEGER,
+                old_initials TEXT
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_action_rows_action ON admin_action_rows(action_id)")
 
 def get_today_str() -> str:
     """Get today's date as string"""
@@ -267,13 +288,10 @@ def get_yesterday_str() -> str:
 
 def delete_event_by_job(job_id: str) -> int:
     """Delete erasure events and seen_id by job_id. Returns rows deleted from erasures."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM erasures WHERE job_id = ?", (job_id,))
-    deleted = cursor.rowcount
-    cursor.execute("DELETE FROM seen_ids WHERE job_id = ?", (job_id,))
-    conn.commit()
-    conn.close()
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute("DELETE FROM erasures WHERE job_id = ?", (job_id,))
+        deleted = cursor.rowcount
+        cursor.execute("DELETE FROM seen_ids WHERE job_id = ?", (job_id,))
     return deleted
 
 def get_daily_stats(date_str: str = None) -> Dict[str, int]:
@@ -303,18 +321,13 @@ def increment_stat(stat_name: str, amount: int = 1, date_str: str = None):
     column_map = {"bookedIn": "booked_in", "erased": "erased", "qa": "qa"}
     column = column_map.get(stat_name, stat_name)
     
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Insert or update
-    cursor.execute(f"""
-        INSERT INTO daily_stats (date, {column})
-        VALUES (?, ?)
-        ON CONFLICT(date) DO UPDATE SET {column} = {column} + ?
-    """, (date_str, amount, amount))
-    
-    conn.commit()
-    conn.close()
+    with sqlite_transaction() as (conn, cursor):
+        # Insert or update
+        cursor.execute(f"""
+            INSERT INTO daily_stats (date, {column})
+            VALUES (?, ?)
+            ON CONFLICT(date) DO UPDATE SET {column} = {column} + ?
+        """, (date_str, amount, amount))
 
 def is_job_seen(job_id: str, date_str: str = None) -> bool:
     """Check if a job ID has been seen today"""
@@ -335,45 +348,35 @@ def mark_job_seen(job_id: str, date_str: str = None):
     """Mark a job ID as seen"""
     if date_str is None:
         date_str = get_today_str()
-    
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR IGNORE INTO seen_ids (date, job_id) VALUES (?, ?)",
-        (date_str, job_id)
-    )
-    conn.commit()
-    conn.close()
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute(
+            "INSERT OR IGNORE INTO seen_ids (date, job_id) VALUES (?, ?)",
+            (date_str, job_id)
+        )
 
 def increment_engineer_count(initials: str, amount: int = 1, date_str: str = None):
     """Increment engineer erasure count"""
     if date_str is None:
         date_str = get_today_str()
     
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO engineer_stats (date, initials, count)
-        VALUES (?, ?, ?)
-        ON CONFLICT(date, initials) DO UPDATE SET count = count + ?
-    """, (date_str, initials, amount, amount))
-    conn.commit()
-    conn.close()
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute("""
+            INSERT INTO engineer_stats (date, initials, count)
+            VALUES (?, ?, ?)
+            ON CONFLICT(date, initials) DO UPDATE SET count = count + ?
+        """, (date_str, initials, amount, amount))
 
 def increment_engineer_type_count(device_type: str, initials: str, amount: int = 1, date_str: str = None):
     """Increment engineer erasure count for a specific device type"""
     if date_str is None:
         date_str = get_today_str()
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO engineer_stats_type (date, device_type, initials, count)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(date, device_type, initials) DO UPDATE SET count = count + ?
-    """, (date_str, device_type, initials, amount, amount))
-    conn.commit()
-    conn.close()
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute("""
+            INSERT INTO engineer_stats_type (date, device_type, initials, count)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(date, device_type, initials) DO UPDATE SET count = count + ?
+        """, (date_str, device_type, initials, amount, amount))
 
 def add_erasure_event(*, event: str, device_type: str, initials: str = None, duration_sec: int = None,
                       error_type: str = None, job_id: str = None, ts: str = None,
@@ -386,19 +389,16 @@ def add_erasure_event(*, event: str, device_type: str, initials: str = None, dur
     d = ts[:10]
     month = ts[:7]
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO erasures (ts, date, month, event, device_type, initials, duration_sec, error_type, job_id,
-                     manufacturer, model, system_serial, disk_serial, drive_size, drive_count, drive_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (ts, d, month, event, device_type, (initials or None), duration_sec, (error_type or None), (job_id or None),
-         (manufacturer or None), (model or None), (system_serial or None), (disk_serial or None), (disk_capacity or None), None, None)
-    )
-    conn.commit()
-    conn.close()
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute(
+            """
+            INSERT INTO erasures (ts, date, month, event, device_type, initials, duration_sec, error_type, job_id,
+                         manufacturer, model, system_serial, disk_serial, drive_size, drive_count, drive_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (ts, d, month, event, device_type, (initials or None), duration_sec, (error_type or None), (job_id or None),
+             (manufacturer or None), (model or None), (system_serial or None), (disk_serial or None), (disk_capacity or None), None, None)
+        )
 
 def get_summary_today_month(date_str: str = None):
     """Return totals for a specific date and its month, success rate and avg duration.
@@ -1620,53 +1620,48 @@ def sync_engineer_stats_from_erasures(date_str: str = None):
     If date_str is provided, sync only that date.
     If None, sync all dates from the last 30 days.
     """
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    if date_str:
-        # Just one specific date
-        cursor.execute("""
-            SELECT DISTINCT initials 
-            FROM erasures 
-            WHERE date = ? AND initials IS NOT NULL
-        """, (date_str,))
-        records = [(date_str, row[0]) for row in cursor.fetchall()]
-    else:
-        # All recent dates with data (last 30 days)
-        cursor.execute("""
-            SELECT DISTINCT date, initials 
-            FROM erasures 
-            WHERE initials IS NOT NULL 
-            AND date >= date('now', '-30 days')
-        """)
-        records = cursor.fetchall()
-    
     synced_count = 0
-    for record in records:
+    with sqlite_transaction() as (conn, cursor):
         if date_str:
-            target_date = record[0]
-            initials = record[1]
+            # Just one specific date
+            cursor.execute("""
+                SELECT DISTINCT initials 
+                FROM erasures 
+                WHERE date = ? AND initials IS NOT NULL
+            """, (date_str,))
+            records = [(date_str, row[0]) for row in cursor.fetchall()]
         else:
-            target_date, initials = record
-        
-        # Count successful erasures for this date+engineer
-        cursor.execute("""
-            SELECT COUNT(1) 
-            FROM erasures 
-            WHERE date = ? AND initials = ? AND event = 'success'
-        """, (target_date, initials))
-        
-        count = cursor.fetchone()[0]
-        
-        # Insert or replace in engineer_stats
-        cursor.execute("""
-            INSERT OR REPLACE INTO engineer_stats (date, initials, count)
-            VALUES (?, ?, ?)
-        """, (target_date, initials, count))
-        synced_count += 1
-    
-    conn.commit()
-    conn.close()
+            # All recent dates with data (last 30 days)
+            cursor.execute("""
+                SELECT DISTINCT date, initials 
+                FROM erasures 
+                WHERE initials IS NOT NULL 
+                AND date >= date('now', '-30 days')
+            """)
+            records = cursor.fetchall()
+
+        for record in records:
+            if date_str:
+                target_date = record[0]
+                initials = record[1]
+            else:
+                target_date, initials = record
+
+            # Count successful erasures for this date+engineer
+            cursor.execute("""
+                SELECT COUNT(1) 
+                FROM erasures 
+                WHERE date = ? AND initials = ? AND event = 'success'
+            """, (target_date, initials))
+
+            count = cursor.fetchone()[0]
+
+            # Insert or replace in engineer_stats
+            cursor.execute("""
+                INSERT OR REPLACE INTO engineer_stats (date, initials, count)
+                VALUES (?, ?, ?)
+            """, (target_date, initials, count))
+            synced_count += 1
     
     if synced_count > 0:
         print(f"[DB Sync] Synced {synced_count} engineer_stats records")

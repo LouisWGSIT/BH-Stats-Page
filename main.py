@@ -120,24 +120,22 @@ def load_device_tokens():
     # Prefer SQLite-backed storage if configured (set DEVICE_TOKENS_DB env var)
     if DEVICE_TOKENS_DB:
         try:
-            conn = sqlite3.connect(DEVICE_TOKENS_DB, timeout=2)
-            cur = conn.cursor()
-            cur.execute("CREATE TABLE IF NOT EXISTS device_tokens (token TEXT PRIMARY KEY, data TEXT)")
-            cur.execute("SELECT data FROM device_tokens")
-            rows = cur.fetchall()
-            conn.close()
             result = {}
-            for (d,) in rows:
-                try:
-                    parsed = json.loads(d)
-                    token_key = parsed.get('token') or parsed.get('device_token')
-                    if token_key:
-                        # remove embedded token key to avoid duplication
-                        parsed.pop('token', None)
-                        parsed.pop('device_token', None)
-                        result[token_key] = parsed
-                except Exception:
-                    continue
+            with db.sqlite_transaction(DEVICE_TOKENS_DB, timeout=2) as (conn, cur):
+                cur.execute("CREATE TABLE IF NOT EXISTS device_tokens (token TEXT PRIMARY KEY, data TEXT)")
+                cur.execute("SELECT data FROM device_tokens")
+                rows = cur.fetchall()
+                for (d,) in rows:
+                    try:
+                        parsed = json.loads(d)
+                        token_key = parsed.get('token') or parsed.get('device_token')
+                        if token_key:
+                            # remove embedded token key to avoid duplication
+                            parsed.pop('token', None)
+                            parsed.pop('device_token', None)
+                            result[token_key] = parsed
+                    except Exception:
+                        continue
             return result
         except Exception as e:
             print(f"Error loading device tokens from DB ({DEVICE_TOKENS_DB}): {e}")
@@ -185,27 +183,24 @@ def save_device_tokens(tokens):
     # If configured, save to SQLite DB for persistence across deploys (set DEVICE_TOKENS_DB env var)
     if DEVICE_TOKENS_DB:
         try:
-            conn = sqlite3.connect(DEVICE_TOKENS_DB, timeout=2)
-            cur = conn.cursor()
-            cur.execute("CREATE TABLE IF NOT EXISTS device_tokens (token TEXT PRIMARY KEY, data TEXT)")
-            # Upsert each token as JSON blob
-            for token, info in tokens.items():
+            with db.sqlite_transaction(DEVICE_TOKENS_DB, timeout=2) as (conn, cur):
+                cur.execute("CREATE TABLE IF NOT EXISTS device_tokens (token TEXT PRIMARY KEY, data TEXT)")
+                # Upsert each token as JSON blob
+                for token, info in tokens.items():
+                    try:
+                        payload = json.dumps({**info, 'token': token})
+                        cur.execute("INSERT OR REPLACE INTO device_tokens(token, data) VALUES (?, ?)", (token, payload))
+                    except Exception:
+                        continue
+                # Remove rows not present in tokens dict
                 try:
-                    payload = json.dumps({**info, 'token': token})
-                    cur.execute("INSERT OR REPLACE INTO device_tokens(token, data) VALUES (?, ?)", (token, payload))
+                    cur.execute("SELECT token FROM device_tokens")
+                    existing = [r[0] for r in cur.fetchall()]
+                    for e in existing:
+                        if e not in tokens:
+                            cur.execute("DELETE FROM device_tokens WHERE token = ?", (e,))
                 except Exception:
-                    continue
-            # Remove rows not present in tokens dict
-            try:
-                cur.execute("SELECT token FROM device_tokens")
-                existing = [r[0] for r in cur.fetchall()]
-                for e in existing:
-                    if e not in tokens:
-                        cur.execute("DELETE FROM device_tokens WHERE token = ?", (e,))
-            except Exception:
-                pass
-            conn.commit()
-            conn.close()
+                    pass
             return
         except Exception as e:
             print(f"Error saving device tokens to DB ({DEVICE_TOKENS_DB}): {e}")
@@ -1377,16 +1372,13 @@ async def admin_assign_unassigned(req: Request):
     to_initials = to_initials.strip().upper()
     
     # Execute the update - catch NULL, empty string, and whitespace-only
-    conn = db.sqlite3.connect(db.DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE erasures 
-        SET initials = ? 
-        WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
-    """, (to_initials,))
-    affected = cursor.rowcount
-    conn.commit()
-    conn.close()
+    with db.sqlite_transaction() as (conn, cursor):
+        cursor.execute("""
+            UPDATE erasures 
+            SET initials = ? 
+            WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
+        """, (to_initials,))
+        affected = cursor.rowcount
     
     print(f"[ADMIN] Assigned {affected} unassigned erasures to engineer {to_initials}")
     
@@ -1432,43 +1424,36 @@ async def admin_fix_initials(req: Request):
     if isinstance(from_initials, str):
         from_initials = from_initials.strip().upper()
     
-    conn = db.sqlite3.connect(db.DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("BEGIN")
-    if from_initials == '' or from_initials is None:
-        cursor.execute("""
-            SELECT rowid, initials
-            FROM erasures
-            WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
-            ORDER BY rowid ASC
-        """)
-        rows = cursor.fetchall()
-        available_count = len(rows)
-        if limit is not None:
-            limit = max(0, min(int(limit), available_count))
-            rows = rows[:limit]
-        from_display = "(blank/unassigned)"
-    else:
-        if from_initials == to_initials:
-            conn.close()
-            return {"status": "error", "message": "from and to initials must be different"}
-        cursor.execute("""
-            SELECT rowid, initials
-            FROM erasures
-            WHERE initials = ?
-            ORDER BY rowid ASC
-        """, (from_initials,))
-        rows = cursor.fetchall()
-        available_count = len(rows)
-        if limit is not None:
-            limit = max(0, min(int(limit), available_count))
-            rows = rows[:limit]
-        from_display = from_initials
-
+    with db.sqlite_transaction() as (conn, cursor):
+        if from_initials == '' or from_initials is None:
+            cursor.execute("""
+                SELECT rowid, initials
+                FROM erasures
+                WHERE initials IS NULL OR TRIM(COALESCE(initials, '')) = ''
+                ORDER BY rowid ASC
+            """)
+            rows = cursor.fetchall()
+            available_count = len(rows)
+            if limit is not None:
+                limit = max(0, min(int(limit), available_count))
+                rows = rows[:limit]
+            from_display = "(blank/unassigned)"
+        else:
+            if from_initials == to_initials:
+                return {"status": "error", "message": "from and to initials must be different"}
+            cursor.execute("""
+                SELECT rowid, initials
+                FROM erasures
+                WHERE initials = ?
+                ORDER BY rowid ASC
+            """, (from_initials,))
+            rows = cursor.fetchall()
+            available_count = len(rows)
+            if limit is not None:
+                limit = max(0, min(int(limit), available_count))
+                rows = rows[:limit]
+            from_display = from_initials
     if not rows:
-        conn.rollback()
-        conn.close()
         return {
             "status": "ok",
             "action": "fix_initials",
@@ -1494,8 +1479,6 @@ async def admin_fix_initials(req: Request):
     )
 
     affected = len(rows)
-    conn.commit()
-    conn.close()
     
     print(f"[ADMIN] Fixed initials: {from_display} -> {to_initials} ({affected} records)")
     
@@ -1512,33 +1495,28 @@ async def admin_fix_initials(req: Request):
 async def admin_undo_last_initials(req: Request):
     """Undo the most recent initials change."""
     require_admin(req)
-    conn = db.sqlite3.connect(db.DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, action, from_initials, to_initials, affected
-        FROM admin_actions
-        WHERE action = 'fix_initials'
-        ORDER BY id DESC
-        LIMIT 1
-    """)
-    action = cursor.fetchone()
-    if not action:
-        conn.close()
-        return {"status": "ok", "undone": 0, "message": "No undo history"}
+    with db.sqlite_transaction() as (conn, cursor):
+        cursor.execute("""
+            SELECT id, action, from_initials, to_initials, affected
+            FROM admin_actions
+            WHERE action = 'fix_initials'
+            ORDER BY id DESC
+            LIMIT 1
+        """)
+        action = cursor.fetchone()
+        if not action:
+            return {"status": "ok", "undone": 0, "message": "No undo history"}
 
-    action_id, action_name, from_initials, to_initials, affected = action
-    cursor.execute("SELECT rowid, old_initials FROM admin_action_rows WHERE action_id = ?", (action_id,))
-    rows = cursor.fetchall()
+        action_id, action_name, from_initials, to_initials, affected = action
+        cursor.execute("SELECT rowid, old_initials FROM admin_action_rows WHERE action_id = ?", (action_id,))
+        rows = cursor.fetchall()
 
-    cursor.execute("BEGIN")
-    cursor.executemany(
-        "UPDATE erasures SET initials = ? WHERE rowid = ?",
-        [(old_initials, row_id) for row_id, old_initials in rows]
-    )
-    cursor.execute("DELETE FROM admin_action_rows WHERE action_id = ?", (action_id,))
-    cursor.execute("DELETE FROM admin_actions WHERE id = ?", (action_id,))
-    conn.commit()
-    conn.close()
+        cursor.executemany(
+            "UPDATE erasures SET initials = ? WHERE rowid = ?",
+            [(old_initials, row_id) for row_id, old_initials in rows]
+        )
+        cursor.execute("DELETE FROM admin_action_rows WHERE action_id = ?", (action_id,))
+        cursor.execute("DELETE FROM admin_actions WHERE id = ?", (action_id,))
 
     return {
         "status": "ok",
