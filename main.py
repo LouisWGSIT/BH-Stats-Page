@@ -2873,24 +2873,28 @@ async def get_bottleneck_details(
                 # On roller, no pallet, and either:
                 #   - Data-bearing: erased but no QA after erasure
                 #   - Non-data-bearing: no QA scan at all
-                cursor.execute(f"""
-                    {base_select}
-                    WHERE a.roller_location IS NOT NULL 
-                      AND a.roller_location != ''
-                      AND LOWER(a.roller_location) LIKE '%%roller%%'
-                      AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
-                      AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
-                      AND (
-                        (LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
-                         AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid AND q.added_date > a.de_completed_date))
-                        OR
-                        (LOWER(COALESCE(a.de_complete, '')) NOT IN ('yes', 'true', '1')
-                         AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid))
-                      )
-                                            {recent_clause}
-                    ORDER BY a.received_date DESC
-                    LIMIT %s
-                                """, (days, limit))
+                                # Only include devices that are erased (de_complete) OR have Blancco records;
+                                # exclude devices whose destination/condition indicates Quarantine because
+                                # those are effectively awaiting sorting rather than QA.
+                                cursor.execute(f"""
+                                        {base_select}
+                                        WHERE a.roller_location IS NOT NULL 
+                                            AND a.roller_location != ''
+                                            AND LOWER(a.roller_location) LIKE '%%roller%%'
+                                            AND a.`condition` NOT IN ('Disposed', 'Shipped', 'Sold')
+                                            AND LOWER(COALESCE(a.`condition`, '')) NOT LIKE '%quarantine%'
+                                            AND (COALESCE(a.pallet_id, a.palletID, '') = '' OR COALESCE(a.pallet_id, a.palletID) IS NULL OR COALESCE(a.pallet_id, a.palletID) LIKE 'NOPOST%%')
+                                            AND (
+                                                (LOWER(COALESCE(a.de_complete, '')) IN ('yes', 'true', '1')
+                                                 AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid AND q.added_date > a.de_completed_date))
+                                                OR
+                                                (EXISTS (SELECT 1 FROM ITAD_asset_info_blancco b WHERE b.stockid = a.stockid)
+                                                 AND NOT EXISTS (SELECT 1 FROM ITAD_QA_App q WHERE q.stockid = a.stockid))
+                                            )
+                                                                                        {recent_clause}
+                                        ORDER BY a.received_date DESC
+                                        LIMIT %s
+                                                                """, (days, limit))
             else:  # roller_awaiting_pallet
                 # Devices that have been QA'd but don't have a pallet yet
                 cursor.execute(f"""
