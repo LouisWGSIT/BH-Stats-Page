@@ -2531,8 +2531,24 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
     """Return CURRENT bottleneck snapshot - warehouse state NOW (manager only)."""
     require_manager_or_admin(request)
     try:
-        # Note: days parameter is kept for API compatibility but now uses "this week" filtering
-        return _build_bottleneck_snapshot(destination=None, limit_engineers=8, days_threshold=7)
+        # Temporarily disable live bottleneck generation to avoid heavy DB work.
+        # Return a lightweight empty snapshot so the frontend remains functional.
+        now_iso = datetime.now().isoformat()
+        empty_snapshot = {
+            "timestamp": now_iso,
+            "filter_period": "disabled",
+            "total_unpalleted": 0,
+            "awaiting_erasure": 0,
+            "awaiting_qa": 0,
+            "awaiting_pallet": 0,
+            "destination_counts": [],
+            "engineer_missing_pallets": [],
+            "flagged_engineers": [],
+            "roller_queue": {"total": 0, "awaiting_qa": 0, "awaiting_sorting": 0},
+            "roller_breakdown": [],
+            "note": "Bottleneck generation temporarily disabled — using lightweight snapshot. Contact admin to re-enable."
+        }
+        return JSONResponse(status_code=200, content=empty_snapshot)
     except Exception as e:
         # Log full traceback but return a safe JSON error to clients
         import traceback as _tb
