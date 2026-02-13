@@ -15,31 +15,9 @@ from contextlib import contextmanager
 logger = logging.getLogger("qa_export")
 import request_context
 from contextlib import contextmanager
-import threading
-import httpx
-import os
 
-# Optional webhook for slow-query alerts. Set ALERT_WEBHOOK_URL to enable.
-ALERT_WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL", "").strip()
-# Threshold in seconds after which a query will trigger an alert (float). Default 2.0s
+# Slow-query alerting removed. Keep threshold var for logs if needed.
 DB_QUERY_ALERT_THRESHOLD = float(os.getenv("DB_QUERY_ALERT_THRESHOLD", "2.0"))
-
-
-def _send_alert_async(payload: dict):
-    """Send alert to webhook in a background thread to avoid blocking DB path."""
-    if not ALERT_WEBHOOK_URL:
-        return
-
-    def _post():
-        try:
-            # use a short timeout so alerts don't hang
-            httpx.post(ALERT_WEBHOOK_URL, json=payload, timeout=5.0)
-        except Exception:
-            # swallow errors - alerts are best-effort
-            logger.debug("Failed to send alert to webhook")
-
-    t = threading.Thread(target=_post, daemon=True)
-    t.start()
 
 # MariaDB Connection Config - read from environment for security
 # Set these in your deployment environment or a .env file (do NOT commit secrets)
@@ -90,18 +68,7 @@ def get_mariadb_connection():
                             rowcount = None
                         rid = request_context.request_id.get()
                         logger.info("DB execute (%.3fs) req=%s rows=%s: %s", duration, rid, rowcount, (query[:200] + ('...' if len(query) > 200 else '')))
-                        # Alert if query is slow
-                        try:
-                            if duration >= DB_QUERY_ALERT_THRESHOLD and ALERT_WEBHOOK_URL:
-                                _send_alert_async({
-                                    "event": "db_slow_query",
-                                    "duration_s": round(duration, 3),
-                                    "query": (query[:500] + ('...' if len(query) > 500 else '')),
-                                    "params": params,
-                                    "request_id": rid,
-                                })
-                        except Exception:
-                            pass
+                        # slow-query alerting disabled
                         return res
                     except Exception as e:
                         duration = time.time() - start
@@ -116,17 +83,7 @@ def get_mariadb_connection():
                         duration = time.time() - start
                         rid = request_context.request_id.get()
                         logger.info("DB executemany (%.3fs) req=%s: %s", duration, rid, (query[:200] + ('...' if len(query) > 200 else '')))
-                        try:
-                            if duration >= DB_QUERY_ALERT_THRESHOLD and ALERT_WEBHOOK_URL:
-                                _send_alert_async({
-                                    "event": "db_slow_executemany",
-                                    "duration_s": round(duration, 3),
-                                    "query": (query[:500] + ('...' if len(query) > 500 else '')),
-                                    "params_preview": seq_params[:3] if isinstance(seq_params, (list, tuple)) else None,
-                                    "request_id": rid,
-                                })
-                        except Exception:
-                            pass
+                        # slow-query alerting disabled
                         return res
                     except Exception as e:
                         duration = time.time() - start
@@ -144,16 +101,7 @@ def get_mariadb_connection():
                         count = None
                     rid = request_context.request_id.get()
                     logger.info("DB fetchall (%.3fs) req=%s: rows=%s", duration, rid, count)
-                    try:
-                        if duration >= DB_QUERY_ALERT_THRESHOLD and ALERT_WEBHOOK_URL:
-                            _send_alert_async({
-                                "event": "db_slow_fetchall",
-                                "duration_s": round(duration, 3),
-                                "rows": count,
-                                "request_id": rid,
-                            })
-                    except Exception:
-                        pass
+                    # slow-query alerting disabled
                     return rows
 
                 def fetchone(self):
@@ -162,16 +110,7 @@ def get_mariadb_connection():
                     duration = time.time() - start
                     rid = request_context.request_id.get()
                     logger.info("DB fetchone (%.3fs) req=%s: returned=%s", duration, rid, 1 if row else 0)
-                    try:
-                        if duration >= DB_QUERY_ALERT_THRESHOLD and ALERT_WEBHOOK_URL:
-                            _send_alert_async({
-                                "event": "db_slow_fetchone",
-                                "duration_s": round(duration, 3),
-                                "returned": 1 if row else 0,
-                                "request_id": rid,
-                            })
-                    except Exception:
-                        pass
+                    # slow-query alerting disabled
                     return row
 
                 def __getattr__(self, name):
@@ -1447,7 +1386,7 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
                 FROM ITAD_QA_App q
                 LEFT JOIN (
                     SELECT stockid, serial, manufacturer, model,
-                           ROW_NUMBER() OVER (PARTITION BY stockid ORDER BY job_date DESC) as rn
+                           ROW_NUMBER() OVER (PARTITION BY stockid ORDER BY id DESC) as rn
                     FROM ITAD_asset_info_blancco
                 ) b ON b.stockid = q.stockid AND b.rn = 1
                 WHERE DATE(q.added_date) >= %s AND DATE(q.added_date) <= %s
