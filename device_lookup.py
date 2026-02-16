@@ -7,6 +7,7 @@ from datetime import datetime
 import os
 from typing import List, Dict
 import sqlite3
+import re
 
 # Robust imports: prefer absolute imports when module is executed as top-level
 try:
@@ -637,6 +638,12 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 has_pallet_evidence = any('pallet' in (t or '').lower() for t in evid_texts)
 
                 # Compose AI-style explanation (neutral, non-first-person)
+                # We'll build a single conversational paragraph that:
+                # - states the likely location (or plausible for non-top)
+                # - explains why (recency / primary signal)
+                # - gives a recommended next step (check location then follow workflow)
+                # - optionally compares recency to later-stage evidence
+                # - summarizes cohort/pallet evidence when available
                 parts = []
                 # Opening: why this candidate (avoid first-person wording)
                 if primary == 'erasure':
@@ -668,7 +675,6 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     opener = f"Multiple QA scans recently observed the device at {item.get('location')}, indicating it may still be there."
                 else:
                     opener = f"Combined signals from the data sources indicate {item.get('location')} is a likely location."
-                opener_added = False
 
                 # Evidence summary (human-friendly)
                 human_evid = []
@@ -736,44 +742,97 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 elif item.get('type') == 'physical':
                     action = 'Perform a quick QA or roller scan to confirm the device is present.'
                 if action:
-                    # If this is not the top-ranked candidate, phrase the opener to reflect that
-                    rank = int(item.get('rank', 0))
-                    if rank and rank > 1:
-                        # compute top candidate info
+                    # assemble a single conversational paragraph similar to the user's example
+                    try:
+                        workflow = ['IA', 'Erasure', 'QA', 'Sorting']
+                        def stage_rank(name: str):
+                            n = (name or '').lower()
+                            if 'roller' in n or 'ia' in n:
+                                return 0
+                            if 'erasure' in n or 'blancco' in n:
+                                return 1
+                            if 'qa' in n:
+                                return 2
+                            if 'pallet' in n or 'stockbypallet' in n:
+                                return 3
+                            return -1
+
+                        this_stage = stage_rank(item.get('location') or '')
+                        later_candidates = []
+                        for loc_name, loc_info in sorted_items:
+                            ls_stage = stage_rank(loc_name)
+                            if ls_stage > this_stage and loc_info.get('last_seen') and item.get('last_seen'):
+                                later_candidates.append((loc_name, loc_info))
+
+                        recency_comp = ''
+                        if later_candidates and item.get('last_seen'):
+                            later = sorted(later_candidates, key=lambda x: x[1].get('last_seen') or datetime.min, reverse=True)[0]
+                            later_name, later_info = later
+                            try:
+                                if item.get('last_seen') and later_info.get('last_seen') and item.get('last_seen') > later_info.get('last_seen'):
+                                    next_stage = None
+                                    if 'erasure' in later_name.lower() or 'blancco' in later_name.lower():
+                                        next_stage = 'Erasure'
+                                    elif 'pallet' in later_name.lower():
+                                        next_stage = 'Pallet/Shipping'
+                                    elif 'qa' in later_name.lower():
+                                        next_stage = 'QA'
+                                    if next_stage:
+                                        recency_comp = (f"Since {item.get('location')} has a more recent date than {later_name}, "
+                                                       f"it may have been put through the workflow again and could be awaiting {next_stage} (next on the workflow).")
+                            except Exception:
+                                recency_comp = ''
+
+                        # extract pallet IDs from evidence texts for cohort summary
+                        pallet_ids = set()
                         try:
-                            top_loc = sorted_items[0][0]
-                            top_info = sorted_items[0][1]
-                            top_pct = int(round((top_info['score'] / max_score) * 100))
-                            this_pct = int(round((info.get('score', 0) / max_score) * 100))
-                            opener_phrase = f"{item.get('location')} is a plausible location (rank {rank}, approx. {this_pct}%). The top candidate is {top_loc} ({top_pct}%)."
+                            for t in evid_texts + [item.get('location') or '']:
+                                if not t:
+                                    continue
+                                lt = t.lower()
+                                if 'pallet' in lt:
+                                    m = re.search(r'(?i)pallet\s*([A-Za-z0-9_-]+)', t)
+                                    if m:
+                                        pallet_ids.add(m.group(1))
+                                m2 = re.search(r'\bA?\d{6,8}\b', t)
+                                if m2:
+                                    pallet_ids.add(m2.group(0))
                         except Exception:
-                            opener_phrase = f"{item.get('location')} is a plausible location."
-                        parts.append(opener_phrase)
-                        opener_added = True
-                    else:
-                        parts.append(opener)
-                        opener_added = True
+                            pass
 
-                    if context_sent:
-                        # avoid repeating the opener text if context_sent begins the same
-                        if not context_sent.strip().lower().startswith(opener.strip().lower()):
-                            parts.append(context_sent)
-                    parts.append('Recommended action: ' + action)
-                    parts.append(conf_sent)
+                        cohort_note = ''
+                        if pallet_ids:
+                            pid_list = ', '.join(sorted(pallet_ids))
+                            cohort_note = f"Other devices with the same destination were allocated to pallet(s) {pid_list}."
 
-                    # If inference from neighbors exists, add a short note
-                    if inferred_from_neighbors:
-                        parts.append('Note: nearby devices on the same pallet showed similar records, suggesting possible co-location.')
+                        paragraph_parts = []
+                        lead_word = 'is the most likely place' if int(item.get('rank', 0) or 0) == 1 else 'is a plausible location'
+                        # prefer to mention recency boost if present
+                        try:
+                            recency_reason = 'due to having the most recent date' if any((isinstance(e, dict) and e.get('source') == 'recency_boost') for e in evid) else 'based on available signals'
+                        except Exception:
+                            recency_reason = 'based on available signals'
+                        paragraph_parts.append(f"{item.get('location')} {lead_word} for the device, {recency_reason}.")
+                        if context_sent:
+                            paragraph_parts.append(context_sent)
+                        if recency_comp:
+                            paragraph_parts.append(recency_comp)
+                        if this_stage == 0:
+                            paragraph_parts.append('Check this location, then follow the workflow (IA -> Erasure -> QA -> Sorting) to trace where it would go next.')
+                        elif this_stage == 1:
+                            paragraph_parts.append('Check the erasure record and associated pallet/queue, then confirm via QA/roller as needed.')
+                        elif this_stage == 3:
+                            paragraph_parts.append('Inspect the pallet contents and recent scans; confirm the device is physically present before moving or shipping.')
+                        if cohort_note:
+                            paragraph_parts.append(cohort_note)
+                        if conf_sent:
+                            paragraph_parts.append(conf_sent)
 
-                # Ensure the opener is present exactly once. If no action branch added
-                # an opener (opener_added==False), insert the opener at the start.
-                try:
-                    if not opener_added:
-                        parts.insert(0, opener)
-                except Exception:
-                    pass
-
-                item['ai_explanation'] = ' '.join([p for p in parts if p]).strip()
+                        item['ai_explanation'] = ' '.join([p for p in paragraph_parts if p]).strip()
+                    except Exception:
+                        item['ai_explanation'] = item.get('explanation') or ''
+                else:
+                    item['ai_explanation'] = item.get('explanation') or ''
             except Exception:
                 item['ai_explanation'] = item.get('explanation') or ''
             # Add explicit flags and blancco details for UI
