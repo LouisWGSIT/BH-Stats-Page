@@ -660,11 +660,11 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
 
                 # Evidence summary (human-friendly)
                 human_evid = []
+                inferred_from_neighbors = False
                 for t in evid_texts[:6]:
                     try:
                         lt = t.lower()
                         if 'blancco' in lt or 'erasure' in lt:
-                            # prefer concise label
                             human_evid.append('Blancco (erasure) record' + (f" — {t}" if 'on ' in lt or 'by ' in lt else ''))
                         elif 'pallet' in lt:
                             human_evid.append(t.replace('Stockbypallet/ITAD_pallet records', 'Pallet record'))
@@ -672,15 +672,13 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                             human_evid.append('Recent QA scans' + (f" — {t}" if '(' in t or 'last seen' in lt else ''))
                         elif 'confirmed' in lt or 'user_confirmed' in lt:
                             human_evid.append('Manager confirmation')
-                        elif 'inferred' in lt or 'co_location' in lt:
+                        elif 'inferred' in lt or 'co_location' in lt or 'nearby' in lt:
                             human_evid.append('Inferred from nearby devices on same pallet')
+                            inferred_from_neighbors = True
                         else:
                             human_evid.append(t)
                     except Exception:
                         human_evid.append(t)
-
-                if human_evid:
-                    parts.append('Signals: ' + '; '.join(human_evid[:3]) + '.')
 
                 # Compare to next-best candidate to express ambiguity
                 comp_note = ''
@@ -702,11 +700,15 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                             comp_note = f"This ranks above {other_loc} ({top_score}% vs {other_score}%)."
                 except Exception:
                     comp_note = ''
+                # Build a short human-friendly context sentence instead of listing 'Signals'
+                context_sent = ''
+                if human_evid:
+                    context_sent = f"Key records: {', '.join(human_evid[:3])}."
                 if comp_note:
-                    parts.append(comp_note)
+                    context_sent = (context_sent + ' ' + comp_note).strip() if context_sent else comp_note
 
                 # Confidence and uncertainty
-                parts.append(f"Confidence: {conf} (approx. score {score_pct}%).")
+                conf_sent = f"Confidence: {conf} (approx. score {score_pct}%)."
 
                 # Recommended action (clearer)
                 action = ''
@@ -722,7 +724,16 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 elif item.get('type') == 'physical':
                     action = 'Perform a quick QA or roller scan to confirm the device is present.'
                 if action:
+                    # Compose final parts: opener, context, recommendation, confidence
+                    parts.append(opener)
+                    if context_sent:
+                        parts.append(context_sent)
                     parts.append('Recommended action: ' + action)
+                    parts.append(conf_sent)
+
+                    # If inference from neighbors exists, add a short note
+                    if inferred_from_neighbors:
+                        parts.append('Note: nearby devices on the same pallet showed similar records, suggesting possible co-location.')
 
                 item['ai_explanation'] = ' '.join([p for p in parts if p]).strip()
             except Exception:
