@@ -640,24 +640,35 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 parts = []
                 # Opening: why this candidate (avoid first-person wording)
                 if primary == 'erasure':
+                    rank = int(item.get('rank', 0) or 0)
                     if er_user or er_date:
                         pieces = []
                         if er_user:
                             pieces.append(f"by {er_user}")
                         if er_date:
                             pieces.append(f"on {er_date}")
-                        opener = f"Evidence indicates {item.get('location')} is the most likely place because a Blancco/erasure record ({' '.join(pieces)}) was found for this device."
+                        if rank and rank > 1:
+                            opener = f"Evidence indicates {item.get('location')} is a plausible location because a Blancco/erasure record ({' '.join(pieces)}) was found for this device."
+                        else:
+                            opener = f"Evidence indicates {item.get('location')} is the most likely place because a Blancco/erasure record ({' '.join(pieces)}) was found for this device."
                     else:
-                        opener = f"Evidence indicates {item.get('location')} is the most likely place because a Blancco/erasure record was found for this device."
+                        if rank and rank > 1:
+                            opener = f"Evidence indicates {item.get('location')} is a plausible location because a Blancco/erasure record was found for this device."
+                        else:
+                            opener = f"Evidence indicates {item.get('location')} is the most likely place because a Blancco/erasure record was found for this device."
                 elif primary == 'pallet':
                     opener = f"Stockbypallet/ITAD_pallet records associate {item.get('location')} with this device's pallet, making it a likely location."
                 elif primary == 'confirmed':
-                    opener = f"A manager previously confirmed {item.get('location')} as the device's location."
+                    # If this is not the top-ranked candidate, avoid phrasing as definitive
+                    if int(item.get('rank', 0) or 0) > 1:
+                        opener = f"A manager previously confirmed {item.get('location')}, which is a plausible location."
+                    else:
+                        opener = f"A manager previously confirmed {item.get('location')} as the device's location."
                 elif primary == 'qa':
                     opener = f"Multiple QA scans recently observed the device at {item.get('location')}, indicating it may still be there."
                 else:
                     opener = f"Combined signals from the data sources indicate {item.get('location')} is a likely location."
-                parts.append(opener)
+                opener_added = False
 
                 # Evidence summary (human-friendly)
                 human_evid = []
@@ -738,8 +749,10 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                         except Exception:
                             opener_phrase = f"{item.get('location')} is a plausible location."
                         parts.append(opener_phrase)
+                        opener_added = True
                     else:
                         parts.append(opener)
+                        opener_added = True
 
                     if context_sent:
                         # avoid repeating the opener text if context_sent begins the same
@@ -751,6 +764,14 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     # If inference from neighbors exists, add a short note
                     if inferred_from_neighbors:
                         parts.append('Note: nearby devices on the same pallet showed similar records, suggesting possible co-location.')
+
+                # Ensure the opener is present exactly once. If no action branch added
+                # an opener (opener_added==False), insert the opener at the start.
+                try:
+                    if not opener_added:
+                        parts.insert(0, opener)
+                except Exception:
+                    pass
 
                 item['ai_explanation'] = ' '.join([p for p in parts if p]).strip()
             except Exception:
