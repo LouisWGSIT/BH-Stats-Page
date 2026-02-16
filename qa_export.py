@@ -1583,12 +1583,18 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         candidates = {}  # location -> {'score': float, 'evidence': []}
 
         def add_candidate(name: str, score_delta: float, ev: str, ts=None, src_conf: float = 1.0):
+            """Add or update a candidate location.
+
+            We record a small score breakdown for each contributing evidence item so
+            the UI can explain why the hypothesis was produced.
+            """
             if not name:
                 return
             key = str(name).strip()
             entry = candidates.get(key, {'score': 0.0, 'evidence': [], 'last_seen': None})
             # Apply recency multiplier when a timestamp is available so fresher signals outrank stale ones
             multiplier = 1.0
+            dt = None
             if ts:
                 try:
                     dt = _parse_timestamp(ts)
@@ -1605,10 +1611,23 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                         if not entry.get('last_seen') or (dt and dt > entry.get('last_seen')):
                             entry['last_seen'] = dt
                 except Exception:
-                    pass
-            # Apply source confidence multiplier as well
-            entry['score'] += float(score_delta) * float(multiplier) * float(src_conf)
-            entry['evidence'].append(ev)
+                    dt = None
+            # Compute effective contribution and record breakdown
+            try:
+                effective = float(score_delta) * float(multiplier) * float(src_conf)
+            except Exception:
+                effective = float(score_delta)
+            entry['score'] += effective
+            entry['evidence'].append({
+                'source': ev,
+                'raw': float(score_delta),
+                'multiplier': float(multiplier),
+                'src_conf': float(src_conf),
+                'effective': float(effective),
+            })
+            # keep last_seen if available
+            if dt and (not entry.get('last_seen') or dt > entry.get('last_seen')):
+                entry['last_seen'] = dt
             candidates[key] = entry
 
         # From asset_info
@@ -1718,18 +1737,72 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         cur.close()
         conn.close()
 
-        # Normalize scores and build results
+        # Normalize scores and build results with explanations
         if not candidates:
             return []
 
         # Normalize to 0-100
-        max_score = max(v['score'] for v in candidates.values()) or 1.0
+        max_score = max((v['score'] for v in candidates.values()), default=1.0) or 1.0
         out = []
         for loc, info in candidates.items():
             norm = int(round((info['score'] / max_score) * 100))
-            evidence = info.get('evidence', [])[:5]
+            evs = info.get('evidence', [])[:8]
             last_seen = info.get('last_seen')
-            out.append({'location': loc, 'score': norm, 'evidence': evidence, 'last_seen': last_seen.isoformat() if last_seen else None})
+
+            # Build a short evidence summary list like "QA scans (+42)"
+            ev_summary = []
+            for e in evs:
+                try:
+                    src = e.get('source') if isinstance(e, dict) else str(e)
+                    eff = int(round(e.get('effective', 0))) if isinstance(e, dict) else 0
+                    ev_summary.append(f"{src} (+{eff})")
+                except Exception:
+                    ev_summary.append(str(e))
+
+            # Decide whether this is a lifecycle "stage" (e.g., Erasure/Blancco) or a physical location
+            kind = 'physical'
+            try:
+                for e in evs:
+                    src = e.get('source', '') if isinstance(e, dict) else str(e)
+                    s = src.lower()
+                    if 'blancco' in s or 'de_complete' in s or 'erasure' in s or s.startswith('asset_info.de_complete'):
+                        kind = 'stage'
+                        break
+            except Exception:
+                pass
+
+            # Explanation: list top contributors and summarize recency
+            try:
+                top_contribs = sorted(evs, key=lambda x: x.get('effective', 0) if isinstance(x, dict) else 0, reverse=True)[:3]
+                contrib_text = ', '.join([f"{(c.get('source') if isinstance(c, dict) else str(c))} (+{int(round(c.get('effective',0)) if isinstance(c, dict) else 0)})" for c in top_contribs])
+            except Exception:
+                contrib_text = ', '.join(ev_summary[:3])
+
+            recency_text = ''
+            if last_seen:
+                try:
+                    recency_text = f"Last seen {last_seen.isoformat()}"
+                except Exception:
+                    recency_text = ''
+
+            explanation_parts = []
+            if contrib_text:
+                explanation_parts.append(f"Top contributors: {contrib_text}.")
+            if ev_summary:
+                explanation_parts.append(f"Sources: {ev_summary[:3].__repr__()}.")
+            if recency_text:
+                explanation_parts.append(recency_text + '.')
+
+            explanation = ' '.join(explanation_parts)
+
+            out.append({
+                'location': loc,
+                'score': norm,
+                'evidence': [ (e if isinstance(e, dict) else {'source': e}) for e in evs ],
+                'last_seen': last_seen.isoformat() if last_seen else None,
+                'type': kind,
+                'explanation': explanation,
+            })
 
         out.sort(key=lambda x: x['score'], reverse=True)
         return out[:top_n]
