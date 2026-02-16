@@ -1653,22 +1653,31 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 pallet_loc, dest = row
                 add_candidate(f"Pallet {pid} ({pallet_loc or dest or 'unknown'})", 45, "Stockbypallet/pallet", None)
 
-        # Blancco evidence - some deployments don't have `added_date`, so probe safely
+        # Blancco evidence - some deployments don't have `added_date`.
+        # Probe INFORMATION_SCHEMA to avoid issuing a SELECT that references a missing column
         try:
-            cur.execute("SELECT id, added_date FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (stockid,))
-            b = cur.fetchone()
-            if b:
-                add_candidate('Erasure (Blancco)', 25, 'ITAD_asset_info_blancco', b[1])
-        except Exception:
-            # Fallback: try selecting without added_date
             try:
+                cur.execute(
+                    "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = %s AND TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = %s",
+                    ("ITAD_asset_info_blancco", "added_date")
+                )
+                has_added_date = cur.fetchone() is not None
+            except Exception:
+                has_added_date = False
+
+            if has_added_date:
+                cur.execute("SELECT id, added_date FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (stockid,))
+                b = cur.fetchone()
+                if b:
+                    add_candidate('Erasure (Blancco)', 25, 'ITAD_asset_info_blancco', b[1])
+            else:
                 cur.execute("SELECT id FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (stockid,))
                 b2 = cur.fetchone()
                 if b2:
                     add_candidate('Erasure (Blancco)', 25, 'ITAD_asset_info_blancco', None)
-            except Exception:
-                # Give up quietly; blancco evidence won't contribute
-                pass
+        except Exception:
+            # If any unexpected error occurs, don't raise — blancco evidence is optional
+            pass
 
         cur.close()
         conn.close()
