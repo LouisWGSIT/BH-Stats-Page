@@ -1464,25 +1464,27 @@ async def admin_fix_initials(req: Request):
             "available_records": available_count
         }
 
-    cursor.execute(
-        "INSERT INTO admin_actions (action, from_initials, to_initials, created_at, affected) VALUES (?, ?, ?, ?, ?)",
-        ("fix_initials", from_display, to_initials, datetime.now().isoformat(), len(rows))
-    )
-    action_id = cursor.lastrowid
-    cursor.executemany(
-        "INSERT INTO admin_action_rows (action_id, rowid, old_initials) VALUES (?, ?, ?)",
-        [(action_id, row_id, old_initials) for row_id, old_initials in rows]
-    )
+    # Perform the admin action and updates inside a fresh transaction/cursor
+    with db.sqlite_transaction() as (conn2, cursor2):
+        cursor2.execute(
+            "INSERT INTO admin_actions (action, from_initials, to_initials, created_at, affected) VALUES (?, ?, ?, ?, ?)",
+            ("fix_initials", from_display, to_initials, datetime.now().isoformat(), len(rows))
+        )
+        action_id = cursor2.lastrowid
+        cursor2.executemany(
+            "INSERT INTO admin_action_rows (action_id, rowid, old_initials) VALUES (?, ?, ?)",
+            [(action_id, row_id, old_initials) for row_id, old_initials in rows]
+        )
 
-    cursor.executemany(
-        "UPDATE erasures SET initials = ? WHERE rowid = ?",
-        [(to_initials, row_id) for row_id, _ in rows]
-    )
+        cursor2.executemany(
+            "UPDATE erasures SET initials = ? WHERE rowid = ?",
+            [(to_initials, row_id) for row_id, _ in rows]
+        )
 
-    affected = len(rows)
-    
+        affected = len(rows)
+
     print(f"[ADMIN] Fixed initials: {from_display} -> {to_initials} ({affected} records)")
-    
+
     return {
         "status": "ok",
         "action": "fix_initials",
