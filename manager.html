@@ -932,6 +932,7 @@
                     headers: getAuthHeaders(false)
                 });
                 const data = await response.json();
+                console.log('[DEVLOOKUP_RESP v20260216]', { stockId, hypotheses: data.hypotheses });
 
                 if (!response.ok) {
                     showResult(resultDiv, 'error', '❌ Search Failed', data.detail || 'Unable to search for device');
