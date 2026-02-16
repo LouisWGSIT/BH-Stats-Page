@@ -244,6 +244,18 @@
         .badge.inferred { background:#f3f4f6; color:#374151; }
         .badge.confirmed { background:#eef2ff; color:#1e40af; }
         .badge-legend { margin-top:8px; font-size:12px; color:#334155; }
+        /* Small confirm button */
+        .btn-confirm {
+            background: transparent;
+            color: #065f46;
+            border: 1px solid #10b981;
+            padding: 6px 10px;
+            font-size: 13px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+        .btn-confirm:hover { background: #10b981; color: white; }
 
         .bottleneck-card {
             margin-top: 12px;
@@ -1080,7 +1092,7 @@
                             ${ h.blancco ? `<div style="margin-top:6px; font-size:13px; color:#b91c1c; font-weight:700;">Blancco erasure recorded${ h.blancco.date ? ' on ' + h.blancco.date : '' }${ h.blancco.operator ? ' by ' + h.blancco.operator : '' }</div>` : '' }
                             <div class="ai-explanation">${ h.ai_explanation ? h.ai_explanation : (h.explanation || '') }</div>
                             <div style="margin-top:8px;">
-                                <button onclick="(function(){ const note = prompt('Optional note for confirmation (leave blank if none):'); confirmDeviceLocation(stockId, h.location, note); })()">Mark found here</button>
+                                <button class="btn-confirm" onclick="(function(){ const note = prompt('Optional note for confirmation (leave blank if none):'); confirmDeviceLocation(stockId, h.location, note); })()">Confirm</button>
                             </div>
                         </div>`;
                     });
