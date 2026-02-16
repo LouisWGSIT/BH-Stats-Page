@@ -2344,6 +2344,15 @@ async def device_lookup(stock_id: str, request: Request):
         deduped_timeline.sort(key=lambda x: x.get("timestamp") or "")
         results["timeline"] = deduped_timeline
 
+        # Add likely-location hypotheses (top N) from DB heuristics
+        try:
+            hypotheses = qa_export.get_device_location_hypotheses(stock_id, top_n=3)
+            if hypotheses:
+                results["hypotheses"] = hypotheses
+        except Exception as _:
+            # Never fail the entire lookup for hypothesis generation
+            results["hypotheses"] = []
+
         # Build smart insights (simple prediction + risk signals)
         from datetime import datetime
 

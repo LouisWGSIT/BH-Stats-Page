@@ -1553,6 +1553,138 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
     return history
 
 
+def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[str, object]]:
+    """Return a small ranked list of likely current locations for a device.
+
+    Each hypothesis includes a `location` string, a `score` (0-100), and
+    an `evidence` list describing contributing records.
+    This is a lightweight, read-only heuristic function intended for UI hints.
+    """
+    from datetime import datetime
+    conn = get_mariadb_connection()
+    if not conn:
+        return []
+
+    try:
+        cur = conn.cursor()
+        # Gather primary asset row
+        cur.execute(
+            """
+            SELECT COALESCE(pallet_id, palletID) as pallet_id, last_update, location, roller_location,
+                   de_complete, de_completed_date, stage_current
+            FROM ITAD_asset_info
+            WHERE stockid = %s OR serialnumber = %s
+            LIMIT 1
+            """,
+            (stockid, stockid)
+        )
+        asset = cur.fetchone()
+
+        candidates = {}  # location -> {'score': float, 'evidence': []}
+
+        def add_candidate(name: str, score_delta: float, ev: str, ts=None):
+            if not name:
+                return
+            key = str(name).strip()
+            entry = candidates.get(key, {'score': 0.0, 'evidence': [], 'last_seen': None})
+            entry['score'] += float(score_delta)
+            entry['evidence'].append(ev)
+            if ts:
+                try:
+                    dt = _parse_timestamp(ts)
+                    if dt and (not entry['last_seen'] or dt > entry['last_seen']):
+                        entry['last_seen'] = dt
+                except Exception:
+                    pass
+            candidates[key] = entry
+
+        # From asset_info
+        if asset:
+            pallet_id, last_update, location, roller_loc, de_complete, de_completed_date, stage_current = asset
+            if pallet_id:
+                # Check pallet location
+                cur.execute("SELECT pallet_location, destination, pallet_status, create_date FROM ITAD_pallet WHERE pallet_id = %s LIMIT 1", (pallet_id,))
+                p = cur.fetchone()
+                if p:
+                    pallet_loc, dest, status, create_date = p
+                    add_candidate(f"Pallet {pallet_id} ({pallet_loc or dest or 'unknown'})", 50, f"On pallet {pallet_id}", create_date)
+            if location:
+                add_candidate(location, 40, "asset_info.location", last_update)
+            if roller_loc:
+                add_candidate(roller_loc, 30, "asset_info.roller_location", last_update)
+            if de_complete and str(de_complete).lower() in ('yes', 'true', '1'):
+                add_candidate('Erasure station', 20, 'asset_info.de_complete', de_completed_date)
+
+        # From QA scans (group by location, use recency to weight)
+        cur.execute("""
+            SELECT scanned_location, MAX(added_date) as last_seen, COUNT(*) as cnt
+            FROM ITAD_QA_App
+            WHERE stockid = %s
+            GROUP BY scanned_location
+            ORDER BY last_seen DESC
+            LIMIT 10
+        """, (stockid,))
+        now = datetime.utcnow()
+        for loc, last_seen, cnt in cur.fetchall():
+            if not loc:
+                continue
+            # recency factor (hours)
+            last_dt = _parse_timestamp(last_seen)
+            hours = None
+            if last_dt:
+                try:
+                    hours = (now - last_dt).total_seconds() / 3600.0
+                except Exception:
+                    hours = None
+            recency_factor = 1.0
+            if hours is not None:
+                recency_factor = max(0.1, 1.0 - min(hours / 168.0, 0.9))
+            base = 30.0 * recency_factor + min(10.0, float(cnt or 0))
+            add_candidate(loc, base, f"QA scans ({int(cnt or 0)})", last_seen)
+
+        # From Stockbypallet (if present)
+        cur.execute("SELECT pallet_id FROM Stockbypallet WHERE stockid = %s LIMIT 1", (stockid,))
+        sb = cur.fetchone()
+        if sb and sb[0]:
+            pid = sb[0]
+            cur.execute("SELECT pallet_location, destination FROM ITAD_pallet WHERE pallet_id = %s LIMIT 1", (pid,))
+            row = cur.fetchone()
+            if row:
+                pallet_loc, dest = row
+                add_candidate(f"Pallet {pid} ({pallet_loc or dest or 'unknown'})", 45, "Stockbypallet/pallet", None)
+
+        # Blancco evidence
+        cur.execute("SELECT id, added_date FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (stockid,))
+        b = cur.fetchone()
+        if b:
+            add_candidate('Erasure (Blancco)', 25, 'ITAD_asset_info_blancco', b[1])
+
+        cur.close()
+        conn.close()
+
+        # Normalize scores and build results
+        if not candidates:
+            return []
+
+        # Normalize to 0-100
+        max_score = max(v['score'] for v in candidates.values()) or 1.0
+        out = []
+        for loc, info in candidates.items():
+            norm = int(round((info['score'] / max_score) * 100))
+            evidence = info.get('evidence', [])[:5]
+            last_seen = info.get('last_seen')
+            out.append({'location': loc, 'score': norm, 'evidence': evidence, 'last_seen': last_seen.isoformat() if last_seen else None})
+
+        out.sort(key=lambda x: x['score'], reverse=True)
+        return out[:top_n]
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        raise
+
+
 def _iter_month_ranges(start_date: date, end_date: date) -> List[Tuple[date, date]]:
     ranges: List[Tuple[date, date]] = []
     current = date(start_date.year, start_date.month, 1)
@@ -1801,6 +1933,8 @@ def get_awaiting_qa_counts_for_date(target_date: date) -> Dict[str, int]:
         erasures = []
         for ts, system_serial, disk_serial, job_id in rows:
             serial_value = system_serial or disk_serial or job_id
+
+
             if not serial_value:
                 # If we have no serial/job id, count as awaiting (can't match)
                 erasures.append({"serial": None, "ts": _parse_timestamp(ts)})
