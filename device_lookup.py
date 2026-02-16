@@ -581,6 +581,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 'type': kind,
                 'explanation': explanation,
                 'ai_explanation': None,
+                'rank': idx + 1,
             })
 
         # Enrich with AI-style expanded explanations
@@ -724,10 +725,26 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 elif item.get('type') == 'physical':
                     action = 'Perform a quick QA or roller scan to confirm the device is present.'
                 if action:
-                    # Compose final parts: opener, context, recommendation, confidence
-                    parts.append(opener)
+                    # If this is not the top-ranked candidate, phrase the opener to reflect that
+                    rank = int(item.get('rank', 0))
+                    if rank and rank > 1:
+                        # compute top candidate info
+                        try:
+                            top_loc = sorted_items[0][0]
+                            top_info = sorted_items[0][1]
+                            top_pct = int(round((top_info['score'] / max_score) * 100))
+                            this_pct = int(round((info.get('score', 0) / max_score) * 100))
+                            opener_phrase = f"{item.get('location')} is a plausible location (rank {rank}, approx. {this_pct}%). The top candidate is {top_loc} ({top_pct}%)."
+                        except Exception:
+                            opener_phrase = f"{item.get('location')} is a plausible location."
+                        parts.append(opener_phrase)
+                    else:
+                        parts.append(opener)
+
                     if context_sent:
-                        parts.append(context_sent)
+                        # avoid repeating the opener text if context_sent begins the same
+                        if not context_sent.strip().lower().startswith(opener.strip().lower()):
+                            parts.append(context_sent)
                     parts.append('Recommended action: ' + action)
                     parts.append(conf_sent)
 
