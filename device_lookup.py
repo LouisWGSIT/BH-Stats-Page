@@ -191,6 +191,61 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 pallet_loc, dest = row
                 add_candidate(f"Pallet {pid} ({pallet_loc or dest or 'unknown'})", 20, "Stockbypallet/pallet", None, src_conf=0.9)
 
+            # Co-location / temporal correlation heuristic (conservative)
+            try:
+                # Find other devices on the same pallet (limit to reasonable number)
+                cur.execute("SELECT stockid FROM Stockbypallet WHERE pallet_id = %s AND stockid <> %s LIMIT 20", (pid, stockid))
+                neighbors = [r[0] for r in cur.fetchall() if r and r[0]]
+                if neighbors:
+                    loc_counts = {}
+                    blancco_count = 0
+                    checked = 0
+                    for n in neighbors:
+                        if checked >= 20:
+                            break
+                        checked += 1
+                        # try last asset_info location
+                        try:
+                            cur.execute("SELECT location, roller_location FROM ITAD_asset_info WHERE stockid = %s LIMIT 1", (n,))
+                            arow = cur.fetchone()
+                            if arow:
+                                for v in (arow[0], arow[1]):
+                                    if v:
+                                        loc_counts[v] = loc_counts.get(v, 0) + 1
+                        except Exception:
+                            pass
+                        # try QA latest scanned_location
+                        try:
+                            cur.execute("SELECT scanned_location FROM ITAD_QA_App WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (n,))
+                            q = cur.fetchone()
+                            if q and q[0]:
+                                loc_counts[q[0]] = loc_counts.get(q[0], 0) + 1
+                        except Exception:
+                            pass
+                        # check blancco presence
+                        try:
+                            cur.execute("SELECT 1 FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (n,))
+                            if cur.fetchone():
+                                blancco_count += 1
+                        except Exception:
+                            pass
+
+                    # If a location appears in at least 2 neighbors, add a small inferred boost
+                    for loc_name, cnt in loc_counts.items():
+                        if cnt >= 2:
+                            ev = {'source': 'co_location_inferred', 'count': cnt, 'pallet_id': pid}
+                            # small boost and lower source confidence
+                            add_candidate(f"Inferred: {loc_name} (from {cnt} co-located devices)", 8, ev, None, src_conf=0.6)
+
+                    # If several neighbors show blancco, slightly boost erasure hypothesis
+                    try:
+                        if blancco_count >= 3:
+                            add_candidate('Erasure (inferred from neighbors)', 6, {'source': 'co_location_blancco', 'count': blancco_count}, None, src_conf=0.6)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
         # Blancco evidence
         try:
             try:
