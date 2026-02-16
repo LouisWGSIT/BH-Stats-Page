@@ -7,8 +7,27 @@ from datetime import datetime
 from typing import List, Dict
 import sqlite3
 
-from .qa_export import get_mariadb_connection, _parse_timestamp
-from . import db
+# Robust imports: prefer absolute imports when module is executed as top-level
+try:
+    import qa_export as _qa_export_mod
+    get_mariadb_connection = _qa_export_mod.get_mariadb_connection
+    _parse_timestamp = _qa_export_mod._parse_timestamp
+except Exception:
+    try:
+        from .qa_export import get_mariadb_connection, _parse_timestamp
+    except Exception:
+        # Leave placeholders; callers should handle None
+        get_mariadb_connection = None
+        _parse_timestamp = None
+
+# Import local SQLite helpers (module is `database.py` in this repo)
+try:
+    import database as db
+except Exception:
+    try:
+        from . import database as db
+    except Exception:
+        db = None
 
 
 def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[str, object]]:
