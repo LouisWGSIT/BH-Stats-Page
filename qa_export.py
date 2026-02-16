@@ -1582,20 +1582,33 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
 
         candidates = {}  # location -> {'score': float, 'evidence': []}
 
-        def add_candidate(name: str, score_delta: float, ev: str, ts=None):
+        def add_candidate(name: str, score_delta: float, ev: str, ts=None, src_conf: float = 1.0):
             if not name:
                 return
             key = str(name).strip()
             entry = candidates.get(key, {'score': 0.0, 'evidence': [], 'last_seen': None})
-            entry['score'] += float(score_delta)
-            entry['evidence'].append(ev)
+            # Apply recency multiplier when a timestamp is available so fresher signals outrank stale ones
+            multiplier = 1.0
             if ts:
                 try:
                     dt = _parse_timestamp(ts)
-                    if dt and (not entry['last_seen'] or dt > entry['last_seen']):
-                        entry['last_seen'] = dt
+                    if dt:
+                        from datetime import datetime as _dt
+                        now_local = _dt.utcnow()
+                        try:
+                            hours = (now_local - dt).total_seconds() / 3600.0
+                        except Exception:
+                            hours = None
+                        if hours is not None:
+                            # Decay over one week (168h) but keep a floor so old evidence still contributes
+                            multiplier = max(0.2, 1.0 - min(hours / 168.0, 0.9))
+                        if not entry.get('last_seen') or (dt and dt > entry.get('last_seen')):
+                            entry['last_seen'] = dt
                 except Exception:
                     pass
+            # Apply source confidence multiplier as well
+            entry['score'] += float(score_delta) * float(multiplier) * float(src_conf)
+            entry['evidence'].append(ev)
             candidates[key] = entry
 
         # From asset_info
@@ -1607,13 +1620,13 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 p = cur.fetchone()
                 if p:
                     pallet_loc, dest, status, create_date = p
-                    add_candidate(f"Pallet {pallet_id} ({pallet_loc or dest or 'unknown'})", 50, f"On pallet {pallet_id}", create_date)
+                    add_candidate(f"Pallet {pallet_id} ({pallet_loc or dest or 'unknown'})", 40, f"On pallet {pallet_id}", create_date, src_conf=0.9)
             if location:
-                add_candidate(location, 40, "asset_info.location", last_update)
+                add_candidate(location, 35, "asset_info.location", last_update, src_conf=0.9)
             if roller_loc:
-                add_candidate(roller_loc, 30, "asset_info.roller_location", last_update)
+                add_candidate(roller_loc, 35, "asset_info.roller_location", last_update, src_conf=0.9)
             if de_complete and str(de_complete).lower() in ('yes', 'true', '1'):
-                add_candidate('Erasure station', 20, 'asset_info.de_complete', de_completed_date)
+                add_candidate('Erasure station', 25, 'asset_info.de_complete', de_completed_date, src_conf=0.95)
 
         # From QA scans (group by location, use recency to weight)
         cur.execute("""
@@ -1639,8 +1652,8 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             recency_factor = 1.0
             if hours is not None:
                 recency_factor = max(0.1, 1.0 - min(hours / 168.0, 0.9))
-            base = 30.0 * recency_factor + min(10.0, float(cnt or 0))
-            add_candidate(loc, base, f"QA scans ({int(cnt or 0)})", last_seen)
+            base = 40.0 * recency_factor + min(15.0, float(cnt or 0))
+            add_candidate(loc, base, f"QA scans ({int(cnt or 0)})", last_seen, src_conf=0.95)
 
         # From Stockbypallet (if present)
         cur.execute("SELECT pallet_id FROM Stockbypallet WHERE stockid = %s LIMIT 1", (stockid,))
@@ -1651,7 +1664,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             row = cur.fetchone()
             if row:
                 pallet_loc, dest = row
-                add_candidate(f"Pallet {pid} ({pallet_loc or dest or 'unknown'})", 45, "Stockbypallet/pallet", None)
+                add_candidate(f"Pallet {pid} ({pallet_loc or dest or 'unknown'})", 20, "Stockbypallet/pallet", None, src_conf=0.9)
 
         # Blancco evidence - some deployments don't have `added_date`.
         # Probe INFORMATION_SCHEMA to avoid issuing a SELECT that references a missing column
@@ -1669,14 +1682,37 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 cur.execute("SELECT id, added_date FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (stockid,))
                 b = cur.fetchone()
                 if b:
-                    add_candidate('Erasure (Blancco)', 25, 'ITAD_asset_info_blancco', b[1])
+                    add_candidate('Erasure (Blancco)', 30, 'ITAD_asset_info_blancco', b[1], src_conf=1.0)
             else:
                 cur.execute("SELECT id FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (stockid,))
                 b2 = cur.fetchone()
                 if b2:
-                    add_candidate('Erasure (Blancco)', 25, 'ITAD_asset_info_blancco', None)
+                    add_candidate('Erasure (Blancco)', 30, 'ITAD_asset_info_blancco', None, src_conf=1.0)
         except Exception:
             # If any unexpected error occurs, don't raise — blancco evidence is optional
+            pass
+
+        # Confirmed locations from local store (user feedback) - highest confidence
+        try:
+            import sqlite3
+            from . import db
+            sqlite_conn = sqlite3.connect(db.DB_PATH)
+            sqlite_cur = sqlite_conn.cursor()
+            sqlite_cur.execute("""
+                SELECT location, user, note, ts
+                FROM confirmed_locations
+                WHERE stockid = ?
+                ORDER BY ts DESC
+                LIMIT 1
+            """, (stockid,))
+            conf = sqlite_cur.fetchone()
+            if conf:
+                loc, user, note, ts = conf
+                add_candidate(f"Confirmed: {loc}", 200, f"user_confirmed ({user})" + (f" - {note}" if note else ''), ts, src_conf=1.0)
+            sqlite_cur.close()
+            sqlite_conn.close()
+        except Exception:
+            # confirmed_locations not available - ignore
             pass
 
         cur.close()

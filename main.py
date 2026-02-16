@@ -2346,15 +2346,10 @@ async def device_lookup(stock_id: str, request: Request):
 
         # Add likely-location hypotheses (top N) from DB heuristics
         try:
-            print(f"Device lookup: generating hypotheses for {stock_id}")
             hypotheses = qa_export.get_device_location_hypotheses(stock_id, top_n=3)
-            print(f"Device lookup: hypotheses returned for {stock_id}: {len(hypotheses) if hypotheses is not None else 'None'}")
-            # Always include the key (empty list if none)
             results["hypotheses"] = hypotheses or []
-        except Exception as e:
-            print(f"Device lookup: hypotheses generation error for {stock_id}: {e}")
-            import traceback
-            traceback.print_exc()
+        except Exception:
+            # Hypothesis generation is optional; fail silently and return empty list
             results["hypotheses"] = []
 
         # Build smart insights (simple prediction + risk signals)
@@ -2497,6 +2492,44 @@ async def device_lookup(stock_id: str, request: Request):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/device-lookup/{stock_id}/confirm")
+async def confirm_device_location(stock_id: str, request: Request):
+    """Record a user-confirmed device location to improve future hypotheses (manager/admin only)."""
+    require_manager_or_admin(request)
+    payload = await request.json()
+    location = payload.get('location')
+    note = payload.get('note')
+    role = get_role_from_request(request) or 'manager'
+    if not location:
+        raise HTTPException(status_code=400, detail='location required')
+
+    import sqlite3
+    try:
+        conn = sqlite3.connect(db.DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS confirmed_locations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stockid TEXT,
+                location TEXT,
+                user TEXT,
+                note TEXT,
+                ts TEXT
+            )
+        """)
+        ts = __import__('datetime').datetime.utcnow().isoformat()
+        cur.execute("INSERT INTO confirmed_locations (stockid, location, user, note, ts) VALUES (?, ?, ?, ?, ?)",
+                    (stock_id, location, role, note, ts))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Confirm location error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return { 'ok': True, 'stockid': stock_id, 'location': location, 'ts': ts }
 
 
 def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5, days_threshold: int = 7) -> Dict[str, object]:
