@@ -698,32 +698,11 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     except Exception:
                         human_evid.append(t)
 
-                # Compare to next-best candidate to express ambiguity
-                comp_note = ''
-                try:
-                    # find this location in sorted_items to compare to runner-up
-                    runner = None
-                    for loc_name, loc_info in sorted_items:
-                        if loc_name == item.get('location'):
-                            break
-                    # get runner-up (second item)
-                    if len(sorted_items) > 1 and sorted_items[0][0] == item.get('location'):
-                        other_loc, other_info = sorted_items[1]
-                        other_score = int(round((other_info['score'] / max_score) * 100))
-                        top_score = int(round((item.get('raw_score', 0) / max_score) * 100))
-                        gap = top_score - other_score
-                        if gap < 15:
-                            comp_note = f"There is some ambiguity: this ranks only slightly above {other_loc} ({top_score}% vs {other_score}%)."
-                        else:
-                            comp_note = f"This ranks above {other_loc} ({top_score}% vs {other_score}%)."
-                except Exception:
-                    comp_note = ''
-                # Build a short human-friendly context sentence instead of listing 'Signals'
+                # We intentionally omit a separate 'Key records:' summary and
+                # an explicit runner-up comparison; those made paragraphs
+                # feel repetitive. Keep human_evid available only for
+                # internal checks (cohort/pallet extraction below).
                 context_sent = ''
-                if human_evid:
-                    context_sent = f"Key records: {', '.join(human_evid[:3])}."
-                if comp_note:
-                    context_sent = (context_sent + ' ' + comp_note).strip() if context_sent else comp_note
 
                 # Confidence and uncertainty
                 conf_sent = f"Confidence: {conf} (approx. score {score_pct}%)."
