@@ -968,6 +968,7 @@
 
         async function searchDevice() {
             const stockId = document.getElementById('deviceSearchId').value.trim();
+            console.log('[DEVLOOKUP_UI v20260216] searchDevice invoked', { stockId, ui_file: 'admin.html' });
             const resultDiv = document.getElementById('deviceSearchResult');
             const timelineDiv = document.getElementById('deviceSearchTimeline');
             const timelineContent = document.getElementById('timelineContent');
