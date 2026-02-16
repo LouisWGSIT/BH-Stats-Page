@@ -215,22 +215,129 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             return []
 
         max_score = max((v['score'] for v in candidates.values()), default=1.0) or 1.0
+
+        # Helpers to render human-friendly explanation text for each candidate.
+        def _source_name(s):
+            try:
+                if isinstance(s, dict):
+                    return s.get('source') or s.get('type') or str(s)
+                return str(s)
+            except Exception:
+                return str(s)
+
+        def _format_ev(ev_item):
+            # ev_item is the wrapped evidence we stored in add_candidate
+            src = ev_item.get('source')
+            # If the original source was a dict, try to extract more fields
+            if isinstance(src, dict):
+                sname = src.get('source') or src.get('type') or 'evidence'
+                # QA scans
+                if sname.lower().startswith('qa') or 'qa' in sname.lower():
+                    cnt = src.get('count') or src.get('cnt')
+                    last = src.get('last_seen') or src.get('last')
+                    user = src.get('username')
+                    parts = [sname]
+                    if cnt is not None:
+                        parts.append(f"({int(cnt)})")
+                    if last:
+                        parts.append(f"last seen {last}")
+                    if user:
+                        parts.append(f"by {user}")
+                    return ' '.join(parts)
+                # Blancco / erasure
+                if 'blancco' in sname.lower() or 'erasure' in sname.lower():
+                    ad = src.get('added_date') or src.get('added')
+                    user = src.get('username')
+                    parts = [sname]
+                    if ad:
+                        parts.append(f"on {ad}")
+                    if user:
+                        parts.append(f"by {user}")
+                    return ' '.join(parts)
+                # confirmed_locations record
+                if sname.lower().startswith('user_confirmed') or sname.lower().startswith('confirmed'):
+                    # the original add_candidate passed a string like 'user_confirmed (bob) - note'
+                    return sname
+                # generic dict
+                # try to pretty-print keys like location/timestamp
+                if 'location' in src:
+                    return f"{sname}: {src.get('location')}"
+                return sname
+
+            # If source was stored as a plain string
+            try:
+                s = str(src)
+                return s
+            except Exception:
+                return 'evidence'
+
+        def _is_stage(evs):
+            try:
+                for e in evs:
+                    src = e.get('source') if isinstance(e, dict) else e
+                    s = ''
+                    if isinstance(src, dict):
+                        s = (src.get('source') or '')
+                    else:
+                        s = str(src)
+                    s = s.lower()
+                    if 'blancco' in s or 'de_complete' in s or 'erasure' in s or 'erasure station' in s:
+                        return True
+            except Exception:
+                pass
+            return False
+
+        # Build a sorted list of candidates so we can compare top vs second.
+        sorted_items = sorted(candidates.items(), key=lambda kv: kv[1]['score'], reverse=True)
         out = []
-        for loc, info in candidates.items():
+        for idx, (loc, info) in enumerate(sorted_items):
             norm = int(round((info['score'] / max_score) * 100))
             evs = info.get('evidence', [])[:8]
             last_seen = info.get('last_seen')
 
-            kind = 'physical'
+            kind = 'physical' if not _is_stage(evs) else 'stage'
+
+            # Generate concise explanation
+            pieces = []
+            # Primary evidence summary (up to 2 strong items)
             try:
-                for e in evs:
-                    src = e.get('source', '') if isinstance(e, dict) else str(e)
-                    s = src.lower()
-                    if 'blancco' in s or 'de_complete' in s or 'erasure' in s or s.startswith('asset_info.de_complete'):
-                        kind = 'stage'
-                        break
+                formatted = []
+                for e in evs[:3]:
+                    formatted.append(_format_ev(e))
+                if formatted:
+                    pieces.append('Evidence: ' + '; '.join(formatted))
             except Exception:
                 pass
+
+            # Comparative reasoning against the next-best candidate
+            try:
+                if idx == 0 and len(sorted_items) > 1:
+                    other_loc, other_info = sorted_items[1]
+                    other_score = int(round((other_info['score'] / max_score) * 100))
+                    # If top was manager-confirmed, call that out
+                    top_sources = ' '.join([str(_source_name(e.get('source'))) for e in evs])
+                    if any('confirmed' in str(_source_name(e.get('source'))).lower() for e in evs):
+                        pieces.append(f"Ranked above {other_loc} because this location was manager-confirmed.")
+                    elif any('blancco' in str(_source_name(e.get('source'))).lower() for e in evs) and not any('blancco' in str(_source_name(e.get('source'))).lower() for e in other_info.get('evidence', [])):
+                        pieces.append(f"Ranked above {other_loc} due to a Blancco erasure record.")
+                    else:
+                        # Recency-based compare
+                        top_last = info.get('last_seen')
+                        other_last = other_info.get('last_seen')
+                        if top_last and other_last and isinstance(top_last, datetime) and isinstance(other_last, datetime):
+                            delta_h = (top_last - other_last).total_seconds() / 3600.0
+                            if delta_h > 72:
+                                pieces.append(f"More recent scans than {other_loc} (last seen {top_last.date()}).")
+                            elif delta_h < -72:
+                                pieces.append(f"Slightly older evidence than {other_loc}, but stronger combined signals.")
+                            else:
+                                pieces.append(f"Stronger combined evidence (score {norm} vs {other_score}).")
+                        else:
+                            pieces.append(f"Stronger combined evidence (score {norm} vs {other_score}).")
+            except Exception:
+                pass
+
+            explanation = ' '.join(pieces).strip()
 
             out.append({
                 'location': loc,
@@ -239,9 +346,10 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 'evidence': [ (e if isinstance(e, dict) else {'source': e}) for e in evs ],
                 'last_seen': last_seen.isoformat() if last_seen else None,
                 'type': kind,
+                'explanation': explanation,
             })
 
-        out.sort(key=lambda x: x['score'], reverse=True)
+        # Already built in score-descending order
         return out[:top_n]
     except Exception:
         try:

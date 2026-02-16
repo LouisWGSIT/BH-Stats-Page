@@ -1559,7 +1559,12 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
     This lazy import avoids circular imports at module import time while
     allowing external callers to continue calling `qa_export.get_device_location_hypotheses`.
     """
-    from .device_lookup import get_device_location_hypotheses as _dl
+    try:
+        # Prefer top-level import when module is executed as a script/package root
+        from device_lookup import get_device_location_hypotheses as _dl
+    except Exception:
+        # Fall back to package-relative import when running as a package
+        from .device_lookup import get_device_location_hypotheses as _dl
     return _dl(stockid, top_n)
 
 
