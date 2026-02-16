@@ -421,7 +421,9 @@
                     </div>
                     <div class="form-group">
                         <label for="fixTo">To (Correct Initials):</label>
-                        <input type="text" id="fixTo" placeholder="e.g., MS" maxlength="3">
+                        <select id="fixTo" style="max-width: 300px;">
+                            <option value="">-- Select target initials --</option>
+                        </select>
                     </div>
                 </div>
                 <button onclick="fixInitials()" id="fixBtn">Fix Initials</button>
@@ -655,7 +657,8 @@
 
         async function fixInitials() {
             const fromInitials = document.getElementById('fixFrom').value;
-            const toInitials = document.getElementById('fixTo').value.trim().toUpperCase();
+            const toElem = document.getElementById('fixTo');
+            const toInitials = (toElem && toElem.value) ? String(toElem.value).trim().toUpperCase() : '';
             const resultDiv = document.getElementById('fixResult');
             const btn = document.getElementById('fixBtn');
 
@@ -696,13 +699,16 @@
                     body: JSON.stringify(payload)
                 });
 
-                const data = await response.json();
+                // Try to parse JSON; if server returned non-JSON (e.g., HTML error), fall back to text
+                let dataText = await response.text();
+                let data = {};
+                try { data = JSON.parse(dataText); } catch (e) { data = { detail: dataText }; }
 
                 if (response.ok) {
                     showResult(resultDiv, 'success', '✅ Success!', 
-                        `Fixed ${data.affected_records} erasures: ${fromInitials || '(blank)'} → ${data.to_initials}`);
+                        `Fixed ${data.affected_records || 0} erasures: ${fromInitials || '(blank)'} → ${data.to_initials || toInitials}`);
                     document.getElementById('fixFrom').value = '';
-                    document.getElementById('fixTo').value = '';
+                    if (document.getElementById('fixTo').tagName.toLowerCase() === 'select') document.getElementById('fixTo').value = '';
                     loadStats();
                     loadInitialsList();
                     populateFromDropdown(); // Refresh the dropdown
@@ -897,6 +903,7 @@
 
         async function populateFromDropdown() {
             const dropdown = document.getElementById('fixFrom');
+            const toDropdown = document.getElementById('fixTo');
             
             try {
                 const response = await fetch('/admin/initials-list', {
@@ -906,8 +913,9 @@
                 const data = await response.json();
                 const initials = data.initials || [];
 
-                // Clear existing options except the first one
+                // Clear existing options
                 dropdown.innerHTML = '<option value="">-- Select initials to change --</option>';
+                if (toDropdown) toDropdown.innerHTML = '<option value="">-- Select target initials --</option>';
 
                 // Add all initials as options
                 initials.forEach(item => {
@@ -922,8 +930,20 @@
                         option.textContent = `${item.initials} - ${item.count} erasures`;
                     }
                     option.dataset.count = item.count;
-                    
                     dropdown.appendChild(option);
+
+                    // Also add to the 'To' dropdown (target initials)
+                    if (toDropdown) {
+                        const opt2 = document.createElement('option');
+                        if (item.initials === '(unassigned)' || !item.initials || item.initials.trim() === '') {
+                            opt2.value = '';
+                            opt2.textContent = `(No Initials) - ${item.count} erasures`;
+                        } else {
+                            opt2.value = item.initials;
+                            opt2.textContent = `${item.initials} - ${item.count} erasures`;
+                        }
+                        toDropdown.appendChild(opt2);
+                    }
                 });
 
                 dropdown.addEventListener('change', () => {
