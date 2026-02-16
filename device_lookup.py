@@ -460,23 +460,79 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     except Exception:
                         evid_texts.append(str(e.get('source') if isinstance(e, dict) else e))
 
-                rec = []
-                rec.append(item.get('explanation') or '')
-                if evid_texts:
-                    rec.append('Evidence details: ' + '; '.join(evid_texts))
-                rec.append(f'Confidence: {conf} (score {score_pct}%)')
-                # Recommended action based on type/implication
-                action = ''
-                if 'erasure' in (item.get('location') or '').lower() or any('blancco' in (str(e).lower()) for e in evid_texts):
-                    action = 'Check the erasure record and pallet/shipping queue before reassigning or shipping.'
-                elif 'pallet' in (item.get('location') or '').lower():
-                    action = 'Verify pallet contents and recent scans; inspect pallet before moving.'
-                elif item.get('type') == 'physical':
-                    action = 'Perform a quick QA or roller scan to confirm presence.'
-                if action:
-                    rec.append('Recommended action: ' + action)
+                # Detect primary signal
+                s_text = ' '.join(evid_texts).lower()
+                primary = None
+                if 'blancco' in s_text or 'erasure' in s_text:
+                    primary = 'erasure'
+                elif 'pallet' in s_text:
+                    primary = 'pallet'
+                elif any('confirmed' in t for t in s_text.split()):
+                    primary = 'confirmed'
+                elif 'qa' in s_text or 'scan' in s_text:
+                    primary = 'qa'
+                else:
+                    primary = 'other'
 
-                item['ai_explanation'] = ' '.join([r for r in rec if r]).strip()
+                # Compose AI-style explanation
+                parts = []
+                # Opening: why this candidate
+                if primary == 'erasure':
+                    opener = f"I consider {item.get('location')} the most likely place because a Blancco/erasure record was found for this device."
+                elif primary == 'pallet':
+                    opener = f"I consider {item.get('location')} likely because Stockbypallet/ITAD_pallet records associate this device with that pallet."
+                elif primary == 'confirmed':
+                    opener = f"I consider {item.get('location')} likely because a manager previously confirmed this location."
+                elif primary == 'qa':
+                    opener = f"I consider {item.get('location')} likely because multiple QA scans observed the device there recently."
+                else:
+                    opener = f"I consider {item.get('location')} a likely location based on combined signals from the data sources."
+                parts.append(opener)
+
+                # Evidence summary
+                if evid_texts:
+                    parts.append('Key signals: ' + '; '.join(evid_texts[:3]) + '.')
+
+                # Compare to next-best candidate to express ambiguity
+                comp_note = ''
+                try:
+                    # find this location in sorted_items to compare to runner-up
+                    runner = None
+                    for loc_name, loc_info in sorted_items:
+                        if loc_name == item.get('location'):
+                            break
+                    # get runner-up (second item)
+                    if len(sorted_items) > 1 and sorted_items[0][0] == item.get('location'):
+                        other_loc, other_info = sorted_items[1]
+                        other_score = int(round((other_info['score'] / max_score) * 100))
+                        top_score = int(round((item.get('raw_score', 0) / max_score) * 100))
+                        gap = top_score - other_score
+                        if gap < 15:
+                            comp_note = f"There is some ambiguity: this ranks only slightly above {other_loc} ({top_score}% vs {other_score}%)."
+                        else:
+                            comp_note = f"This ranks above {other_loc} ({top_score}% vs {other_score}%)."
+                except Exception:
+                    comp_note = ''
+                if comp_note:
+                    parts.append(comp_note)
+
+                # Confidence and uncertainty
+                parts.append(f"Confidence: {conf} (approx. score {score_pct}%).")
+
+                # Recommended action
+                action = ''
+                if primary == 'erasure':
+                    action = 'Check the Blancco entry (date/operator) and the pallet/shipping queue before reassigning or shipping.'
+                elif primary == 'pallet':
+                    action = 'Verify the pallet contents and recent scans; inspect the pallet before moving or shipping.'
+                elif primary == 'confirmed':
+                    action = 'You can rely on the manager confirmation, but verify timestamp/note if available.'
+                elif item.get('type') == 'physical':
+                    action = 'Perform a quick QA or roller scan to confirm the device is present.'
+                if action:
+                    parts.append('Recommended action: ' + action)
+
+                item['ai_explanation'] = ' '.join([p for p in parts if p]).strip()
             except Exception:
                 item['ai_explanation'] = item.get('explanation') or ''
 
