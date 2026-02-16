@@ -226,6 +226,17 @@
             font-size: 12px;
         }
 
+        .ai-explanation {
+            font-size:13px;
+            color:#222;
+            margin-top:6px;
+            background:#fff;
+            padding:10px;
+            border-radius:6px;
+            border:1px solid #e6e6e6;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        }
+
         .bottleneck-card {
             margin-top: 12px;
             padding: 12px;
@@ -997,7 +1008,7 @@
                             </div>
                             <div style="height:10px; background:#ddd; border-radius:4px; overflow:hidden; width:200px; margin-top:6px;"><div style="width:${score}%; height:10px; background:linear-gradient(90deg,#60a5fa,#7c3aed);"></div></div>
                             <div style="font-size:12px;color:#444;margin-top:6px;">Evidence: ${ evList }</div>
-                            <div style="font-size:13px;color:#222;margin-top:6px; background:#fff; padding:8px; border-radius:4px;">${ h.ai_explanation ? h.ai_explanation : (h.explanation || '') }</div>
+                            <div class="ai-explanation">${ h.ai_explanation ? h.ai_explanation : (h.explanation || '') }</div>
                         </div>`;
                     });
                     summaryHtml += `</div>`;
