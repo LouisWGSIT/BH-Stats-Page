@@ -2346,11 +2346,15 @@ async def device_lookup(stock_id: str, request: Request):
 
         # Add likely-location hypotheses (top N) from DB heuristics
         try:
+            print(f"Device lookup: generating hypotheses for {stock_id}")
             hypotheses = qa_export.get_device_location_hypotheses(stock_id, top_n=3)
-            if hypotheses:
-                results["hypotheses"] = hypotheses
-        except Exception as _:
-            # Never fail the entire lookup for hypothesis generation
+            print(f"Device lookup: hypotheses returned for {stock_id}: {len(hypotheses) if hypotheses is not None else 'None'}")
+            # Always include the key (empty list if none)
+            results["hypotheses"] = hypotheses or []
+        except Exception as e:
+            print(f"Device lookup: hypotheses generation error for {stock_id}: {e}")
+            import traceback
+            traceback.print_exc()
             results["hypotheses"] = []
 
         # Build smart insights (simple prediction + risk signals)
