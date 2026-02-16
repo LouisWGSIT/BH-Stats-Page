@@ -635,9 +635,9 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 # detect whether pallet evidence exists (so recommendations can reference it accurately)
                 has_pallet_evidence = any('pallet' in (t or '').lower() for t in evid_texts)
 
-                # Compose AI-style explanation
+                # Compose AI-style explanation (neutral, non-first-person)
                 parts = []
-                # Opening: why this candidate
+                # Opening: why this candidate (avoid first-person wording)
                 if primary == 'erasure':
                     if er_user or er_date:
                         pieces = []
@@ -645,17 +645,17 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                             pieces.append(f"by {er_user}")
                         if er_date:
                             pieces.append(f"on {er_date}")
-                        opener = f"I consider {item.get('location')} the most likely place because a Blancco/erasure record ({' '.join(pieces)}) was found for this device."
+                        opener = f"Evidence indicates {item.get('location')} is the most likely place because a Blancco/erasure record ({' '.join(pieces)}) was found for this device."
                     else:
-                        opener = f"I consider {item.get('location')} the most likely place because a Blancco/erasure record was found for this device."
+                        opener = f"Evidence indicates {item.get('location')} is the most likely place because a Blancco/erasure record was found for this device."
                 elif primary == 'pallet':
-                    opener = f"I consider {item.get('location')} likely because Stockbypallet/ITAD_pallet records associate this device with that pallet."
+                    opener = f"Stockbypallet/ITAD_pallet records associate {item.get('location')} with this device's pallet, making it a likely location."
                 elif primary == 'confirmed':
-                    opener = f"I consider {item.get('location')} likely because a manager previously confirmed this location."
+                    opener = f"A manager previously confirmed {item.get('location')} as the device's location."
                 elif primary == 'qa':
-                    opener = f"I consider {item.get('location')} likely because multiple QA scans observed the device there recently."
+                    opener = f"Multiple QA scans recently observed the device at {item.get('location')}, indicating it may still be there."
                 else:
-                    opener = f"I consider {item.get('location')} a likely location based on combined signals from the data sources."
+                    opener = f"Combined signals from the data sources indicate {item.get('location')} is a likely location."
                 parts.append(opener)
 
                 # Evidence summary (human-friendly)
