@@ -435,7 +435,50 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 'last_seen': last_seen.isoformat() if last_seen else None,
                 'type': kind,
                 'explanation': explanation,
+                'ai_explanation': None,
             })
+
+        # Enrich with AI-style expanded explanations
+        def _confidence_label(score_pct: int):
+            if score_pct >= 80:
+                return 'high'
+            if score_pct >= 60:
+                return 'medium-high'
+            if score_pct >= 40:
+                return 'medium'
+            return 'low'
+
+        for item in out:
+            try:
+                score_pct = int(item.get('score', 0))
+                conf = _confidence_label(score_pct)
+                evid = item.get('evidence', [])[:6]
+                evid_texts = []
+                for e in evid:
+                    try:
+                        evid_texts.append(_format_ev(e))
+                    except Exception:
+                        evid_texts.append(str(e.get('source') if isinstance(e, dict) else e))
+
+                rec = []
+                rec.append(item.get('explanation') or '')
+                if evid_texts:
+                    rec.append('Evidence details: ' + '; '.join(evid_texts))
+                rec.append(f'Confidence: {conf} (score {score_pct}%)')
+                # Recommended action based on type/implication
+                action = ''
+                if 'erasure' in (item.get('location') or '').lower() or any('blancco' in (str(e).lower()) for e in evid_texts):
+                    action = 'Check the erasure record and pallet/shipping queue before reassigning or shipping.'
+                elif 'pallet' in (item.get('location') or '').lower():
+                    action = 'Verify pallet contents and recent scans; inspect pallet before moving.'
+                elif item.get('type') == 'physical':
+                    action = 'Perform a quick QA or roller scan to confirm presence.'
+                if action:
+                    rec.append('Recommended action: ' + action)
+
+                item['ai_explanation'] = ' '.join([r for r in rec if r]).strip()
+            except Exception:
+                item['ai_explanation'] = item.get('explanation') or ''
 
         # Already built in score-descending order
         return out[:top_n]
