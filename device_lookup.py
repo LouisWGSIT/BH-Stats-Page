@@ -4,6 +4,7 @@ This module provides `get_device_location_hypotheses()` as a focused place
 for UI heuristics and lookup helpers.
 """
 from datetime import datetime
+import os
 from typing import List, Dict
 import sqlite3
 
@@ -390,16 +391,50 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 pass
             return False
 
-        # Build a sorted list of candidates so we can compare top vs second.
-        sorted_items = sorted(candidates.items(), key=lambda kv: kv[1]['score'], reverse=True)
+        # Apply a conservative recency-priority boost so the most-recent activity
+        # is favored for the majority of lookups. Configurable via environment:
+        # RECENCY_PRIORITY_HOURS (window) and RECENCY_PRIORITY_BOOST_MAX (max points).
+        try:
+            RECENCY_PRIORITY_HOURS = float(os.getenv('RECENCY_PRIORITY_HOURS', '72'))
+            RECENCY_PRIORITY_BOOST_MAX = float(os.getenv('RECENCY_PRIORITY_BOOST_MAX', '30'))
+        except Exception:
+            RECENCY_PRIORITY_HOURS = 72.0
+            RECENCY_PRIORITY_BOOST_MAX = 30.0
 
-        # Determine the most recent evidence timestamp across all candidates
+        # Find the globally most recent timestamp among candidate 'last_seen' values
         global_most_recent = None
-        for _, info in sorted_items:
+        for info in candidates.values():
             ls = info.get('last_seen')
             if ls:
                 if not global_most_recent or ls > global_most_recent:
                     global_most_recent = ls
+
+        # If we have a recent timestamp, give nearby recent candidates a small boost
+        if global_most_recent:
+            try:
+                for key, info in candidates.items():
+                    ls = info.get('last_seen')
+                    if not ls:
+                        continue
+                    try:
+                        delta_hours = (global_most_recent - ls).total_seconds() / 3600.0
+                    except Exception:
+                        delta_hours = None
+                    if delta_hours is None:
+                        continue
+                    if delta_hours <= RECENCY_PRIORITY_HOURS:
+                        # linear-decay boost that is largest for the most-recent item
+                        factor = max(0.0, 1.0 - (delta_hours / RECENCY_PRIORITY_HOURS))
+                        boost = int(round(RECENCY_PRIORITY_BOOST_MAX * factor))
+                        if boost > 0:
+                            info['score'] = info.get('score', 0.0) + float(boost)
+                            # record provenance of boost so the explanation can surface it
+                            info.setdefault('evidence', []).append({'source': 'recency_boost', 'raw': boost, 'multiplier': 1.0, 'src_conf': 0.6, 'effective': float(boost)})
+            except Exception:
+                pass
+
+        # Build a sorted list of candidates so we can compare top vs second.
+        sorted_items = sorted(candidates.items(), key=lambda kv: kv[1]['score'], reverse=True)
         out = []
         for idx, (loc, info) in enumerate(sorted_items):
             norm = int(round((info['score'] / max_score) * 100))
