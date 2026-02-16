@@ -727,6 +727,39 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 item['ai_explanation'] = ' '.join([p for p in parts if p]).strip()
             except Exception:
                 item['ai_explanation'] = item.get('explanation') or ''
+            # Add explicit flags and blancco details for UI
+            try:
+                evid = item.get('evidence', [])
+                s_text = ' '.join([_format_ev(e).lower() for e in evid if e])
+                item['is_blancco'] = ('blancco' in s_text or 'erasure' in s_text)
+                item['is_inferred'] = any((isinstance(e, dict) and (('co_location' in (e.get('source') or '') ) or ('inferred' in str(e.get('source') or '').lower()))) for e in evid)
+                item['is_confirmed'] = any('confirmed' in str(_source_name(e.get('source'))).lower() for e in evid)
+                item['is_most_recent'] = False
+                try:
+                    if global_most_recent and item.get('last_seen') and item.get('last_seen') == global_most_recent:
+                        item['is_most_recent'] = True
+                except Exception:
+                    item['is_most_recent'] = False
+
+                # collect blancco details if present
+                bl_user = None
+                bl_date = None
+                for e in evid:
+                    try:
+                        src = e.get('source') if isinstance(e, dict) else e
+                        if isinstance(src, dict) and (('blancco' in (src.get('source') or '').lower()) or ('erasure' in (src.get('source') or '').lower())):
+                            bl_user = bl_user or src.get('username') or src.get('user')
+                            bl_date = bl_date or src.get('added_date') or src.get('added') or src.get('date')
+                    except Exception:
+                        continue
+                if bl_user or bl_date:
+                    item['blancco'] = {}
+                    if bl_user:
+                        item['blancco']['operator'] = bl_user
+                    if bl_date:
+                        item['blancco']['date'] = bl_date
+            except Exception:
+                pass
 
         # Already built in score-descending order
         return out[:top_n]

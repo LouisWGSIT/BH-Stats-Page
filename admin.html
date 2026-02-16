@@ -356,6 +356,13 @@
             border:1px solid #e6e6e6;
             box-shadow: 0 4px 12px rgba(0,0,0,0.04);
         }
+        /* Badge styles for hypotheses */
+        .badge { display:inline-block; margin-right:6px; padding:2px 6px; border-radius:999px; font-size:11px; font-weight:700; }
+        .badge.most-recent { background:#e6f9f2; color:#047857; }
+        .badge.blancco { background:#fff1f2; color:#b91c1c; }
+        .badge.inferred { background:#f3f4f6; color:#374151; }
+        .badge.confirmed { background:#eef2ff; color:#1e40af; }
+        .badge-legend { margin-top:8px; font-size:12px; color:#334155; }
     </style>
 </head>
 <body>
@@ -1111,19 +1118,28 @@
                 if (data.hypotheses && data.hypotheses.length > 0) {
                     const safeStock = stockId ? stockId.replace(/[^a-zA-Z0-9_-]/g, '_') : 'unknown';
                     summaryHtml += `<div style="margin-top:12px; padding:10px; background:#eef2ff; border-radius:6px;"><strong>Top location hypotheses</strong><br>`;
+                    summaryHtml += `<div class="badge-legend">Legend: <span class="badge most-recent">Most recent</span> <span class="badge blancco">Blancco</span> <span class="badge inferred">Inferred</span> <span class="badge confirmed">Confirmed</span></div>`;
                     data.hypotheses.forEach((h, idx) => {
                         const score = h.score || 0;
                         const last = h.last_seen ? ` (last seen ${h.last_seen})` : '';
                         const badge = h.type === 'stage' ? 'Stage' : 'Physical';
                         const evList = (h.evidence || []).slice(0,3).map(e => formatEvidence(e)).filter(Boolean).join(', ');
                         const aiId = `ai-${safeStock}-${idx}`;
+                        // build badges using CSS classes
+                        let badgeHtml = '';
+                        if (h.is_most_recent) badgeHtml += `<span class="badge most-recent">Most recent</span>`;
+                        if (h.is_blancco) badgeHtml += `<span class="badge blancco">Blancco</span>`;
+                        if (h.is_inferred) badgeHtml += `<span class="badge inferred">Inferred</span>`;
+                        if (h.is_confirmed) badgeHtml += `<span class="badge confirmed">Confirmed</span>`;
+
                         summaryHtml += `<div style="margin-top:8px;">
-                            <div style="font-weight:700;">
-                                ${h.location}${last}
-                                <span style="font-size:11px;color:#666;margin-left:8px;">[${badge}]</span>
+                            <div style="font-weight:700; display:flex; align-items:center; gap:8px;">
+                                <div style="flex:1;">${h.location}${last} <span style="font-size:11px;color:#666;margin-left:8px;">[${badge}]</span></div>
+                                <div>${badgeHtml}</div>
                             </div>
                             <div style="height:10px; background:#ddd; border-radius:4px; overflow:hidden; width:200px; margin-top:6px;"><div style="width:${score}%; height:10px; background:linear-gradient(90deg,#60a5fa,#7c3aed);"></div></div>
                             <div style="font-size:12px;color:#444;margin-top:6px;">Evidence: ${ evList }</div>
+                            ${ h.blancco ? `<div style="margin-top:6px; font-size:13px; color:#b91c1c; font-weight:700;">Blancco erasure recorded${ h.blancco.date ? ' on ' + h.blancco.date : '' }${ h.blancco.operator ? ' by ' + h.blancco.operator : '' }</div>` : '' }
                             <div class="ai-explanation">${ h.ai_explanation ? h.ai_explanation : (h.explanation || '') }</div>
                             <div style="margin-top:8px;">
                                 <button onclick="(function(){ const note = prompt('Optional note for confirmation (leave blank if none):'); confirmDeviceLocation(stockId, h.location, note); })()">Mark found here</button>
