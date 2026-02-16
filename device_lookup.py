@@ -316,47 +316,116 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
 
             kind = 'physical' if not _is_stage(evs) else 'stage'
 
-            # Generate concise explanation
-            pieces = []
-            # Primary evidence summary (up to 2 strong items)
-            try:
+            # Generate a human-friendly two-sentence explanation for the top candidates.
+            def _compose_explanation(loc_name, info, idx, sorted_items):
+                evs_local = info.get('evidence', [])[:6]
                 formatted = []
-                for e in evs[:3]:
-                    formatted.append(_format_ev(e))
-                if formatted:
-                    pieces.append('Evidence: ' + '; '.join(formatted))
-            except Exception:
-                pass
+                for e in evs_local:
+                    try:
+                        formatted.append(_format_ev(e))
+                    except Exception:
+                        formatted.append(str(e.get('source') if isinstance(e, dict) else e))
 
-            # Comparative reasoning against the next-best candidate
-            try:
+                # Identify signal types
+                has_confirmed = any('confirmed' in str(_source_name(e.get('source'))).lower() for e in evs_local)
+                has_blancco = any('blancco' in str(_source_name(e.get('source'))).lower() or 'erasure' in str(_source_name(e.get('source'))).lower() for e in evs_local)
+                has_pallet = any('pallet' in str(_source_name(e.get('source'))).lower() for e in evs_local)
+                has_qa = any('qa' in str(_source_name(e.get('source'))).lower() for e in evs_local)
+
+                reasons = []
+                implication = None
+
+                if has_confirmed:
+                    user = None
+                    for e in evs_local:
+                        s = _source_name(e.get('source'))
+                        if 'user_confirmed' in str(s).lower() or 'confirmed' in str(s).lower():
+                            try:
+                                start = str(s).find('(')
+                                end = str(s).find(')')
+                                if start != -1 and end != -1 and end > start:
+                                    user = str(s)[start+1:end]
+                            except Exception:
+                                user = None
+                    if user:
+                        reasons.append(f"a manager confirmed the location (by {user})")
+                    else:
+                        reasons.append("a manager confirmed this location")
+
+                if has_blancco:
+                    bl_info = None
+                    for e in evs_local:
+                        s = e.get('source') if isinstance(e, dict) else e
+                        if isinstance(s, dict) and (('blancco' in (s.get('source') or '').lower()) or ('erasure' in (s.get('source') or '').lower())):
+                            bl_info = s
+                            break
+                    if bl_info:
+                        ad = bl_info.get('added_date') or bl_info.get('added')
+                        if ad:
+                            reasons.append(f"a Blancco erasure record on {ad}")
+                        else:
+                            reasons.append("a Blancco erasure record")
+                    else:
+                        reasons.append("an erasure record")
+                    implication = "the device was erased and may be ready for resale or shipping"
+
+                if has_pallet and not has_blancco:
+                    pid = None
+                    for e in evs_local:
+                        s = e.get('source') if isinstance(e, dict) else e
+                        if isinstance(s, str) and s.lower().startswith('on pallet'):
+                            pid = s
+                            break
+                        if isinstance(s, dict) and s.get('source') and 'pallet' in s.get('source'):
+                            pid = s.get('source')
+                            break
+                    if pid:
+                        reasons.append(f"it appears on {pid}")
+                    else:
+                        reasons.append("Stockbypallet records point to a pallet")
+                    implication = "the device is likely physically on that pallet and may be moving with it"
+
+                if has_qa and not (has_blancco or has_pallet or has_confirmed):
+                    qa_cnt = None
+                    qa_last = None
+                    qa_user = None
+                    for e in evs_local:
+                        s = e.get('source') if isinstance(e, dict) else e
+                        if isinstance(s, dict) and ('qa' in (s.get('source') or '').lower() or 'qa' in str(s).lower()):
+                            qa_cnt = s.get('count') or qa_cnt
+                            qa_last = s.get('last_seen') or qa_last
+                            qa_user = s.get('username') or qa_user
+                    cnt_part = f"{int(qa_cnt)} scans" if qa_cnt else "recent scans"
+                    when_part = f" last seen {qa_last}" if qa_last else ""
+                    by_part = f" by {qa_user}" if qa_user else ""
+                    reasons.append(f"{cnt_part}{when_part}{by_part}")
+                    implication = f"the device was recently observed at {loc_name} and may still be there"
+
+                if not reasons:
+                    if formatted:
+                        reasons.append('; '.join(formatted[:2]))
+                    else:
+                        reasons.append(f"strongest combined evidence (score {int(round((info.get('score',0)/max_score)*100))})")
+
+                compare_note = ''
                 if idx == 0 and len(sorted_items) > 1:
                     other_loc, other_info = sorted_items[1]
                     other_score = int(round((other_info['score'] / max_score) * 100))
-                    # If top was manager-confirmed, call that out
-                    top_sources = ' '.join([str(_source_name(e.get('source'))) for e in evs])
-                    if any('confirmed' in str(_source_name(e.get('source'))).lower() for e in evs):
-                        pieces.append(f"Ranked above {other_loc} because this location was manager-confirmed.")
-                    elif any('blancco' in str(_source_name(e.get('source'))).lower() for e in evs) and not any('blancco' in str(_source_name(e.get('source'))).lower() for e in other_info.get('evidence', [])):
-                        pieces.append(f"Ranked above {other_loc} due to a Blancco erasure record.")
+                    top_score = int(round((info['score'] / max_score) * 100))
+                    if top_score >= other_score + 20:
+                        compare_note = f" It ranks substantially higher than {other_loc} (score {top_score}% vs {other_score}%)."
                     else:
-                        # Recency-based compare
-                        top_last = info.get('last_seen')
-                        other_last = other_info.get('last_seen')
-                        if top_last and other_last and isinstance(top_last, datetime) and isinstance(other_last, datetime):
-                            delta_h = (top_last - other_last).total_seconds() / 3600.0
-                            if delta_h > 72:
-                                pieces.append(f"More recent scans than {other_loc} (last seen {top_last.date()}).")
-                            elif delta_h < -72:
-                                pieces.append(f"Slightly older evidence than {other_loc}, but stronger combined signals.")
-                            else:
-                                pieces.append(f"Stronger combined evidence (score {norm} vs {other_score}).")
-                        else:
-                            pieces.append(f"Stronger combined evidence (score {norm} vs {other_score}).")
-            except Exception:
-                pass
+                        compare_note = f" It ranks above {other_loc} (score {top_score}% vs {other_score}%)."
 
-            explanation = ' '.join(pieces).strip()
+                reason_text = ' and '.join(reasons)
+                sentence1 = f"{loc_name} is the best place to start looking for this device because {reason_text}.{compare_note}"
+                sentence2 = f"This likely means {implication}." if implication else ""
+                return (sentence1 + (' ' + sentence2 if sentence2 else '')).strip()
+
+            try:
+                explanation = _compose_explanation(loc, info, idx, sorted_items)
+            except Exception:
+                explanation = ''
 
             out.append({
                 'location': loc,
