@@ -2348,8 +2348,9 @@ async def device_lookup(stock_id: str, request: Request):
         try:
             hypotheses = qa_export.get_device_location_hypotheses(stock_id, top_n=3)
             results["hypotheses"] = hypotheses or []
-        except Exception:
-            # Hypothesis generation is optional; fail silently and return empty list
+        except Exception as e:
+            # Hypothesis generation is optional; log exception for debugging and return empty list
+            logging.exception("Hypothesis generation failed for %s: %s", stock_id, e)
             results["hypotheses"] = []
 
         # Build smart insights (simple prediction + risk signals)
