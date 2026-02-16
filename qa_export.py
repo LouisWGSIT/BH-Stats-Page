@@ -1657,6 +1657,16 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             LIMIT 10
         """, (stockid,))
         now = datetime.utcnow()
+        # Also fetch the latest QA user for this stockid (if present)
+        qa_latest_user = None
+        try:
+            cur.execute("SELECT username, added_date FROM ITAD_QA_App WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (stockid,))
+            qrow = cur.fetchone()
+            if qrow:
+                qa_latest_user = qrow[0]
+        except Exception:
+            qa_latest_user = None
+
         for loc, last_seen, cnt in cur.fetchall():
             if not loc:
                 continue
@@ -1672,7 +1682,13 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             if hours is not None:
                 recency_factor = max(0.1, 1.0 - min(hours / 168.0, 0.9))
             base = 40.0 * recency_factor + min(15.0, float(cnt or 0))
-            add_candidate(loc, base, f"QA scans ({int(cnt or 0)})", last_seen, src_conf=0.95)
+            ev = {
+                'source': f"QA scans",
+                'count': int(cnt or 0),
+                'last_seen': last_seen,
+                'username': qa_latest_user,
+            }
+            add_candidate(loc, base, ev, last_seen, src_conf=0.95)
 
         # From Stockbypallet (if present)
         cur.execute("SELECT pallet_id FROM Stockbypallet WHERE stockid = %s LIMIT 1", (stockid,))
@@ -1698,15 +1714,37 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 has_added_date = False
 
             if has_added_date:
-                cur.execute("SELECT id, added_date FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (stockid,))
-                b = cur.fetchone()
-                if b:
-                    add_candidate('Erasure (Blancco)', 30, 'ITAD_asset_info_blancco', b[1], src_conf=1.0)
+                # Try to fetch added_date and username/engineer if present
+                has_blancco_user = False
+                try:
+                    cur.execute(
+                        "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = %s AND TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = %s",
+                        ("ITAD_asset_info_blancco", "username")
+                    )
+                    has_blancco_user = cur.fetchone() is not None
+                except Exception:
+                    has_blancco_user = False
+
+                if has_blancco_user:
+                    cur.execute("SELECT id, added_date, username FROM ITAD_asset_info_blancco WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (stockid,))
+                    b = cur.fetchone()
+                    if b:
+                        _, added_dt, b_user = b
+                        ev = {'source': 'ITAD_asset_info_blancco', 'added_date': added_dt, 'username': b_user}
+                        add_candidate('Erasure (Blancco)', 30, ev, added_dt, src_conf=1.0)
+                else:
+                    cur.execute("SELECT id, added_date FROM ITAD_asset_info_blancco WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (stockid,))
+                    b = cur.fetchone()
+                    if b:
+                        _, added_dt = b
+                        ev = {'source': 'ITAD_asset_info_blancco', 'added_date': added_dt}
+                        add_candidate('Erasure (Blancco)', 30, ev, added_dt, src_conf=1.0)
             else:
                 cur.execute("SELECT id FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (stockid,))
                 b2 = cur.fetchone()
                 if b2:
-                    add_candidate('Erasure (Blancco)', 30, 'ITAD_asset_info_blancco', None, src_conf=1.0)
+                    ev = {'source': 'ITAD_asset_info_blancco'}
+                    add_candidate('Erasure (Blancco)', 30, ev, None, src_conf=1.0)
         except Exception:
             # If any unexpected error occurs, don't raise — blancco evidence is optional
             pass
@@ -1798,6 +1836,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             out.append({
                 'location': loc,
                 'score': norm,
+                'raw_score': float(info.get('score', 0.0)),
                 'evidence': [ (e if isinstance(e, dict) else {'source': e}) for e in evs ],
                 'last_seen': last_seen.isoformat() if last_seen else None,
                 'type': kind,
@@ -1805,6 +1844,72 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             })
 
         out.sort(key=lambda x: x['score'], reverse=True)
+
+        # Enrich explanations with comparative reasoning (why this ranks above the next candidate)
+        try:
+            for i in range(len(out)):
+                cur = out[i]
+                more = ''
+                if i + 1 < len(out):
+                    nxt = out[i+1]
+                    # Compare raw scores
+                    try:
+                        diff = int(round((cur.get('raw_score', 0) - nxt.get('raw_score', 0))))
+                    except Exception:
+                        diff = None
+
+                    # Compare recency
+                    try:
+                        cur_last = _parse_timestamp(cur.get('last_seen')) if cur.get('last_seen') else None
+                        nxt_last = _parse_timestamp(nxt.get('last_seen')) if nxt.get('last_seen') else None
+                    except Exception:
+                        cur_last = None
+                        nxt_last = None
+
+                    recency_phrase = ''
+                    if cur_last and nxt_last:
+                        try:
+                            delta_hours = (cur_last - nxt_last).total_seconds() / 3600.0
+                            if delta_hours > 1:
+                                recency_phrase = f"It is {int(round(delta_hours))} hours more recent than {nxt['location']}."
+                            elif delta_hours < -1:
+                                recency_phrase = f"It is {int(round(-delta_hours))} hours older than {nxt['location']}."
+                        except Exception:
+                            recency_phrase = ''
+
+                    contribs = cur.get('evidence', [])[:3]
+                    contrib_texts = []
+                    for c in contribs:
+                        try:
+                            src = c.get('source', '')
+                            eff = int(round(c.get('effective', 0)))
+                            pieces = [f"{src} (+{eff})"]
+                            if c.get('username'):
+                                pieces.append(f"by {c.get('username')}")
+                            if c.get('added_date') or c.get('last_seen'):
+                                ts = c.get('added_date') or c.get('last_seen')
+                                pieces.append(f"on {str(ts)}")
+                            contrib_texts.append(' '.join(pieces))
+                        except Exception:
+                            contrib_texts.append(str(c))
+
+                    parts = []
+                    if diff is not None and diff > 0:
+                        parts.append(f"It has a higher effective score (+{diff}) compared to {nxt['location']}.")
+                    if recency_phrase:
+                        parts.append(recency_phrase)
+                    if contrib_texts:
+                        parts.append(f"Top contributors: {', '.join(contrib_texts)}.")
+
+                    if parts:
+                        more = ' ' + ' '.join(parts)
+
+                # append comparative note to existing explanation
+                if more:
+                    cur['explanation'] = (cur.get('explanation', '') + ' ' + more).strip()
+        except Exception:
+            pass
+
         return out[:top_n]
     except Exception as e:
         try:
