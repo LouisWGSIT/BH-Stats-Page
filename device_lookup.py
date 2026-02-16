@@ -318,8 +318,6 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         if not candidates:
             return []
 
-        max_score = max((v['score'] for v in candidates.values()), default=1.0) or 1.0
-
         # Helpers to render human-friendly explanation text for each candidate.
         def _source_name(s):
             try:
@@ -435,9 +433,17 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
 
         # Build a sorted list of candidates so we can compare top vs second.
         sorted_items = sorted(candidates.items(), key=lambda kv: kv[1]['score'], reverse=True)
+
+        # Recompute max_score after any boosts and ensure normalization clamps to 0-100
+        max_score = max((v['score'] for v in candidates.values()), default=1.0) or 1.0
         out = []
         for idx, (loc, info) in enumerate(sorted_items):
-            norm = int(round((info['score'] / max_score) * 100))
+            # normalized percent (clamped)
+            try:
+                pct = (info.get('score', 0.0) / max_score) * 100.0
+                norm = max(0, min(100, int(round(pct))))
+            except Exception:
+                norm = 0
             evs = info.get('evidence', [])[:8]
             last_seen = info.get('last_seen')
 

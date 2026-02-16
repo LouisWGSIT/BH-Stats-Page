@@ -728,6 +728,42 @@
             return headers;
         }
 
+        function formatEvidence(ev) {
+            try {
+                if (!ev) return '';
+                if (typeof ev === 'string') return ev;
+                const src = ev.source;
+                if (!src) return JSON.stringify(ev).slice(0,80);
+                if (typeof src === 'string') return src;
+                const sname = (src.source || src.type || '').toString();
+                if (/blancco|erasure/i.test(sname)) {
+                    let parts = ['Blancco (erasure)'];
+                    if (src.added_date || src.added) parts.push('on ' + (src.added_date || src.added));
+                    if (src.username) parts.push('by ' + src.username);
+                    return parts.join(' ');
+                }
+                if (/qa|scan/i.test(sname)) {
+                    const cnt = src.count || src.cnt;
+                    const last = src.last_seen || src.last;
+                    let p = 'QA scans';
+                    if (cnt) p += ` (${cnt})`;
+                    if (last) p += ` last ${last}`;
+                    return p;
+                }
+                if (/pallet/i.test(sname)) {
+                    if (src.pallet_id) return `Pallet ${src.pallet_id}`;
+                    return sname;
+                }
+                if (/recency_boost/i.test(sname) || ev.source === 'recency_boost') {
+                    return 'recency_boost';
+                }
+                if (/user_confirmed|confirmed/i.test(sname)) return 'Manager confirmation';
+                if (src.location) return `${sname}: ${src.location}`;
+                if (src.username) return `${sname} by ${src.username}`;
+                return JSON.stringify(src).slice(0,80);
+            } catch (e) { return '' }
+        }
+
         function showResult(div, type, title, message) {
             div.className = 'result ' + type;
             div.innerHTML = `<h3>${title}</h3><p>${message}</p>`;
@@ -1017,7 +1053,7 @@
                         const score = h.score || 0;
                         const last = h.last_seen ? ` (last seen ${h.last_seen})` : '';
                         const badge = h.type === 'stage' ? 'Stage' : 'Physical';
-                        const evList = (h.evidence || []).slice(0,3).map(e => (typeof e === 'string' ? e : (e.source || JSON.stringify(e)))).join(', ');
+                        const evList = (h.evidence || []).slice(0,3).map(e => formatEvidence(e)).filter(Boolean).join(', ');
                         const aiId = `ai-${safeStock}-${idx}`;
                         summaryHtml += `<div style="margin-top:8px;">
                             <div style="font-weight:700;">
