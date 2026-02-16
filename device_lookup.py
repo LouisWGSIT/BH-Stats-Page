@@ -41,6 +41,35 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
 
     try:
         cur = conn.cursor()
+        # Canonicalize input: if a serial was provided, try resolving a stockid so
+        # subsequent queries (which generally key by stockid) find the same device
+        # regardless of which identifier the caller passed.
+        try:
+            resolved = None
+            try:
+                cur.execute("SELECT stockid FROM ITAD_asset_info WHERE stockid = %s OR serialnumber = %s LIMIT 1", (stockid, stockid))
+                r = cur.fetchone()
+                if r and r[0]:
+                    resolved = r[0]
+            except Exception:
+                resolved = None
+
+            if not resolved:
+                try:
+                    cur.execute("SELECT stockid FROM ITAD_asset_info_blancco WHERE stockid = %s OR serial = %s LIMIT 1", (stockid, stockid))
+                    r = cur.fetchone()
+                    if r and r[0]:
+                        resolved = r[0]
+                except Exception:
+                    resolved = None
+
+            if resolved:
+                # overwrite local variable so remaining queries use the canonical id
+                stockid = resolved
+        except Exception:
+            # best-effort only; if canonicalization fails, continue with original input
+            pass
+
         # Gather primary asset row
         cur.execute(
             """
