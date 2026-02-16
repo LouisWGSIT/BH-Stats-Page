@@ -594,9 +594,29 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     opener = f"I consider {item.get('location')} a likely location based on combined signals from the data sources."
                 parts.append(opener)
 
-                # Evidence summary
-                if evid_texts:
-                    parts.append('Key signals: ' + '; '.join(evid_texts[:3]) + '.')
+                # Evidence summary (human-friendly)
+                human_evid = []
+                for t in evid_texts[:6]:
+                    try:
+                        lt = t.lower()
+                        if 'blancco' in lt or 'erasure' in lt:
+                            # prefer concise label
+                            human_evid.append('Blancco (erasure) record' + (f" — {t}" if 'on ' in lt or 'by ' in lt else ''))
+                        elif 'pallet' in lt:
+                            human_evid.append(t.replace('Stockbypallet/ITAD_pallet records', 'Pallet record'))
+                        elif 'qa' in lt or 'scan' in lt:
+                            human_evid.append('Recent QA scans' + (f" — {t}" if '(' in t or 'last seen' in lt else ''))
+                        elif 'confirmed' in lt or 'user_confirmed' in lt:
+                            human_evid.append('Manager confirmation')
+                        elif 'inferred' in lt or 'co_location' in lt:
+                            human_evid.append('Inferred from nearby devices on same pallet')
+                        else:
+                            human_evid.append(t)
+                    except Exception:
+                        human_evid.append(t)
+
+                if human_evid:
+                    parts.append('Signals: ' + '; '.join(human_evid[:3]) + '.')
 
                 # Compare to next-best candidate to express ambiguity
                 comp_note = ''
@@ -624,14 +644,14 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 # Confidence and uncertainty
                 parts.append(f"Confidence: {conf} (approx. score {score_pct}%).")
 
-                # Recommended action
+                # Recommended action (clearer)
                 action = ''
                 if primary == 'erasure':
-                    action = 'Check the Blancco entry (date/operator) and the pallet/shipping queue before reassigning or shipping.'
+                    action = 'Check the Blancco/erasure record and inspect the indicated pallet — verify pallet contents and recent scans before reassigning or shipping.'
                 elif primary == 'pallet':
-                    action = 'Verify the pallet contents and recent scans; inspect the pallet before moving or shipping.'
+                    action = 'Inspect the pallet shown and its recent scans; confirm the device is physically present before moving or shipping.'
                 elif primary == 'confirmed':
-                    action = 'You can rely on the manager confirmation, but verify timestamp/note if available.'
+                    action = 'Manager-confirmed location — verify the timestamp and any note, then proceed.'
                 elif item.get('type') == 'physical':
                     action = 'Perform a quick QA or roller scan to confirm the device is present.'
                 if action:

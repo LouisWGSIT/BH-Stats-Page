@@ -1056,11 +1056,7 @@
                             </div>
                             <div style="height:10px; background:#ddd; border-radius:4px; overflow:hidden; width:200px; margin-top:6px;"><div style="width:${score}%; height:10px; background:linear-gradient(90deg,#60a5fa,#7c3aed);"></div></div>
                             <div style="font-size:12px;color:#444;margin-top:6px;">Evidence: ${ evList }</div>
-                            <div style="font-size:12px;color:#333;margin-top:6px;">
-                                <em>${ h.ai_explanation ? (h.ai_explanation.length > 300 ? h.ai_explanation.substring(0,300) + '...' : h.ai_explanation) : (h.explanation || '') }</em>
-                            </div>
-                            <div style="margin-top:6px; font-size:12px;"><a href="#" onclick="toggleAIExplanation('${aiId}');return false;">Explain more</a></div>
-                            <div id="${aiId}" style="display:none; margin-top:8px; font-size:13px; color:#222; background:#fff; padding:8px; border-radius:4px;">${ h.ai_explanation ? h.ai_explanation : (h.explanation || '') }</div>
+                            <div style="font-size:13px;color:#222;margin-top:6px; background:#fff; padding:8px; border-radius:4px;">${ h.ai_explanation ? h.ai_explanation : (h.explanation || '') }</div>
                         </div>`;
                     });
                     summaryHtml += `</div>`;
@@ -1075,16 +1071,7 @@
 
                 // Show timeline
 
-                // Small helper to toggle AI explanation blocks
-                if (typeof window.toggleAIExplanation !== 'function') {
-                    window.toggleAIExplanation = function(id) {
-                        try {
-                            var el = document.getElementById(id);
-                            if (!el) return;
-                            el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
-                        } catch (e) { console.error(e); }
-                    }
-                }
+                // AI explanations are shown inline (no toggle required)
                 if (data.timeline && data.timeline.length > 0) {
                     let timelineHtml = '<div style="margin-top:15px;">';
                     data.timeline.forEach((event, idx) => {

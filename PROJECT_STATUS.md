@@ -102,6 +102,7 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 - 2026-02-16: Added conservative co-location / temporal-correlation inference to device lookup: inspects up to 20 co-located devices on the same pallet and adds small, clearly-labeled inferred evidence (low confidence, capped influence) to improve hypotheses when direct evidence is sparse. (`device_lookup.py`)
 - 2026-02-16: UI tweak — removed inline AI paragraph above "Explain more" so long-form `ai_explanation` only appears when expanded in the admin/manager device lookup views.
 - 2026-02-16: Ran import smoke tests for key modules (`device_lookup`, `qa_export`, `services.db_utils`, `manager.bottleneck`) — all imports OK. Committed and pushed changes (commit b3dfd02).
+ - 2026-02-16: Updated wording and UI for device lookup explanations: the full, human-friendly AI-style paragraph is now shown inline (no "Explain more" toggle). Explanations avoid internal table names and present clear, actionable signals and next steps (e.g., "Blancco (erasure) record", "Pallet X — inspect contents and recent scans").
  
 - Fixed non-data-bearing QA query implementation in qa_export.py.
 - QA dashboard: trend panels, flip panels, metrics rotation, medals expanded to 6.
