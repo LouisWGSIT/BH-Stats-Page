@@ -571,6 +571,9 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     er_user = None
                     er_date = None
 
+                # detect whether pallet evidence exists (so recommendations can reference it accurately)
+                has_pallet_evidence = any('pallet' in (t or '').lower() for t in evid_texts)
+
                 # Compose AI-style explanation
                 parts = []
                 # Opening: why this candidate
@@ -647,7 +650,10 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 # Recommended action (clearer)
                 action = ''
                 if primary == 'erasure':
-                    action = 'Check the Blancco/erasure record and inspect the indicated pallet — verify pallet contents and recent scans before reassigning or shipping.'
+                    if has_pallet_evidence:
+                        action = 'Check the Blancco/erasure record and inspect the indicated pallet — verify pallet contents and recent scans before reassigning or shipping.'
+                    else:
+                        action = 'Check the Blancco/erasure record; if the device has an associated pallet or shipping queue, inspect those and verify recent scans before reassigning or shipping.'
                 elif primary == 'pallet':
                     action = 'Inspect the pallet shown and its recent scans; confirm the device is physically present before moving or shipping.'
                 elif primary == 'confirmed':
