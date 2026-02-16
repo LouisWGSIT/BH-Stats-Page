@@ -474,11 +474,32 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 else:
                     primary = 'other'
 
+                # Detect erasure operator/date if present in evidence
+                er_user = None
+                er_date = None
+                try:
+                    for e in evid:
+                        src = e.get('source') if isinstance(e, dict) else e
+                        if isinstance(src, dict) and (('blancco' in (src.get('source') or '').lower()) or ('erasure' in (src.get('source') or '').lower())):
+                            er_user = src.get('username') or er_user
+                            er_date = src.get('added_date') or src.get('added') or er_date
+                except Exception:
+                    er_user = None
+                    er_date = None
+
                 # Compose AI-style explanation
                 parts = []
                 # Opening: why this candidate
                 if primary == 'erasure':
-                    opener = f"I consider {item.get('location')} the most likely place because a Blancco/erasure record was found for this device."
+                    if er_user or er_date:
+                        pieces = []
+                        if er_user:
+                            pieces.append(f"by {er_user}")
+                        if er_date:
+                            pieces.append(f"on {er_date}")
+                        opener = f"I consider {item.get('location')} the most likely place because a Blancco/erasure record ({' '.join(pieces)}) was found for this device."
+                    else:
+                        opener = f"I consider {item.get('location')} the most likely place because a Blancco/erasure record was found for this device."
                 elif primary == 'pallet':
                     opener = f"I consider {item.get('location')} likely because Stockbypallet/ITAD_pallet records associate this device with that pallet."
                 elif primary == 'confirmed':
