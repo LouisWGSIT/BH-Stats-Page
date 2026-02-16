@@ -392,6 +392,14 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
 
         # Build a sorted list of candidates so we can compare top vs second.
         sorted_items = sorted(candidates.items(), key=lambda kv: kv[1]['score'], reverse=True)
+
+        # Determine the most recent evidence timestamp across all candidates
+        global_most_recent = None
+        for _, info in sorted_items:
+            ls = info.get('last_seen')
+            if ls:
+                if not global_most_recent or ls > global_most_recent:
+                    global_most_recent = ls
         out = []
         for idx, (loc, info) in enumerate(sorted_items):
             norm = int(round((info['score'] / max_score) * 100))
@@ -452,6 +460,18 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     else:
                         reasons.append("an erasure record")
                     implication = "the device was erased and may be ready for resale or shipping"
+
+                # If this candidate holds the most recent evidence, call it out
+                try:
+                    if global_most_recent and info.get('last_seen') and info.get('last_seen') == global_most_recent:
+                        # format datetime to short date
+                        try:
+                            most_recent_str = info.get('last_seen').strftime('%Y-%m-%d')
+                        except Exception:
+                            most_recent_str = str(info.get('last_seen'))
+                        reasons.append(f"most recent event recorded on {most_recent_str}")
+                except Exception:
+                    pass
 
                 if has_pallet and not has_blancco:
                     pid = None
