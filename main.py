@@ -3279,6 +3279,45 @@ async def device_lookup(stock_id: str, request: Request):
                                         h['blancco'] = blancco_found[0]
                             except Exception:
                                 continue
+                    # If we found erasure provenance, also add an explicit
+                    # 'Data Erasure' hypothesis (lower score than QA) so the UI
+                    # lists both QA confirmation and Data Erasure as top items.
+                    try:
+                        if erasures_found:
+                            # prefer the most-recent erasure provenance
+                            e = erasures_found[-1]
+                            er_initials = e.get('initials') or 'Unknown'
+                            er_ts = e.get('ts')
+                            er_evidence = [{
+                                'source': 'local_erasures',
+                                'type': 'erasure',
+                                'initials': e.get('initials'),
+                                'job_id': e.get('job_id'),
+                                'ts': e.get('ts'),
+                                'manufacturer': e.get('manufacturer'),
+                                'model': e.get('model'),
+                                'disk_serial': e.get('disk_serial'),
+                                'drive_size': e.get('drive_size')
+                            }]
+                            er_hyp = {
+                                'location': f"Data Erasure (by {er_initials})",
+                                'score': max(0, int(QA_CONFIRMED_SCORE) - 10),
+                                'raw_score': float(max(0, int(QA_CONFIRMED_SCORE) - 10)),
+                                'evidence': er_evidence,
+                                'last_seen': er_ts,
+                                'type': 'stage',
+                                'explanation': f"Device erasure recorded by {er_initials}.",
+                                'ai_explanation': f"Erasure recorded by {er_initials} on {er_ts}.",
+                                'rank': 2,
+                                'is_blancco': True,
+                            }
+                            # Ensure hypotheses list exists and append if not duplicate
+                            results.setdefault('hypotheses', [])
+                            # avoid adding duplicate erasure hyp
+                            if not any(h.get('location', '').lower().startswith('data erasure') for h in results['hypotheses']):
+                                results['hypotheses'].append(er_hyp)
+                    except Exception:
+                        pass
             except Exception:
                 pass
             if results.get("hypotheses"):
