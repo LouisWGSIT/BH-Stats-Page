@@ -2537,12 +2537,28 @@ async def device_lookup(stock_id: str, request: Request):
             import sqlite3
             sqlite_conn = sqlite3.connect(db.DB_PATH)
             sqlite_cursor = sqlite_conn.cursor()
-            sqlite_cursor.execute("""
+            # Build candidate identifiers: include the requested stock_id plus
+            # any serial known from asset_info so that lookups by stock id
+            # also match erasure rows recorded by serial number.
+            candidates = [str(stock_id)]
+            try:
+                ai = results.get('asset_info') or {}
+                asset_serial = (ai.get('serial') or '').strip()
+                if asset_serial and asset_serial not in candidates:
+                    candidates.append(asset_serial)
+            except Exception:
+                asset_serial = None
+
+            # Prepare placeholders and parameters for IN (...) clauses
+            placeholders = ','.join(['?'] * len(candidates))
+            params = tuple(candidates)
+
+            sqlite_cursor.execute(f"""
                 SELECT ts, date, initials, device_type, event, manufacturer, model, system_serial, disk_serial, job_id, drive_size, drive_type, drive_count
                 FROM erasures
-                WHERE system_serial = ? OR disk_serial = ? OR job_id = ?
+                WHERE system_serial IN ({placeholders}) OR disk_serial IN ({placeholders}) OR job_id IN ({placeholders})
                 ORDER BY date ASC, ts ASC
-            """, (stock_id, stock_id, stock_id))
+            """, params * 3)
             for row in sqlite_cursor.fetchall():
                 try:
                     ts, date_str, initials, device_type, event, manufacturer, model, system_serial, disk_serial, job_id, drive_size, drive_type, drive_count = row
@@ -2652,6 +2668,53 @@ async def device_lookup(stock_id: str, request: Request):
                 # Always set last_known_user from erasure initials if present
                 if initials:
                     results["last_known_user"] = initials
+
+            # Additionally, if a spreadsheet-style erasure table exists (imported manually),
+            # query it by the same candidate serials and attach those rows as provenance.
+            try:
+                sqlite_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", ('erasure_spreadsheet',))
+                if sqlite_cursor.fetchone():
+                    sqlite_cursor.execute(f"SELECT ts, initials, manufacturer, model, serial, job_id, drive_size FROM erasure_spreadsheet WHERE serial IN ({placeholders}) OR job_id IN ({placeholders}) ORDER BY ts ASC", params * 2)
+                    for r in sqlite_cursor.fetchall():
+                        try:
+                            ets, einits, emfg, emod, eserial, ejob, edrive = r
+                        except Exception:
+                            continue
+                        prov = {
+                            'type': 'erasure_sheet',
+                            'source': 'erasure_spreadsheet',
+                            'ts': ets,
+                            'initials': einits,
+                            'job_id': ejob,
+                            'manufacturer': emfg,
+                            'model': emod,
+                            'serial': eserial,
+                            'drive_size': edrive,
+                        }
+                        # Attach as provenance-only event (will be merged if timestamps align)
+                        results.setdefault('found_in', [])
+                        if 'erasure_spreadsheet' not in results['found_in']:
+                            results['found_in'].append('erasure_spreadsheet')
+                        results['timeline'].append({
+                            'timestamp': ets,
+                            'stage': 'Erasure (spreadsheet)',
+                            'user': einits,
+                            'location': None,
+                            'source': 'erasure_spreadsheet',
+                            'manufacturer': emfg,
+                            'model': emod,
+                            'system_serial': eserial,
+                            'job_id': ejob,
+                            'drive_size': edrive,
+                            'is_blancco_record': True,
+                            'sources': [prov],
+                        })
+                        try:
+                            logging.info("[device_lookup] attached erasure_spreadsheet prov job=%s initials=%s stock=%s", ejob, einits, stock_id)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
             sqlite_cursor.close()
             sqlite_conn.close()
         except Exception as e:
