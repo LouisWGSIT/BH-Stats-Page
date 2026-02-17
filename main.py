@@ -2436,20 +2436,90 @@ async def device_lookup(stock_id: str, request: Request):
             # and include the raw blancco status and operator so the UI can
             # display the authoritative Blancco evidence without creating a
             # separate 'Erasure (Blancco)' location to look in.
-            results["timeline"].append({
-                "timestamp": str(b_added) if b_added else None,
-                "stage": "Erasure station",
-                "user": b_user,
-                "location": None,
-                "source": "ITAD_asset_info_blancco",
-                "serial": b_serial,
-                "stockid": b_stockid,
-                "manufacturer": b_manufacturer,
-                "model": b_model,
-                "details": f"{b_manufacturer} {b_model}" if b_manufacturer or b_model else None,
-                "blancco_status": b_status,
-                "is_blancco_record": True,
-            })
+            # Try to merge Blancco evidence into an existing nearby QA/audit event
+            try:
+                from datetime import datetime as _dt
+                MERGE_WINDOW = int(os.getenv('MERGE_TIMELINE_WINDOW_SECONDS', '60'))
+
+                def _parse_ts_local(ts):
+                    if not ts:
+                        return None
+                    try:
+                        if isinstance(ts, str):
+                            try:
+                                return _dt.fromisoformat(ts.replace('Z', '+00:00'))
+                            except Exception:
+                                pass
+                            for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S'):
+                                try:
+                                    return _dt.strptime(ts, fmt)
+                                except Exception:
+                                    continue
+                        elif hasattr(ts, 'timetuple'):
+                            return ts
+                    except Exception:
+                        return None
+                    return None
+
+                merged_into_existing = False
+                b_dt = _parse_ts_local(str(b_added)) if b_added else None
+                for ev in results.get('timeline', []):
+                    try:
+                        ev_ts = _parse_ts_local(ev.get('timestamp'))
+                        if not ev_ts or not b_dt:
+                            # also allow exact string match as fallback
+                            if ev.get('timestamp') and b_added and str(ev.get('timestamp')) == str(b_added):
+                                ev.setdefault('sources', [ev.get('source')])
+                                if 'ITAD_asset_info_blancco' not in ev['sources']:
+                                    ev['sources'].append('ITAD_asset_info_blancco')
+                                ev['blancco_status'] = b_status
+                                ev['is_blancco_record'] = True
+                                merged_into_existing = True
+                                break
+                            continue
+                        diff = abs((ev_ts - b_dt).total_seconds())
+                        if diff <= MERGE_WINDOW and (str(ev.get('source') or '').lower().startswith('audit_master') or 'qa' in str(ev.get('stage') or '').lower()):
+                            # attach blancco provenance to this existing QA/audit event
+                            ev.setdefault('sources', [ev.get('source')])
+                            if 'ITAD_asset_info_blancco' not in ev['sources']:
+                                ev['sources'].append('ITAD_asset_info_blancco')
+                            ev['blancco_status'] = b_status
+                            ev['is_blancco_record'] = True
+                            merged_into_existing = True
+                            break
+                    except Exception:
+                        continue
+                if not merged_into_existing:
+                    results["timeline"].append({
+                        "timestamp": str(b_added) if b_added else None,
+                        "stage": "Erasure station",
+                        "user": b_user,
+                        "location": None,
+                        "source": "ITAD_asset_info_blancco",
+                        "serial": b_serial,
+                        "stockid": b_stockid,
+                        "manufacturer": b_manufacturer,
+                        "model": b_model,
+                        "details": f"{b_manufacturer} {b_model}" if b_manufacturer or b_model else None,
+                        "blancco_status": b_status,
+                        "is_blancco_record": True,
+                    })
+            except Exception:
+                # fallback to appending as before
+                results["timeline"].append({
+                    "timestamp": str(b_added) if b_added else None,
+                    "stage": "Erasure station",
+                    "user": b_user,
+                    "location": None,
+                    "source": "ITAD_asset_info_blancco",
+                    "serial": b_serial,
+                    "stockid": b_stockid,
+                    "manufacturer": b_manufacturer,
+                    "model": b_model,
+                    "details": f"{b_manufacturer} {b_model}" if b_manufacturer or b_model else None,
+                    "blancco_status": b_status,
+                    "is_blancco_record": True,
+                })
         
         cursor.close()
         conn.close()
