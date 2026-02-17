@@ -2208,6 +2208,25 @@ async def device_lookup(stock_id: str, request: Request):
                 results["pallet_info"] = {"pallet_id": row[5]}
             if row[7]:  # location
                 results["last_known_location"] = row[7]
+            # Add an explicit timeline event for the asset_info location/last_update
+            try:
+                results.setdefault("timeline", [])
+                ts = str(row[6]) if row[6] else None
+                loc = row[7] if len(row) > 7 else None
+                results["timeline"].append({
+                    "timestamp": ts,
+                    "stage": "Location (asset_info)",
+                    "user": None,
+                    "location": loc,
+                    "source": "ITAD_asset_info",
+                    "stockid": row[0],
+                    "serial": row[1],
+                    "manufacturer": row[2],
+                    "model": row[3],
+                    "details": f"asset_info record",
+                })
+            except Exception:
+                pass
         
         # 2. Check Stockbypallet for pallet assignment
         cursor.execute("""
@@ -2238,6 +2257,23 @@ async def device_lookup(stock_id: str, request: Request):
                     "status": row[3],
                     "create_date": str(row[4]) if row[4] else None,
                 })
+                # Add a dedicated pallet creation/assignment event to the timeline
+                try:
+                    results.setdefault("timeline", [])
+                    pallet_ts = str(row[4]) if row[4] else None
+                    results["timeline"].append({
+                        "timestamp": pallet_ts,
+                        "stage": f"Pallet {pallet_id}",
+                        "user": None,
+                        "location": row[2],
+                        "source": "ITAD_pallet",
+                        "pallet_id": pallet_id,
+                        "pallet_destination": row[1],
+                        "pallet_location": row[2],
+                        "details": "pallet record",
+                    })
+                except Exception:
+                    pass
         
         # 4. Check ITAD_QA_App for sorting scans (include richer metadata when available)
         # Decide whether extended QA projection is safe by probing INFORMATION_SCHEMA
@@ -2578,6 +2614,33 @@ async def device_lookup(stock_id: str, request: Request):
                 })
             curc.close()
             sc.close()
+        except Exception:
+            pass
+
+        # 7e. Add hypothesis-derived last_seen events so top hypotheses appear on the timeline
+        try:
+            try:
+                hyps = qa_export.get_device_location_hypotheses(stock_id, top_n=5)
+            except Exception:
+                hyps = []
+            if hyps:
+                results.setdefault("found_in", []).append("device_location_hypotheses") if "device_location_hypotheses" not in results.get("found_in", []) else None
+                for h in hyps:
+                    try:
+                        last = h.get('last_seen') or h.get('last_activity')
+                        if not last:
+                            continue
+                        locname = h.get('location') or h.get('location_name') or None
+                        results.setdefault("timeline", []).append({
+                            "timestamp": last,
+                            "stage": f"Hypothesis: {locname}",
+                            "user": None,
+                            "location": locname,
+                            "source": "device_location_hypothesis",
+                            "details": f"hypothesis rank={h.get('rank') or h.get('score')}",
+                        })
+                    except Exception:
+                        continue
         except Exception:
             pass
         
