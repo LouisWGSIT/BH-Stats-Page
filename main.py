@@ -2355,6 +2355,98 @@ async def device_lookup(stock_id: str, request: Request):
             logging.exception("Hypothesis generation failed for %s: %s", stock_id, e)
             results["hypotheses"] = []
 
+        # Build a compact smart advisory from the top hypothesis (if available)
+        try:
+            smart_advisory = None
+            if results.get("hypotheses"):
+                top = results["hypotheses"][0]
+                # confidence: use normalized score if present, else raw_score
+                try:
+                    conf_pct = int(top.get('score', top.get('raw_score', 0)))
+                except Exception:
+                    conf_pct = int(top.get('raw_score', 0) or 0)
+
+                # last activity
+                last_act = top.get('last_seen')
+                last_dt = None
+                try:
+                    if last_act:
+                        # last_seen might already be iso string or datetime
+                        if isinstance(last_act, str):
+                            from datetime import datetime as _dt
+                            try:
+                                last_dt = _dt.fromisoformat(last_act.replace('Z', '+00:00'))
+                            except Exception:
+                                last_dt = None
+                        else:
+                            last_dt = last_act
+                except Exception:
+                    last_dt = None
+
+                hours_since = None
+                from datetime import datetime as _dt
+                try:
+                    if last_dt:
+                        hours_since = round((datetime.now(last_dt.tzinfo) - last_dt).total_seconds() / 3600.0, 1)
+                except Exception:
+                    hours_since = None
+
+                # simple predicted next step based on candidate type or keywords
+                predicted_next = None
+                locname = (top.get('location') or '').lower()
+                if 'erasure' in locname or 'blancco' in locname:
+                    predicted_next = 'QA Review'
+                elif 'pallet' in locname:
+                    predicted_next = 'Pallet Move / Shipping'
+                elif 'roller' in locname or 'ia' in locname:
+                    predicted_next = 'Erasure'
+                else:
+                    predicted_next = results.get('insights', {}).get('predicted_next_step') or None
+
+                # reason: use first sentence of ai_explanation if available
+                reason = None
+                try:
+                    aiex = top.get('ai_explanation') or top.get('explanation') or ''
+                    if aiex:
+                        reason = str(aiex).split('.')[:1][0].strip()
+                except Exception:
+                    reason = None
+
+                recommended = None
+                # derive recommended action from ai_explanation trailing phrases if possible
+                try:
+                    if aiex and 'recommended action' in aiex.lower():
+                        rec = aiex.lower().split('recommended action:')[-1].strip()
+                        recommended = rec[0:200].strip()
+                except Exception:
+                    recommended = None
+
+                smart_advisory = {
+                    'predicted_next': predicted_next,
+                    'confidence_pct': conf_pct,
+                    'last_activity': last_act if isinstance(last_act, str) else (last_dt.isoformat() if last_dt else None),
+                    'time_since_hours': hours_since,
+                    'reason': reason,
+                    'recommended_action': recommended,
+                    'source_candidate': top.get('location'),
+                }
+                # also attach advisory to the hypothesis object for UI convenience
+                results['hypotheses'][0]['smart_advisory'] = smart_advisory
+            results['smart_advisory'] = smart_advisory
+            # Provide a short timeline advisory note (human-friendly) derived from top hypothesis
+            try:
+                if results.get('hypotheses') and results['hypotheses'][0].get('ai_explanation'):
+                    note = results['hypotheses'][0].get('ai_explanation')
+                    # keep it short (first two sentences)
+                    sn = '.'.join(str(note).split('.')[:2]).strip()
+                    results['timeline_advisory_note'] = sn
+                else:
+                    results['timeline_advisory_note'] = None
+            except Exception:
+                results['timeline_advisory_note'] = None
+        except Exception:
+            results['smart_advisory'] = None
+
         # Build smart insights (simple prediction + risk signals)
         from datetime import datetime
 

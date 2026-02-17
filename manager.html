@@ -807,24 +807,29 @@
             }
         }
 
-        function renderInsights(insights) {
-            if (!insights) return '';
-            const riskLevel = insights.risk_level || 'low';
+        function renderInsights(insights, advisory) {
+            // Prefer compact advisory produced from location hypotheses when available
+            const source = advisory || insights || {};
+            const riskLevel = (insights && insights.risk_level) || 'low';
             const riskClass = `risk-${riskLevel}`;
-            const confidencePct = Number.isFinite(insights.confidence)
-                ? Math.round(insights.confidence * 100)
-                : null;
-            const predicted = insights.predicted_next_step || 'Unknown';
-            const lastActivity = insights.last_activity || 'Unknown';
-            const hoursSince = Number.isFinite(insights.hours_since_activity)
-                ? `${insights.hours_since_activity} hours`
-                : 'N/A';
-            const signals = Array.isArray(insights.signals) && insights.signals.length
-                ? insights.signals.map(item => `<div class="insights-item">${item}</div>`).join('')
-                : '<div class="insights-item">No risk signals detected</div>';
-            const recs = Array.isArray(insights.recommendations) && insights.recommendations.length
-                ? insights.recommendations.map(item => `<div class="insights-item">${item}</div>`).join('')
-                : '<div class="insights-item">No action needed</div>';
+            const confidencePct = advisory && advisory.confidence_pct !== undefined
+                ? advisory.confidence_pct
+                : (insights && Number.isFinite(insights.confidence) ? Math.round(insights.confidence * 100) : null);
+            const predicted = advisory && advisory.predicted_next ? advisory.predicted_next : (insights && insights.predicted_next_step) || 'Unknown';
+            const lastActivity = advisory && advisory.last_activity ? advisory.last_activity : (insights && insights.last_activity) || 'Unknown';
+            const hoursSince = advisory && advisory.time_since_hours !== undefined
+                ? (advisory.time_since_hours === null ? 'N/A' : advisory.time_since_hours + ' hours')
+                : (insights && Number.isFinite(insights.hours_since_activity) ? `${insights.hours_since_activity} hours` : 'N/A');
+
+            // Signals: prefer insights.signals but include advisory.reason as a short signal
+            const signalsArr = (insights && Array.isArray(insights.signals) && insights.signals.length) ? insights.signals.slice() : [];
+            if (advisory && advisory.reason) {
+                signalsArr.unshift(advisory.reason);
+            }
+            const signals = signalsArr.length ? signalsArr.map(item => `<div class="insights-item">${item}</div>`).join('') : '<div class="insights-item">No risk signals detected</div>';
+
+            const recsArr = (advisory && advisory.recommended_action) ? [advisory.recommended_action] : (insights && Array.isArray(insights.recommendations) ? insights.recommendations : []);
+            const recs = recsArr.length ? recsArr.map(item => `<div class="insights-item">${item}</div>`).join('') : '<div class="insights-item">No action needed</div>';
 
             return `
                 <div class="insights-card">
@@ -1099,7 +1104,7 @@
                     summaryHtml += `</div>`;
                 }
 
-                summaryHtml += renderInsights(data.insights);
+                summaryHtml += renderInsights(data.insights, data.smart_advisory);
                 summaryHtml += renderBottleneck(data.bottleneck, 'Destination Bottleneck Snapshot');
 
                 resultDiv.innerHTML = summaryHtml;
@@ -1108,6 +1113,9 @@
 
                 if (data.timeline && data.timeline.length > 0) {
                     let timelineHtml = '<div style="margin-top:15px;">';
+                    if (data.timeline_advisory_note) {
+                        timelineHtml += `<div style="margin-bottom:8px;" class="ai-explanation">${data.timeline_advisory_note}</div>`;
+                    }
                     data.timeline.forEach((event, idx) => {
                         const stageColor = event.stage.includes('QA') ? '#667eea' 
                             : event.stage.includes('Sorting') ? '#10b981'
