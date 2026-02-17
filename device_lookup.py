@@ -152,13 +152,21 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         """, (stockid,))
         now = datetime.utcnow()
         qa_latest_user = None
+        qa_latest_location = None
+        qa_latest_ts = None
         try:
-            cur.execute("SELECT username, added_date FROM ITAD_QA_App WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (stockid,))
+            # capture the latest QA row including scanned_location so we can prefer
+            # the exact place the latest QA user scanned this device
+            cur.execute("SELECT username, scanned_location, added_date FROM ITAD_QA_App WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (stockid,))
             qrow = cur.fetchone()
             if qrow:
                 qa_latest_user = qrow[0]
+                qa_latest_location = qrow[1]
+                qa_latest_ts = qrow[2]
         except Exception:
             qa_latest_user = None
+            qa_latest_location = None
+            qa_latest_ts = None
 
         for loc, last_seen, cnt in cur.fetchall():
             if not loc:
@@ -173,14 +181,25 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             recency_factor = 1.0
             if hours is not None:
                 recency_factor = max(0.1, 1.0 - min(hours / 168.0, 0.9))
-            base = 40.0 * recency_factor + min(15.0, float(cnt or 0))
+            # increase QA base weight so recent QA scans more strongly influence hypotheses
+            base = 50.0 * recency_factor + min(20.0, float(cnt or 0))
             ev = {
                 'source': f"QA scans",
                 'count': int(cnt or 0),
                 'last_seen': last_seen,
                 'username': qa_latest_user,
             }
-            add_candidate(loc, base, ev, last_seen, src_conf=0.95)
+            add_candidate(loc, base, ev, last_seen, src_conf=1.0)
+
+        # If we have a latest QA row for this exact stock, prefer the exact scanned_location
+        # from that latest QA by adding a strong candidate tied to that user's scan.
+        try:
+            if qa_latest_location:
+                ev2 = {'source': 'QA_latest', 'username': qa_latest_user, 'last_seen': qa_latest_ts}
+                # strong boost to ensure the technician's scan location is favored when present
+                add_candidate(qa_latest_location, 80, ev2, qa_latest_ts, src_conf=1.0)
+        except Exception:
+            pass
 
         # From Stockbypallet
         cur.execute("SELECT pallet_id FROM Stockbypallet WHERE stockid = %s LIMIT 1", (stockid,))
