@@ -413,11 +413,14 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         # is favored for the majority of lookups. Configurable via environment:
         # RECENCY_PRIORITY_HOURS (window) and RECENCY_PRIORITY_BOOST_MAX (max points).
         try:
-            RECENCY_PRIORITY_HOURS = float(os.getenv('RECENCY_PRIORITY_HOURS', '72'))
-            RECENCY_PRIORITY_BOOST_MAX = float(os.getenv('RECENCY_PRIORITY_BOOST_MAX', '30'))
+            # Make recency the dominant signal by default: prefer events within
+            # the last week and allow a larger boost so the most-recent item
+            # typically outranks other signals.
+            RECENCY_PRIORITY_HOURS = float(os.getenv('RECENCY_PRIORITY_HOURS', '168'))
+            RECENCY_PRIORITY_BOOST_MAX = float(os.getenv('RECENCY_PRIORITY_BOOST_MAX', '80'))
         except Exception:
-            RECENCY_PRIORITY_HOURS = 72.0
-            RECENCY_PRIORITY_BOOST_MAX = 30.0
+            RECENCY_PRIORITY_HOURS = 168.0
+            RECENCY_PRIORITY_BOOST_MAX = 80.0
 
         # Find the globally most recent timestamp among candidate 'last_seen' values
         global_most_recent = None
