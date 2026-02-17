@@ -100,6 +100,13 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 
 ## Recent Changes (Feb 2026)
 - 2026-02-16: Added conservative co-location / temporal-correlation inference to device lookup: inspects up to 20 co-located devices on the same pallet and adds small, clearly-labeled inferred evidence (low confidence, capped influence) to improve hypotheses when direct evidence is sparse. (`device_lookup.py`)
+ - 2026-02-17: Device lookup improvements — canonicalized Blancco handling and hypothesis updates.
+    - Suppress duplicate MariaDB `ITAD_asset_info_blancco` rows when a local server-message erasure (`local_erasures`) exists; merge MariaDB copies into the local provenance so the timeline shows a single authoritative Blancco row (engineer initials, job_id, timestamp).
+    - Added explicit `Data Erasure (by <initials>)` hypothesis (lower-score than QA) and enriched hypotheses evidence with Blancco/local erasure details so UI displays both QA-confirmed location and erasure as separate readable entries.
+    - Prevented erasure records from overwriting QA `last_known_user` so the QA-confirmed hypothesis remains the top, actionable signal.
+    - Removed the generic `Location (asset_info)` timeline row to reduce noise; `asset_info` metadata is still available in the response but no longer shown as a top-line timeline entry.
+    - Outcome verified locally: timeline now shows the QA event and a single `Blancco record by <initials>` row; hypotheses list QA as primary and Data Erasure as secondary.
+    - Next: user will scan the device to a pallet (Owen). After that, I'll validate the deployed instance to ensure the most-likely location updates correctly. Visual polish (UI colours/text) is planned next — will follow up once behaviour is stable.
 - 2026-02-16: UI tweak — removed inline AI paragraph above "Explain more" so long-form `ai_explanation` only appears when expanded in the admin/manager device lookup views.
 - 2026-02-16: Ran import smoke tests for key modules (`device_lookup`, `qa_export`, `services.db_utils`, `manager.bottleneck`) — all imports OK. Committed and pushed changes (commit b3dfd02).
  - 2026-02-16: Updated wording and UI for device lookup explanations: the full, human-friendly AI-style paragraph is now shown inline (no "Explain more" toggle). Explanations avoid internal table names and present clear, actionable signals and next steps (e.g., "Blancco (erasure) record", "Pallet X — inspect contents and recent scans").
