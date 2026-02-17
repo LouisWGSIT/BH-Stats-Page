@@ -2783,6 +2783,80 @@ async def device_lookup(stock_id: str, request: Request):
                 if initials:
                     results["last_known_user"] = initials
 
+                # Cleanup: find any MariaDB-copied Blancco timeline events that
+                # refer to the same serial/job and merge them into the local
+                # erasure provenance we just attached/added, then remove the
+                # duplicate MariaDB event so the timeline is not confusing.
+                try:
+                    to_remove_idxs = []
+                    # find the timeline event that contains our local_erasures provenance
+                    target_ev = None
+                    for tev in results.get('timeline', []):
+                        try:
+                            for s in tev.get('sources', []) or []:
+                                if s and s.get('source') == 'local_erasures' and (s.get('job_id') == job_id or (s.get('system_serial') and system_serial and str(s.get('system_serial')) == str(system_serial))):
+                                    target_ev = tev
+                                    break
+                            if target_ev:
+                                break
+                        except Exception:
+                            continue
+
+                    # If we didn't find a target event, try to locate a provenance-only
+                    # local_erasures event we just appended (match by job_id and ts)
+                    if not target_ev:
+                        for tev in reversed(results.get('timeline', [])):
+                            try:
+                                if tev.get('source') == 'local_erasures' and (tev.get('job_id') == job_id or (system_serial and str(tev.get('system_serial') or '') == str(system_serial))):
+                                    target_ev = tev
+                                    break
+                            except Exception:
+                                continue
+
+                    # Now find any ITAD_asset_info_blancco events that match and merge
+                    for idx, ev in enumerate(list(results.get('timeline', []))):
+                        try:
+                            if (ev.get('source') or '').lower() == 'itad_asset_info_blancco' or 'blancco' in str(ev.get('source') or '').lower():
+                                # match by serial or stockid/job
+                                ev_serial = ev.get('serial') or ev.get('stockid') or ev.get('stockid')
+                                ev_job = ev.get('stockid') or ev.get('job_id') or None
+                                if (system_serial and ev_serial and str(ev_serial).strip() == str(system_serial).strip()) or (job_id and ev_job and str(ev_job).strip() == str(job_id).strip()):
+                                    # attach this blancco event as provenance to target_ev if present
+                                    if target_ev is not None:
+                                        target_ev.setdefault('sources', [])
+                                        blobj = {
+                                            'type': 'blancco',
+                                            'source': 'ITAD_asset_info_blancco',
+                                            'ts': ev.get('timestamp'),
+                                            'initials': ev.get('user'),
+                                            'job_id': ev.get('stockid') or ev.get('job_id'),
+                                            'manufacturer': ev.get('manufacturer'),
+                                            'model': ev.get('model'),
+                                            'serial': ev.get('serial') or ev.get('stockid'),
+                                            'blancco_status': ev.get('blancco_status') or ev.get('status')
+                                        }
+                                        # avoid duplicates
+                                        if not any((s.get('type') == 'blancco' and str(s.get('serial')) == str(blobj.get('serial'))) for s in target_ev.get('sources', [])):
+                                            target_ev['sources'].append(blobj)
+                                            target_ev['is_blancco_record'] = True
+                                    # mark this blancco event for removal
+                                    to_remove_idxs.append(idx)
+                        except Exception:
+                            continue
+
+                    # remove in reverse order to keep indices valid
+                    for ridx in sorted(set(to_remove_idxs), reverse=True):
+                        try:
+                            del results['timeline'][ridx]
+                        except Exception:
+                            continue
+                    if to_remove_idxs:
+                        try:
+                            logging.info("[device_lookup] removed %d duplicate ITAD_asset_info_blancco events for job=%s serial=%s stock=%s", len(to_remove_idxs), job_id, system_serial, stock_id)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
             # Additionally, if a spreadsheet-style erasure table exists (imported manually),
             # query it by the same candidate serials and attach those rows as provenance.
             try:
