@@ -46,6 +46,7 @@ async def add_request_id_middleware(request: Request, call_next):
 # ============= BLANCCO API CONFIG =============
 BLANCCO_API_URL = os.getenv("BLANCCO_API_URL", "")  # Set this if Blancco has an API
 BLANCCO_API_KEY = os.getenv("BLANCCO_API_KEY", "")
+QA_CONFIRMED_SCORE = int(os.getenv("QA_CONFIRMED_SCORE", "95"))
 
 async def fetch_blancco_device_details(job_id: str):
     """
@@ -2715,12 +2716,51 @@ async def device_lookup(stock_id: str, request: Request):
 
                 qa_label = f"QA Data Bearing (by {last_user})"
                 qa_evidence = [{'source': 'audit_master', 'username': last_user}]
+                # Determine latest timeline timestamp so we can mark whether
+                # this QA hypothesis corresponds to the most-recent event.
+                latest_ts = None
+                try:
+                    for tev in results.get('timeline', []) or []:
+                        t = tev.get('timestamp')
+                        if not t:
+                            continue
+                        try:
+                            if isinstance(t, str):
+                                from datetime import datetime as _dt
+                                tdt = _dt.fromisoformat(t.replace('Z', '+00:00'))
+                            else:
+                                tdt = t
+                        except Exception:
+                            continue
+                        if not latest_ts or (tdt and tdt > latest_ts):
+                            latest_ts = tdt
+                except Exception:
+                    latest_ts = None
                 # prepend so it shows prominently; score 85 to be competitive but still
                 # allow true recency to reorder if other signals are fresher.
+                # mark `is_most_recent` True when the user's last_seen equals the
+                # most recent timeline timestamp (within 60 seconds) so the UI
+                # can highlight this as the freshest signal.
+                is_most_recent_flag = False
+                try:
+                    if last_seen and latest_ts:
+                        try:
+                            from datetime import datetime as _dt
+                            if isinstance(last_seen, str):
+                                last_dt = _dt.fromisoformat(last_seen.replace('Z', '+00:00'))
+                            else:
+                                last_dt = last_seen
+                            if last_dt and abs((latest_ts - last_dt).total_seconds()) <= 60:
+                                is_most_recent_flag = True
+                        except Exception:
+                            is_most_recent_flag = False
+                except Exception:
+                    is_most_recent_flag = False
+
                 qa_hyp = {
                     'location': qa_label,
-                    'score': 85,
-                    'raw_score': 85.0,
+                    'score': QA_CONFIRMED_SCORE,
+                    'raw_score': float(QA_CONFIRMED_SCORE),
                     'evidence': qa_evidence,
                     'last_seen': last_seen,
                     'type': 'stage',
@@ -2729,6 +2769,7 @@ async def device_lookup(stock_id: str, request: Request):
                     'rank': 1,
                     'is_qa_confirmed': True,
                     'awaiting_sorting': True,
+                    'is_most_recent': is_most_recent_flag,
                 }
                 # Only prepend if not already present (avoid duplicates)
                 existing = [h.get('location') for h in results.get('hypotheses', [])]

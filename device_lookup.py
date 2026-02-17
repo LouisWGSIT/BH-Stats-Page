@@ -361,20 +361,21 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     if b:
                         _, added_dt, b_user = b
                         ev = {'source': 'ITAD_asset_info_blancco', 'added_date': added_dt, 'username': b_user}
-                        add_candidate('Erasure (Blancco)', 30, ev, added_dt, src_conf=1.0)
+                        # Attach Blancco evidence to the canonical 'Erasure station' candidate
+                        add_candidate('Erasure station', 30, ev, added_dt, src_conf=1.0)
                 else:
                     cur.execute("SELECT id, added_date FROM ITAD_asset_info_blancco WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (stockid,))
                     b = cur.fetchone()
                     if b:
                         _, added_dt = b
                         ev = {'source': 'ITAD_asset_info_blancco', 'added_date': added_dt}
-                        add_candidate('Erasure (Blancco)', 30, ev, added_dt, src_conf=1.0)
+                        add_candidate('Erasure station', 30, ev, added_dt, src_conf=1.0)
             else:
                 cur.execute("SELECT id FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (stockid,))
                 b2 = cur.fetchone()
                 if b2:
                     ev = {'source': 'ITAD_asset_info_blancco'}
-                    add_candidate('Erasure (Blancco)', 30, ev, None, src_conf=1.0)
+                    add_candidate('Erasure station', 20, ev, None, src_conf=1.0)
         except Exception:
             pass
 
@@ -495,6 +496,41 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             if ls:
                 if not global_most_recent or ls > global_most_recent:
                     global_most_recent = ls
+
+        # Tie-break: if a QA candidate exists and an Erasure candidate contains Blancco
+        # evidence within a short window, prefer the QA candidate by penalising
+        # the Erasure candidate score. Configurable via env: QA_BLANKCO_WINDOW_HOURS
+        try:
+            QA_BLN_WINDOW = float(os.getenv('QA_BLN_WINDOW_HOURS', '24'))
+            BLANCCO_PENALTY = float(os.getenv('BLANCCO_TIE_PENALTY', '30'))
+        except Exception:
+            QA_BLN_WINDOW = 24.0
+            BLANCCO_PENALTY = 30.0
+
+        try:
+            # find the most recent QA candidate timestamp
+            qa_most_recent = None
+            for key, info in candidates.items():
+                evs = info.get('evidence', [])
+                if any(('qa' in (str(e.get('source') or '')).lower() or 'qa' in str(e.get('source') or '').lower()) for e in evs):
+                    if info.get('last_seen') and (not qa_most_recent or info.get('last_seen') > qa_most_recent):
+                        qa_most_recent = info.get('last_seen')
+
+            if qa_most_recent:
+                for key, info in list(candidates.items()):
+                    evs = info.get('evidence', [])
+                    has_blancco = any((isinstance(e.get('source'), str) and 'blancco' in e.get('source').lower()) or (isinstance(e.get('source'), dict) and ('blancco' in (e.get('source').get('source') or '').lower() or 'erasure' in (e.get('source').get('source') or '').lower())) for e in evs)
+                    if has_blancco and info.get('last_seen'):
+                        try:
+                            diff_hours = abs((info.get('last_seen') - qa_most_recent).total_seconds()) / 3600.0
+                        except Exception:
+                            diff_hours = None
+                        if diff_hours is not None and diff_hours <= QA_BLN_WINDOW:
+                            # apply penalty to make QA candidate comparatively stronger
+                            info['score'] = info.get('score', 0.0) - float(BLANCCO_PENALTY)
+                            info.setdefault('evidence', []).append({'source': 'qa_blancco_tie_penalty', 'raw': -BLANCCO_PENALTY, 'effective': -BLANCCO_PENALTY})
+        except Exception:
+            pass
 
         # If we have a recent timestamp, give nearby recent candidates a small boost
         if global_most_recent:
