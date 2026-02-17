@@ -2240,29 +2240,36 @@ async def device_lookup(stock_id: str, request: Request):
                 })
         
         # 4. Check ITAD_QA_App for sorting scans (include richer metadata when available)
+        # Decide whether extended QA projection is safe by probing INFORMATION_SCHEMA
         try:
-            # Try extended projection; some deployments lack optional columns
-            cursor.execute("""
-                SELECT added_date, username, scanned_location, stockid, photo_location, sales_order
-                FROM ITAD_QA_App
-                WHERE stockid = %s
-                ORDER BY added_date ASC
-            """, (stock_id,))
-            rows = cursor.fetchall()
-        except Exception as _ex:
-            # Fallback to minimal projection if optional columns are absent
-            print(f"[device_lookup] QA extended projection failed, falling back: {_ex}")
             try:
+                cursor.execute(
+                    "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = %s AND TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = %s",
+                    ("ITAD_QA_App", "sales_order")
+                )
+                has_sales_order = cursor.fetchone() is not None
+            except Exception:
+                has_sales_order = False
+
+            if has_sales_order:
+                cursor.execute("""
+                    SELECT added_date, username, scanned_location, stockid, photo_location, sales_order
+                    FROM ITAD_QA_App
+                    WHERE stockid = %s
+                    ORDER BY added_date ASC
+                """, (stock_id,))
+            else:
                 cursor.execute("""
                     SELECT added_date, username, scanned_location, stockid
                     FROM ITAD_QA_App
                     WHERE stockid = %s
                     ORDER BY added_date ASC
                 """, (stock_id,))
-                rows = cursor.fetchall()
-            except Exception as ex2:
-                print(f"[device_lookup] QA fallback projection failed: {ex2}")
-                rows = []
+            rows = cursor.fetchall()
+        except Exception as _ex:
+            # If anything goes wrong, avoid raising DB error to caller; log and continue
+            print(f"[device_lookup] QA projection probe/execute failed: {_ex}")
+            rows = []
 
         for row in rows:
             try:
@@ -2338,26 +2345,33 @@ async def device_lookup(stock_id: str, request: Request):
             results["last_known_user"] = user_id
         
         # 6. Check ITAD_asset_info_blancco for erasure records (include serial/manufacturer/model)
+        # Probe INFORMATION_SCHEMA to choose safe blancco projection
         try:
-            # Try extended projection (some DBs have added_date/username)
-            cursor.execute("""
-                SELECT stockid, serial, manufacturer, model, erasure_status, added_date, username
-                FROM ITAD_asset_info_blancco
-                WHERE stockid = %s OR serial = %s
-            """, (stock_id, stock_id))
-            b_rows = cursor.fetchall()
-        except Exception as _ex_b:
-            print(f"[device_lookup] Blancco extended projection failed, falling back: {_ex_b}")
             try:
+                cursor.execute(
+                    "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = %s AND TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = %s",
+                    ("ITAD_asset_info_blancco", "added_date")
+                )
+                has_added_date = cursor.fetchone() is not None
+            except Exception:
+                has_added_date = False
+
+            if has_added_date:
+                cursor.execute("""
+                    SELECT stockid, serial, manufacturer, model, erasure_status, added_date, username
+                    FROM ITAD_asset_info_blancco
+                    WHERE stockid = %s OR serial = %s
+                """, (stock_id, stock_id))
+            else:
                 cursor.execute("""
                     SELECT stockid, serial, manufacturer, model, erasure_status
                     FROM ITAD_asset_info_blancco
                     WHERE stockid = %s OR serial = %s
                 """, (stock_id, stock_id))
-                b_rows = cursor.fetchall()
-            except Exception as _ex_b2:
-                print(f"[device_lookup] Blancco fallback projection failed: {_ex_b2}")
-                b_rows = []
+            b_rows = cursor.fetchall()
+        except Exception as _ex_b:
+            print(f"[device_lookup] Blancco projection probe/execute failed: {_ex_b}")
+            b_rows = []
 
         for row in b_rows:
             try:
