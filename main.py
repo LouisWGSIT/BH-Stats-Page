@@ -2764,9 +2764,13 @@ async def device_lookup(stock_id: str, request: Request):
                     # If attached, ensure last_known_user is captured
                     pass
 
-                # Always set last_known_user from erasure initials if present
-                if initials:
-                    results["last_known_user"] = initials
+                # Prefer last_known_user from QA/audit sources. Only set from
+                # erasure initials if no last_known_user is already present.
+                try:
+                    if initials and not results.get("last_known_user"):
+                        results["last_known_user"] = initials
+                except Exception:
+                    pass
 
                 # Cleanup: find any MariaDB-copied Blancco timeline events that
                 # refer to the same serial/job and merge them into the local
