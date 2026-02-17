@@ -3005,6 +3005,94 @@ async def device_lookup(stock_id: str, request: Request):
         # Destination-specific bottleneck snapshot removed from device lookup
 
         # Summary
+        # Merge near-duplicate timeline events (events within a short window)
+        try:
+            from datetime import datetime as _dt
+
+            MERGE_WINDOW = int(os.getenv('MERGE_TIMELINE_WINDOW_SECONDS', '60'))
+
+            def _parse_ts(ts):
+                if not ts:
+                    return None
+                try:
+                    if isinstance(ts, str):
+                        # Handle ISO and common SQL formats
+                        try:
+                            return _dt.fromisoformat(ts.replace('Z', '+00:00'))
+                        except Exception:
+                            pass
+                        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S'):
+                            try:
+                                return _dt.strptime(ts, fmt)
+                            except Exception:
+                                continue
+                    elif hasattr(ts, 'timetuple'):
+                        return ts
+                except Exception:
+                    return None
+                return None
+
+            # Build a list of (dt, event) and sort by dt desc, keep None timestamps at end
+            evs = results.get('timeline', []) or []
+            evs_with_dt = []
+            evs_none = []
+            for e in evs:
+                try:
+                    d = _parse_ts(e.get('timestamp'))
+                except Exception:
+                    d = None
+                if d:
+                    evs_with_dt.append((d, e))
+                else:
+                    evs_none.append((None, e))
+
+            evs_with_dt.sort(key=lambda x: x[0], reverse=True)
+
+            merged = []
+            i = 0
+            while i < len(evs_with_dt):
+                base_dt, base_ev = evs_with_dt[i]
+                group = [(base_dt, base_ev)]
+                j = i + 1
+                while j < len(evs_with_dt):
+                    nxt_dt, nxt_ev = evs_with_dt[j]
+                    try:
+                        diff = abs((base_dt - nxt_dt).total_seconds())
+                    except Exception:
+                        diff = None
+                    if diff is not None and diff <= MERGE_WINDOW:
+                        group.append((nxt_dt, nxt_ev))
+                        # extend base_dt to the most recent in group for subsequent comparisons
+                        if nxt_dt and nxt_dt > base_dt:
+                            base_dt = nxt_dt
+                        j += 1
+                    else:
+                        break
+                # Produce merged event: prefer the event with the latest timestamp as primary
+                primary = max(group, key=lambda x: x[0] or _dt.min)[1]
+                merged_event = dict(primary)
+                # attach provenance of merged events
+                merged_event['merged'] = True if len(group) > 1 else False
+                merged_event['merged_from'] = []
+                for d, ev in group:
+                    merged_event['merged_from'].append({
+                        'timestamp': ev.get('timestamp'),
+                        'stage': ev.get('stage'),
+                        'source': ev.get('source'),
+                        'user': ev.get('user')
+                    })
+                merged.append(merged_event)
+                i = j
+
+            # Append events with no timestamps after the merged ones (preserve order)
+            for _, e in evs_none:
+                merged.append(e)
+
+            results['timeline'] = merged
+        except Exception:
+            # If merge fails for any reason, fall back to raw timeline
+            pass
+
         results["total_events"] = len(results["timeline"])
         results["data_sources_checked"] = [
             "ITAD_asset_info", "Stockbypallet", "ITAD_pallet", 
