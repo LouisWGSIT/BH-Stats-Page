@@ -2551,23 +2551,99 @@ async def device_lookup(stock_id: str, request: Request):
                     manufacturer = model = system_serial = disk_serial = job_id = drive_size = drive_type = drive_count = None
                 results.setdefault("found_in", [])
                 results["found_in"].append("local_erasures") if "local_erasures" not in results["found_in"] else None
-                results["timeline"].append({
-                    "timestamp": ts or date_str,
-                    "stage": f"Erasure ({event})",
-                    "user": initials,
-                    "location": None,
+
+                # Build a provenance object for this erasure record
+                erasure_prov = {
+                    "type": "erasure",
                     "source": "local_erasures",
+                    "ts": ts or date_str,
+                    "initials": initials,
+                    "job_id": job_id,
                     "device_type": device_type,
                     "manufacturer": manufacturer,
                     "model": model,
                     "system_serial": system_serial,
                     "disk_serial": disk_serial,
-                    "job_id": job_id,
                     "drive_size": drive_size,
                     "drive_type": drive_type,
                     "drive_count": drive_count,
-                })
-                results["last_known_user"] = initials
+                }
+
+                # Try to attach this erasure provenance to a nearby QA/audit/asset event
+                attached = False
+                try:
+                    from datetime import datetime as _dt
+                    MERGE_WINDOW = int(os.getenv('MERGE_TIMELINE_WINDOW_SECONDS', '60'))
+
+                    def _to_dt(val):
+                        if not val:
+                            return None
+                        if isinstance(val, _dt):
+                            return val
+                        try:
+                            if isinstance(val, str):
+                                return _dt.fromisoformat(val.replace('Z', '+00:00'))
+                        except Exception:
+                            try:
+                                # fallback common format
+                                return _dt.strptime(val, '%Y-%m-%d %H:%M:%S')
+                            except Exception:
+                                return None
+                        return None
+
+                    e_ts = _to_dt(ts or date_str)
+                    # prefer attaching to QA/audit/history/asset events
+                    for ev in results.get('timeline', []):
+                        try:
+                            src = (ev.get('source') or '')
+                            stage = (ev.get('stage') or '').lower()
+                            # candidate sources/stages indicating QA/audit/asset
+                            if not any(k in (src or '').lower() for k in ('audit_master', 'qa', 'qa_export', 'asset_info', 'qa_export.history')) and not ('qa' in stage or 'audit' in stage or 'history' in stage):
+                                continue
+                            ev_ts = _to_dt(ev.get('timestamp'))
+                            if not ev_ts or not e_ts:
+                                continue
+                            delta = abs((ev_ts - e_ts).total_seconds())
+                            if delta <= MERGE_WINDOW:
+                                # attach provenance
+                                ev.setdefault('sources', [])
+                                ev['sources'].append(erasure_prov)
+                                # mark that this event has blancco provenance for UI
+                                ev['is_blancco_record'] = True
+                                attached = True
+                                break
+                        except Exception:
+                            continue
+                except Exception:
+                    attached = False
+
+                if not attached:
+                    # Fallback: add a provenance-only timeline event
+                    results["timeline"].append({
+                        "timestamp": ts or date_str,
+                        "stage": "Blancco record",
+                        "user": initials,
+                        "location": None,
+                        "source": "local_erasures",
+                        "device_type": device_type,
+                        "manufacturer": manufacturer,
+                        "model": model,
+                        "system_serial": system_serial,
+                        "disk_serial": disk_serial,
+                        "job_id": job_id,
+                        "drive_size": drive_size,
+                        "drive_type": drive_type,
+                        "drive_count": drive_count,
+                        "is_blancco_record": True,
+                        "sources": [erasure_prov],
+                    })
+                else:
+                    # If attached, ensure last_known_user is captured
+                    pass
+
+                # Always set last_known_user from erasure initials if present
+                if initials:
+                    results["last_known_user"] = initials
             sqlite_cursor.close()
             sqlite_conn.close()
         except Exception as e:
