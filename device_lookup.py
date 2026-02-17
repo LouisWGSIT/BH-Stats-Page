@@ -9,6 +9,26 @@ from typing import List, Dict
 import sqlite3
 import re
 
+
+def normalize_loc(name: str) -> str:
+    """Return a normalized location key for comparison (lowercase, remove
+    punctuation, collapse whitespace). Keeps letters and numbers and spaces.
+    """
+    if not name:
+        return ""
+    try:
+        s = str(name)
+        # replace common separators with space
+        s = re.sub(r"[-_]+", " ", s)
+        s = s.lower()
+        # remove any character that's not a-z, 0-9 or space
+        s = re.sub(r"[^a-z0-9\s]", "", s)
+        # collapse whitespace
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+    except Exception:
+        return str(name).lower().strip()
+
 # Robust imports: prefer absolute imports when module is executed as top-level
 try:
     import qa_export as _qa_export_mod
@@ -86,12 +106,24 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         asset = cur.fetchone()
 
         candidates = {}  # location -> {'score': float, 'evidence': []}
+        qa_latest_user = None
+        qa_latest_location = None
+        qa_latest_ts = None
 
         def add_candidate(name: str, score_delta: float, ev: str, ts=None, src_conf: float = 1.0):
             if not name:
                 return
             key = str(name).strip()
-            entry = candidates.get(key, {'score': 0.0, 'evidence': [], 'last_seen': None})
+            # derive a base name for normalization (strip any trailing ' from <place>' provenance)
+            try:
+                base_name = re.split(r"\sfrom\s", key, flags=re.IGNORECASE)[0]
+            except Exception:
+                base_name = key
+            # use a normalized key for deduplication but retain the original
+            norm_key = normalize_loc(base_name)
+            if not norm_key:
+                norm_key = key.lower()
+            entry = candidates.get(norm_key, {'score': 0.0, 'evidence': [], 'last_seen': None, 'display_name': key})
             multiplier = 1.0
             dt = None
             if ts:
@@ -142,7 +174,15 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             })
             if dt and (not entry.get('last_seen') or dt > entry.get('last_seen')):
                 entry['last_seen'] = dt
-            candidates[key] = entry
+            # Prefer a more recent display name if this evidence is newer
+            try:
+                prev_dt = entry.get('_display_ts')
+                if dt and (not prev_dt or dt > prev_dt):
+                    entry['display_name'] = key
+                    entry['_display_ts'] = dt
+            except Exception:
+                pass
+            candidates[norm_key] = entry
 
         # From asset_info
         if asset:
@@ -152,7 +192,22 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 p = cur.fetchone()
                 if p:
                     pallet_loc, dest, status, create_date = p
-                    add_candidate(f"Pallet {pallet_id} ({pallet_loc or dest or 'unknown'})", 40, f"On pallet {pallet_id}", create_date, src_conf=0.9)
+                    # If we have a recent QA scanned_location for this stock, include it in the pallet label
+                    try:
+                        qa_window_min = float(os.getenv('PALLET_QA_WINDOW_MINUTES', '5'))
+                    except Exception:
+                        qa_window_min = 5.0
+                    pallet_label = f"Pallet {pallet_id} ({pallet_loc or dest or 'unknown'})"
+                    try:
+                        if qa_latest_location:
+                            pallet_label = f"Pallet {pallet_id} ({pallet_loc or dest or 'unknown'}) from {qa_latest_location}"
+                    except Exception:
+                        pass
+                    ev = f"On pallet {pallet_id}"
+                    # attach QA provenance if present
+                    if qa_latest_location:
+                        ev = {'source': f"On pallet {pallet_id}", 'qa_latest': qa_latest_location, 'qa_user': qa_latest_user, 'qa_last_seen': qa_latest_ts}
+                    add_candidate(pallet_label, 40, ev, create_date, src_conf=0.9)
             if location:
                 add_candidate(location, 35, "asset_info.location", last_update, src_conf=0.9)
             if roller_loc:
@@ -279,7 +334,22 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             row = cur.fetchone()
             if row:
                 pallet_loc, dest = row
-                add_candidate(f"Pallet {pid} ({pallet_loc or dest or 'unknown'})", 20, "Stockbypallet/pallet", None, src_conf=0.9)
+                # Build pallet label and include recent QA location when appropriate
+                try:
+                    qa_window_min = float(os.getenv('PALLET_QA_WINDOW_MINUTES', '5'))
+                except Exception:
+                    qa_window_min = 5.0
+                pallet_label = f"Pallet {pid} ({pallet_loc or dest or 'unknown'})"
+                try:
+                    if qa_latest_location:
+                        pallet_label = f"Pallet {pid} ({pallet_loc or dest or 'unknown'}) from {qa_latest_location}"
+                except Exception:
+                    pass
+                ev = "Stockbypallet/pallet"
+                if qa_latest_location:
+                    ev = {'source': 'Stockbypallet/pallet', 'qa_latest': qa_latest_location, 'qa_user': qa_latest_user, 'qa_last_seen': qa_latest_ts}
+                # pass qa_latest_ts as ts so display name updates if QA is recent
+                add_candidate(pallet_label, 20, ev, qa_latest_ts, src_conf=0.9)
 
             # Co-location / temporal correlation heuristic (conservative)
             try:
@@ -330,10 +400,12 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                             # loc_name (case-insensitive) or vice-versa, skip it.
                             dup = False
                             try:
+                                ln = normalize_loc(loc_name)
                                 for existing in list(candidates.keys()):
                                     try:
-                                        en = existing.lower()
-                                        ln = str(loc_name).lower()
+                                        en = normalize_loc(existing)
+                                        if not en or not ln:
+                                            continue
                                         if ln in en or en in ln:
                                             dup = True
                                             break
@@ -735,8 +807,9 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 sentence2 = f"This likely means {implication}." if implication else ""
                 return (sentence1 + (' ' + sentence2 if sentence2 else '')).strip()
 
+            display_name = info.get('display_name', loc)
             try:
-                explanation = _compose_explanation(loc, info, idx, sorted_items)
+                explanation = _compose_explanation(display_name, info, idx, sorted_items)
             except Exception:
                 explanation = ''
 
@@ -745,7 +818,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             except Exception:
                 MAX_TOTAL = 1000.0
             out.append({
-                'location': loc,
+                'location': display_name,
                 'score': norm,
                 'raw_score': float(min(info.get('score', 0.0), MAX_TOTAL)),
                 'evidence': [ (e if isinstance(e, dict) else {'source': e}) for e in evs ],
