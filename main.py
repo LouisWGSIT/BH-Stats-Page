@@ -2617,32 +2617,11 @@ async def device_lookup(stock_id: str, request: Request):
         except Exception:
             pass
 
-        # 7e. Add hypothesis-derived last_seen events so top hypotheses appear on the timeline
-        try:
-            try:
-                hyps = qa_export.get_device_location_hypotheses(stock_id, top_n=5)
-            except Exception:
-                hyps = []
-            if hyps:
-                results.setdefault("found_in", []).append("device_location_hypotheses") if "device_location_hypotheses" not in results.get("found_in", []) else None
-                for h in hyps:
-                    try:
-                        last = h.get('last_seen') or h.get('last_activity')
-                        if not last:
-                            continue
-                        locname = h.get('location') or h.get('location_name') or None
-                        results.setdefault("timeline", []).append({
-                            "timestamp": last,
-                            "stage": f"Hypothesis: {locname}",
-                            "user": None,
-                            "location": locname,
-                            "source": "device_location_hypothesis",
-                            "details": f"hypothesis rank={h.get('rank') or h.get('score')}",
-                        })
-                    except Exception:
-                        continue
-        except Exception:
-            pass
+        # 7e. Hypothesis-derived events intentionally omitted from timeline
+        # Reason: hypotheses are represented separately in `results.hypotheses` and
+        # including them here caused duplicate timestamps (same occurrence shown
+        # twice). We keep hypotheses in the hypotheses list but do not append them
+        # as separate timeline events to avoid duplication.
         
         # De-dupe timeline events that are identical across sources/rows
         deduped_timeline = []
