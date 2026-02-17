@@ -2694,6 +2694,49 @@ async def device_lookup(stock_id: str, request: Request):
             logging.exception("Hypothesis generation failed for %s: %s", stock_id, e)
             results["hypotheses"] = []
 
+        # If we know the last user (from QA/audit) and there's no pallet assignment,
+        # surface a QA-confirmed hypothesis indicating the device was QA'd by that
+        # user and is likely awaiting Sorting. This makes it easy to search for
+        # devices handled by a technician and not yet assigned to a pallet.
+        try:
+            last_user = results.get('last_known_user')
+            pallet_info = results.get('pallet_info') or {}
+            asset_info = results.get('asset_info') or {}
+            if last_user and not pallet_info.get('pallet_id'):
+                # Find last seen timestamp for this user in the timeline
+                last_seen = None
+                for ev in reversed(results.get('timeline', [])):
+                    try:
+                        if ev.get('user') and str(ev.get('user')).lower() == str(last_user).lower():
+                            last_seen = ev.get('timestamp') or last_seen
+                            break
+                    except Exception:
+                        continue
+
+                qa_label = f"QA Data Bearing (by {last_user})"
+                qa_evidence = [{'source': 'audit_master', 'username': last_user}]
+                # prepend so it shows prominently; score 85 to be competitive but still
+                # allow true recency to reorder if other signals are fresher.
+                qa_hyp = {
+                    'location': qa_label,
+                    'score': 85,
+                    'raw_score': 85.0,
+                    'evidence': qa_evidence,
+                    'last_seen': last_seen,
+                    'type': 'stage',
+                    'explanation': f"Device was recorded in audit_master by {last_user} and likely passed QA.",
+                    'ai_explanation': f"Recorded as QA Data Bearing by {last_user}; likely awaiting Sorting.",
+                    'rank': 1,
+                    'is_qa_confirmed': True,
+                    'awaiting_sorting': True,
+                }
+                # Only prepend if not already present (avoid duplicates)
+                existing = [h.get('location') for h in results.get('hypotheses', [])]
+                if qa_label not in existing:
+                    results['hypotheses'] = [qa_hyp] + results.get('hypotheses', [])
+        except Exception:
+            pass
+
         # Build a compact smart advisory from the top hypothesis (if available)
         try:
             smart_advisory = None
