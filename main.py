@@ -2458,6 +2458,13 @@ async def device_lookup(stock_id: str, request: Request):
                 history = qa_export.get_device_history_range(start, end)
             except Exception:
                 history = []
+            # Debug: report how many history rows we received from qa_export
+            try:
+                hist_len = len(history) if isinstance(history, (list, tuple)) else 0
+            except Exception:
+                hist_len = 0
+            logging.info("[device_lookup] qa_export.get_device_history_range returned %d rows for %s", hist_len, stock_id)
+
             for h in history:
                 try:
                     # Normalize identifiers for flexible matching
@@ -2594,6 +2601,14 @@ async def device_lookup(stock_id: str, request: Request):
         # Sort timeline most-recent-first (newest at the top)
         deduped_timeline.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
         results["timeline"] = deduped_timeline
+
+        # Debug: report final timeline size and a small sample for inspection
+        try:
+            logging.info("[device_lookup] timeline events after dedupe/sort: %d for %s", len(deduped_timeline), stock_id)
+            for ev in deduped_timeline[:6]:
+                logging.info("[device_lookup] sample event: source=%s stage=%s ts=%s loc=%s", ev.get('source'), ev.get('stage'), ev.get('timestamp'), ev.get('location'))
+        except Exception:
+            pass
 
         # Backfill missing metadata on timeline events (pallet/destination/manufacturer/model)
         try:
