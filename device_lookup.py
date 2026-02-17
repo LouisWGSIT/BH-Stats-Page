@@ -113,7 +113,26 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 effective = float(score_delta) * float(multiplier) * float(src_conf)
             except Exception:
                 effective = float(score_delta)
-            entry['score'] += effective
+            # Clamp individual candidate deltas and the running total to sane limits
+            try:
+                MAX_DELTA = float(os.getenv('CANDIDATE_MAX_DELTA', '100.0'))
+                MAX_TOTAL = float(os.getenv('CANDIDATE_MAX_TOTAL', '1000.0'))
+            except Exception:
+                MAX_DELTA = 100.0
+                MAX_TOTAL = 1000.0
+            # clamp the effective delta
+            if effective > MAX_DELTA:
+                effective = MAX_DELTA
+            elif effective < -MAX_DELTA:
+                effective = -MAX_DELTA
+
+            entry['score'] = float(entry.get('score', 0.0)) + float(effective)
+            # clamp running total
+            if entry['score'] > MAX_TOTAL:
+                entry['score'] = MAX_TOTAL
+            if entry['score'] < -MAX_TOTAL:
+                entry['score'] = -MAX_TOTAL
+
             entry['evidence'].append({
                 'source': ev,
                 'raw': float(score_delta),
@@ -595,10 +614,14 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             except Exception:
                 explanation = ''
 
+            try:
+                MAX_TOTAL = float(os.getenv('CANDIDATE_MAX_TOTAL', '1000.0'))
+            except Exception:
+                MAX_TOTAL = 1000.0
             out.append({
                 'location': loc,
                 'score': norm,
-                'raw_score': float(info.get('score', 0.0)),
+                'raw_score': float(min(info.get('score', 0.0), MAX_TOTAL)),
                 'evidence': [ (e if isinstance(e, dict) else {'source': e}) for e in evs ],
                 'last_seen': last_seen.isoformat() if last_seen else None,
                 'type': kind,
