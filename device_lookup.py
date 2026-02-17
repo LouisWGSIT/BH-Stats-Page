@@ -314,8 +314,12 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 if urow and urow[0]:
                     user_loc, user_loc_last = urow[0], urow[1]
                     ev3 = {'source': 'audit_master.user', 'username': am_user, 'log': am_log}
-                    # add a meaningful boost but allow recency logic to refine ordering
-                    add_candidate(user_loc, 70, ev3, user_loc_last or am_dt, src_conf=0.95)
+                    # Create an explicit QA-by-user hypothesis rather than
+                    # attaching the audit_master user as a plain location label.
+                    # This preserves a location candidate (from QA scans or
+                    # pallet records) while showing who performed the QA.
+                    qa_user_label = f"QA Done by {am_user}"
+                    add_candidate(qa_user_label, 70, ev3, user_loc_last or am_dt, src_conf=0.95)
                 else:
                     # If we have no QA-scanned_location for the user, still add a named
                     # candidate that indicates the device was handled by this user.
@@ -545,6 +549,30 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                                 except Exception:
                                     pass
             # end for
+        except Exception:
+            pass
+
+        # Remove inferred candidates that duplicate an existing normalized
+        # location (e.g., "Inferred: IA-ROLLER1 ...") to avoid showing an
+        # extra Roller1 hypothesis when a pallet or explicit QA location exists.
+        try:
+            existing_norms = set(candidates.keys())
+            for k in list(candidates.keys()):
+                info = candidates.get(k)
+                disp = info.get('display_name', '') if info else ''
+                if not disp:
+                    continue
+                if disp.lower().startswith('inferred:'):
+                    # extract the core location from the inferred display name
+                    # e.g. 'Inferred: IA-ROLLER1 (from 5 ...)' -> 'IA-ROLLER1'
+                    m = re.search(r'Inferred:\s*([^\(\[]+)', disp, flags=re.IGNORECASE)
+                    core = m.group(1).strip() if m else disp
+                    core_norm = normalize_loc(core)
+                    if core_norm and core_norm in existing_norms:
+                        try:
+                            del candidates[k]
+                        except Exception:
+                            pass
         except Exception:
             pass
 
