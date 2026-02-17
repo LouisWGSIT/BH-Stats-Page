@@ -496,6 +496,58 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         cur.close()
         conn.close()
 
+        # Post-process candidates: if a pallet candidate includes a recent QA
+        # provenance that matches an explicit QA location candidate, merge the
+        # QA evidence into the pallet provenance and replace the explicit QA
+        # location with a distinct `QA Done by <user>` hypothesis. This keeps
+        # the UI showing a single authoritative pallet entry while preserving
+        # a separate, lower-ranked QA action row (by user) as requested.
+        try:
+            # Find pallet candidates that carried qa_latest provenance
+            pallet_candidates = []
+            for k, v in list(candidates.items()):
+                evs = v.get('evidence', [])
+                for e in evs:
+                    src = e.get('source') if isinstance(e, dict) else None
+                    if isinstance(src, dict) and src.get('qa_latest'):
+                        qa_loc = normalize_loc(src.get('qa_latest') or '')
+                        qa_user = src.get('qa_user')
+                        qa_ts = src.get('qa_last_seen')
+                        if qa_loc and qa_loc in candidates and qa_loc != k:
+                            # move evidence from the explicit QA candidate into pallet provenance
+                            qa_entry = candidates.get(qa_loc)
+                            if qa_entry:
+                                # attach QA evidence to pallet candidate provenance
+                                v.setdefault('evidence', []).extend(qa_entry.get('evidence', []))
+                                # update last_seen if QA is newer
+                                try:
+                                    if qa_entry.get('last_seen') and (not v.get('last_seen') or qa_entry.get('last_seen') > v.get('last_seen')):
+                                        v['last_seen'] = qa_entry.get('last_seen')
+                                except Exception:
+                                    pass
+                                # create a separate, named QA-by-user candidate
+                                try:
+                                    qa_user_label = qa_user or (qa_entry.get('evidence', [{}])[0].get('source', {}).get('username') if qa_entry.get('evidence') else None) or 'QA'
+                                except Exception:
+                                    qa_user_label = qa_user or 'QA'
+                                qa_norm = normalize_loc(f"qa_done_by {qa_user_label}")
+                                # avoid overwriting an existing QA-by-user candidate
+                                if qa_norm not in candidates:
+                                    candidates[qa_norm] = {
+                                        'score': float(qa_entry.get('score', 0.0)) * 0.9,
+                                        'evidence': qa_entry.get('evidence', []),
+                                        'last_seen': qa_entry.get('last_seen') or qa_ts,
+                                        'display_name': f"QA Done by {qa_user_label}",
+                                    }
+                                # remove the plain-location QA candidate so it doesn't appear
+                                try:
+                                    del candidates[qa_loc]
+                                except Exception:
+                                    pass
+            # end for
+        except Exception:
+            pass
+
         if not candidates:
             return []
 

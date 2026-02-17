@@ -341,3 +341,19 @@ These changes are being implemented incrementally: recency filtering and Blancco
 2. **Row 2**: Today QA, MTD QA, Rolling 7D Avg (QA), QA Split (Data Bearing vs Non-Data Bearing) donut
 3. **Row 3**: Erasure trend line, QA trend line
 4. **Bottom**: Top 5 Engineers table (initials, count)
+
+## Recent Changes (2026-02-17)
+- 2026-02-17: Device lookup: normalization, dedupe, and pallet annotation (commit f66e3c3)
+    - Root cause: QA scan + co-location inference produced near-duplicate "IA Roller 1" hypotheses because location strings were formatted differently and the co-location heuristic keyed on the raw text.
+    - Fixes implemented in `device_lookup.py`:
+       - Added `normalize_loc()` to canonicalize location strings for de-duplication and co-location checks.
+       - Keyed candidate merging on normalized location so inferred and explicit QA candidates are collapsed.
+       - Pallet candidates are now annotated with the recent QA origin (e.g., "Pallet A1005849 (Refurbishment) from IA Roller 1") so the UI shows a single authoritative pallet entry while preserving QA provenance.
+       - Blancco/erasure rows from MariaDB are merged into local erasure provenance (no DB writes) so the timeline shows a single canonical Blancco/erasure event.
+    - Tools & verification:
+       - Added a read-only schema-aware inspector `tools/mariadb_readonly_check.py` used to safely probe MariaDB (INFORMATION_SCHEMA-aware, safe SELECT lists). Inspector output for `stockid=12963675` was saved for audit and shows QA scan then pallet assignment.
+       - Verified locally by calling `get_device_location_hypotheses('12963675')`: before the change there were duplicate Roller1 entries; after the change the output shows one pallet candidate annotated with the QA origin and QA evidence retained in provenance.
+    - Notes / next steps:
+       - No writes to upstream DBs were performed; all DB access is read-only.
+       - Please redeploy to Render and verify the UI shows the single pallet entry annotated with QA origin; report any regressions and I'll iterate on label/score tuning.
+       - Optional: add a one-line entry in this file referencing the inspector JSON output (I can add that if you want).
