@@ -220,6 +220,53 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         except Exception:
             pass
 
+        # Check audit_master for a recent QA submission/user; if found, try to map that
+        # user to their most-recent QA scanned_location and add as a candidate. This lets
+        # 'last known user' from audit_master influence the hypotheses.
+        try:
+            try:
+                cur.execute(
+                    """
+                    SELECT date_time, audit_type, user_id, log_description
+                    FROM audit_master
+                    WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
+                                         'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+                      AND (log_description LIKE %s OR log_description2 LIKE %s)
+                    ORDER BY date_time DESC
+                    LIMIT 1
+                    """,
+                    (f"%{stockid}%", f"%{stockid}%"),
+                )
+                ar = cur.fetchone()
+            except Exception:
+                ar = None
+
+            if ar:
+                am_dt, am_type, am_user, am_log = ar
+                # Try to find the most-recent scanned_location for this user in ITAD_QA_App
+                try:
+                    cur.execute(
+                        "SELECT scanned_location, MAX(added_date) as last_seen FROM ITAD_QA_App WHERE username = %s GROUP BY scanned_location ORDER BY last_seen DESC LIMIT 1",
+                        (am_user,)
+                    )
+                    urow = cur.fetchone()
+                except Exception:
+                    urow = None
+
+                if urow and urow[0]:
+                    user_loc, user_loc_last = urow[0], urow[1]
+                    ev3 = {'source': 'audit_master.user', 'username': am_user, 'log': am_log}
+                    # add a meaningful boost but allow recency logic to refine ordering
+                    add_candidate(user_loc, 70, ev3, user_loc_last or am_dt, src_conf=0.95)
+                else:
+                    # If we have no QA-scanned_location for the user, still add a named
+                    # candidate that indicates the device was handled by this user.
+                    user_label = f"QA Data Bearing (by {am_user})"
+                    ev4 = {'source': 'audit_master.user', 'username': am_user, 'log': am_log}
+                    add_candidate(user_label, 60, ev4, am_dt, src_conf=0.9)
+        except Exception:
+            pass
+
         # From Stockbypallet
         cur.execute("SELECT pallet_id FROM Stockbypallet WHERE stockid = %s LIMIT 1", (stockid,))
         sb = cur.fetchone()
