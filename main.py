@@ -2611,6 +2611,10 @@ async def device_lookup(stock_id: str, request: Request):
                                 # mark that this event has blancco provenance for UI
                                 ev['is_blancco_record'] = True
                                 attached = True
+                                try:
+                                    logging.info("[device_lookup] attached erasure prov job=%s initials=%s stock=%s to event source=%s stage=%s ts=%s", job_id, initials, stock_id, ev.get('source'), ev.get('stage'), ev.get('timestamp'))
+                                except Exception:
+                                    pass
                                 break
                         except Exception:
                             continue
@@ -2637,6 +2641,10 @@ async def device_lookup(stock_id: str, request: Request):
                         "is_blancco_record": True,
                         "sources": [erasure_prov],
                     })
+                    try:
+                        logging.info("[device_lookup] added blancco provenance-only event job=%s initials=%s stock=%s ts=%s", job_id, initials, stock_id, ts or date_str)
+                    except Exception:
+                        pass
                 else:
                     # If attached, ensure last_known_user is captured
                     pass
@@ -2946,6 +2954,49 @@ async def device_lookup(stock_id: str, request: Request):
         # Build a compact smart advisory from the top hypothesis (if available)
         try:
             smart_advisory = None
+            # --- Enrich hypotheses with any erasure provenance found in the timeline ---
+            try:
+                if results.get('hypotheses') and results.get('timeline'):
+                    # Collect erasure provenance objects from timeline
+                    erasures_found = []
+                    for ev in results.get('timeline', []):
+                        for s in ev.get('sources', []) or []:
+                            try:
+                                if s and (s.get('type') == 'erasure' or (s.get('source') and 'local_erasures' in str(s.get('source')))):
+                                    erasures_found.append(s)
+                            except Exception:
+                                continue
+
+                    if erasures_found:
+                        for h in results.get('hypotheses', []):
+                            try:
+                                h.setdefault('evidence', h.get('evidence') or [])
+                                # attach shallow copies (avoid mutating DB rows)
+                                for e in erasures_found:
+                                    # Build a concise evidence object for UI
+                                    ev_obj = {
+                                        'source': 'local_erasures',
+                                        'type': 'erasure',
+                                        'initials': e.get('initials'),
+                                        'job_id': e.get('job_id'),
+                                        'ts': e.get('ts'),
+                                        'manufacturer': e.get('manufacturer'),
+                                        'model': e.get('model'),
+                                        'disk_serial': e.get('disk_serial'),
+                                        'drive_size': e.get('drive_size')
+                                    }
+                                    # Avoid duplicate evidence entries
+                                    if not any((ev.get('job_id') and ev.get('job_id') == ev_obj['job_id']) for ev in h['evidence'] if isinstance(ev, dict)):
+                                        h['evidence'].append(ev_obj)
+                                # Mark hypothesis as having Blancco evidence (UI can show badge)
+                                h['is_blancco'] = True
+                                # Optionally surface a short blancco field
+                                if 'blancco' not in h:
+                                    h['blancco'] = erasures_found[0]
+                            except Exception:
+                                continue
+            except Exception:
+                pass
             if results.get("hypotheses"):
                 top = results["hypotheses"][0]
                 # confidence: use normalized score if present, else raw_score
