@@ -2239,25 +2239,55 @@ async def device_lookup(stock_id: str, request: Request):
                     "create_date": str(row[4]) if row[4] else None,
                 })
         
-        # 4. Check ITAD_QA_App for sorting scans (include richer metadata)
-        cursor.execute("""
-            SELECT added_date, username, scanned_location, stockid, photo_location, sales_order
-            FROM ITAD_QA_App
-            WHERE stockid = %s
-            ORDER BY added_date ASC
-        """, (stock_id,))
-        for row in cursor.fetchall():
+        # 4. Check ITAD_QA_App for sorting scans (include richer metadata when available)
+        try:
+            # Try extended projection; some deployments lack optional columns
+            cursor.execute("""
+                SELECT added_date, username, scanned_location, stockid, photo_location, sales_order
+                FROM ITAD_QA_App
+                WHERE stockid = %s
+                ORDER BY added_date ASC
+            """, (stock_id,))
+            rows = cursor.fetchall()
+        except Exception as _ex:
+            # Fallback to minimal projection if optional columns are absent
+            print(f"[device_lookup] QA extended projection failed, falling back: {_ex}")
             try:
-                added_date, username, scanned_location, q_stockid, photo_location, sales_order = row
+                cursor.execute("""
+                    SELECT added_date, username, scanned_location, stockid
+                    FROM ITAD_QA_App
+                    WHERE stockid = %s
+                    ORDER BY added_date ASC
+                """, (stock_id,))
+                rows = cursor.fetchall()
+            except Exception as ex2:
+                print(f"[device_lookup] QA fallback projection failed: {ex2}")
+                rows = []
+
+        for row in rows:
+            try:
+                # Unpack defensively depending on which projection succeeded
+                if len(row) >= 6:
+                    added_date, username, scanned_location, q_stockid, photo_location, sales_order = row
+                elif len(row) >= 4:
+                    added_date, username, scanned_location, q_stockid = row[0], row[1], row[2], row[3]
+                    photo_location = None
+                    sales_order = None
+                else:
+                    added_date, username, scanned_location = (row[0], row[1], row[2])
+                    q_stockid = None
+                    photo_location = None
+                    sales_order = None
             except Exception:
-                added_date, username, scanned_location = (row[0], row[1], row[2])
+                added_date, username, scanned_location = (None, None, None)
                 q_stockid = None
                 photo_location = None
                 sales_order = None
             results.setdefault("found_in", [])
-            results["found_in"].append("ITAD_QA_App") if "ITAD_QA_App" not in results["found_in"] else None
+            if "ITAD_QA_App" not in results["found_in"]:
+                results["found_in"].append("ITAD_QA_App")
             results["timeline"].append({
-                "timestamp": str(added_date),
+                "timestamp": str(added_date) if added_date is not None else None,
                 "stage": "Sorting",
                 "user": username,
                 "location": scanned_location,
