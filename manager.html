@@ -1113,9 +1113,7 @@
 
                 if (data.timeline && data.timeline.length > 0) {
                     let timelineHtml = '<div style="margin-top:15px;">';
-                    if (data.timeline_advisory_note) {
-                        timelineHtml += `<div style="margin-bottom:8px;" class="ai-explanation">${data.timeline_advisory_note}</div>`;
-                    }
+                    // Timeline advisory note removed per request; show raw timeline only
                     data.timeline.forEach((event, idx) => {
                         const stageColor = event.stage.includes('QA') ? '#667eea' 
                             : event.stage.includes('Sorting') ? '#10b981'
