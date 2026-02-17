@@ -489,9 +489,30 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             RECENCY_PRIORITY_HOURS = 168.0
             RECENCY_PRIORITY_BOOST_MAX = 80.0
 
-        # Find the globally most recent timestamp among candidate 'last_seen' values
+        # Find the globally most recent timestamp among candidate 'last_seen' values.
+        # Only consider 'meaningful' evidence types for recency (QA scans, Blancco/erasure,
+        # confirmed locations, pallet evidence). This avoids generic asset_info metadata
+        # updates from hijacking the recency boost.
+        def _evidence_is_meaningful(evs):
+            try:
+                for e in evs:
+                    src = e.get('source') if isinstance(e, dict) else e
+                    if isinstance(src, dict):
+                        sname = (src.get('source') or '')
+                    else:
+                        sname = str(src or '')
+                    s = sname.lower()
+                    if any(k in s for k in ('blancco', 'de_complete', 'erasure', 'qa', 'confirmed', 'pallet', 'stockbypallet', 'qa_latest')):
+                        return True
+            except Exception:
+                return False
+            return False
+
         global_most_recent = None
         for info in candidates.values():
+            evs = info.get('evidence', [])
+            if not _evidence_is_meaningful(evs):
+                continue
             ls = info.get('last_seen')
             if ls:
                 if not global_most_recent or ls > global_most_recent:
@@ -501,11 +522,11 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         # evidence within a short window, prefer the QA candidate by penalising
         # the Erasure candidate score. Configurable via env: QA_BLANKCO_WINDOW_HOURS
         try:
-            QA_BLN_WINDOW = float(os.getenv('QA_BLN_WINDOW_HOURS', '24'))
-            BLANCCO_PENALTY = float(os.getenv('BLANCCO_TIE_PENALTY', '30'))
+            QA_BLN_WINDOW = float(os.getenv('QA_BLN_WINDOW_HOURS', '48'))
+            BLANCCO_PENALTY = float(os.getenv('BLANCCO_TIE_PENALTY', '50'))
         except Exception:
-            QA_BLN_WINDOW = 24.0
-            BLANCCO_PENALTY = 30.0
+            QA_BLN_WINDOW = 48.0
+            BLANCCO_PENALTY = 50.0
 
         try:
             # find the most recent QA candidate timestamp

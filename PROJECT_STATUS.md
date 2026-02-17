@@ -283,6 +283,13 @@ Notes for future work
 ---------------------
 - If the database schema changes (field names added/removed in `ITAD_asset_info_blancco`), the app probes `INFORMATION_SCHEMA` and falls back to a safe projection. Keep this behavior when refactoring timeline ingestion.
 - Consider a small onboarding doc for QA and Erasure teams explaining how their database labels map to UI terms; this reduces support friction when audit text is ambiguous.
+ - Long-term timeline improvements planned:
+    - Use a canonical set of stages (IA, Erasure station, QA Data Bearing, Sorting, Pallet) and always attach raw provenance fields (`source_table`, `operator`, `raw_status`, `job_id`) to timeline events.
+    - Compute recency from "meaningful" signals only (QA scans, Blancco/erasure, confirmed_locations, pallet evidence) so generic `ITAD_asset_info` metadata updates do not hijack the recency boost.
+    - Merge near-duplicate timeline rows (events within a short window, default 60s) into a single timeline entry with combined provenance to avoid double-counting (e.g., a Blancco record and an audit_master QA entry recorded at the same time).
+    - Maintain and document a mapping table so UI labels consistently map to upstream audit text and schema fields; this file serves as the single source of truth for these mappings.
+
+These changes are being implemented incrementally: recency filtering and Blancco canonicalization are done; next steps include merge-on-render and a small onboarding doc for operators.
 - 2026-02-11: Added /api/device-lookup/{stock_id} endpoint for device timeline queries.
 - 2026-02-11: Added Unpalleted Devices Audit sheet to QA export (devices that completed QA but have no pallet assigned).
 - 2026-02-11: Added Stale Devices Report sheet to QA export (devices inactive for 7+ days).
