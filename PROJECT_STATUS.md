@@ -272,6 +272,17 @@ From ITAD_asset_info: location, roller_location, last_update, stage_current, sta
  - 2026-02-12: Treat `NOPOST01` / `NOPOST02` pallet assignments as still in-process (included on Bottleneck Radar) because these items require out-of-unit wiping before QA/sortation. Updated queries to treat `pallet_id LIKE 'NOPOST%'` as unpalleted.
  - 2026-02-12: Found IA personnel evidence: `zhilner.deguilmo@greensafeit.com` appears in `ITAD_asset_info.de_completed_by` and `audit_master.user_id`, with many rows referencing `IA-ROLLER1` and stock allocations — likely IA operator using the booking tool. `Leah.Haymes` and `Nathan.Hawkes` returned no matches in the quick search; I can run targeted queries if you want.
 - 2026-02-11: Added Device Search UI to admin panel - search any stock ID to see timeline across 7 data sources (ITAD_asset_info, Stockbypallet, ITAD_pallet, ITAD_QA_App, audit_master, ITAD_asset_info_blancco, local_erasures). Color-coded by stage type.
+
+Naming conventions and caveats
+----------------------------
+- The upstream databases use inconsistent naming for workflow stages and audit entries. Two notable examples:
+   - Blancco erasure records are stored in `ITAD_asset_info_blancco` and commonly refer to an erasure job. Historically we surfaced those as "Erasure (Successful)" rows in the timeline. To reduce confusion the application now presents these rows as a canonical `Erasure station` timeline event and includes the raw `blancco_status` and operator (`is_blancco_record=true`) so the UI can show Blancco evidence without creating a separate "Erasure (Blancco)" search location.
+   - `audit_master` entries sometimes use names (or log text) that suggest an operator "erased" or "processed" a device when in practice the action recorded was a QA scan or manual confirmation. We do not change upstream data; instead the app maps these signals into clearer UI labels (`QA Data Bearing`, `QA Non-Data Bearing`, `Erasure station`) and exposes provenance so operators can inspect the raw audit text before acting.
+
+Notes for future work
+---------------------
+- If the database schema changes (field names added/removed in `ITAD_asset_info_blancco`), the app probes `INFORMATION_SCHEMA` and falls back to a safe projection. Keep this behavior when refactoring timeline ingestion.
+- Consider a small onboarding doc for QA and Erasure teams explaining how their database labels map to UI terms; this reduces support friction when audit text is ambiguous.
 - 2026-02-11: Added /api/device-lookup/{stock_id} endpoint for device timeline queries.
 - 2026-02-11: Added Unpalleted Devices Audit sheet to QA export (devices that completed QA but have no pallet assigned).
 - 2026-02-11: Added Stale Devices Report sheet to QA export (devices inactive for 7+ days).

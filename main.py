@@ -2428,9 +2428,17 @@ async def device_lookup(stock_id: str, request: Request):
             results.setdefault("found_in", [])
             if "ITAD_asset_info_blancco" not in results["found_in"]:
                 results["found_in"].append("ITAD_asset_info_blancco")
+            # Represent Blancco rows as a canonical 'Erasure station' timeline event
+            # (previously surfaced as 'Erasure (Successful)' or similar). The
+            # database naming is inconsistent: Blancco reports may appear to be
+            # labelled as 'erasure' or even show operator names that are actually
+            # QA actions. We surface the canonical stage name 'Erasure station'
+            # and include the raw blancco status and operator so the UI can
+            # display the authoritative Blancco evidence without creating a
+            # separate 'Erasure (Blancco)' location to look in.
             results["timeline"].append({
                 "timestamp": str(b_added) if b_added else None,
-                "stage": f"Erasure ({b_status})" if b_status else "Erasure",
+                "stage": "Erasure station",
                 "user": b_user,
                 "location": None,
                 "source": "ITAD_asset_info_blancco",
@@ -2439,6 +2447,8 @@ async def device_lookup(stock_id: str, request: Request):
                 "manufacturer": b_manufacturer,
                 "model": b_model,
                 "details": f"{b_manufacturer} {b_model}" if b_manufacturer or b_model else None,
+                "blancco_status": b_status,
+                "is_blancco_record": True,
             })
         
         cursor.close()
