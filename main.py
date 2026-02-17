@@ -3183,11 +3183,25 @@ async def device_lookup(stock_id: str, request: Request):
                     'awaiting_sorting': True,
                     'is_most_recent': is_most_recent_flag,
                 }
-                # Make the QA-confirmed hypothesis the sole plausible location
-                # when we know the last user and the device has no pallet.
-                # This avoids other signals (copied Blancco rows, inferred
-                # locations) from outranking an explicit QA confirmation.
-                results['hypotheses'] = [qa_hyp]
+                # Ensure the QA-confirmed hypothesis is present and prominent.
+                # Even when a pallet assignment exists, operators want to see
+                # the QA confirmation alongside pallet/inferred candidates.
+                results.setdefault('hypotheses', [])
+                # avoid duplicate QA hypotheses
+                found_qa = False
+                try:
+                    for h in results.get('hypotheses', []):
+                        try:
+                            if h.get('is_qa_confirmed') or (isinstance(h.get('location'), str) and h.get('location').lower().startswith('qa data bearing')):
+                                found_qa = True
+                                break
+                        except Exception:
+                            continue
+                except Exception:
+                    found_qa = False
+                if not found_qa:
+                    # prepend so it shows prominently
+                    results['hypotheses'].insert(0, qa_hyp)
         except Exception:
             pass
 

@@ -324,8 +324,26 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     for loc_name, cnt in loc_counts.items():
                         if cnt >= 2:
                             ev = {'source': 'co_location_inferred', 'count': cnt, 'pallet_id': pid}
-                            # small boost and lower source confidence
-                            add_candidate(f"Inferred: {loc_name} (from {cnt} co-located devices)", 8, ev, None, src_conf=0.6)
+                            # Avoid creating an inferred candidate that duplicates an
+                            # existing explicit candidate (e.g., QA scanned location
+                            # or pallet). If an existing candidate name contains the
+                            # loc_name (case-insensitive) or vice-versa, skip it.
+                            dup = False
+                            try:
+                                for existing in list(candidates.keys()):
+                                    try:
+                                        en = existing.lower()
+                                        ln = str(loc_name).lower()
+                                        if ln in en or en in ln:
+                                            dup = True
+                                            break
+                                    except Exception:
+                                        continue
+                            except Exception:
+                                dup = False
+                            if not dup:
+                                # small boost and lower source confidence
+                                add_candidate(f"Inferred: {loc_name} (from {cnt} co-located devices)", 8, ev, None, src_conf=0.6)
 
                     # If several neighbors show blancco, slightly boost erasure hypothesis
                     try:
