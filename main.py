@@ -3030,7 +3030,26 @@ async def device_lookup(stock_id: str, request: Request):
                             except Exception:
                                 continue
 
-                    if erasures_found:
+                    # Also collect Blancco timeline events (MariaDB copies) as provenance
+                    blancco_found = []
+                    for ev in results.get('timeline', []):
+                        try:
+                            src = (ev.get('source') or '')
+                            if ev.get('is_blancco_record') or ('blancco' in str(src).lower()):
+                                blancco_found.append({
+                                    'type': 'blancco',
+                                    'source': src,
+                                    'ts': ev.get('timestamp'),
+                                    'initials': ev.get('user'),
+                                    'blancco_status': ev.get('blancco_status') or ev.get('status'),
+                                    'manufacturer': ev.get('manufacturer'),
+                                    'model': ev.get('model'),
+                                    'serial': ev.get('serial') or ev.get('stockid'),
+                                })
+                        except Exception:
+                            continue
+
+                    if erasures_found or blancco_found:
                         for h in results.get('hypotheses', []):
                             try:
                                 h.setdefault('evidence', h.get('evidence') or [])
@@ -3051,11 +3070,25 @@ async def device_lookup(stock_id: str, request: Request):
                                     # Avoid duplicate evidence entries
                                     if not any((ev.get('job_id') and ev.get('job_id') == ev_obj['job_id']) for ev in h['evidence'] if isinstance(ev, dict)):
                                         h['evidence'].append(ev_obj)
+                                # Add Blancco evidence too
+                                for b in blancco_found:
+                                    bobj = {
+                                        'source': 'ITAD_asset_info_blancco',
+                                        'type': 'blancco',
+                                        'initials': b.get('initials'),
+                                        'ts': b.get('ts'),
+                                        'status': b.get('blancco_status'),
+                                        'manufacturer': b.get('manufacturer'),
+                                        'model': b.get('model'),
+                                        'serial': b.get('serial')
+                                    }
+                                    if not any((ev.get('type') == 'blancco' and ev.get('serial') == bobj.get('serial')) for ev in h['evidence'] if isinstance(ev, dict)):
+                                        h['evidence'].append(bobj)
                                 # Mark hypothesis as having Blancco evidence (UI can show badge)
-                                h['is_blancco'] = True
-                                # Optionally surface a short blancco field
-                                if 'blancco' not in h:
-                                    h['blancco'] = erasures_found[0]
+                                if blancco_found:
+                                    h['is_blancco'] = True
+                                    if 'blancco' not in h:
+                                        h['blancco'] = blancco_found[0]
                             except Exception:
                                 continue
             except Exception:
