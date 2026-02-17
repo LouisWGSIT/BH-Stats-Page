@@ -2338,21 +2338,45 @@ async def device_lookup(stock_id: str, request: Request):
             results["last_known_user"] = user_id
         
         # 6. Check ITAD_asset_info_blancco for erasure records (include serial/manufacturer/model)
-        cursor.execute("""
-            SELECT stockid, serial, manufacturer, model, erasure_status, added_date, username
-            FROM ITAD_asset_info_blancco
-            WHERE stockid = %s OR serial = %s
-        """, (stock_id, stock_id))
-        for row in cursor.fetchall():
+        try:
+            # Try extended projection (some DBs have added_date/username)
+            cursor.execute("""
+                SELECT stockid, serial, manufacturer, model, erasure_status, added_date, username
+                FROM ITAD_asset_info_blancco
+                WHERE stockid = %s OR serial = %s
+            """, (stock_id, stock_id))
+            b_rows = cursor.fetchall()
+        except Exception as _ex_b:
+            print(f"[device_lookup] Blancco extended projection failed, falling back: {_ex_b}")
             try:
-                b_stockid, b_serial, b_manufacturer, b_model, b_status, b_added, b_user = row
+                cursor.execute("""
+                    SELECT stockid, serial, manufacturer, model, erasure_status
+                    FROM ITAD_asset_info_blancco
+                    WHERE stockid = %s OR serial = %s
+                """, (stock_id, stock_id))
+                b_rows = cursor.fetchall()
+            except Exception as _ex_b2:
+                print(f"[device_lookup] Blancco fallback projection failed: {_ex_b2}")
+                b_rows = []
+
+        for row in b_rows:
+            try:
+                if len(row) >= 7:
+                    b_stockid, b_serial, b_manufacturer, b_model, b_status, b_added, b_user = row
+                elif len(row) >= 5:
+                    b_stockid, b_serial, b_manufacturer, b_model, b_status = row[0], row[1], row[2], row[3], row[4]
+                    b_added = None
+                    b_user = None
+                else:
+                    # Unexpected shape
+                    continue
             except Exception:
-                # Backwards compatibility if columns missing
-                b_stockid, b_serial, b_manufacturer, b_model, b_status = (row[0], row[1], row[2], row[3], row[4])
+                b_stockid = b_serial = b_manufacturer = b_model = b_status = None
                 b_added = None
                 b_user = None
             results.setdefault("found_in", [])
-            results["found_in"].append("ITAD_asset_info_blancco") if "ITAD_asset_info_blancco" not in results["found_in"] else None
+            if "ITAD_asset_info_blancco" not in results["found_in"]:
+                results["found_in"].append("ITAD_asset_info_blancco")
             results["timeline"].append({
                 "timestamp": str(b_added) if b_added else None,
                 "stage": f"Erasure ({b_status})" if b_status else "Erasure",
