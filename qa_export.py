@@ -2274,7 +2274,8 @@ def generate_qa_engineer_export(period: str, start_year: int = None, start_month
         sheets["Device Log by Engineer"] = _build_device_log_by_engineer_sheet(start_date, end_date, period_label)
     
     # ============= AUDIT SHEETS: Unpalleted + Stale Devices =============
-    sheets["Unpalleted Devices"] = _build_unpalleted_devices_sheet(start_date, end_date, period_label)
-    sheets["Stale Devices (7+ days)"] = _build_stale_devices_sheet()
+    # Removed per request: do not include Unpalleted Devices and Stale Devices sheets in exports
+    # sheets["Unpalleted Devices"] = _build_unpalleted_devices_sheet(start_date, end_date, period_label)
+    # sheets["Stale Devices (7+ days)"] = _build_stale_devices_sheet()
     
     return sheets
