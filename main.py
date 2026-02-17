@@ -2490,9 +2490,16 @@ async def device_lookup(stock_id: str, request: Request):
                     except Exception:
                         continue
                 if not merged_into_existing:
+                    # Do NOT create a separate 'Erasure station' search location
+                    # from MariaDB Blancco rows. In this deployment Blancco rows
+                    # in MariaDB are a downstream copy of server messages and
+                    # should only act as provenance. If they don't merge into an
+                    # existing QA/audit event, append a lightweight 'Blancco
+                    # record' timeline entry for visibility but it will not be
+                    # treated as a separate plausible search location.
                     results["timeline"].append({
                         "timestamp": str(b_added) if b_added else None,
-                        "stage": "Erasure station",
+                        "stage": "Blancco record",
                         "user": b_user,
                         "location": None,
                         "source": "ITAD_asset_info_blancco",
@@ -2506,9 +2513,10 @@ async def device_lookup(stock_id: str, request: Request):
                     })
             except Exception:
                 # fallback to appending as before
+                # fallback: append as a Blancco record (see note above)
                 results["timeline"].append({
                     "timestamp": str(b_added) if b_added else None,
-                    "stage": "Erasure station",
+                    "stage": "Blancco record",
                     "user": b_user,
                     "location": None,
                     "source": "ITAD_asset_info_blancco",
@@ -2851,10 +2859,11 @@ async def device_lookup(stock_id: str, request: Request):
                     'awaiting_sorting': True,
                     'is_most_recent': is_most_recent_flag,
                 }
-                # Only prepend if not already present (avoid duplicates)
-                existing = [h.get('location') for h in results.get('hypotheses', [])]
-                if qa_label not in existing:
-                    results['hypotheses'] = [qa_hyp] + results.get('hypotheses', [])
+                # Make the QA-confirmed hypothesis the sole plausible location
+                # when we know the last user and the device has no pallet.
+                # This avoids other signals (copied Blancco rows, inferred
+                # locations) from outranking an explicit QA confirmation.
+                results['hypotheses'] = [qa_hyp]
         except Exception:
             pass
 

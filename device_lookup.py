@@ -157,8 +157,11 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 add_candidate(location, 35, "asset_info.location", last_update, src_conf=0.9)
             if roller_loc:
                 add_candidate(roller_loc, 35, "asset_info.roller_location", last_update, src_conf=0.9)
-            if de_complete and str(de_complete).lower() in ('yes', 'true', '1'):
-                add_candidate('Erasure station', 25, 'asset_info.de_complete', de_completed_date, src_conf=0.95)
+            # `de_complete` in `ITAD_asset_info` represents a QA-related flag in
+            # this environment (not a separate erasure location). Do NOT create a
+            # separate 'Erasure station' candidate from it to avoid duplicate
+            # locations — QA evidence will be gathered from `ITAD_QA_App` and
+            # `audit_master` instead.
 
         # From QA scans
         cur.execute("""
@@ -355,27 +358,28 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 except Exception:
                     has_blancco_user = False
 
-                if has_blancco_user:
-                    cur.execute("SELECT id, added_date, username FROM ITAD_asset_info_blancco WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (stockid,))
-                    b = cur.fetchone()
-                    if b:
-                        _, added_dt, b_user = b
-                        ev = {'source': 'ITAD_asset_info_blancco', 'added_date': added_dt, 'username': b_user}
-                        # Attach Blancco evidence to the canonical 'Erasure station' candidate
-                        add_candidate('Erasure station', 30, ev, added_dt, src_conf=1.0)
-                else:
-                    cur.execute("SELECT id, added_date FROM ITAD_asset_info_blancco WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (stockid,))
-                    b = cur.fetchone()
-                    if b:
-                        _, added_dt = b
-                        ev = {'source': 'ITAD_asset_info_blancco', 'added_date': added_dt}
-                        add_candidate('Erasure station', 30, ev, added_dt, src_conf=1.0)
+                # NOTE: In this deployment Blancco rows in MariaDB are a copy
+                # of the server-side erasure messages and are not the canonical
+                # source of truth for erasure events. True erasure events arrive
+                # as server messages and are stored locally in SQLite (`erasures`).
+                # Therefore, DO NOT create an 'Erasure station' candidate from
+                # `ITAD_asset_info_blancco` to avoid elevating DB-copied Blancco
+                # rows above QA evidence. We still probe `ITAD_asset_info_blancco`
+                # for provenance to attach to timeline events, but hypotheses and
+                # candidates should be driven by local erasure records (SQLite)
+                # and QA scans in `ITAD_QA_App` / `audit_master`.
+                pass
             else:
+                # If the Blancco table lacks an explicit timestamp column we
+                # may still find a row, but we deliberately do NOT convert
+                # this into an 'Erasure station' candidate. Local server
+                # messages (SQLite `erasures`) are the authoritative erasure
+                # source and should drive any erasure hypothesis.
                 cur.execute("SELECT id FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (stockid,))
                 b2 = cur.fetchone()
                 if b2:
-                    ev = {'source': 'ITAD_asset_info_blancco'}
-                    add_candidate('Erasure station', 20, ev, None, src_conf=1.0)
+                    # Attach no candidate; leave as provenance-only
+                    pass
         except Exception:
             pass
 
@@ -470,7 +474,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     else:
                         s = str(src)
                     s = s.lower()
-                    if 'blancco' in s or 'de_complete' in s or 'erasure' in s or 'erasure station' in s:
+                    if 'blancco' in s or 'erasure' in s or 'erasure station' in s:
                         return True
             except Exception:
                 pass

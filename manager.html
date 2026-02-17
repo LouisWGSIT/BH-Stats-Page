@@ -1115,22 +1115,39 @@
                     let timelineHtml = '<div style="margin-top:15px;">';
                     // Timeline advisory note removed per request; show raw timeline only
                     data.timeline.forEach((event, idx) => {
-                        const stageColor = event.stage.includes('QA') ? '#667eea' 
-                            : event.stage.includes('Sorting') ? '#10b981'
-                            : event.stage.includes('Erasure') ? '#f59e0b'
-                            : '#666';
-                        timelineHtml += `
-                            <div style="display:flex; gap:15px; margin-bottom:12px; padding:10px; background:white; border-radius:6px; border-left:4px solid ${stageColor};">
-                                <div style="min-width:160px; color:#666; font-size:12px;">${event.timestamp || 'N/A'}</div>
-                                <div style="flex:1;">
-                                    <strong style="color:${stageColor};">${event.stage}</strong>
-                                    ${event.user ? `<span style="margin-left:10px; color:#666;">by ${event.user}</span>` : ''}
-                                    ${event.location ? `<span style="margin-left:10px; color:#999;">@ ${event.location}</span>` : ''}
-                                    <div style="font-size:11px; color:#999;">Source: ${event.source}</div>
+                            const stageColor = event.stage.includes('QA') ? '#667eea' 
+                                : event.stage.includes('Sorting') ? '#10b981'
+                                : event.stage.includes('Erasure') ? '#f59e0b'
+                                : '#666';
+
+                            // Build provenance badges and short provenance line
+                            let badges = '';
+                            if (event.is_most_recent) badges += `<span class="badge most-recent">Most recent</span>`;
+                            if (event.is_blancco_record || event.blancco_status) badges += `<span class="badge blancco">${event.blancco_status || 'Blancco'}</span>`;
+                            if (event.merged_from && event.merged_from.length) badges += `<span class="badge inferred">Merged</span>`;
+
+                            const provList = (event.sources && event.sources.length) ? event.sources.map(s => formatEvidence(s)).filter(Boolean) : [];
+                            const provShort = provList.length ? provList.join(' • ') : (event.source || 'unknown');
+
+                            timelineHtml += `
+                                <div style="display:flex; gap:15px; margin-bottom:12px; padding:10px; background:white; border-radius:6px; border-left:4px solid ${stageColor};">
+                                    <div style="min-width:160px; color:#666; font-size:12px;">${event.timestamp || 'N/A'}</div>
+                                    <div style="flex:1;">
+                                        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                                            <div style="display:flex; align-items:center; gap:8px;">
+                                                <strong style="color:${stageColor};">${event.stage}</strong>
+                                                ${event.user ? `<span style="margin-left:6px; color:#666;">by ${event.user}</span>` : ''}
+                                                ${event.location ? `<span style="margin-left:6px; color:#999;">@ ${event.location}</span>` : ''}
+                                            </div>
+                                            <div>${badges}</div>
+                                        </div>
+                                        <div style="font-size:11px; color:#999; margin-top:6px;">Source: ${event.source || ''}</div>
+                                        <div style="font-size:12px; color:#444; margin-top:6px;">Provenance: ${provShort}</div>
+                                        ${ (event.merged_from && event.merged_from.length) ? `<div style="font-size:12px; color:#666; margin-top:6px;">Merged from: ${event.merged_from.join(', ')}</div>` : '' }
+                                    </div>
                                 </div>
-                            </div>
-                        `;
-                    });
+                            `;
+                        });
                     timelineHtml += '</div>';
                     timelineContent.innerHTML = timelineHtml;
                     timelineDiv.style.display = 'block';
