@@ -2209,25 +2209,10 @@ async def device_lookup(stock_id: str, request: Request):
                 results["pallet_info"] = {"pallet_id": row[5]}
             if row[7]:  # location
                 results["last_known_location"] = row[7]
-            # Add an explicit timeline event for the asset_info location/last_update
-            try:
-                results.setdefault("timeline", [])
-                ts = str(row[6]) if row[6] else None
-                loc = row[7] if len(row) > 7 else None
-                results["timeline"].append({
-                    "timestamp": ts,
-                    "stage": "Location (asset_info)",
-                    "user": None,
-                    "location": loc,
-                    "source": "ITAD_asset_info",
-                    "stockid": row[0],
-                    "serial": row[1],
-                    "manufacturer": row[2],
-                    "model": row[3],
-                    "details": f"asset_info record",
-                })
-            except Exception:
-                pass
+            # Asset info is recorded in `results["asset_info"]` but we avoid
+            # emitting a separate generic timeline row here since it often
+            # contains no human-friendly location. Timeline rows are built from
+            # richer, action-oriented sources (QA, audit, erasure, pallet).
         
         # 2. Check Stockbypallet for pallet assignment
         cursor.execute("""
