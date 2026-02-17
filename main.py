@@ -2460,20 +2460,68 @@ async def device_lookup(stock_id: str, request: Request):
                 history = []
             for h in history:
                 try:
+                    # Normalize identifiers for flexible matching
                     h_stock = str(h.get('stockid') or '').strip()
                     h_serial = str(h.get('serial') or '').strip()
                     if not h_stock and not h_serial:
                         continue
-                    if (h_stock and h_stock == stock_id) or (h_serial and h_serial == stock_id) or (str(stock_id) == str(h.get('serial'))):
-                        results.setdefault("found_in", []).append("qa_export.history") if "qa_export.history" not in results.get("found_in", []) else None
-                        results["timeline"].append({
-                            "timestamp": h.get('timestamp'),
-                            "stage": h.get('stage') or 'History',
-                            "user": h.get('user'),
-                            "location": h.get('location'),
-                            "source": h.get('source') or 'qa_export.history',
-                            "details": json.dumps({k: v for k, v in h.items() if k in ('manufacturer', 'model', 'device_type', 'pallet_id')}) if h else None,
-                        })
+
+                    norm_req = str(stock_id or '').strip().lower()
+                    match = False
+                    if h_stock and h_stock.strip().lower() == norm_req:
+                        match = True
+                    if h_serial and h_serial.strip().lower() == norm_req:
+                        match = True
+                    # Allow substring matches to catch slight formatting differences
+                    if not match:
+                        if h_stock and norm_req and norm_req in h_stock.lower():
+                            match = True
+                        if h_serial and norm_req and norm_req in h_serial.lower():
+                            match = True
+                    if not match:
+                        continue
+
+                    # Surface full history fields (manufacturer/model/pallet/device_type)
+                    results.setdefault("found_in", [])
+                    if "qa_export.history" not in results.get("found_in", []):
+                        results["found_in"].append("qa_export.history")
+
+                    ev = {
+                        "timestamp": h.get('timestamp'),
+                        "stage": h.get('stage') or 'History',
+                        "user": h.get('user'),
+                        "location": h.get('location'),
+                        "source": h.get('source') or 'qa_export.history',
+                        "stockid": h_stock or None,
+                        "serial": h_serial or None,
+                        "manufacturer": h.get('manufacturer'),
+                        "model": h.get('model'),
+                        "device_type": h.get('device_type'),
+                        "pallet_id": h.get('pallet_id'),
+                        "pallet_destination": h.get('pallet_destination'),
+                        "pallet_location": h.get('pallet_location'),
+                        "details": json.dumps({k: v for k, v in h.items() if k in ('drive_size', 'drive_type', 'drive_count')}) if h else None,
+                    }
+
+                    results["timeline"].append(ev)
+
+                    # If this history row includes a pallet assignment, add a dedicated Pallet event
+                    try:
+                        pid = ev.get('pallet_id')
+                        if pid:
+                            results["timeline"].append({
+                                "timestamp": h.get('timestamp'),
+                                "stage": f"Pallet {pid}",
+                                "user": h.get('user'),
+                                "location": ev.get('pallet_location'),
+                                "source": "qa_export.pallet",
+                                "pallet_id": pid,
+                                "pallet_destination": ev.get('pallet_destination'),
+                                "pallet_location": ev.get('pallet_location'),
+                            })
+                    except Exception:
+                        pass
+
                 except Exception:
                     continue
         except Exception:
