@@ -2239,26 +2239,44 @@ async def device_lookup(stock_id: str, request: Request):
                     "create_date": str(row[4]) if row[4] else None,
                 })
         
-        # 4. Check ITAD_QA_App for sorting scans
+        # 4. Check ITAD_QA_App for sorting scans (include richer metadata)
         cursor.execute("""
-            SELECT added_date, username, scanned_location
+            SELECT added_date, username, scanned_location, stockid, photo_location, sales_order
             FROM ITAD_QA_App
             WHERE stockid = %s
             ORDER BY added_date ASC
         """, (stock_id,))
         for row in cursor.fetchall():
+            try:
+                added_date, username, scanned_location, q_stockid, photo_location, sales_order = row
+            except Exception:
+                added_date, username, scanned_location = (row[0], row[1], row[2])
+                q_stockid = None
+                photo_location = None
+                sales_order = None
+            results.setdefault("found_in", [])
             results["found_in"].append("ITAD_QA_App") if "ITAD_QA_App" not in results["found_in"] else None
             results["timeline"].append({
-                "timestamp": str(row[0]),
+                "timestamp": str(added_date),
                 "stage": "Sorting",
-                "user": row[1],
-                "location": row[2],
+                "user": username,
+                "location": scanned_location,
                 "source": "ITAD_QA_App",
+                "stockid": q_stockid or stock_id,
+                "serial": None,
+                "device_type": None,
+                "manufacturer": (results.get("asset_info") or {}).get("manufacturer"),
+                "model": (results.get("asset_info") or {}).get("model"),
+                "pallet_id": (results.get("pallet_info") or {}).get("pallet_id"),
+                "pallet_destination": (results.get("pallet_info") or {}).get("destination"),
+                "pallet_location": (results.get("pallet_info") or {}).get("location"),
+                "sales_order": sales_order,
+                "photo_location": photo_location,
             })
-            results["last_known_user"] = row[1]
-            results["last_known_location"] = row[2]
+            results["last_known_user"] = username
+            results["last_known_location"] = scanned_location
         
-        # 5. Check audit_master for QA submissions
+        # 5. Check audit_master for QA submissions (include descriptions)
         cursor.execute("""
             SELECT date_time, audit_type, user_id, log_description, log_description2
             FROM audit_master
@@ -2268,32 +2286,54 @@ async def device_lookup(stock_id: str, request: Request):
             ORDER BY date_time ASC
         """, (f'%{stock_id}%', f'%{stock_id}%'))
         for row in cursor.fetchall():
+            try:
+                date_time, audit_type, user_id, log_description, log_description2 = row
+            except Exception:
+                date_time, audit_type, user_id = row[0], row[1], row[2]
+                log_description = None
+                log_description2 = None
+            results.setdefault("found_in", [])
             results["found_in"].append("audit_master") if "audit_master" not in results["found_in"] else None
-            stage = "QA Data Bearing" if row[1].startswith("DEAPP_") else "QA Non-Data Bearing"
+            stage = "QA Data Bearing" if str(audit_type or '').startswith("DEAPP_") else "QA Non-Data Bearing"
             results["timeline"].append({
-                "timestamp": str(row[0]),
+                "timestamp": str(date_time),
                 "stage": stage,
-                "user": row[2],
+                "user": user_id,
                 "location": None,
                 "source": "audit_master",
+                "stockid": stock_id,
+                "log_description": log_description,
+                "log_description2": log_description2,
             })
-            results["last_known_user"] = row[2]
+            results["last_known_user"] = user_id
         
-        # 6. Check ITAD_asset_info_blancco for erasure records
+        # 6. Check ITAD_asset_info_blancco for erasure records (include serial/manufacturer/model)
         cursor.execute("""
-            SELECT stockid, serial, manufacturer, model, erasure_status
+            SELECT stockid, serial, manufacturer, model, erasure_status, added_date, username
             FROM ITAD_asset_info_blancco
             WHERE stockid = %s OR serial = %s
         """, (stock_id, stock_id))
         for row in cursor.fetchall():
+            try:
+                b_stockid, b_serial, b_manufacturer, b_model, b_status, b_added, b_user = row
+            except Exception:
+                # Backwards compatibility if columns missing
+                b_stockid, b_serial, b_manufacturer, b_model, b_status = (row[0], row[1], row[2], row[3], row[4])
+                b_added = None
+                b_user = None
+            results.setdefault("found_in", [])
             results["found_in"].append("ITAD_asset_info_blancco") if "ITAD_asset_info_blancco" not in results["found_in"] else None
             results["timeline"].append({
-                "timestamp": None,
-                "stage": f"Erasure ({row[4]})" if row[4] else "Erasure",
-                "user": None,
+                "timestamp": str(b_added) if b_added else None,
+                "stage": f"Erasure ({b_status})" if b_status else "Erasure",
+                "user": b_user,
                 "location": None,
                 "source": "ITAD_asset_info_blancco",
-                "details": f"{row[2]} {row[3]}" if row[2] and row[3] else None,
+                "serial": b_serial,
+                "stockid": b_stockid,
+                "manufacturer": b_manufacturer,
+                "model": b_model,
+                "details": f"{b_manufacturer} {b_model}" if b_manufacturer or b_model else None,
             })
         
         cursor.close()
@@ -2305,25 +2345,118 @@ async def device_lookup(stock_id: str, request: Request):
             sqlite_conn = sqlite3.connect(db.DB_PATH)
             sqlite_cursor = sqlite_conn.cursor()
             sqlite_cursor.execute("""
-                SELECT ts, date, initials, device_type, event
+                SELECT ts, date, initials, device_type, event, manufacturer, model, system_serial, disk_serial, job_id, drive_size, drive_type, drive_count
                 FROM erasures
                 WHERE system_serial = ? OR disk_serial = ? OR job_id = ?
                 ORDER BY date ASC, ts ASC
             """, (stock_id, stock_id, stock_id))
             for row in sqlite_cursor.fetchall():
+                try:
+                    ts, date_str, initials, device_type, event, manufacturer, model, system_serial, disk_serial, job_id, drive_size, drive_type, drive_count = row
+                except Exception:
+                    ts, date_str, initials, device_type, event = row[0], row[1], row[2], row[3], row[4]
+                    manufacturer = model = system_serial = disk_serial = job_id = drive_size = drive_type = drive_count = None
+                results.setdefault("found_in", [])
                 results["found_in"].append("local_erasures") if "local_erasures" not in results["found_in"] else None
                 results["timeline"].append({
-                    "timestamp": row[0] or row[1],
-                    "stage": f"Erasure ({row[4]})",
-                    "user": row[2],
+                    "timestamp": ts or date_str,
+                    "stage": f"Erasure ({event})",
+                    "user": initials,
                     "location": None,
                     "source": "local_erasures",
+                    "device_type": device_type,
+                    "manufacturer": manufacturer,
+                    "model": model,
+                    "system_serial": system_serial,
+                    "disk_serial": disk_serial,
+                    "job_id": job_id,
+                    "drive_size": drive_size,
+                    "drive_type": drive_type,
+                    "drive_count": drive_count,
                 })
-                results["last_known_user"] = row[2]
+                results["last_known_user"] = initials
             sqlite_cursor.close()
             sqlite_conn.close()
         except Exception as e:
             print(f"SQLite lookup error: {e}")
+
+        # 7b. Enrich timeline with device history from QA export (broad range, best-effort)
+        try:
+            from datetime import date, timedelta
+            # request a long history window (10 years) to capture all events
+            start = date.today() - timedelta(days=3650)
+            end = date.today()
+            try:
+                history = qa_export.get_device_history_range(start, end)
+            except Exception:
+                history = []
+            for h in history:
+                try:
+                    h_stock = str(h.get('stockid') or '').strip()
+                    h_serial = str(h.get('serial') or '').strip()
+                    if not h_stock and not h_serial:
+                        continue
+                    if (h_stock and h_stock == stock_id) or (h_serial and h_serial == stock_id) or (str(stock_id) == str(h.get('serial'))):
+                        results.setdefault("found_in", []).append("qa_export.history") if "qa_export.history" not in results.get("found_in", []) else None
+                        results["timeline"].append({
+                            "timestamp": h.get('timestamp'),
+                            "stage": h.get('stage') or 'History',
+                            "user": h.get('user'),
+                            "location": h.get('location'),
+                            "source": h.get('source') or 'qa_export.history',
+                            "details": json.dumps({k: v for k, v in h.items() if k in ('manufacturer', 'model', 'device_type', 'pallet_id')}) if h else None,
+                        })
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # 7c. Include admin action history tied to erasures rows (undo/fix-initials etc.)
+        try:
+            import sqlite3 as _sqlite
+            sconn = _sqlite.connect(db.DB_PATH)
+            scur = sconn.cursor()
+            scur.execute("SELECT rowid FROM erasures WHERE system_serial = ? OR disk_serial = ? OR job_id = ?", (stock_id, stock_id, stock_id))
+            affected_rowids = [r[0] for r in scur.fetchall() if r and r[0]]
+            if affected_rowids:
+                placeholders = ','.join(['?'] * len(affected_rowids))
+                q = f"SELECT a.created_at, a.action, a.from_initials, a.to_initials, ar.rowid FROM admin_actions a JOIN admin_action_rows ar ON a.id = ar.action_id WHERE ar.rowid IN ({placeholders}) ORDER BY a.created_at ASC"
+                scur.execute(q, affected_rowids)
+                for created_at, action, from_i, to_i, rowid in scur.fetchall():
+                    results.setdefault("found_in", []).append("admin_actions") if "admin_actions" not in results.get("found_in", []) else None
+                    results["timeline"].append({
+                        "timestamp": created_at,
+                        "stage": f"Admin: {action}",
+                        "user": from_i or to_i,
+                        "location": None,
+                        "source": "admin_actions",
+                        "details": f"rowid={rowid} from={from_i} to={to_i}",
+                    })
+            scur.close()
+            sconn.close()
+        except Exception:
+            pass
+
+        # 7d. Include manager confirmations history from confirmed_locations
+        try:
+            import sqlite3 as _sqlite2
+            sc = _sqlite2.connect(db.DB_PATH)
+            curc = sc.cursor()
+            curc.execute("SELECT ts, location, user, note FROM confirmed_locations WHERE stockid = ? ORDER BY ts ASC", (stock_id,))
+            for ts, loc, user, note in curc.fetchall():
+                results.setdefault("found_in", []).append("confirmed_locations") if "confirmed_locations" not in results.get("found_in", []) else None
+                results["timeline"].append({
+                    "timestamp": ts,
+                    "stage": "Manager Confirmation",
+                    "user": user,
+                    "location": loc,
+                    "source": "confirmed_locations",
+                    "details": note,
+                })
+            curc.close()
+            sc.close()
+        except Exception:
+            pass
         
         # De-dupe timeline events that are identical across sources/rows
         deduped_timeline = []
@@ -2342,9 +2475,42 @@ async def device_lookup(stock_id: str, request: Request):
             seen_events.add(key)
             deduped_timeline.append(event)
 
-        # Sort timeline chronologically
-        deduped_timeline.sort(key=lambda x: x.get("timestamp") or "")
+        # Sort timeline most-recent-first (newest at the top)
+        deduped_timeline.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
         results["timeline"] = deduped_timeline
+
+        # Backfill missing metadata on timeline events (pallet/destination/manufacturer/model)
+        try:
+            pallet_info = results.get('pallet_info') or {}
+            for ev in results.get('timeline', []):
+                try:
+                    if not ev.get('pallet_id') and pallet_info.get('pallet_id'):
+                        ev['pallet_id'] = pallet_info.get('pallet_id')
+                    if not ev.get('pallet_destination') and pallet_info.get('destination'):
+                        ev['pallet_destination'] = pallet_info.get('destination')
+                    if not ev.get('pallet_location') and pallet_info.get('location'):
+                        ev['pallet_location'] = pallet_info.get('location')
+                    # Fill manufacturer/model from asset_info when missing
+                    asset_info = results.get('asset_info') or {}
+                    if not ev.get('manufacturer') and asset_info.get('manufacturer'):
+                        ev['manufacturer'] = asset_info.get('manufacturer')
+                    if not ev.get('model') and asset_info.get('model'):
+                        ev['model'] = asset_info.get('model')
+                    # Normalize timestamp strings where possible
+                    if ev.get('timestamp'):
+                        try:
+                            # keep as string but try to ensure ISO-like form
+                            _t = ev.get('timestamp')
+                            if isinstance(_t, (int, float)):
+                                # epoch -> iso
+                                from datetime import datetime as _dt
+                                ev['timestamp'] = _dt.utcfromtimestamp(float(_t)).isoformat()
+                        except Exception:
+                            pass
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
         # Add likely-location hypotheses (top N) from DB heuristics
         try:
