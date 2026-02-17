@@ -2437,6 +2437,120 @@ async def device_lookup(stock_id: str, request: Request):
             # display the authoritative Blancco evidence without creating a
             # separate 'Erasure (Blancco)' location to look in.
             # Try to merge Blancco evidence into an existing nearby QA/audit event
+                # If we already have a local_erasures provenance for this stock/serial,
+                # skip adding the MariaDB Blancco copy to avoid duplicate/confusing entries.
+                try:
+                    suppressed = False
+                    existing = results.get('timeline', []) or []
+                    for ev in existing:
+                        try:
+                            if ev.get('source') == 'local_erasures':
+                                # match by serial or stockid/job
+                                if b_serial and (str(ev.get('system_serial') or ev.get('serial') or '').strip() == str(b_serial).strip()):
+                                    suppressed = True
+                                    break
+                                if b_stockid and (str(ev.get('job_id') or ev.get('stockid') or '') == str(b_stockid)):
+                                    suppressed = True
+                                    break
+                        except Exception:
+                            continue
+                    if not suppressed:
+                        # Represent Blancco rows as a canonical 'Erasure station' timeline event
+                        # (previously surfaced as 'Erasure (Successful)' or similar). The
+                        # database naming is inconsistent: Blancco reports may appear to be
+                        # labelled as 'erasure' or even show operator names that are actually
+                        # QA actions. We surface the canonical stage name 'Erasure station'
+                        # and include the raw blancco status and operator so the UI can
+                        # display the authoritative Blancco evidence without creating a
+                        # separate 'Erasure (Blancco)' location to look in.
+                        # Try to merge Blancco evidence into an existing nearby QA/audit event
+                        from datetime import datetime as _dt
+                        MERGE_WINDOW = int(os.getenv('MERGE_TIMELINE_WINDOW_SECONDS', '60'))
+
+                        def _parse_ts_local(ts):
+                            if not ts:
+                                return None
+                            try:
+                                if isinstance(ts, str):
+                                    try:
+                                        return _dt.fromisoformat(ts.replace('Z', '+00:00'))
+                                    except Exception:
+                                        pass
+                                    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S'):
+                                        try:
+                                            return _dt.strptime(ts, fmt)
+                                        except Exception:
+                                            continue
+                                elif hasattr(ts, 'timetuple'):
+                                    return ts
+                            except Exception:
+                                return None
+
+                        def _try_attach_blancco():
+                            if not b_added:
+                                return False
+                            try:
+                                b_dt = _parse_ts_local(b_added)
+                            except Exception:
+                                b_dt = None
+                            for ev in results.get('timeline', []):
+                                try:
+                                    if not ev.get('timestamp'):
+                                        continue
+                                    ev_dt = _parse_ts_local(ev.get('timestamp'))
+                                    if not ev_dt or not b_dt:
+                                        continue
+                                    if abs((ev_dt - b_dt).total_seconds()) <= MERGE_WINDOW:
+                                        ev.setdefault('sources', [])
+                                        ev['sources'].append({
+                                            'type': 'blancco',
+                                            'source': 'ITAD_asset_info_blancco',
+                                            'ts': b_added,
+                                            'initials': b_user,
+                                            'status': b_status,
+                                            'manufacturer': b_manufacturer,
+                                            'model': b_model,
+                                            'serial': b_serial,
+                                        })
+                                        ev['is_blancco_record'] = True
+                                        return True
+                                except Exception:
+                                    continue
+                            return False
+
+                        attached = _try_attach_blancco()
+                        if not attached:
+                            results["timeline"].append({
+                                "timestamp": str(b_added) if b_added else None,
+                                "stage": "Blancco record",
+                                "user": b_user,
+                                "location": None,
+                                "source": "ITAD_asset_info_blancco",
+                                "serial": b_serial,
+                                "stockid": b_stockid,
+                                "manufacturer": b_manufacturer,
+                                "model": b_model,
+                                "details": f"{b_manufacturer} {b_model}" if b_manufacturer or b_model else None,
+                                "blancco_status": b_status,
+                                "is_blancco_record": True,
+                            })
+                except Exception:
+                    # fallback to appending as before
+                    # fallback: append as a Blancco record (see note above)
+                    results["timeline"].append({
+                        "timestamp": str(b_added) if b_added else None,
+                        "stage": "Blancco record",
+                        "user": b_user,
+                        "location": None,
+                        "source": "ITAD_asset_info_blancco",
+                        "serial": b_serial,
+                        "stockid": b_stockid,
+                        "manufacturer": b_manufacturer,
+                        "model": b_model,
+                        "details": f"{b_manufacturer} {b_model}" if b_manufacturer or b_model else None,
+                        "blancco_status": b_status,
+                        "is_blancco_record": True,
+                    })
             try:
                 from datetime import datetime as _dt
                 MERGE_WINDOW = int(os.getenv('MERGE_TIMELINE_WINDOW_SECONDS', '60'))
