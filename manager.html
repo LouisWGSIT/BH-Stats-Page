@@ -818,7 +818,7 @@
             const confidencePct = advisory && advisory.confidence_pct !== undefined
                 ? advisory.confidence_pct
                 : (insights && Number.isFinite(insights.confidence) ? Math.round(insights.confidence * 100) : null);
-            const predicted = advisory && advisory.predicted_next ? advisory.predicted_next : (insights && insights.predicted_next_step) || 'Unknown';
+            const predicted = advisory && advisory.predicted_next ? advisory.predicted_next : (insights && insights.predicted_next_step) || 'Sorting';
             const lastActivity = advisory && advisory.last_activity ? advisory.last_activity : (insights && insights.last_activity) || 'Unknown';
             const hoursSince = advisory && advisory.time_since_hours !== undefined
                 ? (advisory.time_since_hours === null ? 'N/A' : advisory.time_since_hours + ' hours')
