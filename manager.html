@@ -1127,6 +1127,15 @@
                         if (!container) return;
                         const groupOrder = ['Physical', 'PostSorting', 'Stage', 'Erasure'];
                         const displayType = (t) => ({ Physical: 'Sorting', PostSorting: 'Post Sorting', Stage: 'QA', Erasure: 'Erasure' }[t] || t);
+                        // Precompute which group contains the single most-recent hypothesis
+                        const groupHasMostRecent = {};
+                        groupOrder.forEach(t => {
+                            const its = groups[t] || [];
+                            groupHasMostRecent[t] = its.some(h => {
+                                const hLastMs = h.last_seen ? Date.parse(h.last_seen) : null;
+                                return !!(h.is_most_recent || (mostRecentMs !== null && hLastMs === mostRecentMs));
+                            });
+                        });
                         let overallMostRecentAssigned = false;
                         groupOrder.forEach(type => {
                             const items = groups[type];
@@ -1134,7 +1143,7 @@
                             const groupId = `hypoGroup_${type}`;
                             const header = document.createElement('div');
                             const display = displayType(type);
-                            header.innerHTML = `<div style="display:flex;align-items:center;cursor:pointer;font-size:15px;font-weight:600;margin-top:10px;margin-bottom:4px;gap:8px;" onclick="const el=document.getElementById('${groupId}');el.style.display=el.style.display==='none'?'block':'none';this.querySelector('span').textContent=el.style.display==='none'?'▶':'▼';"><span style='font-size:13px;'>▼</span> ${display} <span style='font-size:12px;font-weight:400;color:#64748b;margin-left:8px;'>(${items.length})</span></div>`;
+                            header.innerHTML = `<div style="display:flex;align-items:center;cursor:pointer;font-size:15px;font-weight:600;margin-top:10px;margin-bottom:4px;gap:8px;" onclick="const el=document.getElementById('${groupId}');el.style.display=el.style.display==='none'?'block':'none';this.querySelector('span').textContent=el.style.display==='none'?'▶':'▼';"><span style='font-size:13px;'>▼</span> ${display} <span style='font-size:12px;font-weight:400;color:#64748b;margin-left:8px;'>(${items.length})</span> ${groupHasMostRecent[type] ? '<span style="margin-left:auto"><span class="badge most-recent">Most recent</span></span>' : ''}</div>`;
                             container.appendChild(header);
                             const groupDiv = document.createElement('div');
                             groupDiv.id = groupId;
