@@ -621,6 +621,73 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         except Exception:
             pass
 
+        # Ensure earlier audit_master QA/DEAPP users are also shown as separate
+        # `QA Done by <user>` candidates so the timeline preserves intermediate
+        # technician actions (e.g., Solomon) between Sorting and Erasure.
+        try:
+            try:
+                cur.execute(
+                    """
+                    SELECT date_time, audit_type, user_id, log_description
+                    FROM audit_master
+                    WHERE (log_description LIKE %s OR log_description2 LIKE %s OR user_id IS NOT NULL)
+                      AND audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
+                                         'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+                      AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                    ORDER BY date_time DESC
+                    LIMIT 8
+                    """,
+                    (f"%{stockid}%", f"%{stockid}%", AUDIT_LOOKBACK_DAYS),
+                )
+                am_rows_all = cur.fetchall()
+            except Exception:
+                am_rows_all = []
+
+            # Add each unique user seen in audit_master as a QA-by-user candidate
+            # without overwriting existing candidates. New candidates get a
+            # moderate score and their actual audit timestamp so sorting will
+            # place them correctly between more- and less-recent events.
+            seen_users = set()
+            rank_score = 72.0
+            for ar in am_rows_all:
+                try:
+                    adt, atype, auser, alog = ar
+                    if not auser:
+                        continue
+                    # normalize username
+                    uname = auser.strip()
+                    if not uname or uname.lower() in seen_users:
+                        continue
+                    seen_users.add(uname.lower())
+                    qa_norm = normalize_loc(f"qa_done_by {uname}")
+                    if qa_norm in candidates:
+                        # update last_seen if this audit_master row is newer
+                        try:
+                            adt_dt = _parse_timestamp(adt) if _parse_timestamp else None
+                        except Exception:
+                            adt_dt = None
+                        if adt_dt and (not candidates[qa_norm].get('last_seen') or adt_dt > candidates[qa_norm].get('last_seen')):
+                            candidates[qa_norm]['last_seen'] = adt_dt
+                        continue
+
+                    try:
+                        adt_dt = _parse_timestamp(adt) if _parse_timestamp else None
+                    except Exception:
+                        adt_dt = None
+
+                    candidates[qa_norm] = {
+                        'score': float(rank_score),
+                        'evidence': [ {'source': {'source': 'audit_master.user', 'username': uname, 'log': alog, 'audit_type': atype}} ],
+                        'last_seen': adt_dt,
+                        'display_name': f"QA Done by {uname}",
+                    }
+                    # slightly decay the score so more-recent users rank higher
+                    rank_score = max(40.0, rank_score - 3.0)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
         # Check audit_master for a recent QA submission/user; if found, try to map that
         # user to their most-recent QA scanned_location and add as a candidate. This lets
         # 'last known user' from audit_master influence the hypotheses.
