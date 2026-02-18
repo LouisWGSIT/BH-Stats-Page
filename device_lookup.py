@@ -230,14 +230,26 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     """,
                                         (f"%{stockid}%", f"%{stockid}%", AUDIT_LOOKBACK_DAYS),
                 )
+                # Add up to a few recent distinct audit_master QA users so the
+                # UI preserves intermediate technician actions (chronology).
+                seen_am_users = set()
+                added_users = 0
                 for ar in cur.fetchall():
                     try:
                         am_dt, am_type, am_user, am_log = ar
                         adm_dt = _to_dt(am_dt)
-                        if am_user:
-                            qa_label = f"QA Done by {am_user}"
-                            # favor audit_master QA as authoritative (overwrite ITAD_QA_App)
+                        if not am_user:
+                            continue
+                        uname = am_user.strip()
+                        if not uname or uname.lower() in seen_am_users:
+                            continue
+                        seen_am_users.add(uname.lower())
+                        qa_label = f"QA Done by {uname}"
+                        # do not overwrite a more-recent value if present
+                        if qa_label not in simple_candidates or (adm_dt and adm_dt > simple_candidates.get(qa_label)):
                             simple_candidates[qa_label] = adm_dt
+                        added_users += 1
+                        if added_users >= 4:
                             break
                     except Exception:
                         continue
