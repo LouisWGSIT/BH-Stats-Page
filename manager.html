@@ -1554,8 +1554,11 @@
                                 const last = h.last_seen ? `<span style='color:#64748b;font-size:13px;margin-left:6px;'>&#128337; ${formatUK(h.last_seen)}</span>` : '';
                                 // --- Badges with icons ---
                                 let badgeHtml = '';
-                                // Only Sorting (Physical) gets Most Recent
-                                if (type === 'Physical' && h.is_most_recent) badgeHtml += `<span class=\"badge most-recent\">&#128337; Most recent</span>`;
+                                // Only the very first hypothesis (top-most, most recent) gets Most Recent
+                                if (container._mostRecentAssigned !== true && h.is_most_recent) {
+                                    badgeHtml += `<span class=\"badge most-recent\">&#128337; Most recent</span>`;
+                                    container._mostRecentAssigned = true;
+                                }
                                 // Only Erasure gets Blancco
                                 if (type === 'Erasure' && h.is_blancco) badgeHtml += `<span class=\"badge blancco\">&#128295; Blancco</span>`;
                                 if (h.is_confirmed) badgeHtml += `<span class=\"badge confirmed\">&#9989; Confirmed</span>`;
