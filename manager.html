@@ -1002,7 +1002,7 @@
             applyRoleVisibility();
         });
 
-        async function searchDevice() {
+        window.searchDevice = async function() {
             const stockId = document.getElementById('deviceSearchId').value.trim();
             const resultDiv = document.getElementById('deviceSearchResult');
             const timelineDiv = document.getElementById('deviceSearchTimeline');
@@ -1115,8 +1115,6 @@
                         const container = document.getElementById('hypothesesGroups');
                         if (!container) return;
                         const groupOrder = ['Physical', 'Stage', 'Erasure'];
-                        let overallMostRecentAssigned = false;
-                        let overallMostRecentAssigned = false;
                         let overallMostRecentAssigned = false;
                         groupOrder.forEach(type => {
                             const items = groups[type];
