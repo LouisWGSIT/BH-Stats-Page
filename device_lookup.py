@@ -169,8 +169,23 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 if q and q[0]:
                     loc, added, uname = q
                     dt = _to_dt(added)
-                    label = f"QA Done by {uname}" if uname else loc
-                    simple_candidates[label] = dt
+                    # If audit_master contains a DEAPP_Submission for this stock,
+                    # treat ITAD_QA_App latest scan as a Sorting/scan event (e.g., Owen),
+                    # not as the authoritative QA Data Bearing event.
+                    scan_label = None
+                    try:
+                        cur.execute(
+                            "SELECT date_time, audit_type, user_id FROM audit_master WHERE (log_description LIKE %s OR log_description2 LIKE %s) AND audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload') ORDER BY date_time DESC LIMIT 1",
+                            (f"%{stockid}%", f"%{stockid}%"),
+                        )
+                        am_match = cur.fetchone()
+                        if am_match:
+                            scan_label = f"Sorting by {uname}" if uname else loc
+                        else:
+                            scan_label = f"QA Done by {uname}" if uname else loc
+                    except Exception:
+                        scan_label = f"QA Done by {uname}" if uname else loc
+                    simple_candidates[scan_label] = dt
             except Exception:
                 pass
 
