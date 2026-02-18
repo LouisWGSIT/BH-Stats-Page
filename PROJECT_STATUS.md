@@ -355,5 +355,9 @@ These changes are being implemented incrementally: recency filtering and Blancco
        - Verified locally by calling `get_device_location_hypotheses('12963675')`: before the change there were duplicate Roller1 entries; after the change the output shows one pallet candidate annotated with the QA origin and QA evidence retained in provenance.
     - Notes / next steps:
        - No writes to upstream DBs were performed; all DB access is read-only.
-       - Please redeploy to Render and verify the UI shows the single pallet entry annotated with QA origin; report any regressions and I'll iterate on label/score tuning.
-       - Optional: add a one-line entry in this file referencing the inspector JSON output (I can add that if you want).
+          - Please redeploy to Render and verify the UI shows the single pallet entry annotated with QA origin; report any regressions and I'll iterate on label/score tuning.
+          - Optional: add a one-line entry in this file referencing the inspector JSON output (I can add that if you want).
+
+ - 2026-02-18: Simplified hypotheses default (recency-first)
+    - The `SIMPLE_HYPOTHESES` recency-only mode has been made the default behavior. It short-circuits the heavier inference engine and returns deterministic, timestamp-ranked hypotheses (most recent = 100%).
+    - To opt out and run the full heuristic engine, set `SIMPLE_HYPOTHESES=0` in the environment and redeploy.

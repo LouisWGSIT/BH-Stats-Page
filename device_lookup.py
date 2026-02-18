@@ -96,7 +96,10 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         # collection of signals and return a recency-only ranked list. This
         # short-circuits the heavier multi-source inference to avoid conflicting
         # or duplicated logic when a simple deterministic view is required.
-        SIMPLE_MODE = str(os.getenv('SIMPLE_HYPOTHESES', '')).lower() in ('1', 'true', 'yes')
+        # By default prefer the simple, deterministic recency-only mode so the
+        # reworked logic is the primary behavior. Set SIMPLE_HYPOTHESES=0 to
+        # opt out and run the full heuristic engine.
+        SIMPLE_MODE = str(os.getenv('SIMPLE_HYPOTHESES', '1')).lower() in ('1', 'true', 'yes')
         if SIMPLE_MODE:
             simple_candidates = {}
             now = datetime.utcnow()
