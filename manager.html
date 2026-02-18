@@ -1077,37 +1077,95 @@
                 }
 
                 // Likely-location hypotheses
+
+                // --- Modernized Hypotheses Section ---
                 if (data.hypotheses && data.hypotheses.length > 0) {
                     const safeStock = stockId ? stockId.replace(/[^a-zA-Z0-9_-]/g, '_') : 'unknown';
-                    summaryHtml += `<div style="margin-top:12px; padding:10px; background:#eef2ff; border-radius:6px;"><strong>Top location hypotheses</strong><br>`;
-                    summaryHtml += `<div class="badge-legend">Legend: <span class="badge most-recent">Most recent</span> <span class="badge blancco">Blancco</span> <span class="badge inferred">Inferred</span> <span class="badge confirmed">Confirmed</span></div>`;
-                    data.hypotheses.forEach((h, idx) => {
-                        const score = h.score || 0;
-                        const last = h.last_seen ? ` (last seen ${h.last_seen})` : '';
-                        const badge = h.type === 'stage' ? 'Stage' : 'Physical';
-                        const evList = (h.evidence || []).slice(0,3).map(e => formatEvidence(e)).filter(Boolean).join(', ');
-                        const aiId = `ai-${safeStock}-${idx}`;
-                        let badgeHtml = '';
-                        if (h.is_most_recent) badgeHtml += `<span class="badge most-recent">Most recent</span>`;
-                        if (h.is_blancco) badgeHtml += `<span class="badge blancco">Blancco</span>`;
-                        if (h.is_inferred) badgeHtml += `<span class="badge inferred">Inferred</span>`;
-                        if (h.is_confirmed) badgeHtml += `<span class="badge confirmed">Confirmed</span>`;
-
-                        summaryHtml += `<div style="margin-top:8px;">
-                            <div style="font-weight:700; display:flex; align-items:center; gap:8px;">
-                                <div style="flex:1;">${h.location}${last} <span style="font-size:11px;color:#666;margin-left:8px;">[${badge}]</span></div>
-                                <div>${badgeHtml}</div>
-                            </div>
-                            <div style="height:10px; background:#ddd; border-radius:4px; overflow:hidden; width:200px; margin-top:6px;"><div style="width:${score}%; height:10px; background:linear-gradient(90deg,#60a5fa,#7c3aed);"></div></div>
-                            <div style="font-size:12px;color:#444;margin-top:6px;">Evidence: ${ evList }</div>
-                            ${ h.blancco ? `<div style="margin-top:6px; font-size:13px; color:#b91c1c; font-weight:700;">Blancco erasure recorded${ h.blancco.date ? ' on ' + h.blancco.date : '' }${ h.blancco.operator ? ' by ' + h.blancco.operator : '' }</div>` : '' }
-                            <div class="ai-explanation">${ h.ai_explanation ? h.ai_explanation : (h.explanation || '') }</div>
-                            <div style="margin-top:8px;">
-                                <button class="btn-confirm" onclick="(function(){ const note = prompt('Optional note for confirmation (leave blank if none):'); confirmDeviceLocation(stockId, h.location, note); })()">Confirm</button>
-                            </div>
-                        </div>`;
+                    // Group hypotheses by type
+                    const groups = { Physical: [], Stage: [], Erasure: [] };
+                    data.hypotheses.forEach(h => {
+                        if (h.type && groups[h.type]) groups[h.type].push(h);
+                        else if (h.is_blancco) groups.Erasure.push(h);
+                        else if (h.location && /erasure|blancco/i.test(h.location)) groups.Erasure.push(h);
+                        else if (h.location && /qa|sorting|pallet/i.test(h.location)) groups.Stage.push(h);
+                        else groups.Physical.push(h);
                     });
-                    summaryHtml += `</div>`;
+                    // Find last updated timestamp
+                    let lastUpdated = null;
+                    data.hypotheses.forEach(h => { if (h.last_seen && (!lastUpdated || h.last_seen > lastUpdated)) lastUpdated = h.last_seen; });
+                    function formatUK(dt) {
+                        if (!dt) return '';
+                        const d = new Date(dt);
+                        if (isNaN(d)) return dt;
+                        const pad = n => n < 10 ? '0'+n : n;
+                        return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                    }
+                    summaryHtml += `<div style="margin-top:16px; padding:18px 14px 10px 14px; background:#f7fafd; border-radius:10px; box-shadow:0 2px 8px #e0e7ef33;">
+                        <div style="font-size:18px; font-weight:600; margin-bottom:8px; color:#1e293b; letter-spacing:0.5px;">Top location hypotheses</div>
+                        <div class="badge-legend" style="margin-bottom:10px;">Legend:
+                            <span class="badge most-recent">Most recent</span>
+                            <span class="badge blancco">Blancco</span>
+                            <span class="badge inferred">Inferred</span>
+                            <span class="badge confirmed">Confirmed</span>
+                        </div>
+                        <div style="font-size:12px;color:#64748b;margin-bottom:8px;">Last updated: <span id="hypothesesLastUpdated">${formatUK(lastUpdated)}</span></div>
+                        <div id="hypothesesGroups">
+                        </div>
+                    </div>`;
+                    // Render groups as collapsible sections
+                    setTimeout(() => {
+                        const container = document.getElementById('hypothesesGroups');
+                        if (!container) return;
+                        const groupOrder = ['Physical', 'Stage', 'Erasure'];
+                        groupOrder.forEach(type => {
+                            const items = groups[type];
+                            if (!items.length) return;
+                            const groupId = `hypoGroup_${type}`;
+                            const header = document.createElement('div');
+                            header.innerHTML = `<div style="display:flex;align-items:center;cursor:pointer;font-size:15px;font-weight:600;margin-top:10px;margin-bottom:4px;gap:8px;" onclick="const el=document.getElementById('${groupId}');el.style.display=el.style.display==='none'?'block':'none';this.querySelector('span').textContent=el.style.display==='none'?'▶':'▼';"><span style='font-size:13px;'>▼</span> ${type} Hypotheses <span style='font-size:12px;font-weight:400;color:#64748b;margin-left:8px;'>(${items.length})</span></div>`;
+                            container.appendChild(header);
+                            const groupDiv = document.createElement('div');
+                            groupDiv.id = groupId;
+                            groupDiv.style.marginBottom = '8px';
+                            items.forEach((h, idx) => {
+                                const score = h.score || 0;
+                                const last = h.last_seen ? `<span style='color:#64748b;font-size:13px;margin-left:6px;'>&#128337; ${formatUK(h.last_seen)}</span>` : '';
+                                // --- Badges with icons ---
+                                let badgeHtml = '';
+                                if (h.is_most_recent) badgeHtml += `<span class="badge most-recent">&#128337; Most recent</span>`;
+                                if (h.is_blancco) badgeHtml += `<span class="badge blancco">&#128295; Blancco</span>`;
+                                if (h.is_inferred) badgeHtml += `<span class="badge inferred">&#9881; Inferred</span>`;
+                                if (h.is_confirmed) badgeHtml += `<span class="badge confirmed">&#9989; Confirmed</span>`;
+                                // --- Score bar ---
+                                const barColor = h.is_blancco ? '#f87171' : h.is_confirmed ? '#34d399' : h.is_inferred ? '#fbbf24' : '#6366f1';
+                                // --- Evidence ---
+                                const evList = (h.evidence || []).slice(0,3).map(e => formatEvidence(e)).filter(Boolean).join(', ');
+                                // --- Main block with hover effect ---
+                                const card = document.createElement('div');
+                                card.className = 'hypothesis-card';
+                                card.style.cssText = `margin-top:10px;background:white;border-radius:8px;box-shadow:0 1px 4px #e0e7ef22;padding:14px 14px 10px 14px;border-left:5px solid ${barColor};transition:box-shadow 0.2s,transform 0.2s;cursor:pointer;`;
+                                card.onmouseover = () => { card.style.boxShadow = '0 4px 16px #6366f122'; card.style.transform = 'translateY(-2px) scale(1.01)'; };
+                                card.onmouseout = () => { card.style.boxShadow = '0 1px 4px #e0e7ef22'; card.style.transform = 'none'; };
+                                card.innerHTML = `
+                                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:2px;">
+                                        <div style="font-weight:600; font-size:16px; color:#1e293b; flex:1;">${h.location}${last}</div>
+                                        <div>${badgeHtml}</div>
+                                    </div>
+                                    <div style="height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; width:180px; margin-top:4px; margin-bottom:8px;">
+                                        <div style="width:${score}%; height:8px; background:${barColor}; transition:width 0.3s;"></div>
+                                    </div>
+                                    <div style="font-size:13px;color:#334155;margin-top:2px;">${ evList ? `<span style='font-weight:500;'>Evidence:</span> ${evList}` : '' }</div>
+                                    ${ h.blancco ? `<div style=\"margin-top:6px; font-size:13px; color:#b91c1c; font-weight:700;\">Blancco erasure recorded${ h.blancco.date ? ' on ' + h.blancco.date : '' }${ h.blancco.operator ? ' by ' + h.blancco.operator : '' }</div>` : '' }
+                                    <div class=\"ai-explanation\" style=\"margin-top:6px; color:#64748b; font-size:13px;\">${ h.ai_explanation ? h.ai_explanation : (h.explanation || '') }</div>
+                                    <div style=\"margin-top:10px;\">
+                                        <button class=\"btn-confirm\" style=\"background:#6366f1;color:white;border:none;padding:6px 18px;border-radius:5px;font-weight:600;cursor:pointer;box-shadow:0 1px 2px #e0e7ef44;\" onclick=\"(function(){ const note = prompt('Optional note for confirmation (leave blank if none):'); confirmDeviceLocation(stockId, h.location, note); })()\">Confirm</button>
+                                    </div>
+                                `;
+                                groupDiv.appendChild(card);
+                            });
+                            container.appendChild(groupDiv);
+                        });
+                    }, 0);
                 }
 
                 summaryHtml += renderInsights(data.insights, data.smart_advisory);
@@ -1119,58 +1177,56 @@
 
                 if (data.timeline && data.timeline.length > 0) {
                     let timelineHtml = '<div style="margin-top:15px;">';
-                    // Timeline advisory note removed per request; show raw timeline only
+                    // Collapsible timeline section
+                    timelineHtml += `<div style='margin-bottom:8px;'><button id='toggleTimelineBtn' style='background:#64748b;color:white;border:none;padding:6px 16px;border-radius:5px;font-weight:600;cursor:pointer;' onclick='const t=document.getElementById("timelineEvents");const b=document.getElementById("toggleTimelineBtn");if(t.style.display==="none"){t.style.display="block";b.textContent="Hide Timeline";}else{t.style.display="none";b.textContent="Show Timeline";}'>Show Timeline</button></div>`;
+                    timelineHtml += `<div id='timelineEvents' style='display:none;'>`;
                     data.timeline.forEach((event, idx) => {
-                            const stageColor = event.stage.includes('QA') ? '#667eea' 
-                                : event.stage.includes('Sorting') ? '#10b981'
-                                : event.stage.includes('Erasure') ? '#f59e0b'
-                                : '#666';
-
-                            // Build provenance badges and short provenance line
-                            let badges = '';
-                            if (event.is_most_recent) badges += `<span class="badge most-recent">Most recent</span>`;
-                            if (event.is_blancco_record || event.blancco_status) badges += `<span class="badge blancco">${event.blancco_status || 'Blancco'}</span>`;
-                            if (event.merged_from && event.merged_from.length) badges += `<span class="badge inferred">Merged</span>`;
-
-                            const provList = (event.sources && event.sources.length) ? event.sources.map(s => formatEvidence(s)).filter(Boolean) : [];
-                            const provShort = provList.length ? provList.join(' • ') : (event.source || 'unknown');
-
-                            // If an erasure provenance exists, show a concise 'Erased by' line
-                            let erasedLine = '';
-                            try {
-                                if (event.sources && event.sources.length) {
-                                    const er = event.sources.find(s => (s && (s.type === 'erasure' || (s.source && s.source.toString().toLowerCase().includes('local_erasures')))));
-                                    if (er) {
-                                        const safe = v => v ? String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
-                                        const initials = safe(er.initials || er.initials || event.user || '');
-                                        const when = safe(er.ts || event.timestamp || '');
-                                        const job = safe(er.job_id || '');
-                                        erasedLine = `<div style="margin-top:6px; font-size:13px; color:#b91c1c; font-weight:700;">Erased by ${initials}${when ? ' at ' + when : ''}${job ? ' (job ' + job + ')' : ''}</div>`;
-                                    }
+                        const stageColor = event.stage.includes('QA') ? '#667eea' 
+                            : event.stage.includes('Sorting') ? '#10b981'
+                            : event.stage.includes('Erasure') ? '#f59e0b'
+                            : '#666';
+                        // Build provenance badges and short provenance line
+                        let badges = '';
+                        if (event.is_most_recent) badges += `<span class="badge most-recent">Most recent</span>`;
+                        if (event.is_blancco_record || event.blancco_status) badges += `<span class="badge blancco">${event.blancco_status || 'Blancco'}</span>`;
+                        if (event.merged_from && event.merged_from.length) badges += `<span class="badge inferred">Merged</span>`;
+                        const provList = (event.sources && event.sources.length) ? event.sources.map(s => formatEvidence(s)).filter(Boolean) : [];
+                        const provShort = provList.length ? provList.join(' • ') : (event.source || 'unknown');
+                        // If an erasure provenance exists, show a concise 'Erased by' line
+                        let erasedLine = '';
+                        try {
+                            if (event.sources && event.sources.length) {
+                                const er = event.sources.find(s => (s && (s.type === 'erasure' || (s.source && s.source.toString().toLowerCase().includes('local_erasures')))));
+                                if (er) {
+                                    const safe = v => v ? String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+                                    const initials = safe(er.initials || er.initials || event.user || '');
+                                    const when = safe(er.ts || event.timestamp || '');
+                                    const job = safe(er.job_id || '');
+                                    erasedLine = `<div style=\"margin-top:6px; font-size:13px; color:#b91c1c; font-weight:700;\">Erased by ${initials}${when ? ' at ' + when : ''}${job ? ' (job ' + job + ')' : ''}</div>`;
                                 }
-                            } catch (e) { erasedLine = ''; }
-
-                            timelineHtml += `
-                                <div style="display:flex; gap:15px; margin-bottom:12px; padding:10px; background:white; border-radius:6px; border-left:4px solid ${stageColor};">
-                                    <div style="min-width:160px; color:#666; font-size:12px;">${event.timestamp || 'N/A'}</div>
-                                    <div style="flex:1;">
-                                        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-                                            <div style="display:flex; align-items:center; gap:8px;">
-                                                <strong style="color:${stageColor};">${event.stage}</strong>
-                                                ${event.user ? `<span style="margin-left:6px; color:#666;">by ${event.user}</span>` : ''}
-                                                ${event.location ? `<span style="margin-left:6px; color:#999;">@ ${event.location}</span>` : ''}
-                                            </div>
-                                            <div>${badges}</div>
+                            }
+                        } catch (e) { erasedLine = ''; }
+                        timelineHtml += `
+                            <div style=\"display:flex; gap:15px; margin-bottom:12px; padding:10px; background:white; border-radius:6px; border-left:4px solid ${stageColor};\">
+                                <div style=\"min-width:160px; color:#666; font-size:12px;\">${event.timestamp || 'N/A'}</div>
+                                <div style=\"flex:1;\">
+                                    <div style=\"display:flex; align-items:center; justify-content:space-between; gap:12px;\">
+                                        <div style=\"display:flex; align-items:center; gap:8px;\">
+                                            <strong style=\"color:${stageColor};\">${event.stage}</strong>
+                                            ${event.user ? `<span style=\"margin-left:6px; color:#666;\">by ${event.user}</span>` : ''}
+                                            ${event.location ? `<span style=\"margin-left:6px; color:#999;\">@ ${event.location}</span>` : ''}
                                         </div>
-                                        <div style="font-size:11px; color:#999; margin-top:6px;">Source: ${event.source || ''}</div>
-                                        <div style="font-size:12px; color:#444; margin-top:6px;">Provenance: ${provShort}</div>
-                                        ${erasedLine}
-                                        ${ (event.merged_from && event.merged_from.length) ? `<div style="font-size:12px; color:#666; margin-top:6px;">Merged from: ${event.merged_from.join(', ')}</div>` : '' }
+                                        <div>${badges}</div>
                                     </div>
+                                    <div style=\"font-size:11px; color:#999; margin-top:6px;\">Source: ${event.source || ''}</div>
+                                    <div style=\"font-size:12px; color:#444; margin-top:6px;\">Provenance: ${provShort}</div>
+                                    ${erasedLine}
+                                    ${ (event.merged_from && event.merged_from.length) ? `<div style=\"font-size:12px; color:#666; margin-top:6px;\">Merged from: ${event.merged_from.join(', ')}</div>` : '' }
                                 </div>
-                            `;
-                        });
-                    timelineHtml += '</div>';
+                            </div>
+                        `;
+                    });
+                    timelineHtml += '</div></div>';
                     timelineContent.innerHTML = timelineHtml;
                     timelineDiv.style.display = 'block';
                 } else {
