@@ -63,6 +63,10 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
 
     try:
         cur = conn.cursor()
+        try:
+            AUDIT_LOOKBACK_DAYS = int(os.getenv('AUDIT_LOOKBACK_DAYS', '30'))
+        except Exception:
+            AUDIT_LOOKBACK_DAYS = 30
         # Canonicalize input: if a serial was provided, try resolving a stockid so
         # subsequent queries (which generally key by stockid) find the same device
         # regardless of which identifier the caller passed.
@@ -175,8 +179,8 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     scan_label = None
                     try:
                         cur.execute(
-                            "SELECT date_time, audit_type, user_id FROM audit_master WHERE (log_description LIKE %s OR log_description2 LIKE %s) AND audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload') ORDER BY date_time DESC LIMIT 1",
-                            (f"%{stockid}%", f"%{stockid}%"),
+                            "SELECT date_time, audit_type, user_id FROM audit_master WHERE (log_description LIKE %s OR log_description2 LIKE %s) AND audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload') AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY) ORDER BY date_time DESC LIMIT 1",
+                            (f"%{stockid}%", f"%{stockid}%", AUDIT_LOOKBACK_DAYS),
                         )
                         am_match = cur.fetchone()
                         if am_match:
@@ -195,13 +199,14 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     """
                     SELECT date_time, audit_type, user_id, log_description
                     FROM audit_master
-                    WHERE (log_description LIKE %s OR log_description2 LIKE %s)
-                      AND audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
-                                         'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+                                        WHERE (log_description LIKE %s OR log_description2 LIKE %s)
+                                            AND audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
+                                                                                 'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+                                            AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
                     ORDER BY date_time DESC
                     LIMIT 5
                     """,
-                    (f"%{stockid}%", f"%{stockid}%"),
+                                        (f"%{stockid}%", f"%{stockid}%", AUDIT_LOOKBACK_DAYS),
                 )
                 for ar in cur.fetchall():
                     try:
@@ -247,11 +252,12 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                         """
                         SELECT date_time, user_id, log_description
                         FROM audit_master
-                        WHERE (log_description LIKE %s OR log_description2 LIKE %s)
-                        ORDER BY date_time DESC
-                        LIMIT 5
+                                        WHERE (log_description LIKE %s OR log_description2 LIKE %s)
+                                            AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                                        ORDER BY date_time DESC
+                                        LIMIT 5
                         """,
-                        (f"%{pid}%", f"%{pid}%"),
+                                        (f"%{pid}%", f"%{pid}%", AUDIT_LOOKBACK_DAYS),
                     )
                     for ar in cur.fetchall():
                         try:
@@ -491,13 +497,14 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     """
                     SELECT date_time, audit_type, user_id, log_description
                     FROM audit_master
-                    WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
-                                         'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
-                      AND (log_description LIKE %s OR log_description2 LIKE %s)
-                    ORDER BY date_time DESC
-                    LIMIT 1
+                                        WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
+                                                                                 'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+                                            AND (log_description LIKE %s OR log_description2 LIKE %s)
+                                            AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                                        ORDER BY date_time DESC
+                                        LIMIT 1
                     """,
-                    (f"%{stockid}%", f"%{stockid}%"),
+                                        (f"%{stockid}%", f"%{stockid}%", AUDIT_LOOKBACK_DAYS),
                 )
                 ar = cur.fetchone()
             except Exception:
