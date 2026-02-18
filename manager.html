@@ -1104,7 +1104,6 @@
                         <div style="font-size:18px; font-weight:600; margin-bottom:8px; color:#1e293b; letter-spacing:0.5px;">Top location hypotheses</div>
                         <div class="badge-legend" style="margin-bottom:10px;">Legend:
                             <span class="badge most-recent">Most recent</span>
-                            <span class="badge blancco">Blancco (Erasure only)</span>
                             <span class="badge confirmed">Confirmed</span>
                         </div>
                         <div style="font-size:12px;color:#64748b;margin-bottom:8px;">Last updated: <span id="hypothesesLastUpdated">${formatUK(lastUpdated)}</span></div>
@@ -1549,21 +1548,24 @@
                             const groupDiv = document.createElement('div');
                             groupDiv.id = groupId;
                             groupDiv.style.marginBottom = '8px';
+                            let mostRecentAssigned = false;
                             items.forEach((h, idx) => {
                                 const score = h.score || 0;
                                 const last = h.last_seen ? `<span style='color:#64748b;font-size:13px;margin-left:6px;'>&#128337; ${formatUK(h.last_seen)}</span>` : '';
                                 // --- Badges with icons ---
                                 let badgeHtml = '';
                                 // Only the very first hypothesis (top-most, most recent) gets Most Recent
-                                if (container._mostRecentAssigned !== true && h.is_most_recent) {
+                                if (!mostRecentAssigned && h.is_most_recent) {
                                     badgeHtml += `<span class=\"badge most-recent\">&#128337; Most recent</span>`;
-                                    container._mostRecentAssigned = true;
+                                    mostRecentAssigned = true;
                                 }
-                                // Only Erasure gets Blancco
-                                if (type === 'Erasure' && h.is_blancco) badgeHtml += `<span class=\"badge blancco\">&#128295; Blancco</span>`;
                                 if (h.is_confirmed) badgeHtml += `<span class=\"badge confirmed\">&#9989; Confirmed</span>`;
                                 // --- Score bar ---
-                                const barColor = groupColors[type] || '#6366f1';
+                                // Blue for Sorting, Green for QA, Red for Erasure
+                                let barColor = '#6366f1';
+                                if (type === 'Physical') barColor = '#3b82f6';
+                                else if (type === 'Stage') barColor = '#10b981';
+                                else if (type === 'Erasure') barColor = '#f87171';
                                 // --- Evidence ---
                                 const evList = (h.evidence || []).slice(0,3).map(e => formatEvidence(e)).filter(Boolean).join(', ');
                                 // --- Main block with hover effect ---
@@ -1581,7 +1583,6 @@
                                         <div style=\"width:${score}%; height:8px; background:${barColor}; transition:width 0.3s;\"></div>
                                     </div>
                                     <div style=\"font-size:13px;color:#334155;margin-top:2px;\">${ evList ? `<span style='font-weight:500;'>Evidence:</span> ${evList}` : '' }</div>
-                                    ${ type === 'Erasure' && h.blancco ? `<div style=\\\"margin-top:6px; font-size:13px; color:#b91c1c; font-weight:700;\\\">Blancco erasure recorded${ h.blancco.date ? ' on ' + h.blancco.date : '' }${ h.blancco.operator ? ' by ' + h.blancco.operator : '' }</div>` : '' }
                                     <div style=\"margin-top:10px;\">\n                                        <button class=\\\"btn-confirm\\\" style=\\\"background:#6366f1;color:white;border:none;padding:6px 18px;border-radius:5px;font-weight:600;cursor:pointer;box-shadow:0 1px 2px #e0e7ef44;\\\" onclick=\\\"(function(){ const note = prompt('Optional note for confirmation (leave blank if none):'); confirmDeviceLocation(stockId, h.location, note); })()\\\">Confirm</button>\n                                    </div>\n                                `;
                                 groupDiv.appendChild(card);
                             });
