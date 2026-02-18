@@ -92,6 +92,123 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             # best-effort only; if canonicalization fails, continue with original input
             pass
 
+        # If SIMPLE_HYPOTHESES is enabled, run a lightweight, timestamp-driven
+        # collection of signals and return a recency-only ranked list. This
+        # short-circuits the heavier multi-source inference to avoid conflicting
+        # or duplicated logic when a simple deterministic view is required.
+        SIMPLE_MODE = str(os.getenv('SIMPLE_HYPOTHESES', '')).lower() in ('1', 'true', 'yes')
+        if SIMPLE_MODE:
+            simple_candidates = {}
+            now = datetime.utcnow()
+            # asset_info row
+            try:
+                cur.execute(
+                    """
+                    SELECT COALESCE(pallet_id, palletID) as pallet_id, last_update, location, roller_location
+                    FROM ITAD_asset_info
+                    WHERE stockid = %s OR serialnumber = %s
+                    LIMIT 1
+                    """,
+                    (stockid, stockid)
+                )
+                a = cur.fetchone()
+                if a:
+                    pid, last_update, location, roller_loc = a
+                    if location:
+                        try:
+                            last_dt = _parse_timestamp(last_update) if last_update else None
+                        except Exception:
+                            last_dt = None
+                        simple_candidates[location] = last_dt
+                    if roller_loc:
+                        try:
+                            last_dt = _parse_timestamp(last_update) if last_update else None
+                        except Exception:
+                            last_dt = None
+                        simple_candidates[roller_loc] = last_dt
+                    if pid:
+                        try:
+                            cur.execute("SELECT pallet_location, destination, create_date FROM ITAD_pallet WHERE pallet_id = %s LIMIT 1", (pid,))
+                            prow = cur.fetchone()
+                            if prow:
+                                pallet_loc, dest, create_date = prow
+                                label = f"Pallet {pid} ({pallet_loc or dest or 'unknown'})"
+                                try:
+                                    cd = _parse_timestamp(create_date) if create_date else None
+                                except Exception:
+                                    cd = None
+                                simple_candidates[label] = cd
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # latest QA scan for this stock
+            try:
+                cur.execute("SELECT scanned_location, added_date, username FROM ITAD_QA_App WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (stockid,))
+                q = cur.fetchone()
+                if q and q[0]:
+                    loc, added, uname = q
+                    try:
+                        dt = _parse_timestamp(added) if added else None
+                    except Exception:
+                        dt = None
+                    label = f"QA Done by {uname}" if uname else loc
+                    simple_candidates[label] = dt
+            except Exception:
+                pass
+
+            # confirmed_locations from SQLite
+            try:
+                sqlite_conn = sqlite3.connect(db.DB_PATH)
+                sqlite_cur = sqlite_conn.cursor()
+                sqlite_cur.execute("SELECT location, user, ts FROM confirmed_locations WHERE stockid = ? ORDER BY ts DESC LIMIT 1", (stockid,))
+                conf = sqlite_cur.fetchone()
+                if conf:
+                    loc, user, ts = conf
+                    try:
+                        dt = _parse_timestamp(ts) if ts else None
+                    except Exception:
+                        dt = None
+                    label = f"Confirmed: {loc}"
+                    simple_candidates[label] = dt
+                sqlite_cur.close()
+                sqlite_conn.close()
+            except Exception:
+                pass
+
+            # Build recency-ranked output
+            entries = [(k, v) for k, v in simple_candidates.items() if v]
+            if not entries:
+                # fall through to normal behavior if no timestamps were found
+                pass
+            else:
+                entries.sort(key=lambda x: x[1], reverse=True)
+                max_ts = entries[0][1]
+                min_ts = entries[-1][1]
+                max_delta = max((max_ts - min_ts).total_seconds(), 1.0)
+                out = []
+                for idx, (display, last) in enumerate(entries):
+                    try:
+                        delta = (max_ts - last).total_seconds()
+                    except Exception:
+                        delta = 0.0
+                    pct = max(0, min(100, int(round(100.0 * (1.0 - (delta / max_delta))))))
+                    out.append({
+                        'location': display,
+                        'score': pct,
+                        'raw_score': pct,
+                        'evidence': [],
+                        'last_seen': last.isoformat() if last else None,
+                        'type': 'physical',
+                        'explanation': '',
+                        'ai_explanation': None,
+                        'rank': idx + 1,
+                    })
+                cur.close()
+                conn.close()
+                return out[:top_n]
+
         # Gather primary asset row
         cur.execute(
             """
