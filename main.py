@@ -2125,6 +2125,11 @@ async def device_lookup(stock_id: str, request: Request):
     }
     
     try:
+        # honor per-request audit lookback (default 30 days, deep lookup 120 days)
+        try:
+            audit_days = int(request.query_params.get('audit_days', '30'))
+        except Exception:
+            audit_days = 30
         import qa_export
         conn = qa_export.get_mariadb_connection()
         if not conn:
@@ -2340,10 +2345,11 @@ async def device_lookup(stock_id: str, request: Request):
             SELECT date_time, audit_type, user_id, log_description, log_description2
             FROM audit_master
             WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload', 
-                                 'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+                     'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
               AND (log_description LIKE %s OR log_description2 LIKE %s)
+              AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
             ORDER BY date_time ASC
-        """, (f'%{stock_id}%', f'%{stock_id}%'))
+        """, (f'%{stock_id}%', f'%{stock_id}%', audit_days))
         for row in cursor.fetchall():
             try:
                 date_time, audit_type, user_id, log_description, log_description2 = row
