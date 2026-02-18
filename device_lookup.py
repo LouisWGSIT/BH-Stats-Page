@@ -174,6 +174,34 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             except Exception:
                 pass
 
+            # Prefer audit_master QA entries for authoritative QA username/timestamp
+            try:
+                cur.execute(
+                    """
+                    SELECT date_time, audit_type, user_id, log_description
+                    FROM audit_master
+                    WHERE (log_description LIKE %s OR log_description2 LIKE %s)
+                      AND audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload',
+                                         'Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+                    ORDER BY date_time DESC
+                    LIMIT 5
+                    """,
+                    (f"%{stockid}%", f"%{stockid}%"),
+                )
+                for ar in cur.fetchall():
+                    try:
+                        am_dt, am_type, am_user, am_log = ar
+                        adm_dt = _to_dt(am_dt)
+                        if am_user:
+                            qa_label = f"QA Done by {am_user}"
+                            # favor audit_master QA as authoritative (overwrite ITAD_QA_App)
+                            simple_candidates[qa_label] = adm_dt
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
             # confirmed_locations from SQLite
             try:
                 sqlite_conn = sqlite3.connect(db.DB_PATH)
@@ -192,6 +220,37 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
 
             # Build recency-ranked output
             entries = [(k, v) for k, v in simple_candidates.items() if v]
+            # Try to include pallet assignment user/timestamp from audit_master
+            try:
+                # find pallet id from Stockbypallet if present
+                cur.execute("SELECT pallet_id FROM Stockbypallet WHERE stockid = %s LIMIT 1", (stockid,))
+                sb = cur.fetchone()
+                pid = sb[0] if sb and sb[0] else None
+                if pid:
+                    # search audit_master for a log mentioning the pallet and this stockid
+                    cur.execute(
+                        """
+                        SELECT date_time, user_id, log_description
+                        FROM audit_master
+                        WHERE (log_description LIKE %s OR log_description2 LIKE %s)
+                        ORDER BY date_time DESC
+                        LIMIT 5
+                        """,
+                        (f"%{pid}%", f"%{pid}%"),
+                    )
+                    for ar in cur.fetchall():
+                        try:
+                            adt, auser, alog = ar
+                            adt_dt = _to_dt(adt)
+                            if auser:
+                                pal_label = f"Pallet {pid} (assigned by {auser})"
+                                # use assignment timestamp
+                                simple_candidates[pal_label] = adt_dt
+                                break
+                        except Exception:
+                            continue
+            except Exception:
+                pass
             if not entries:
                 # fall through to normal behavior if no timestamps were found
                 pass
