@@ -3210,8 +3210,16 @@ async def device_lookup(stock_id: str, request: Request):
                 except Exception:
                     found_qa = False
                 if not found_qa:
-                    # prepend so it shows prominently
-                    results['hypotheses'].insert(0, qa_hyp)
+                    # Insert the QA hypothesis just after the top hypothesis when
+                    # possible so it appears second in the UI (keeps Sorting as
+                    # the most-prominent item when it outranks QA by recency).
+                    if results.get('hypotheses') and len(results.get('hypotheses')) >= 1:
+                        try:
+                            results['hypotheses'].insert(1, qa_hyp)
+                        except Exception:
+                            results['hypotheses'].insert(0, qa_hyp)
+                    else:
+                        results['hypotheses'].insert(0, qa_hyp)
         except Exception:
             pass
 
