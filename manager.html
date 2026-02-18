@@ -1084,10 +1084,10 @@
                     // Group hypotheses by type
                     const groups = { Physical: [], Stage: [], Erasure: [] };
                     data.hypotheses.forEach(h => {
-                        if (h.type && groups[h.type]) groups[h.type].push(h);
-                        else if (h.is_blancco) groups.Erasure.push(h);
-                        else if (h.location && /erasure|blancco/i.test(h.location)) groups.Erasure.push(h);
-                        else if (h.location && /qa|sorting|pallet/i.test(h.location)) groups.Stage.push(h);
+                        // Sorting, QA, Erasure explicit split
+                        if (h.location && /sorting|pallet/i.test(h.location)) groups.Physical.push(h);
+                        else if (h.location && /qa/i.test(h.location)) groups.Stage.push(h);
+                        else if (h.is_blancco || (h.location && /erasure|blancco/i.test(h.location))) groups.Erasure.push(h);
                         else groups.Physical.push(h);
                     });
                     // Find last updated timestamp
@@ -1104,8 +1104,7 @@
                         <div style="font-size:18px; font-weight:600; margin-bottom:8px; color:#1e293b; letter-spacing:0.5px;">Top location hypotheses</div>
                         <div class="badge-legend" style="margin-bottom:10px;">Legend:
                             <span class="badge most-recent">Most recent</span>
-                            <span class="badge blancco">Blancco</span>
-                            <span class="badge inferred">Inferred</span>
+                            <span class="badge blancco">Blancco (Erasure only)</span>
                             <span class="badge confirmed">Confirmed</span>
                         </div>
                         <div style="font-size:12px;color:#64748b;margin-bottom:8px;">Last updated: <span id="hypothesesLastUpdated">${formatUK(lastUpdated)}</span></div>
@@ -1534,51 +1533,57 @@
                         ${isRollerCategory ? '<th>Roller</th><th>Stage</th>' : '<th>QA User</th><th>QA Date</th>'}
                     </tr></thead><tbody>`;
                     
-                    data.devices.forEach(d => {
-                        const condition = d.condition || 'Unknown';
-                        const isQuarantine = condition.toLowerCase().includes('quarantine');
-                        const conditionClass = isQuarantine ? 'tag tag-quarantine' : '';
-                        
-                        if (isRollerCategory) {
-                            // Use workflow_stage from server, with fallback
-                            const stage = d.workflow_stage || 'Unknown';
-                            let stageTag = '';
-                            if (stage === 'Awaiting Erasure') {
-                                stageTag = `<span class="tag" style="background:#dc2626;color:#fff;">Erasure</span>`;
-                            } else if (stage === 'Awaiting QA') {
-                                stageTag = `<span class="tag" style="background:#f59e0b;color:#000;">QA</span>`;
-                            } else if (stage === 'Awaiting Pallet') {
-                                stageTag = `<span class="tag" style="background:#3b82f6;color:#fff;">Pallet</span>`;
-                            } else {
-                                stageTag = `<span class="tag">${stage}</span>`;
-                            }
-                            
-                            // Show data-bearing indicator if available
-                            const dbIndicator = d.is_data_bearing === false ? ' <span style="font-size:10px;opacity:0.6;">(non-DB)</span>' : '';
-                            
-                            tableHtml += `<tr>
-                                <td><strong>${d.stockid || '-'}</strong></td>
-                                <td>${d.serial || '-'}</td>
-                                <td>${d.manufacturer || '-'}</td>
-                                <td>${d.model || '-'}${dbIndicator}</td>
-                                <td><span class="${conditionClass}">${condition}</span></td>
-                                <td>${d.received_date || '-'}</td>
-                                <td>${d.roller_location || '-'}</td>
-                                <td>${stageTag}</td>
-                            </tr>`;
-                        } else {
-                            tableHtml += `<tr>
-                                <td><strong>${d.stockid || '-'}</strong></td>
-                                <td>${d.serial || '-'}</td>
-                                <td>${d.manufacturer || '-'}</td>
-                                <td>${d.model || '-'}</td>
-                                <td><span class="${conditionClass}">${condition}</span></td>
-                                <td>${d.received_date || '-'}</td>
-                                <td>${d.qa_user || '<em style="color:#999;">Not recorded</em>'}</td>
-                                <td>${d.qa_date || '-'}</td>
-                            </tr>`;
-                        }
-                    });
+                        // Color mapping for each group
+                        const groupColors = {
+                            'Physical': '#3b82f6', // blue for Sorting
+                            'Stage': '#10b981',    // green for QA
+                            'Erasure': '#f87171'   // red for Erasure
+                        };
+                        groupOrder.forEach(type => {
+                            const items = groups[type];
+                            if (!items.length) return;
+                            const groupId = `hypoGroup_${type}`;
+                            const header = document.createElement('div');
+                            header.innerHTML = `<div style=\"display:flex;align-items:center;cursor:pointer;font-size:15px;font-weight:600;margin-top:10px;margin-bottom:4px;gap:8px;\" onclick=\"const el=document.getElementById('${groupId}');el.style.display=el.style.display==='none'?'block':'none';this.querySelector('span').textContent=el.style.display==='none'?'▶':'▼';\"><span style='font-size:13px;'>▼</span> ${type} Hypotheses <span style='font-size:12px;font-weight:400;color:#64748b;margin-left:8px;'>(${items.length})</span></div>`;
+                            container.appendChild(header);
+                            const groupDiv = document.createElement('div');
+                            groupDiv.id = groupId;
+                            groupDiv.style.marginBottom = '8px';
+                            items.forEach((h, idx) => {
+                                const score = h.score || 0;
+                                const last = h.last_seen ? `<span style='color:#64748b;font-size:13px;margin-left:6px;'>&#128337; ${formatUK(h.last_seen)}</span>` : '';
+                                // --- Badges with icons ---
+                                let badgeHtml = '';
+                                // Only Sorting (Physical) gets Most Recent
+                                if (type === 'Physical' && h.is_most_recent) badgeHtml += `<span class=\"badge most-recent\">&#128337; Most recent</span>`;
+                                // Only Erasure gets Blancco
+                                if (type === 'Erasure' && h.is_blancco) badgeHtml += `<span class=\"badge blancco\">&#128295; Blancco</span>`;
+                                if (h.is_confirmed) badgeHtml += `<span class=\"badge confirmed\">&#9989; Confirmed</span>`;
+                                // --- Score bar ---
+                                const barColor = groupColors[type] || '#6366f1';
+                                // --- Evidence ---
+                                const evList = (h.evidence || []).slice(0,3).map(e => formatEvidence(e)).filter(Boolean).join(', ');
+                                // --- Main block with hover effect ---
+                                const card = document.createElement('div');
+                                card.className = 'hypothesis-card';
+                                card.style.cssText = `margin-top:10px;background:white;border-radius:8px;box-shadow:0 1px 4px #e0e7ef22;padding:14px 14px 10px 14px;border-left:5px solid ${barColor};transition:box-shadow 0.2s,transform 0.2s;cursor:pointer;`;
+                                card.onmouseover = () => { card.style.boxShadow = '0 4px 16px #6366f122'; card.style.transform = 'translateY(-2px) scale(1.01)'; };
+                                card.onmouseout = () => { card.style.boxShadow = '0 1px 4px #e0e7ef22'; card.style.transform = 'none'; };
+                                card.innerHTML = `
+                                    <div style=\"display:flex; align-items:center; gap:10px; margin-bottom:2px;\">
+                                        <div style=\"font-weight:600; font-size:16px; color:#1e293b; flex:1;\">${h.location}${last}</div>
+                                        <div>${badgeHtml}</div>
+                                    </div>
+                                    <div style=\"height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; width:180px; margin-top:4px; margin-bottom:8px;\">
+                                        <div style=\"width:${score}%; height:8px; background:${barColor}; transition:width 0.3s;\"></div>
+                                    </div>
+                                    <div style=\"font-size:13px;color:#334155;margin-top:2px;\">${ evList ? `<span style='font-weight:500;'>Evidence:</span> ${evList}` : '' }</div>
+                                    ${ type === 'Erasure' && h.blancco ? `<div style=\\\"margin-top:6px; font-size:13px; color:#b91c1c; font-weight:700;\\\">Blancco erasure recorded${ h.blancco.date ? ' on ' + h.blancco.date : '' }${ h.blancco.operator ? ' by ' + h.blancco.operator : '' }</div>` : '' }
+                                    <div style=\"margin-top:10px;\">\n                                        <button class=\\\"btn-confirm\\\" style=\\\"background:#6366f1;color:white;border:none;padding:6px 18px;border-radius:5px;font-weight:600;cursor:pointer;box-shadow:0 1px 2px #e0e7ef44;\\\" onclick=\\\"(function(){ const note = prompt('Optional note for confirmation (leave blank if none):'); confirmDeviceLocation(stockId, h.location, note); })()\\\">Confirm</button>\n                                    </div>\n                                `;
+                                groupDiv.appendChild(card);
+                            });
+                            container.appendChild(groupDiv);
+                        });
                     
                     tableHtml += `</tbody></table>`;
                     
