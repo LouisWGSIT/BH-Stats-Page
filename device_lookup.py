@@ -101,6 +101,31 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         # opt out and run the full heuristic engine.
         SIMPLE_MODE = str(os.getenv('SIMPLE_HYPOTHESES', '1')).lower() in ('1', 'true', 'yes')
         if SIMPLE_MODE:
+            # helper: robustly parse various timestamp types into datetime
+            def _to_dt(val):
+                if not val:
+                    return None
+                if isinstance(val, datetime):
+                    return val
+                try:
+                    # try known parser from qa_export if available
+                    if _parse_timestamp:
+                        dt = _parse_timestamp(val)
+                        if isinstance(dt, datetime):
+                            return dt
+                except Exception:
+                    pass
+                try:
+                    # try ISO format
+                    return datetime.fromisoformat(str(val))
+                except Exception:
+                    pass
+                try:
+                    # try common fallback parse (YYYY-MM-DD HH:MM:SS)
+                    return datetime.strptime(str(val), '%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    return None
+
             simple_candidates = {}
             now = datetime.utcnow()
             # asset_info row
@@ -118,16 +143,10 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 if a:
                     pid, last_update, location, roller_loc = a
                     if location:
-                        try:
-                            last_dt = _parse_timestamp(last_update) if last_update else None
-                        except Exception:
-                            last_dt = None
+                        last_dt = _to_dt(last_update)
                         simple_candidates[location] = last_dt
                     if roller_loc:
-                        try:
-                            last_dt = _parse_timestamp(last_update) if last_update else None
-                        except Exception:
-                            last_dt = None
+                        last_dt = _to_dt(last_update)
                         simple_candidates[roller_loc] = last_dt
                     if pid:
                         try:
@@ -136,10 +155,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                             if prow:
                                 pallet_loc, dest, create_date = prow
                                 label = f"Pallet {pid} ({pallet_loc or dest or 'unknown'})"
-                                try:
-                                    cd = _parse_timestamp(create_date) if create_date else None
-                                except Exception:
-                                    cd = None
+                                cd = _to_dt(create_date)
                                 simple_candidates[label] = cd
                         except Exception:
                             pass
@@ -152,10 +168,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 q = cur.fetchone()
                 if q and q[0]:
                     loc, added, uname = q
-                    try:
-                        dt = _parse_timestamp(added) if added else None
-                    except Exception:
-                        dt = None
+                    dt = _to_dt(added)
                     label = f"QA Done by {uname}" if uname else loc
                     simple_candidates[label] = dt
             except Exception:
@@ -169,10 +182,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 conf = sqlite_cur.fetchone()
                 if conf:
                     loc, user, ts = conf
-                    try:
-                        dt = _parse_timestamp(ts) if ts else None
-                    except Exception:
-                        dt = None
+                    dt = _to_dt(ts)
                     label = f"Confirmed: {loc}"
                     simple_candidates[label] = dt
                 sqlite_cur.close()
