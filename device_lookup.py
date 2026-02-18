@@ -185,6 +185,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             except Exception:
                 pass
 
+            simple_evidence = {}
             # latest QA scan for this stock
             try:
                 cur.execute("SELECT scanned_location, added_date, username FROM ITAD_QA_App WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (stockid,))
@@ -212,6 +213,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     except Exception:
                         scan_label = f"QA Done by {uname}" if uname else loc
                     simple_candidates[scan_label] = dt
+                    simple_evidence[scan_label] = [ {'source': 'ITAD_QA_App', 'username': uname, 'last_seen': dt} ]
             except Exception:
                 pass
 
@@ -248,6 +250,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                         # do not overwrite a more-recent value if present
                         if qa_label not in simple_candidates or (adm_dt and adm_dt > simple_candidates.get(qa_label)):
                             simple_candidates[qa_label] = adm_dt
+                            simple_evidence[qa_label] = [ {'source': 'audit_master', 'username': am_user, 'log': am_log, 'audit_type': am_type} ]
                         added_users += 1
                         if added_users >= 4:
                             break
@@ -267,6 +270,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     dt = _to_dt(ts)
                     label = f"Confirmed: {loc}"
                     simple_candidates[label] = dt
+                    simple_evidence[label] = [ {'source': 'confirmed_locations', 'username': user, 'last_seen': dt} ]
                 sqlite_cur.close()
                 sqlite_conn.close()
             except Exception:
@@ -432,11 +436,12 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     except Exception:
                         delta = 0.0
                     pct = max(0, min(100, int(round(100.0 * (1.0 - (delta / max_delta))))))
+                    evid = simple_evidence.get(display, [])
                     out.append({
                         'location': display,
                         'score': pct,
                         'raw_score': pct,
-                        'evidence': [],
+                        'evidence': [ (e if isinstance(e, dict) else {'source': e}) for e in evid ],
                         'last_seen': last.isoformat() if last else None,
                         'type': 'physical',
                         'explanation': '',
