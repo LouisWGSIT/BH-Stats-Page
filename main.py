@@ -3181,8 +3181,13 @@ async def device_lookup(stock_id: str, request: Request):
 
                 qa_hyp = {
                     'location': qa_label,
-                    'score': QA_CONFIRMED_SCORE,
-                    'raw_score': float(QA_CONFIRMED_SCORE),
+                    # Compute QA score relative to existing top hypothesis so
+                    # QA does not accidentally outrank a more-recent Sorting
+                    # candidate. If a top hypothesis exists and its score is
+                    # lower than the configured QA_CONFIRMED_SCORE, give QA a
+                    # slightly lower score so it appears second.
+                    'score': None,
+                    'raw_score': None,
                     'evidence': qa_evidence,
                     'last_seen': last_seen,
                     'type': 'stage',
@@ -3210,9 +3215,27 @@ async def device_lookup(stock_id: str, request: Request):
                 except Exception:
                     found_qa = False
                 if not found_qa:
-                    # Insert the QA hypothesis just after the top hypothesis when
-                    # possible so it appears second in the UI (keeps Sorting as
-                    # the most-prominent item when it outranks QA by recency).
+                    # Determine an appropriate numeric score for the QA
+                    # hypothesis so ordering is driven by numeric sort when
+                    # possible. Prefer to keep QA slightly below the current
+                    # top hypothesis if that hypothesis exists.
+                    try:
+                        top_score = None
+                        if results.get('hypotheses'):
+                            top_score = max((int(h.get('score') or 0) for h in results.get('hypotheses')))
+                    except Exception:
+                        top_score = None
+                    try:
+                        if top_score is not None and top_score < int(QA_CONFIRMED_SCORE):
+                            qa_score = max(0, int(top_score) - 1)
+                        else:
+                            qa_score = int(QA_CONFIRMED_SCORE)
+                    except Exception:
+                        qa_score = int(QA_CONFIRMED_SCORE)
+                    qa_hyp['score'] = qa_score
+                    qa_hyp['raw_score'] = float(qa_score)
+
+                    # Insert QA just after the top hypothesis when possible.
                     if results.get('hypotheses') and len(results.get('hypotheses')) >= 1:
                         try:
                             results['hypotheses'].insert(1, qa_hyp)
