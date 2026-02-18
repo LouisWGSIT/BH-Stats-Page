@@ -165,9 +165,38 @@ Treat the above as mandatory guidelines — commit/rollback discipline and short
 - Device tracking improvements to prevent lost devices (like 12745375 that went missing July 2025).
 - Audit sheets for operational visibility: Unpalleted Devices, Stale Devices.
 - Location enrichment in exports to show where devices are.
+- **Device Lookup UI/UX polish (hypotheses grouping, color split, tag logic, clarity, and modern look) is now complete and deployed.**
 - QA Stats UX polish (more visual summary, reduce raw data exposure on UI).
 - Verify export correctness for weekly/monthly periods.
 - Power BI API endpoints exist but need refresh/validation.
+
+## Agent Onboarding Notes (Feb 2026)
+- **Frontend:**
+   - manager.html: Device lookup UI is now grouped, color-coded, and decluttered as described below. All tag logic and visual polish is up to date as of 2026-02-18.
+   - index.html, admin.html: Standard dashboards, see prior sections for details.
+   - styles.css: Contains all color and badge styles for device journey hypotheses.
+- **Backend:**
+   - main.py, device_lookup.py: FastAPI endpoints for device lookup and dashboard data. No changes needed for recent UI/UX work; all required data is already provided.
+   - database.py, qa_export.py, engineer_export.py: Data access and export logic. See prior change log for recent fixes and enhancements.
+- **Recent priorities:**
+   - UI/UX for device lookup hypotheses is now visually clear, modern, and matches user requirements. No further frontend changes are pending unless new feedback is received.
+   - Backend is stable; focus is on data accuracy and export correctness.
+- **How to get up to speed:**
+   - Review manager.html for the latest device lookup UI logic and tag/color handling.
+   - See device_lookup.py for backend data structure and endpoint logic.
+   - PROJECT_STATUS.md (this file) is kept up to date after each significant change—check here for context before making further changes.
+### 2026-02-18: Device Lookup UI/UX Overhaul
+   - Major improvements to the device journey hypotheses section in the device lookup (manager.html):
+      - Hypotheses are now grouped by type (Sorting, QA, Erasure) with collapsible headers and a "last updated" timestamp per group.
+      - Distinct color coding: Sorting (blue), QA (green), Erasure (red).
+      - Only the top hypothesis is marked as "Most recent"; all others are untagged.
+      - All Blancco tags and inferred tags have been removed for clarity.
+      - The explanation/paragraph above the Confirm button has been removed for a cleaner UI.
+      - Hover effects, icons, and visually distinct badges added for each hypothesis type.
+      - Timeline section is now collapsible for better readability.
+   - All changes are implemented in manager.html (static HTML/JS/CSS); backend (device_lookup.py) provides all required data, no changes needed for these UI/UX requests.
+   - Changes were iteratively tested, committed, and pushed after user feedback and screenshot validation.
+   - See commit: "UI/UX: Remove explanation/paragraph above Confirm, only top hypothesis gets 'Most recent', blue/green/red color split for Sorting/QA/Erasure, remove Blancco tag entirely."
 
 ## Device Tracking Features (Feb 2026)
 

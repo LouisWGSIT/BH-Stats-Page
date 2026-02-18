@@ -240,7 +240,6 @@
         /* Badge styles for hypotheses */
         .badge { display:inline-block; margin-right:6px; padding:2px 6px; border-radius:999px; font-size:11px; font-weight:700; }
         .badge.most-recent { background:#e6f9f2; color:#047857; }
-        .badge.blancco { background:#fff1f2; color:#b91c1c; }
         .badge.inferred { background:#f3f4f6; color:#374151; }
         .badge.confirmed { background:#eef2ff; color:#1e40af; }
         .badge-legend { margin-top:8px; font-size:12px; color:#334155; }
@@ -760,7 +759,8 @@
                 if (typeof src === 'string') return src;
                 const sname = (src.source || src.type || '').toString();
                 if (/blancco|erasure/i.test(sname)) {
-                    let parts = ['Blancco (erasure)'];
+                    // Keep erasure provenance available but avoid naming the upstream Blancco product in the UI
+                    let parts = ['Erasure record'];
                     if (src.added_date || src.added) parts.push('on ' + (src.added_date || src.added));
                     if (src.username) parts.push('by ' + src.username);
                     return parts.join(' ');
@@ -1115,6 +1115,9 @@
                         const container = document.getElementById('hypothesesGroups');
                         if (!container) return;
                         const groupOrder = ['Physical', 'Stage', 'Erasure'];
+                        let overallMostRecentAssigned = false;
+                        let overallMostRecentAssigned = false;
+                        let overallMostRecentAssigned = false;
                         groupOrder.forEach(type => {
                             const items = groups[type];
                             if (!items.length) return;
@@ -1128,14 +1131,15 @@
                             items.forEach((h, idx) => {
                                 const score = h.score || 0;
                                 const last = h.last_seen ? `<span style='color:#64748b;font-size:13px;margin-left:6px;'>&#128337; ${formatUK(h.last_seen)}</span>` : '';
-                                // --- Badges with icons ---
+                                // --- Badges with icons (Blancco and inferred removed) ---
                                 let badgeHtml = '';
-                                if (h.is_most_recent) badgeHtml += `<span class="badge most-recent">&#128337; Most recent</span>`;
-                                if (h.is_blancco) badgeHtml += `<span class="badge blancco">&#128295; Blancco</span>`;
-                                if (h.is_inferred) badgeHtml += `<span class="badge inferred">&#9881; Inferred</span>`;
+                                if (!overallMostRecentAssigned && h.is_most_recent) { badgeHtml += `<span class="badge most-recent">&#128337; Most recent</span>`; overallMostRecentAssigned = true; }
                                 if (h.is_confirmed) badgeHtml += `<span class="badge confirmed">&#9989; Confirmed</span>`;
-                                // --- Score bar ---
-                                const barColor = h.is_blancco ? '#f87171' : h.is_confirmed ? '#34d399' : h.is_inferred ? '#fbbf24' : '#6366f1';
+                                // --- Score bar color by group type ---
+                                let barColor = '#6366f1';
+                                if (type === 'Physical') barColor = '#3b82f6';
+                                else if (type === 'Stage') barColor = '#10b981';
+                                else if (type === 'Erasure') barColor = '#f87171';
                                 // --- Evidence ---
                                 const evList = (h.evidence || []).slice(0,3).map(e => formatEvidence(e)).filter(Boolean).join(', ');
                                 // --- Main block with hover effect ---
@@ -1153,9 +1157,7 @@
                                         <div style="width:${score}%; height:8px; background:${barColor}; transition:width 0.3s;"></div>
                                     </div>
                                     <div style="font-size:13px;color:#334155;margin-top:2px;">${ evList ? `<span style='font-weight:500;'>Evidence:</span> ${evList}` : '' }</div>
-                                    ${ h.blancco ? `<div style=\"margin-top:6px; font-size:13px; color:#b91c1c; font-weight:700;\">Blancco erasure recorded${ h.blancco.date ? ' on ' + h.blancco.date : '' }${ h.blancco.operator ? ' by ' + h.blancco.operator : '' }</div>` : '' }
-                                    <div class=\"ai-explanation\" style=\"margin-top:6px; color:#64748b; font-size:13px;\">${ h.ai_explanation ? h.ai_explanation : (h.explanation || '') }</div>
-                                    <div style=\"margin-top:10px;\">
+                                    <div style="margin-top:10px;">
                                         <button class=\"btn-confirm\" style=\"background:#6366f1;color:white;border:none;padding:6px 18px;border-radius:5px;font-weight:600;cursor:pointer;box-shadow:0 1px 2px #e0e7ef44;\" onclick=\"(function(){ const note = prompt('Optional note for confirmation (leave blank if none):'); confirmDeviceLocation(stockId, h.location, note); })()\">Confirm</button>
                                     </div>
                                 `;
@@ -1186,8 +1188,6 @@
                         // Build provenance badges and short provenance line
                         let badges = '';
                         if (event.is_most_recent) badges += `<span class="badge most-recent">Most recent</span>`;
-                        if (event.is_blancco_record || event.blancco_status) badges += `<span class="badge blancco">${event.blancco_status || 'Blancco'}</span>`;
-                        if (event.merged_from && event.merged_from.length) badges += `<span class="badge inferred">Merged</span>`;
                         const provList = (event.sources && event.sources.length) ? event.sources.map(s => formatEvidence(s)).filter(Boolean) : [];
                         const provShort = provList.length ? provList.join(' • ') : (event.source || 'unknown');
                         // If an erasure provenance exists, show a concise 'Erased by' line
@@ -1548,16 +1548,16 @@
                             const groupDiv = document.createElement('div');
                             groupDiv.id = groupId;
                             groupDiv.style.marginBottom = '8px';
-                            let mostRecentAssigned = false;
+                            
                             items.forEach((h, idx) => {
                                 const score = h.score || 0;
                                 const last = h.last_seen ? `<span style='color:#64748b;font-size:13px;margin-left:6px;'>&#128337; ${formatUK(h.last_seen)}</span>` : '';
                                 // --- Badges with icons ---
                                 let badgeHtml = '';
-                                // Only the very first hypothesis (top-most, most recent) gets Most Recent
-                                if (!mostRecentAssigned && h.is_most_recent) {
+                                // Only a single hypothesis across all groups gets Most Recent
+                                if (!overallMostRecentAssigned && h.is_most_recent) {
                                     badgeHtml += `<span class=\"badge most-recent\">&#128337; Most recent</span>`;
-                                    mostRecentAssigned = true;
+                                    overallMostRecentAssigned = true;
                                 }
                                 if (h.is_confirmed) badgeHtml += `<span class=\"badge confirmed\">&#9989; Confirmed</span>`;
                                 // --- Score bar ---
