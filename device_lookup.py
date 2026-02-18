@@ -242,6 +242,56 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 pass
 
             # Build recency-ranked output
+            # Merge Sorting-only + Pallet-only labels when they refer to same pallet
+            try:
+                pid_map = {}
+                pal_re = re.compile(r'(?i)pallet\s*([A-Za-z0-9_-]+)')
+                for k in list(simple_candidates.keys()):
+                    try:
+                        m = pal_re.search(k)
+                        if m:
+                            pid = m.group(1)
+                            pid_map.setdefault(pid, []).append(k)
+                    except Exception:
+                        continue
+
+                for k in list(simple_candidates.keys()):
+                    try:
+                        if k.lower().startswith('sorting by') and 'onto pallet' not in k.lower():
+                            # extract user
+                            muser = re.match(r'(?i)sorting by\s+([^@\s]+@[^\s]+|[^\s]+)', k)
+                            user = None
+                            if muser:
+                                user = muser.group(1)
+                            # try to find a pallet that matches any existing pallet label
+                            for pid, keys in pid_map.items():
+                                if keys:
+                                    # prefer the first pallet key
+                                    pal_key = keys[0]
+                                    try:
+                                        pal_ts = simple_candidates.get(pal_key)
+                                        sort_ts = simple_candidates.get(k)
+                                        combined_label = f"Sorting by {user} onto pallet {pid}" if user else f"Sorting onto pallet {pid}"
+                                        # choose the most-recent timestamp
+                                        chosen_ts = pal_ts if (not sort_ts or (pal_ts and pal_ts > sort_ts)) else sort_ts
+                                        simple_candidates[combined_label] = chosen_ts
+                                        # remove the old keys
+                                        try:
+                                            del simple_candidates[pal_key]
+                                        except Exception:
+                                            pass
+                                        try:
+                                            del simple_candidates[k]
+                                        except Exception:
+                                            pass
+                                    except Exception:
+                                        pass
+                                    break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
             entries = [(k, v) for k, v in simple_candidates.items() if v]
             # Try to include pallet assignment user/timestamp from audit_master
             try:
