@@ -1091,7 +1091,9 @@
             timelineDiv.style.display = 'none';
 
             try {
-                const response = await fetch(`/api/device-lookup/${encodeURIComponent(stockId)}`, {
+                const deep = document.getElementById('deepAuditLookup') && document.getElementById('deepAuditLookup').checked;
+                const auditDays = deep ? 120 : 30;
+                const response = await fetch(`/api/device-lookup/${encodeURIComponent(stockId)}?audit_days=${auditDays}`, {
                     headers: getAuthHeaders(false)
                 });
                 const data = await response.json();
