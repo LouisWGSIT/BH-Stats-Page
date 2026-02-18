@@ -64,9 +64,9 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
     try:
         cur = conn.cursor()
         try:
-            AUDIT_LOOKBACK_DAYS = int(os.getenv('AUDIT_LOOKBACK_DAYS', '30'))
+            AUDIT_LOOKBACK_DAYS = int(os.getenv('AUDIT_LOOKBACK_DAYS', '120'))
         except Exception:
-            AUDIT_LOOKBACK_DAYS = 30
+            AUDIT_LOOKBACK_DAYS = 120
         # Canonicalize input: if a serial was provided, try resolving a stockid so
         # subsequent queries (which generally key by stockid) find the same device
         # regardless of which identifier the caller passed.
@@ -264,7 +264,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                             adt, auser, alog = ar
                             adt_dt = _to_dt(adt)
                             if auser:
-                                pal_label = f"Pallet {pid} (assigned by {auser})"
+                                pal_label = f"Sorting by {auser} onto pallet {pid}"
                                 # use assignment timestamp
                                 simple_candidates[pal_label] = adt_dt
                                 break
@@ -872,7 +872,7 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                         continue
 
             if stock_pid and assign_user:
-                sort_label = f"Sorting done by {assign_user} and assigned to pallet {stock_pid}"
+                sort_label = f"Sorting by {assign_user} onto pallet {stock_pid}"
                 sort_norm = normalize_loc(sort_label)
                 if sort_norm not in candidates:
                     candidates[sort_norm] = {
