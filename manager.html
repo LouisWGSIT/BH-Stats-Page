@@ -1093,6 +1093,14 @@
                     // Find last updated timestamp
                     let lastUpdated = null;
                     data.hypotheses.forEach(h => { if (h.last_seen && (!lastUpdated || h.last_seen > lastUpdated)) lastUpdated = h.last_seen; });
+                    // Compute most-recent hypothesis timestamp (ms) for UI tagging
+                    let mostRecentMs = null;
+                    data.hypotheses.forEach(h => {
+                        if (h.last_seen) {
+                            const t = Date.parse(h.last_seen);
+                            if (!isNaN(t) && (mostRecentMs === null || t > mostRecentMs)) mostRecentMs = t;
+                        }
+                    });
                     function formatUK(dt) {
                         if (!dt) return '';
                         const d = new Date(dt);
@@ -1131,7 +1139,14 @@
                                 const last = h.last_seen ? `<span style='color:#64748b;font-size:13px;margin-left:6px;'>&#128337; ${formatUK(h.last_seen)}</span>` : '';
                                 // --- Badges with icons (Blancco and inferred removed) ---
                                 let badgeHtml = '';
-                                if (!overallMostRecentAssigned && h.is_most_recent) { badgeHtml += `<span class="badge most-recent">&#128337; Most recent</span>`; overallMostRecentAssigned = true; }
+                                // Assign "Most recent" badge to the single most-recent hypothesis shown.
+                                if (!overallMostRecentAssigned) {
+                                    const hLastMs = h.last_seen ? Date.parse(h.last_seen) : null;
+                                    if (h.is_most_recent || (mostRecentMs !== null && hLastMs === mostRecentMs)) {
+                                        badgeHtml += `<span class="badge most-recent">&#128337; Most recent</span>`;
+                                        overallMostRecentAssigned = true;
+                                    }
+                                }
                                 if (h.is_confirmed) badgeHtml += `<span class="badge confirmed">&#9989; Confirmed</span>`;
                                 // --- Score bar color by group type ---
                                 let barColor = '#6366f1';
