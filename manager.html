@@ -1081,11 +1081,14 @@
                 // --- Modernized Hypotheses Section ---
                 if (data.hypotheses && data.hypotheses.length > 0) {
                     const safeStock = stockId ? stockId.replace(/[^a-zA-Z0-9_-]/g, '_') : 'unknown';
-                    // Group hypotheses by type
-                    const groups = { Physical: [], Stage: [], Erasure: [] };
+                    // Group hypotheses by type (add PostSorting group for post-sorting locations)
+                    const groups = { Physical: [], PostSorting: [], Stage: [], Erasure: [] };
+                    const postSortingRe = /rf[-_ ]?pend|rf[-_ ]?room|breakfix|quarantine|used[_ ]?approved/i;
                     data.hypotheses.forEach(h => {
+                        // Post-sorting locations (RF PEND, RF Room, breakfix, quarantine, used approved)
+                        if (h.location && postSortingRe.test(h.location)) groups.PostSorting.push(h);
                         // Sorting, QA, Erasure explicit split
-                        if (h.location && /sorting|pallet/i.test(h.location)) groups.Physical.push(h);
+                        else if (h.location && /sorting|pallet/i.test(h.location)) groups.Physical.push(h);
                         else if (h.location && /qa/i.test(h.location)) groups.Stage.push(h);
                         else if (h.is_blancco || (h.location && /erasure|blancco/i.test(h.location))) groups.Erasure.push(h);
                         else groups.Physical.push(h);
@@ -1122,8 +1125,8 @@
                     setTimeout(() => {
                         const container = document.getElementById('hypothesesGroups');
                         if (!container) return;
-                        const groupOrder = ['Physical', 'Stage', 'Erasure'];
-                        const displayType = (t) => ({ Physical: 'Sorting', Stage: 'QA', Erasure: 'Erasure' }[t] || t);
+                        const groupOrder = ['Physical', 'PostSorting', 'Stage', 'Erasure'];
+                        const displayType = (t) => ({ Physical: 'Sorting', PostSorting: 'Post Sorting', Stage: 'QA', Erasure: 'Erasure' }[t] || t);
                         let overallMostRecentAssigned = false;
                         groupOrder.forEach(type => {
                             const items = groups[type];
@@ -1153,6 +1156,7 @@
                                 // --- Score bar color by group type ---
                                 let barColor = '#6366f1';
                                 if (type === 'Physical') barColor = '#3b82f6';
+                                else if (type === 'PostSorting') barColor = '#f59e0b';
                                 else if (type === 'Stage') barColor = '#10b981';
                                 else if (type === 'Erasure') barColor = '#f87171';
                                 // --- Evidence ---
