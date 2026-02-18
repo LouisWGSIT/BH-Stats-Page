@@ -3121,7 +3121,11 @@ async def device_lookup(stock_id: str, request: Request):
             last_user = results.get('last_known_user')
             pallet_info = results.get('pallet_info') or {}
             asset_info = results.get('asset_info') or {}
-            if last_user and not pallet_info.get('pallet_id'):
+            # Always surface a QA-confirmed hypothesis when we know the last user
+            # (from audit_master), even if a pallet assignment exists. This keeps
+            # the QA action visible in the UI between Sorting and later-stage
+            # events like Erasure.
+            if last_user:
                 # Find last seen timestamp for this user in the timeline
                 last_seen = None
                 for ev in reversed(results.get('timeline', [])):
