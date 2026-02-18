@@ -2124,7 +2124,15 @@ async def device_lookup(stock_id: str, request: Request):
         "last_known_location": None,
     }
     
+    import time, logging
+    logger = logging.getLogger('device_lookup')
     try:
+        # quick guard: ensure connection runs read-only where possible
+        try:
+            cursor.execute("SET SESSION TRANSACTION READ ONLY")
+        except Exception:
+            pass
+        start_all = time.time()
         # honor per-request audit lookback (default 30 days, deep lookup 120 days)
         try:
             audit_days = int(request.query_params.get('audit_days', '30'))
@@ -2134,7 +2142,24 @@ async def device_lookup(stock_id: str, request: Request):
         conn = qa_export.get_mariadb_connection()
         if not conn:
             raise HTTPException(status_code=500, detail="Database connection failed")
-        
+        # ensure read-only intent to avoid accidental write locks where supported
+        try:
+            conn.autocommit = True
+        except Exception:
+            pass
+        try:
+            cur_tmp = conn.cursor()
+            try:
+                cur_tmp.execute("SET SESSION TRANSACTION READ ONLY")
+            except Exception:
+                pass
+            try:
+                cur_tmp.close()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         cursor = conn.cursor()
         
         # 1. Check ITAD_asset_info for asset details
@@ -2220,12 +2245,14 @@ async def device_lookup(stock_id: str, request: Request):
             # richer, action-oriented sources (QA, audit, erasure, pallet).
         
         # 2. Check Stockbypallet for pallet assignment
+        t0 = time.time()
         cursor.execute("""
             SELECT stockid, pallet_id
             FROM Stockbypallet
             WHERE stockid = %s
         """, (stock_id,))
         row = cursor.fetchone()
+        logger.info("Stockbypallet lookup: %.3fs", time.time()-t0)
         if row:
             results["found_in"].append("Stockbypallet")
             if not results["pallet_info"]:
@@ -2268,6 +2295,7 @@ async def device_lookup(stock_id: str, request: Request):
         
         # 4. Check ITAD_QA_App for sorting scans (include richer metadata when available)
         # Decide whether extended QA projection is safe by probing INFORMATION_SCHEMA
+        t0 = time.time()
         try:
             try:
                 cursor.execute(
@@ -2295,8 +2323,29 @@ async def device_lookup(stock_id: str, request: Request):
             rows = cursor.fetchall()
         except Exception as _ex:
             # If anything goes wrong, avoid raising DB error to caller; log and continue
-            print(f"[device_lookup] QA projection probe/execute failed: {_ex}")
+            logger.exception("[device_lookup] QA projection probe/execute failed: %s", _ex)
             rows = []
+        logger.info("ITAD_QA_App lookup: %.3fs", time.time()-t0)
+
+        # start background confirmed_locations read to overlap IO
+        import sqlite3
+        from concurrent.futures import ThreadPoolExecutor
+        def _fetch_confirmed():
+            try:
+                sqlite_conn = sqlite3.connect(db.DB_PATH)
+                sqlite_cur = sqlite_conn.cursor()
+                sqlite_cur.execute("SELECT location, user, ts FROM confirmed_locations WHERE stockid = ? ORDER BY ts DESC LIMIT 1", (stock_id,))
+                conf = sqlite_cur.fetchone()
+                sqlite_cur.close()
+                sqlite_conn.close()
+                return conf
+            except Exception:
+                return None
+        try:
+            _executor = ThreadPoolExecutor(max_workers=1)
+            conf_future = _executor.submit(_fetch_confirmed)
+        except Exception:
+            conf_future = None
 
         for row in rows:
             try:
@@ -3017,11 +3066,27 @@ async def device_lookup(stock_id: str, request: Request):
 
         # 7d. Include manager confirmations history from confirmed_locations
         try:
-            import sqlite3 as _sqlite2
-            sc = _sqlite2.connect(db.DB_PATH)
-            curc = sc.cursor()
-            curc.execute("SELECT ts, location, user, note FROM confirmed_locations WHERE stockid = ? ORDER BY ts ASC", (stock_id,))
-            for ts, loc, user, note in curc.fetchall():
+            # Prefer the background confirmed_locations read if available
+            conf_rows = None
+            try:
+                if 'conf_future' in locals() and conf_future:
+                    single = conf_future.result(timeout=0.05)
+                    if single:
+                        # we only have the latest in the future; for history fall back
+                        conf_rows = [ (single[2], single[0], single[1], None) ]
+            except Exception:
+                conf_rows = None
+
+            if conf_rows is None:
+                import sqlite3 as _sqlite2
+                sc = _sqlite2.connect(db.DB_PATH)
+                curc = sc.cursor()
+                curc.execute("SELECT ts, location, user, note FROM confirmed_locations WHERE stockid = ? ORDER BY ts ASC", (stock_id,))
+                conf_rows = curc.fetchall()
+                curc.close()
+                sc.close()
+
+            for ts, loc, user, note in conf_rows:
                 results.setdefault("found_in", []).append("confirmed_locations") if "confirmed_locations" not in results.get("found_in", []) else None
                 results["timeline"].append({
                     "timestamp": ts,
@@ -3031,8 +3096,6 @@ async def device_lookup(stock_id: str, request: Request):
                     "source": "confirmed_locations",
                     "details": note,
                 })
-            curc.close()
-            sc.close()
         except Exception:
             pass
 
@@ -3681,6 +3744,28 @@ async def device_lookup(stock_id: str, request: Request):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+_summary_cache = {}
+_SUMMARY_TTL = 60.0
+
+@app.get("/api/device-lookup/{stock_id}/summary")
+async def device_lookup_summary(stock_id: str, request: Request):
+    """Return a lightweight top suggestion for a device. Cached for short TTL."""
+    require_manager_or_admin(request)
+    now = time.time()
+    cached = _summary_cache.get(stock_id)
+    if cached and now - cached[0] < _SUMMARY_TTL:
+        return {"stock_id": stock_id, "summary": cached[1], "cached": True}
+    try:
+        import device_lookup as dl
+        # request a single top hypothesis; device_lookup's SIMPLE_MODE will keep this light
+        hyps = dl.get_device_location_hypotheses(stock_id, top_n=1)
+        top = hyps[0] if hyps else None
+        _summary_cache[stock_id] = (now, top)
+        return {"stock_id": stock_id, "summary": top, "cached": False}
+    except Exception as e:
+        return {"stock_id": stock_id, "summary": None, "error": str(e)}
 
 
 @app.post("/api/device-lookup/{stock_id}/confirm")

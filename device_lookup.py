@@ -8,6 +8,9 @@ import os
 from typing import List, Dict
 import sqlite3
 import re
+import time
+import logging
+from concurrent.futures import ThreadPoolExecutor
 
 
 def normalize_loc(name: str) -> str:
@@ -62,7 +65,38 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         return []
 
     try:
-        cur = conn.cursor()
+        # prefer autocommit/read-only to avoid accidental write locks
+        try:
+            conn.autocommit = True
+        except Exception:
+            pass
+        try:
+            cur = conn.cursor()
+            try:
+                cur.execute("SET SESSION TRANSACTION READ ONLY")
+            except Exception:
+                pass
+        except Exception:
+            cur = conn.cursor()
+        logger = logging.getLogger('device_lookup')
+        # start a background task to read confirmed_locations from sqlite
+        conf_future = None
+        def _fetch_confirmed():
+            try:
+                sqlite_conn = sqlite3.connect(db.DB_PATH)
+                sqlite_cur = sqlite_conn.cursor()
+                sqlite_cur.execute("SELECT location, user, ts FROM confirmed_locations WHERE stockid = ? ORDER BY ts DESC LIMIT 1", (stockid,))
+                conf = sqlite_cur.fetchone()
+                sqlite_cur.close()
+                sqlite_conn.close()
+                return conf
+            except Exception:
+                return None
+        try:
+            executor = ThreadPoolExecutor(max_workers=1)
+            conf_future = executor.submit(_fetch_confirmed)
+        except Exception:
+            conf_future = None
         try:
             AUDIT_LOOKBACK_DAYS = int(os.getenv('AUDIT_LOOKBACK_DAYS', '120'))
         except Exception:
@@ -259,20 +293,28 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
             except Exception:
                 pass
 
-            # confirmed_locations from SQLite
+            # confirmed_locations from SQLite (prefer concurrent fetch)
             try:
-                sqlite_conn = sqlite3.connect(db.DB_PATH)
-                sqlite_cur = sqlite_conn.cursor()
-                sqlite_cur.execute("SELECT location, user, ts FROM confirmed_locations WHERE stockid = ? ORDER BY ts DESC LIMIT 1", (stockid,))
-                conf = sqlite_cur.fetchone()
+                conf = None
+                try:
+                    if conf_future:
+                        conf = conf_future.result(timeout=0.15)
+                except Exception:
+                    conf = None
+                if not conf:
+                    sqlite_conn = sqlite3.connect(db.DB_PATH)
+                    sqlite_cur = sqlite_conn.cursor()
+                    sqlite_cur.execute("SELECT location, user, ts FROM confirmed_locations WHERE stockid = ? ORDER BY ts DESC LIMIT 1", (stockid,))
+                    conf = sqlite_cur.fetchone()
+                    sqlite_cur.close()
+                    sqlite_conn.close()
+
                 if conf:
                     loc, user, ts = conf
                     dt = _to_dt(ts)
                     label = f"Confirmed: {loc}"
                     simple_candidates[label] = dt
                     simple_evidence[label] = [ {'source': 'confirmed_locations', 'username': user, 'last_seen': dt} ]
-                sqlite_cur.close()
-                sqlite_conn.close()
             except Exception:
                 pass
 
