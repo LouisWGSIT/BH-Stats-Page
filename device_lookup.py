@@ -173,6 +173,9 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 if q and q[0]:
                     loc, added, uname = q
                     dt = _to_dt(added)
+                    # remember latest QA user/timestamp for fallback assignment
+                    qa_latest_user = uname
+                    qa_latest_ts = dt
                     # If audit_master contains a DEAPP_Submission for this stock,
                     # treat ITAD_QA_App latest scan as a Sorting/scan event (e.g., Owen),
                     # not as the authoritative QA Data Bearing event.
@@ -247,25 +250,30 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                 sb = cur.fetchone()
                 pid = sb[0] if sb and sb[0] else None
                 if pid:
-                    # search audit_master for a log mentioning the pallet and this stockid
-                    cur.execute(
-                        """
-                        SELECT date_time, user_id, log_description
-                        FROM audit_master
-                                        WHERE (log_description LIKE %s OR log_description2 LIKE %s)
-                                            AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                                        ORDER BY date_time DESC
-                                        LIMIT 5
-                        """,
-                                        (f"%{pid}%", f"%{pid}%", AUDIT_LOOKBACK_DAYS),
-                    )
-                    for ar in cur.fetchall():
+                    try:
+                        # search audit_master for recent logs mentioning this pallet id
+                        cur.execute(
+                            """
+                            SELECT date_time, user_id, log_description
+                            FROM audit_master
+                            WHERE (log_description LIKE %s OR log_description2 LIKE %s)
+                                AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                            ORDER BY date_time DESC
+                            LIMIT 5
+                            """,
+                            (f"%{pid}%", f"%{pid}%", AUDIT_LOOKBACK_DAYS),
+                        )
+                        am_rows = cur.fetchall()
+                    except Exception:
+                        am_rows = []
+
+                    updated = False
+                    for ar in am_rows:
                         try:
                             adt, auser, alog = ar
                             adt_dt = _to_dt(adt)
                             if auser:
                                 pal_label = f"Sorting by {auser} onto pallet {pid}"
-                                # use assignment timestamp
                                 simple_candidates[pal_label] = adt_dt
                                 # remove any existing plain pallet labels for this pid
                                 try:
@@ -277,11 +285,57 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                                             pass
                                 except Exception:
                                     pass
+                                    # also remove any existing Sorting-only candidate for this user
+                                    try:
+                                        sort_prefix = f"sorting by {auser}".lower()
+                                        for k in list(simple_candidates.keys()):
+                                            try:
+                                                if isinstance(k, str) and k.lower().startswith('sorting by') and sort_prefix in k.lower():
+                                                    del simple_candidates[k]
+                                            except Exception:
+                                                pass
+                                    except Exception:
+                                        pass
+                                updated = True
                                 break
                         except Exception:
                             continue
+
+                    # Fallback: if no audit_master assignment found, but we have a
+                    # recent QA scan by a user, use that user as the sorter for
+                    # the pallet assignment label so the UI can show a single
+                    # "Sorting by <user> onto pallet <pid>" line.
+                    if not updated and pid and qa_latest_user:
+                        try:
+                            pal_label = f"Sorting by {qa_latest_user} onto pallet {pid}"
+                            pal_ts = qa_latest_ts if isinstance(qa_latest_ts, datetime) else _to_dt(qa_latest_ts)
+                            simple_candidates[pal_label] = pal_ts
+                            try:
+                                to_remove = [k for k in list(simple_candidates.keys()) if k != pal_label and (f"Pallet {pid}" in k or str(pid) in k)]
+                                for k in to_remove:
+                                    try:
+                                        del simple_candidates[k]
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                pass
+                                # remove any Sorting-only candidate matching the QA user
+                                try:
+                                    sort_prefix = f"sorting by {qa_latest_user}".lower()
+                                    for k in list(simple_candidates.keys()):
+                                        try:
+                                            if isinstance(k, str) and k.lower().startswith('sorting by') and qa_latest_user and qa_latest_user.lower() in k.lower():
+                                                del simple_candidates[k]
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
             except Exception:
                 pass
+            # Recompute entries after any pallet-assignment fallback modifications
+            entries = [(k, v) for k, v in simple_candidates.items() if v]
             if not entries:
                 # fall through to normal behavior if no timestamps were found
                 pass
@@ -831,17 +885,12 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                         preferred_when = when
 
             if preferred_user:
-                # remove any QA Done by candidates that don't match preferred_user
-                for k in list(candidates.keys()):
-                    info = candidates.get(k)
-                    dn = info.get('display_name', '') if info else ''
-                    if isinstance(dn, str) and dn.lower().startswith('qa done by') and preferred_user not in dn:
-                        try:
-                            del candidates[k]
-                        except Exception:
-                            pass
-
-                # ensure a QA Done by preferred_user candidate exists
+                # Ensure a QA Done by preferred_user candidate exists.
+                # Do NOT remove other historical QA-by-user candidates here —
+                # keep entries like "QA Done by Solomon" so they remain visible
+                # when a subsequent Sorting/pallet assignment (e.g., by Owen)
+                # occurs. This preserves the timeline: Sorting at top plus
+                # previous QA actions as their own lines.
                 qa_norm = normalize_loc(f"qa_done_by {preferred_user}")
                 if qa_norm not in candidates:
                     candidates[qa_norm] = {
