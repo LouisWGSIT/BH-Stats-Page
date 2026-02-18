@@ -576,6 +576,103 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         except Exception:
             pass
 
+        # Prefer audit_master-derived QA user if present: remove other QA-by-user
+        # candidates and ensure a single `QA Done by <user>` candidate exists
+        # with the audit_master evidence.
+        try:
+            audit_users = {}
+            for k, v in list(candidates.items()):
+                evs = v.get('evidence', [])
+                for e in evs:
+                    try:
+                        src = e.get('source') if isinstance(e, dict) else None
+                        if isinstance(src, dict) and (src.get('source') == 'audit_master.user' or 'audit_master' in str(src.get('source') or '')):
+                            uname = src.get('username') or src.get('user')
+                            when = v.get('last_seen') or None
+                            if uname:
+                                # keep the most recent timestamp per user
+                                prev = audit_users.get(uname)
+                                if not prev or (when and prev[0] and when > prev[0]):
+                                    audit_users[uname] = (when, k, e)
+                    except Exception:
+                        continue
+
+            # pick the most-recent audit_master user if any
+            preferred_user = None
+            preferred_ev = None
+            preferred_when = None
+            if audit_users:
+                # choose user with latest when
+                for u, (when, k, e) in audit_users.items():
+                    if not preferred_when or (when and when > preferred_when):
+                        preferred_user = u
+                        preferred_ev = e
+                        preferred_when = when
+
+            if preferred_user:
+                # remove any QA Done by candidates that don't match preferred_user
+                for k in list(candidates.keys()):
+                    info = candidates.get(k)
+                    dn = info.get('display_name', '') if info else ''
+                    if isinstance(dn, str) and dn.lower().startswith('qa done by') and preferred_user not in dn:
+                        try:
+                            del candidates[k]
+                        except Exception:
+                            pass
+
+                # ensure a QA Done by preferred_user candidate exists
+                qa_norm = normalize_loc(f"qa_done_by {preferred_user}")
+                if qa_norm not in candidates:
+                    candidates[qa_norm] = {
+                        'score': 70.0,
+                        'evidence': [ {'source': {'source': 'audit_master.user', 'username': preferred_user, 'log': (preferred_ev.get('source') if isinstance(preferred_ev, dict) else None)}} ],
+                        'last_seen': preferred_when,
+                        'display_name': f"QA Done by {preferred_user}",
+                    }
+        except Exception:
+            pass
+
+        # Create an explicit Sorting/pallet assignment candidate if audit_master
+        # evidence references a pallet id and a user.
+        try:
+            # look for audit_master evidence strings mentioning a pallet id
+            pallet_re = re.compile(r'(?i)pallet\s*([A-Za-z0-9_-]+)')
+            stock_pid = None
+            assign_user = None
+            assign_when = None
+            for k, v in list(candidates.items()):
+                evs = v.get('evidence', [])
+                for e in evs:
+                    try:
+                        src = e.get('source') if isinstance(e, dict) else None
+                        if isinstance(src, dict) and src.get('log'):
+                            log = str(src.get('log') or '')
+                            m = pallet_re.search(log)
+                            if m:
+                                pid = m.group(1)
+                                uname = src.get('username') or src.get('user')
+                                when = v.get('last_seen') or None
+                                # prefer the most recent assignment evidence
+                                if pid and (not stock_pid or (when and assign_when and when > assign_when)):
+                                    stock_pid = pid
+                                    assign_user = uname
+                                    assign_when = when
+                    except Exception:
+                        continue
+
+            if stock_pid and assign_user:
+                sort_label = f"Sorting done by {assign_user} and assigned to pallet {stock_pid}"
+                sort_norm = normalize_loc(sort_label)
+                if sort_norm not in candidates:
+                    candidates[sort_norm] = {
+                        'score': 60.0,
+                        'evidence': [ {'source': {'source': 'audit_master.pallet_assign', 'username': assign_user, 'pallet_id': stock_pid}} ],
+                        'last_seen': assign_when,
+                        'display_name': sort_label,
+                    }
+        except Exception:
+            pass
+
         if not candidates:
             return []
 
@@ -676,7 +773,9 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     else:
                         sname = str(src or '')
                     s = sname.lower()
-                    if any(k in s for k in ('blancco', 'de_complete', 'erasure', 'qa', 'confirmed', 'pallet', 'stockbypallet', 'qa_latest')):
+                    # treat asset_info as meaningful when present (allows recent
+                    # asset_info updates like RF-ROOM-1 to receive recency boost)
+                    if any(k in s for k in ('blancco', 'de_complete', 'erasure', 'qa', 'confirmed', 'pallet', 'stockbypallet', 'qa_latest', 'asset_info')):
                         return True
             except Exception:
                 return False
