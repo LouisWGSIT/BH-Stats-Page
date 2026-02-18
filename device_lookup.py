@@ -159,8 +159,27 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                             if prow:
                                 pallet_loc, dest, create_date = prow
                                 label = f"Pallet {pid} ({pallet_loc or dest or 'unknown'})"
+                                # Prefer an explicit assignment timestamp from audit_master
+                                assign_ts = None
+                                try:
+                                    cur.execute(
+                                        "SELECT date_time FROM audit_master WHERE (log_description LIKE %s OR log_description2 LIKE %s) AND (log_description LIKE %s OR log_description2 LIKE %s) AND date_time >= DATE_SUB(NOW(), INTERVAL %s DAY) ORDER BY date_time DESC LIMIT 1",
+                                        (f"%{pid}%", f"%{pid}%", f"%{stockid}%", f"%{stockid}%", AUDIT_LOOKBACK_DAYS),
+                                    )
+                                    ar = cur.fetchone()
+                                    if ar and ar[0]:
+                                        assign_ts = _to_dt(ar[0])
+                                except Exception:
+                                    assign_ts = None
+
+                                # fallback to latest QA scan timestamp if present
+                                if not assign_ts and 'qa_latest_ts' in locals() and qa_latest_ts:
+                                    assign_ts = qa_latest_ts
+
+                                # final fallback to pallet create_date
                                 cd = _to_dt(create_date)
-                                simple_candidates[label] = cd
+                                ts_to_use = assign_ts or cd
+                                simple_candidates[label] = ts_to_use
                         except Exception:
                             pass
             except Exception:
