@@ -267,6 +267,16 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                                 pal_label = f"Sorting by {auser} onto pallet {pid}"
                                 # use assignment timestamp
                                 simple_candidates[pal_label] = adt_dt
+                                # remove any existing plain pallet labels for this pid
+                                try:
+                                    to_remove = [k for k in list(simple_candidates.keys()) if k != pal_label and (f"Pallet {pid}" in k or str(pid) in k)]
+                                    for k in to_remove:
+                                        try:
+                                            del simple_candidates[k]
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
                                 break
                         except Exception:
                             continue
@@ -873,14 +883,36 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
 
             if stock_pid and assign_user:
                 sort_label = f"Sorting by {assign_user} onto pallet {stock_pid}"
-                sort_norm = normalize_loc(sort_label)
-                if sort_norm not in candidates:
-                    candidates[sort_norm] = {
-                        'score': 60.0,
-                        'evidence': [ {'source': {'source': 'audit_master.pallet_assign', 'username': assign_user, 'pallet_id': stock_pid}} ],
-                        'last_seen': assign_when,
-                        'display_name': sort_label,
-                    }
+                # If a pallet candidate already exists, update its display_name and attach assignment evidence
+                updated = False
+                try:
+                    for k, v in list(candidates.items()):
+                        disp = v.get('display_name') or ''
+                        if disp and str(stock_pid) in str(disp):
+                            # update display name to include sorting/user
+                            v['display_name'] = sort_label
+                            v.setdefault('evidence', []).append({'source': {'source': 'audit_master.pallet_assign', 'username': assign_user, 'pallet_id': stock_pid}})
+                            if assign_when and (not v.get('last_seen') or assign_when > v.get('last_seen')):
+                                v['last_seen'] = assign_when
+                            # bump score slightly to reflect assignment evidence
+                            try:
+                                v['score'] = float(v.get('score', 0.0)) + 10.0
+                            except Exception:
+                                pass
+                            updated = True
+                            break
+                except Exception:
+                    updated = False
+
+                if not updated:
+                    sort_norm = normalize_loc(sort_label)
+                    if sort_norm not in candidates:
+                        candidates[sort_norm] = {
+                            'score': 60.0,
+                            'evidence': [ {'source': {'source': 'audit_master.pallet_assign', 'username': assign_user, 'pallet_id': stock_pid}} ],
+                            'last_seen': assign_when,
+                            'display_name': sort_label,
+                        }
         except Exception:
             pass
 
