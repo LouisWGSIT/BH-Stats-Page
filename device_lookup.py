@@ -853,6 +853,52 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         # Build a sorted list of candidates so we can compare top vs second.
         sorted_items = sorted(candidates.items(), key=lambda kv: kv[1]['score'], reverse=True)
 
+        # If SIMPLE_HYPOTHESES is enabled, return a simple recency-only
+        # ranked list: most recent candidate = 100%, others scaled linearly
+        # by their timestamp. This mode is intentionally simple and avoids
+        # complex multi-source scoring logic.
+        try:
+            if str(os.getenv('SIMPLE_HYPOTHESES', '')).lower() in ('1', 'true', 'yes'):
+                # collect items with last_seen timestamps
+                time_items = []
+                for key, info in candidates.items():
+                    last = info.get('last_seen')
+                    display = info.get('display_name') or key
+                    time_items.append((display, last, info))
+
+                # if no timestamps available, fall back to normal behavior
+                if not any(t[1] for t in time_items):
+                    pass
+                else:
+                    # sort by timestamp desc
+                    time_items = sorted([t for t in time_items if t[1]], key=lambda x: x[1], reverse=True)
+                    max_ts = time_items[0][1]
+                    min_ts = time_items[-1][1]
+                    max_delta = max((max_ts - min_ts).total_seconds(), 1.0)
+                    simple_out = []
+                    for idx, (display, last, info) in enumerate(time_items):
+                        try:
+                            delta = (max_ts - last).total_seconds()
+                        except Exception:
+                            delta = 0.0
+                        pct = max(0, min(100, int(round(100.0 * (1.0 - (delta / max_delta))))))
+                        evid = info.get('evidence', [])[:8]
+                        kind = 'physical' if not _is_stage(evid) else 'stage'
+                        simple_out.append({
+                            'location': display,
+                            'score': pct,
+                            'raw_score': pct,
+                            'evidence': [ (e if isinstance(e, dict) else {'source': e}) for e in evid ],
+                            'last_seen': last.isoformat() if last else None,
+                            'type': kind,
+                            'explanation': '',
+                            'ai_explanation': None,
+                            'rank': idx + 1,
+                        })
+                    return simple_out[:top_n]
+        except Exception:
+            pass
+
         # Recompute max_score after any boosts and ensure normalization clamps to 0-100
         max_score = max((v['score'] for v in candidates.values()), default=1.0) or 1.0
         out = []
