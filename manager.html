@@ -1109,7 +1109,7 @@
                         return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
                     }
                     summaryHtml += `<div style="margin-top:16px; padding:18px 14px 10px 14px; background:#f7fafd; border-radius:10px; box-shadow:0 2px 8px #e0e7ef33;">
-                        <div style="font-size:18px; font-weight:600; margin-bottom:8px; color:#1e293b; letter-spacing:0.5px;">Top location hypotheses</div>
+                        <div style="font-size:18px; font-weight:600; margin-bottom:8px; color:#1e293b; letter-spacing:0.5px;">Top location suggestions</div>
                         <div class="badge-legend" style="margin-bottom:10px;">Legend:
                             <span class="badge most-recent">Most recent</span>
                             <span class="badge confirmed">Confirmed</span>
@@ -1123,13 +1123,15 @@
                         const container = document.getElementById('hypothesesGroups');
                         if (!container) return;
                         const groupOrder = ['Physical', 'Stage', 'Erasure'];
+                        const displayType = (t) => ({ Physical: 'Sorting', Stage: 'QA', Erasure: 'Erasure' }[t] || t);
                         let overallMostRecentAssigned = false;
                         groupOrder.forEach(type => {
                             const items = groups[type];
                             if (!items.length) return;
                             const groupId = `hypoGroup_${type}`;
                             const header = document.createElement('div');
-                            header.innerHTML = `<div style="display:flex;align-items:center;cursor:pointer;font-size:15px;font-weight:600;margin-top:10px;margin-bottom:4px;gap:8px;" onclick="const el=document.getElementById('${groupId}');el.style.display=el.style.display==='none'?'block':'none';this.querySelector('span').textContent=el.style.display==='none'?'▶':'▼';"><span style='font-size:13px;'>▼</span> ${type} Hypotheses <span style='font-size:12px;font-weight:400;color:#64748b;margin-left:8px;'>(${items.length})</span></div>`;
+                            const display = displayType(type);
+                            header.innerHTML = `<div style="display:flex;align-items:center;cursor:pointer;font-size:15px;font-weight:600;margin-top:10px;margin-bottom:4px;gap:8px;" onclick="const el=document.getElementById('${groupId}');el.style.display=el.style.display==='none'?'block':'none';this.querySelector('span').textContent=el.style.display==='none'?'▶':'▼';"><span style='font-size:13px;'>▼</span> ${display} <span style='font-size:12px;font-weight:400;color:#64748b;margin-left:8px;'>(${items.length})</span></div>`;
                             container.appendChild(header);
                             const groupDiv = document.createElement('div');
                             groupDiv.id = groupId;

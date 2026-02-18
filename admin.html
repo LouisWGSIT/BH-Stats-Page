@@ -1152,13 +1152,14 @@
                 // Likely-location hypotheses
                 if (data.hypotheses && data.hypotheses.length > 0) {
                     const safeStock = stockId ? stockId.replace(/[^a-zA-Z0-9_-]/g, '_') : 'unknown';
-                    summaryHtml += `<div style="margin-top:12px; padding:10px; background:#eef2ff; border-radius:6px;"><strong>Top location hypotheses</strong><br>`;
+                    summaryHtml += `<div style="margin-top:12px; padding:10px; background:#eef2ff; border-radius:6px;"><strong>Top location suggestions</strong><br>`;
                     summaryHtml += `<div class="badge-legend">Legend: <span class="badge most-recent">Most recent</span> <span class="badge confirmed">Confirmed</span></div>`;
                     let overallMostRecentAssigned = false;
+                    const displayType = (t) => ({ physical: 'Sorting', stage: 'QA', erasure: 'Erasure' }[t] || t);
                     data.hypotheses.forEach((h, idx) => {
                         const score = h.score || 0;
                         const last = h.last_seen ? ` (last seen ${h.last_seen})` : '';
-                        const badge = h.type === 'stage' ? 'Stage' : 'Physical';
+                        const badge = displayType(h.type || (h.is_blancco ? 'erasure' : 'physical'));
                         const evList = (h.evidence || []).slice(0,3).map(e => formatEvidence(e)).filter(Boolean).join(', ');
                         const aiId = `ai-${safeStock}-${idx}`;
                         // build badges using CSS classes
