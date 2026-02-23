@@ -2260,8 +2260,11 @@ async def device_lookup(stock_id: str, request: Request):
             results["pallet_info"]["pallet_id"] = row[1]
         
         # 3. Get pallet details if we have a pallet_id
-        if results.get("pallet_info", {}).get("pallet_id"):
-            pallet_id = results["pallet_info"]["pallet_id"]
+        # Guard against unexpected None for `results` or `pallet_info`.
+        pallet_id = None
+        pallet_info = (results or {}).get("pallet_info") if isinstance(results, dict) else None
+        if pallet_info and pallet_info.get("pallet_id"):
+            pallet_id = pallet_info.get("pallet_id")
             cursor.execute("""
                 SELECT pallet_id, destination, pallet_location, pallet_status, create_date
                 FROM ITAD_pallet
