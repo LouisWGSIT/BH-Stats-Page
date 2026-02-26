@@ -2464,8 +2464,9 @@ function renderSVGSparkline(svgElem, data) {
     const flipCards = document.querySelectorAll('.flip-card');
     if (flipCards.length === 0) return;
 
-    const FLIP_INTERVAL = 25000;
-    const FLIP_HOLD = 12000;
+    // Increase flip interval so cards rotate less often on PCs
+    const FLIP_INTERVAL = 60000; // 60s between flips
+    const FLIP_HOLD = 20000; // 20s hold before flipping back
     const PRE_FLIP_INDICATOR_TIME = 500; // Show indicator before flip
 
     flipCards.forEach((card, index) => {
