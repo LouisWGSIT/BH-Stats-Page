@@ -2436,7 +2436,31 @@ function renderSVGSparkline(svgElem, data) {
   }
 
   // Flip card logic with staggered timing
+  // Track flip card intervals/timeouts so we can clean them up (prevents stacking on re-init)
+  const flipIntervals = new Map();
+  const flipTimeouts = new Map();
+
+  function cleanupFlipCards() {
+    flipIntervals.forEach(id => clearInterval(id));
+    flipTimeouts.forEach(t => {
+      if (Array.isArray(t)) {
+        t.forEach(x => clearTimeout(x));
+      } else {
+        clearTimeout(t);
+      }
+    });
+    flipIntervals.clear();
+    flipTimeouts.clear();
+    // Reset flip classes to safe state
+    const flipCards = document.querySelectorAll('.flip-card');
+    flipCards.forEach(card => {
+      card.classList.remove('flipped', 'about-to-flip');
+    });
+  }
+
   function setupFlipCards() {
+    // Clear any previous flip timers before setting new ones
+    cleanupFlipCards();
     const flipCards = document.querySelectorAll('.flip-card');
     if (flipCards.length === 0) return;
 
@@ -2470,23 +2494,29 @@ function renderSVGSparkline(svgElem, data) {
         });
       }
       
-      // Initial flip after a brief stagger
-      setTimeout(() => {
-        performFlip();
-        
-        // Flip back after hold (wait for flip to complete + hold time)
-        setTimeout(() => {
+        // Initial flip after a brief stagger
+        const startTimeout = setTimeout(() => {
           performFlip();
-        }, FLIP_HOLD);
-        
-        // Setup recurring flips after initial cycle
-        setTimeout(() => {
-          setInterval(() => {
+
+          // Flip back after hold (wait for flip to complete + hold time)
+          const holdTimeout = setTimeout(() => {
             performFlip();
-            setTimeout(performFlip, FLIP_HOLD);
-          }, FLIP_INTERVAL);
-        }, FLIP_HOLD);
-      }, 2000 + index * 300);
+          }, FLIP_HOLD);
+
+          // Setup recurring flips after initial cycle
+          const recurringSetupTimeout = setTimeout(() => {
+            const intervalId = setInterval(() => {
+              performFlip();
+              setTimeout(performFlip, FLIP_HOLD);
+            }, FLIP_INTERVAL);
+            flipIntervals.set(index, intervalId);
+          }, FLIP_HOLD);
+
+          // Track timeouts so we can clear them if needed
+          flipTimeouts.set(index, [startTimeout, holdTimeout, recurringSetupTimeout]);
+        }, 2000 + index * 300);
+        // Also track the initial stagger timeout in case cleanup runs before it fires
+        if (!flipTimeouts.has(index)) flipTimeouts.set(index, startTimeout);
     });
   }
 
@@ -2614,6 +2644,7 @@ function renderSVGSparkline(svgElem, data) {
       } else {
         // Clean up when tab is hidden to save resources
         cleanupRotatorCards();
+        cleanupFlipCards();
       }
     });
   }, 500);
@@ -3533,19 +3564,19 @@ function renderSVGSparkline(svgElem, data) {
     // Build professional report title
     let reportTitle, reportSubtitle;
     if (isThisMonth) {
-      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT - THIS MONTH';
+      reportTitle = 'ITAD & SWAP Services - Date Erasure and QA Stats - THIS MONTH';
       reportSubtitle = `Monthly Report for: ${dateRangeStr}`;
     } else if (isLastMonth) {
-      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT - LAST MONTH';
+      reportTitle = 'ITAD & SWAP Services - Date Erasure and QA Stats - LAST MONTH';
       reportSubtitle = `Monthly Report for: ${dateRangeStr}`;
     } else if (isLastWeek) {
-      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT - LAST WEEK';
+      reportTitle = 'ITAD & SWAP Services - Date Erasure and QA Stats - LAST WEEK';
       reportSubtitle = `Weekly Report for: ${dateRangeStr}`;
     } else if (isThisWeek) {
-      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT - THIS WEEK';
+      reportTitle = 'ITAD & SWAP Services - Date Erasure and QA Stats - THIS WEEK';
       reportSubtitle = `Current Week Status - ${dateRangeStr}`;
     } else {
-      reportTitle = 'BH WAREHOUSE ERASURE STATS REPORT';
+      reportTitle = 'ITAD & SWAP Services - Date Erasure and QA Stats';
       reportSubtitle = `Current Status - ${dateRangeStr}`;
     }
     
