@@ -400,6 +400,7 @@
                 <button onclick="assignUnassigned()" id="assignBtn">Assign Unassigned</button>
                 <div id="assignResult" class="result"></div>
             </div>
+            <div id="syncTypeResult" class="result" style="display:none;margin-top:12px;"></div>
 
             <!-- Section 2: Fix Initials -->
             <div class="section admin-only">
@@ -448,7 +449,11 @@
             <!-- Section 4: Stats -->
             <div class="section admin-only">
                 <h2>Engineer Statistics</h2>
-                <button onclick="loadStats()">📊 Refresh Stats</button>
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                    <button onclick="loadStats()">📊 Refresh Stats</button>
+                    <button id="syncTypeBtn" onclick="syncEngineerTypeStats()">🔁 Sync Category Trends</button>
+                    <small style="color:#666;font-size:12px;">(Syncs per-device-type counts from the erasures table)</small>
+                </div>
                 <div id="bottleneckDetails" class="stats" style="display: block; margin-top: 12px;"></div>
                 <div id="statsContainer" class="stats" style="display: none; margin-top: 20px;">
                     <h3>Engineer Breakdown</h3>
@@ -604,6 +609,33 @@
                     if (last) p += ` last ${last}`;
                     return p;
                 }
+
+            async function syncEngineerTypeStats() {
+                const resultDiv = document.getElementById('syncTypeResult');
+                const btn = document.getElementById('syncTypeBtn');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="loading"></span> Syncing...';
+                try {
+                    const resp = await fetch('/admin/sync-engineer-stats-type', {
+                        method: 'POST',
+                        headers: getAuthHeaders(true)
+                    });
+                    let dataText = await resp.text();
+                    let data = {};
+                    try { data = JSON.parse(dataText); } catch (e) { data = { detail: dataText }; }
+                    if (resp.ok) {
+                        showResult(resultDiv, 'success', '✅ Synced', `Synced ${data.synced_records || 0} records${data.date ? ' for ' + data.date : ''}`);
+                        loadStats();
+                    } else {
+                        showResult(resultDiv, 'error', '❌ Error', data.detail || 'Sync failed');
+                    }
+                } catch (err) {
+                    showResult(resultDiv, 'error', '❌ Error', err.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = '🔁 Sync Category Trends';
+                }
+            }
                 if (/pallet/i.test(sname)) {
                     if (src.pallet_id) return `Pallet ${src.pallet_id}`;
                     return sname;

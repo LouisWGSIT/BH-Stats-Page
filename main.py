@@ -209,6 +209,35 @@ def save_device_tokens(tokens):
 
     # Fallback to JSON file
     try:
+
+
+        # Admin: trigger sync to populate engineer_stats_type (category trends)
+        @app.post("/admin/sync-engineer-stats-type")
+        async def admin_sync_engineer_stats_type(req: Request):
+            """Trigger a DB sync to populate `engineer_stats_type` from `erasures`.
+            Optional JSON body or query param `date` (YYYY-MM-DD) to sync a single date.
+            Requires admin access.
+            """
+            require_admin(req)
+
+            body = {}
+            try:
+                body = await req.json()
+            except Exception:
+                body = {}
+
+            date_param = None
+            if isinstance(body, dict):
+                date_param = body.get('date')
+            if not date_param:
+                date_param = req.query_params.get('date')
+
+            try:
+                synced = db.sync_engineer_stats_type_from_erasures(date_param) if date_param else db.sync_engineer_stats_type_from_erasures()
+                return {"status": "ok", "synced_records": synced, "date": date_param}
+            except Exception as e:
+                print(f"[ADMIN] sync error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
         with open(DEVICE_TOKENS_FILE, 'w') as f:
             json.dump(tokens, f)
     except Exception as e:
