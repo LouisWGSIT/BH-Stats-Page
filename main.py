@@ -1663,9 +1663,41 @@ async def engineer_erasure_hook(req: Request):
     if not initials:
         return JSONResponse({"status": "error", "reason": "missing initials"}, status_code=400)
 
-    # Increment count for this engineer (overall and per device type)
-    db.increment_engineer_count(initials, 1)
-    db.increment_engineer_type_count(device_type, initials, 1)
+    # Ensure a canonical detailed erasure row is written so all aggregates use the same source of truth.
+    try:
+        job_id = payload.get('jobId') or payload.get('assetTag') or payload.get('id') or None
+        # duration if present
+        duration = payload.get('durationSec') or payload.get('duration') or None
+        # timestamp if present (try to normalize simple epoch or ISO strings)
+        ts_in = payload.get('timestamp') or payload.get('ts') or None
+        ts = None
+        if isinstance(ts_in, (int, float)):
+            try:
+                from datetime import datetime, timezone
+                ts = datetime.fromtimestamp(float(ts_in), tz=timezone.utc).isoformat()
+            except Exception:
+                ts = None
+        elif isinstance(ts_in, str) and ts_in.strip():
+            ts = ts_in
+        # Write minimal detailed event into `erasures` so downstream syncs read it.
+        try:
+            db.add_erasure_event(event='success', device_type=device_type, initials=initials, duration_sec=(int(duration) if duration is not None and str(duration).isdigit() else None), job_id=job_id, ts=ts)
+        except Exception as _e:
+            print(f"[engineer_erasure] failed to add detailed erasure event: {_e}")
+
+        # Also keep lightweight summary counters in sync (daily counters and per-engineer totals)
+        db.increment_stat('erased', 1)
+        if job_id:
+            try:
+                db.mark_job_seen(job_id)
+            except Exception:
+                pass
+
+        # Increment count for this engineer (overall and per device type)
+        db.increment_engineer_count(initials, 1)
+        db.increment_engineer_type_count(device_type, initials, 1)
+    except Exception as e:
+        print(f"[engineer_erasure] error updating counts: {e}")
     engineers = db.get_top_engineers(limit=10)
     engineer_count = next((e["count"] for e in engineers if e["initials"] == initials), 0)
 
