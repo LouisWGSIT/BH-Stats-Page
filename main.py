@@ -4746,5 +4746,42 @@ async def get_qa_dashboard_data(period: str = "this_week"):
         traceback.print_exc()
         return {"error": str(e), "period": period}
 
+# ===== HWID Capture Endpoint =====
+
+HWID_LOG_PATH = os.getenv("HWID_LOG_PATH", "logs/hwid_log.jsonl")
+
+@app.post("/hwid")
+async def capture_hwid(req: Request):
+    """
+    Receives HWID data posted from a USB boot script.
+    Validates x-api-key header, then appends the payload to a JSONL log file.
+    """
+    hdr = req.headers.get("x-api-key") or req.headers.get("Authorization")
+    if not hdr or (hdr != WEBHOOK_API_KEY and hdr != f"Bearer {WEBHOOK_API_KEY}"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        payload = await req.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    record = {
+        "received_at": datetime.utcnow().isoformat() + "Z",
+        "source_ip": req.client.host if req.client else "unknown",
+        **payload,
+    }
+
+    try:
+        os.makedirs(os.path.dirname(HWID_LOG_PATH), exist_ok=True)
+        with open(HWID_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception as e:
+        logging.error(f"[hwid] Failed to write log: {e}")
+        raise HTTPException(status_code=500, detail="Log write failed")
+
+    logging.info(f"[hwid] Captured record from {record['source_ip']}: {record}")
+    return {"status": "ok", "received_at": record["received_at"]}
+
+
 # Serve static files (HTML, CSS, JS)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")
