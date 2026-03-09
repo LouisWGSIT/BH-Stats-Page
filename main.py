@@ -4750,6 +4750,12 @@ async def get_qa_dashboard_data(period: str = "this_week"):
 
 HWID_LOG_PATH = os.getenv("HWID_LOG_PATH", "logs/hwid_log.jsonl")
 
+@app.get("/hwid")
+async def hwid_status():
+    """Simple health check so a browser GET confirms the endpoint is alive."""
+    return {"status": "ok", "endpoint": "/hwid", "method": "POST", "description": "HashID capture endpoint. Send POST with JSON body and x-api-key header."}
+
+
 @app.post("/hwid")
 async def capture_hwid(req: Request):
     """
