@@ -607,7 +607,8 @@
                     <label for="deviceSearchId">Stock ID or Serial:</label>
                     <input type="text" id="deviceSearchId" placeholder="e.g. 12745375" style="max-width: 200px;">
                 </div>
-                <button onclick="searchDevice()">🔎 Search Device</button>
+                <button id="deviceSearchBtn" onclick="searchDevice()">🔎 Search Device</button>
+                <button id="deviceSearchCancel" onclick="cancelDeviceSearch()" style="display:none; margin-left:8px;">✖ Cancel</button>
                 <label style="display:inline-block; margin-left:12px; font-size:13px; vertical-align:middle;">
                     <input type="checkbox" id="deepAuditLookup" style="margin-right:6px; vertical-align:middle;"> (Unchecked 30 days / Checked 120 days)
                 </label>
@@ -1003,6 +1004,16 @@
             applyRoleVisibility();
         });
 
+        // Abortable device search: prevents overlapping searches and allows user cancel
+        let currentDeviceSearchController = null;
+        let isDeviceSearching = false;
+
+        window.cancelDeviceSearch = function() {
+            if (currentDeviceSearchController) {
+                try { currentDeviceSearchController.abort(); } catch (e) {}
+            }
+        }
+
         window.searchDevice = async function() {
             const stockId = document.getElementById('deviceSearchId').value.trim();
             const resultDiv = document.getElementById('deviceSearchResult');
@@ -1014,18 +1025,33 @@
                 timelineDiv.style.display = 'none';
                 return;
             }
+            if (isDeviceSearching) {
+                showResult(resultDiv, 'info', 'Search in progress', 'A device search is already running. You can cancel it with the ✖ button.');
+                return;
+            }
+
+            // prepare UI and abort controller
+            const searchBtn = document.getElementById('deviceSearchBtn');
+            const cancelBtn = document.getElementById('deviceSearchCancel');
+            const deep = document.getElementById('deepAuditLookup') && document.getElementById('deepAuditLookup').checked;
+            const auditDays = deep ? 120 : 30;
 
             resultDiv.className = 'result info';
             resultDiv.style.display = 'block';
             resultDiv.innerHTML = '<p>🔍 Searching across 7 data sources...</p>';
             timelineDiv.style.display = 'none';
+            // disable form controls while searching
+            isDeviceSearching = true;
+            if (searchBtn) searchBtn.disabled = true;
+            if (cancelBtn) cancelBtn.style.display = 'inline-block';
+            document.getElementById('deepAuditLookup').disabled = true;
 
-                try {
-                // include audit_days param when deep lookup checkbox is checked
-                const deep = document.getElementById('deepAuditLookup') && document.getElementById('deepAuditLookup').checked;
-                const auditDays = deep ? 120 : 30;
+            const controller = new AbortController();
+            currentDeviceSearchController = controller;
+            try {
                 const response = await fetch(`/api/device-lookup/${encodeURIComponent(stockId)}?audit_days=${auditDays}`, {
-                    headers: getAuthHeaders(false)
+                    headers: getAuthHeaders(false),
+                    signal: controller.signal
                 });
                 const data = await response.json();
 
@@ -1264,8 +1290,19 @@
                 // AI explanations are shown inline (no toggle required)
 
             } catch (error) {
-                showResult(resultDiv, 'error', '❌ Error', error.message);
+                if (error && error.name === 'AbortError') {
+                    showResult(resultDiv, 'info', 'Cancelled', 'Search was cancelled');
+                } else {
+                    showResult(resultDiv, 'error', '❌ Error', error.message || String(error));
+                }
                 timelineDiv.style.display = 'none';
+            } finally {
+                // restore UI
+                isDeviceSearching = false;
+                currentDeviceSearchController = null;
+                try { document.getElementById('deviceSearchBtn').disabled = false; } catch (e) {}
+                try { document.getElementById('deviceSearchCancel').style.display = 'none'; } catch (e) {}
+                try { document.getElementById('deepAuditLookup').disabled = false; } catch (e) {}
             }
         }
 
