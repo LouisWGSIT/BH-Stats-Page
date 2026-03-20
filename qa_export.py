@@ -1379,16 +1379,32 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
 def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[str, object]]:
     """Compatibility shim: delegate to `device_lookup.get_device_location_hypotheses`.
 
-    This lazy import avoids circular imports at module import time while
-    allowing external callers to continue calling `qa_export.get_device_location_hypotheses`.
+    Use importlib to avoid errors when the package context is not set and
+    handle import failures gracefully so a failed import does not raise
+    and abort the enclosing request. Returns an empty list on failure.
     """
+    import importlib
+    logger = logging.getLogger('qa_export')
     try:
-        # Prefer top-level import when module is executed as a script/package root
-        from device_lookup import get_device_location_hypotheses as _dl
-    except Exception:
-        # Fall back to package-relative import when running as a package
-        from .device_lookup import get_device_location_hypotheses as _dl
-    return _dl(stockid, top_n)
+        # Try absolute import first
+        try:
+            mod = importlib.import_module('device_lookup')
+        except Exception:
+            # Try package-relative import (works when running as a package)
+            try:
+                mod = importlib.import_module('.device_lookup', package=__package__)
+            except Exception as e:
+                logger.exception(f"Failed to import device_lookup module: {e}")
+                return []
+
+        _dl = getattr(mod, 'get_device_location_hypotheses', None)
+        if not _dl:
+            logger.error('device_lookup.get_device_location_hypotheses not found')
+            return []
+        return _dl(stockid, top_n)
+    except Exception as e:
+        logger.exception(f"Error delegating to device_lookup: {e}")
+        return []
 
 
 def _iter_month_ranges(start_date: date, end_date: date) -> List[Tuple[date, date]]:
