@@ -285,6 +285,49 @@ async def health_db():
         print(f"[HealthDB] unexpected error: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "detail": "internal error"})
 
+
+@app.get("/admin/db-processlist")
+def admin_db_processlist(request: Request, limit: int = 100):
+    """Admin-only diagnostic: return SHOW FULL PROCESSLIST from MariaDB.
+
+    Useful to inspect long-running queries and locks without logging into the DB host.
+    Requires admin access (use admin token/password).
+    """
+    require_admin(request)
+    try:
+        conn = qa_export.get_mariadb_connection()
+        if not conn:
+            return JSONResponse(status_code=503, content={"status": "fail", "detail": "MariaDB connection failed"})
+        cur = conn.cursor()
+        cur.execute("SHOW FULL PROCESSLIST")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        # Map rows to dicts (Id, User, Host, db, Command, Time, State, Info)
+        plist = []
+        for r in rows[:limit]:
+            try:
+                plist.append({
+                    "Id": r[0],
+                    "User": r[1],
+                    "Host": r[2],
+                    "db": r[3],
+                    "Command": r[4],
+                    "Time": r[5],
+                    "State": r[6],
+                    "Info": r[7],
+                })
+            except Exception:
+                plist.append({"raw": r})
+        return {"processlist": plist}
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        print(f"[Admin] db-processlist error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 def save_device_tokens(tokens):
     """Save device tokens to persistent storage."""
     # If configured, save to SQLite DB for persistence across deploys (set DEVICE_TOKENS_DB env var)
