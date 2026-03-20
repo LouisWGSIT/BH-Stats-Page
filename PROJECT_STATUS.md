@@ -201,6 +201,34 @@ Treat the above as mandatory guidelines — commit/rollback discipline and short
 - **Medium:** Add `HWID_API_KEY` and rotate keys; add payload schema validation and unit tests for `main.py` hooks.
 - **Low:** Export improvements for additional sheets (device history flattening, BI-friendly types), and UI polish as requested by stakeholders.
 
+### Planned DB & Device Lookup Work (March 2026)
+
+We're prioritising performance and safety for the `device_lookup` flow. The following five tasks will be worked on first (user requested). These are listed in order of low-risk / high-impact changes to reduce query cost and make lookups safe for back-to-back use:
+
+1. Rewrite queries to avoid `DATE(column)` wrapping so indexes can be used.
+   - Replace `WHERE DATE(added_date) >= DATE_SUB(NOW(), INTERVAL ? DAY)` with `WHERE added_date >= DATE_SUB(NOW(), INTERVAL ? DAY)` in `main.py`, `qa_export.py`, and any other QA lookup code.
+   - Rationale: applying functions to column values prevents index seeks and forces full scans. Comparing the raw `DATETIME`/`TIMESTAMP` allows efficient range scans.
+
+2. Create a composite index on `ITAD_QA_App(stockid, added_date)` (and optionally include frequently-selected fields to make it a covering index).
+   - Example SQL (test in staging first):
+     ```sql
+     CREATE INDEX idx_itad_qa_stockid_added_date ON ITAD_QA_App (stockid, added_date);
+     ```
+   - Rationale: lets the DB quickly find recent rows for a specific stockid.
+
+3. Run `EXPLAIN` before/after index creation to confirm the query plan uses the new index and to measure rows scanned/reduced.
+   - We'll capture `EXPLAIN` output for representative queries (30-day and 120-day variants) and keep the outputs for audit.
+
+4. Add sensible limits / aggregation to QA queries where possible.
+   - Use `LIMIT`/bounded result windows for UI timelines and offer a separate 'full history' mode for long exports.
+   - Prefer `COUNT`/`GROUP BY` for summary views rather than fetching every row.
+
+5. Short-circuit heuristics in `device_lookup` to stop QA/history scanning early when high-confidence provenance is already found.
+   - Examples: if `asset_info` + `local_erasures` + `Stockbypallet` provide a strong location signal, skip the heavier QA history scan, or only request a small sample of QA rows.
+
+Status: Working on items 1–5 now; code changes and index recommendations will be implemented in staging, validated with `EXPLAIN`, then rolled to production during a maintenance window.
+
+
 ## Agent Onboarding Notes (Feb 2026)
 - **Frontend:**
    - manager.html: Device lookup UI is now grouped, color-coded, and decluttered as described below. All tag logic and visual polish is up to date as of 2026-02-18.
