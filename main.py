@@ -2591,20 +2591,23 @@ async def device_lookup(stock_id: str, request: Request):
             except Exception:
                 has_sales_order = False
 
+            # Respect audit_days to limit QA scan lookback and avoid long-running queries
             if has_sales_order:
                 cursor.execute("""
                     SELECT added_date, username, scanned_location, stockid, photo_location, sales_order
                     FROM ITAD_QA_App
                     WHERE stockid = %s
+                      AND DATE(added_date) >= DATE_SUB(NOW(), INTERVAL %s DAY)
                     ORDER BY added_date ASC
-                """, (stock_id,))
+                """, (stock_id, audit_days))
             else:
                 cursor.execute("""
                     SELECT added_date, username, scanned_location, stockid
                     FROM ITAD_QA_App
                     WHERE stockid = %s
+                      AND DATE(added_date) >= DATE_SUB(NOW(), INTERVAL %s DAY)
                     ORDER BY added_date ASC
-                """, (stock_id,))
+                """, (stock_id, audit_days))
             rows = cursor.fetchall()
         except Exception as _ex:
             # If anything goes wrong, avoid raising DB error to caller; log and continue
@@ -3240,8 +3243,8 @@ async def device_lookup(stock_id: str, request: Request):
         # 7b. Enrich timeline with device history from QA export (broad range, best-effort)
         try:
             from datetime import date, timedelta
-            # request a long history window (10 years) to capture all events
-            start = date.today() - timedelta(days=3650)
+            # request a history window limited by audit_days to avoid fetching huge datasets
+            start = date.today() - timedelta(days=audit_days)
             end = date.today()
             try:
                 history = qa_export.get_device_history_range(start, end)
