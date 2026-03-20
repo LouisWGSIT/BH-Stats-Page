@@ -395,7 +395,7 @@ def get_qa_daily_totals_range(start_date: date, end_date: date) -> List[Dict[str
             WHERE added_date >= %s AND added_date < %s
             GROUP BY DATE(added_date)
             ORDER BY scan_date
-        "", (start_dt, end_dt))
+        """, (start_dt, end_dt))
         for scan_date, total_scans in cursor.fetchall():
             if scan_date:
                 totals[scan_date]["qaApp"] = int(total_scans or 0)
