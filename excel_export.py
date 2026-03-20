@@ -1,7 +1,6 @@
 """Excel export utilities for multi-sheet KPI reports"""
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.writer.write_only import WriteOnlyCell
 from openpyxl.utils import get_column_letter
 from typing import List, Dict, Tuple
 from io import BytesIO
@@ -146,32 +145,25 @@ def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | N
         is_generator = not isinstance(sheet_rows, list) and hasattr(sheet_rows, '__iter__') and not isinstance(sheet_rows, (str, bytes))
 
         if write_only:
-            # In write-only mode many styling features are not supported. Use WriteOnlyCell for limited styling.
+            # In write-only mode many styling features are not supported.
+            # Append plain row value lists (supported across openpyxl versions).
             row_counter = 0
             if is_generator:
                 for batch_row in sheet_rows:
-                    row_cells = []
-                    for col_idx, cell_value in enumerate(batch_row, 1):
-                        wcell = WriteOnlyCell(ws, value=cell_value)
-                        # minimal alignment
-                        try:
-                            wcell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
-                        except Exception:
-                            pass
-                        row_cells.append(wcell)
-                    ws.append(row_cells)
+                    try:
+                        ws.append([cell_value for cell_value in batch_row])
+                    except Exception:
+                        # fallback: append rows one cell at a time
+                        for cell in batch_row:
+                            ws.append([cell])
                     row_counter += 1
             else:
                 for row_idx, row_data in enumerate(sheet_rows, start_row):
-                    row_cells = []
-                    for col_idx, cell_value in enumerate(row_data, 1):
-                        wcell = WriteOnlyCell(ws, value=cell_value)
-                        try:
-                            wcell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
-                        except Exception:
-                            pass
-                        row_cells.append(wcell)
-                    ws.append(row_cells)
+                    try:
+                        ws.append([cell_value for cell_value in row_data])
+                    except Exception:
+                        for cell in row_data:
+                            ws.append([cell])
                     row_counter += 1
         else:
             for row_idx, row_data in enumerate(sheet_rows, start_row):
