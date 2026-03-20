@@ -1,7 +1,7 @@
 # Project Status
 
 ## Summary
-Warehouse stats dashboards for TV displays and staff access. The app serves Erasure Stats and QA Stats dashboards, with role-based access for exports/admin. Frontend is static HTML/CSS/JS, backend is FastAPI with MariaDB for QA and SQLite for erasures.
+Warehouse stats dashboards for TV displays and staff access. The app provides Erasure and QA dashboards with role-based access and export capabilities. Frontend is static HTML/CSS/JS; backend is FastAPI with MariaDB (QA) and SQLite (erasures). This document summarizes current status, recent work, priorities, and suggested next steps.
 
 ## Goals
 - TV-friendly dashboards with stable layout, low CPU, and auto-refresh.
@@ -98,7 +98,7 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 - /export/qa-stats (QA engineer breakdown export)
 - /export/engineer-deepdive (erasure deep dive)
 
-## Recent Changes (Feb 2026)
+## Recent Changes (Feb–Mar 2026)
 - 2026-02-16: Added conservative co-location / temporal-correlation inference to device lookup: inspects up to 20 co-located devices on the same pallet and adds small, clearly-labeled inferred evidence (low confidence, capped influence) to improve hypotheses when direct evidence is sparse. (`device_lookup.py`)
  - 2026-02-17: Device lookup improvements — canonicalized Blancco handling and hypothesis updates.
     - Suppress duplicate MariaDB `ITAD_asset_info_blancco` rows when a local server-message erasure (`local_erasures`) exists; merge MariaDB copies into the local provenance so the timeline shows a single authoritative Blancco row (engineer initials, job_id, timestamp).
@@ -115,6 +115,12 @@ Warehouse stats dashboards for TV displays and staff access. The app serves Eras
 - QA dashboard: trend panels, flip panels, metrics rotation, medals expanded to 6.
 - QA counts deduplicated via DISTINCT sales_order in audit_master queries.
 - Managers excluded from daily record calculations.
+
+### March 2026 (recent, actionable)
+- 2026-03-09: Added `POST /hwid` endpoint and `GET /hwid` health check to capture HashID data from USB boot scripts. Logs are written to `logs/hwid_log.jsonl`. (See `main.py`.)
+- 2026-03-09: Endpoint authentication re-uses existing `WEBHOOK_API_KEY` behavior (checks `x-api-key` or `Authorization: Bearer ...`).
+
+These March entries reflect recent backend work that should be deployed to Render and validated with the USB boot/test script.
 
 ## Known Issues / Risks
 - QA totals combine QA App + DE + Non-DE; verify no double counting in any views.
@@ -169,6 +175,24 @@ Treat the above as mandatory guidelines — commit/rollback discipline and short
 - QA Stats UX polish (more visual summary, reduce raw data exposure on UI).
 - Verify export correctness for weekly/monthly periods.
 - Power BI API endpoints exist but need refresh/validation.
+
+## Current Status (concise)
+- **Backend:** Stable FastAPI codebase. Recent additions include HWID capture endpoints in `main.py` and several fixes in `qa_export.py` and `device_lookup.py`.
+- **Frontend:** Static dashboards (TV-friendly) are up-to-date; manager device lookup UI has been polished and deployed.
+- **Data:** MariaDB provides QA data; SQLite stores erasures. Power BI endpoints exist but require refresh and type checks.
+- **Deployments:** Ready for redeploy after latest commits; Render needs to be redeployed to pick up `POST /hwid`.
+
+## Next Actions / Recommendations
+- **Deploy & Test:** Redeploy to Render, run the PowerShell tester against `/hwid` and confirm `200 OK` and that `logs/hwid_log.jsonl` receives entries.
+- **Separate Key (optional):** Consider adding a dedicated `HWID_API_KEY` env var instead of re-using `WEBHOOK_API_KEY` to isolate access.
+- **Rotation & Retention:** Add log rotation / retention for `logs/hwid_log.jsonl` (daily rotate or push to centralized logs like Papertrail/LogDNA).
+- **Validation:** Add basic schema validation for the HWID payload (optional) to prevent malformed entries.
+- **Monitoring:** Add an alert/heartbeat for the `GET /hwid` health check or a periodic task that verifies log writes.
+
+## Actionable Backlog (short)
+- **High:** Verify Power BI auth and refresh; ensure `POWERBI_API_KEY` is configured in Render.
+- **Medium:** Add `HWID_API_KEY` and rotate keys; add payload schema validation and unit tests for `main.py` hooks.
+- **Low:** Export improvements for additional sheets (device history flattening, BI-friendly types), and UI polish as requested by stakeholders.
 
 ## Agent Onboarding Notes (Feb 2026)
 - **Frontend:**
@@ -308,6 +332,21 @@ From ITAD_asset_info: location, roller_location, last_update, stage_current, sta
  - 2026-02-12: Treat `NOPOST01` / `NOPOST02` pallet assignments as still in-process (included on Bottleneck Radar) because these items require out-of-unit wiping before QA/sortation. Updated queries to treat `pallet_id LIKE 'NOPOST%'` as unpalleted.
  - 2026-02-12: Found IA personnel evidence: `zhilner.deguilmo@greensafeit.com` appears in `ITAD_asset_info.de_completed_by` and `audit_master.user_id`, with many rows referencing `IA-ROLLER1` and stock allocations — likely IA operator using the booking tool. `Leah.Haymes` and `Nathan.Hawkes` returned no matches in the quick search; I can run targeted queries if you want.
 - 2026-02-11: Added Device Search UI to admin panel - search any stock ID to see timeline across 7 data sources (ITAD_asset_info, Stockbypallet, ITAD_pallet, ITAD_QA_App, audit_master, ITAD_asset_info_blancco, local_erasures). Color-coded by stage type.
+
+## How to verify / test key items
+- HWID endpoint (quick):
+   - `GET /hwid` — should return a small JSON status confirming endpoint is live.
+   - `POST /hwid` with header `x-api-key: <WEBHOOK_API_KEY>` and a JSON body — should return `{"status":"ok"}` and append a JSON line to `logs/hwid_log.jsonl` on the instance.
+- PowerShell example (tester):
+   - Use the existing tester flow (example sent earlier). Ensure the URL is `https://<your-app>/hwid` (no API key in path).
+
+## Ownership / Contacts
+- **Owner:** Louis (repo maintainer)
+- **Notes:** Update this file after major changes or deploy-affecting commits.
+
+## Working Agreement
+- Keep this file updated after each significant change, endpoint addition, or operational decision.
+
 
 Naming conventions and caveats
 ----------------------------
