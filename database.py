@@ -802,27 +802,53 @@ def get_weekly_engineer_stats() -> List[Dict]:
     """Get weekly totals and consistency for engineers"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
-    # Get weekly totals and days active
+
+    # Compute current workweek (Monday -> Friday)
+    from datetime import date, timedelta
+    today = date.today()
+    # weekday(): Monday=0 .. Sunday=6
+    if today.weekday() >= 5:
+        # Saturday or Sunday: return zeroed counts to represent 'reset' state
+        # Fetch list of known engineers so UI shows rows but zeros for days/consistency
+        cursor.execute("SELECT DISTINCT initials FROM engineer_stats ORDER BY initials")
+        initials_rows = cursor.fetchall()
+        conn.close()
+        return [
+            {
+                "initials": r[0],
+                "weeklyTotal": 0,
+                "daysActive": 0,
+                "consistency": 0.0
+            }
+            for r in initials_rows
+        ]
+
+    # For Monday-Friday, compute Monday and Friday dates
+    monday = today - timedelta(days=today.weekday())
+    friday = monday + timedelta(days=4)
+    start = monday.isoformat()
+    end = friday.isoformat()
+
+    # Query counts within the workweek range
     cursor.execute("""
-        SELECT initials, 
+        SELECT initials,
                SUM(count) as weekly_total,
                COUNT(DISTINCT date) as days_active
         FROM engineer_stats
-        WHERE date >= date('now', '-7 days')
+        WHERE date BETWEEN ? AND ?
         GROUP BY initials
         ORDER BY weekly_total DESC
-    """)
-    
+    """, (start, end))
+
     rows = cursor.fetchall()
     conn.close()
-    
+
     return [
         {
             "initials": row[0],
-            "weeklyTotal": row[1],
-            "daysActive": row[2],
-            "consistency": round((row[2] / 7.0) * 100, 1)  # % of days active
+            "weeklyTotal": row[1] or 0,
+            "daysActive": row[2] or 0,
+            "consistency": round(((row[2] or 0) / 5.0) * 100, 1)  # % of Mon-Fri days active
         }
         for row in rows
     ]

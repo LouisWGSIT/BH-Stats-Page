@@ -1889,7 +1889,7 @@ function renderSVGSparkline(svgElem, data) {
           <span class="engineer-name">${displayInitials}</span>
         </td>
         <td>${eng.weeklyTotal}</td>
-        <td>${eng.daysActive}/7</td>
+        <td>${eng.daysActive}/5</td>
         <td>${eng.consistency}%</td>
       </tr>`;
     }).join('');
@@ -3663,12 +3663,12 @@ function renderSVGSparkline(svgElem, data) {
 
         // Add weekly statistics
         if (weekly?.weekTotal || weekly?.daysActive) {
-          csv.push(['WEEKLY PERFORMANCE (Past 7 Days)']);
+          csv.push(['WEEKLY PERFORMANCE (Workweek Mon–Fri)']);
           csv.push(['Metric', 'Value', 'Comparison', 'Notes']);
-          csv.push(['Week Total', weekly.weekTotal || 0, `${Math.round((weekly.weekTotal / (parseInt(target) * 7)) * 100)}% of weekly goal`, '']);
+          csv.push(['Week Total', weekly.weekTotal || 0, `${Math.round((weekly.weekTotal / (parseInt(target) * 5)) * 100)}% of weekly goal`, '']);
           csv.push(['Best Day', weekly.bestDayOfWeek?.count || 0, `(${weekly.bestDayOfWeek?.date || 'N/A'})`, weekly.bestDayOfWeek?.count >= parseInt(target) ? 'On Target' : 'Below Target']);
           csv.push(['Daily Average', weekly.weekAverage || 0, `vs ${target} target`, weekly.weekAverage >= parseInt(target) ? 'Above Target' : 'Below Target']);
-          csv.push(['Days Active', weekly.daysActive || 0, `out of 7 days`, '']);
+          csv.push(['Days Active', weekly.daysActive || 0, `out of 5 workdays`, '']);
           csv.push([]);
         }
 
