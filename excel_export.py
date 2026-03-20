@@ -1,11 +1,13 @@
 """Excel export utilities for multi-sheet KPI reports"""
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.writer.write_only import WriteOnlyCell
 from openpyxl.utils import get_column_letter
 from typing import List, Dict, Tuple
 from io import BytesIO
 import os
 import logging
+import time
 try:
     import psutil  # type: ignore
 except Exception:
@@ -30,6 +32,12 @@ def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | N
         BytesIO object containing the Excel file
     """
     logger = logging.getLogger("excel_export")
+    # Export configuration via env
+    EXPORT_WRITE_MODE = os.getenv('EXPORT_WRITE_MODE', 'normal')  # 'normal' or 'write_only'
+    try:
+        EXPORT_BATCH_SIZE = int(os.getenv('EXPORT_BATCH_SIZE', '1000'))
+    except Exception:
+        EXPORT_BATCH_SIZE = 1000
     def _get_rss():
         try:
             if psutil:
@@ -50,9 +58,14 @@ def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | N
             return None
 
     rss_before = _get_rss()
-    logger.info("create_excel_report start: sheets=%d rss_before=%s", len(sheets_data), str(rss_before))
+    logger.info("create_excel_report start: sheets=%d mode=%s batch=%d rss_before=%s", len(sheets_data), EXPORT_WRITE_MODE, EXPORT_BATCH_SIZE, str(rss_before))
 
-    wb = Workbook()
+    # Choose write mode
+    write_only = EXPORT_WRITE_MODE.lower() == 'write_only'
+    if write_only:
+        wb = Workbook(write_only=True)
+    else:
+        wb = Workbook()
     wb.remove(wb.active)  # Remove default sheet
     
     # Style definitions
@@ -89,9 +102,9 @@ def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | N
     has_logo = IMAGE_SUPPORT and os.path.exists(logo_path)
     
     if not IMAGE_SUPPORT:
-        print("Warning: PIL/Pillow not installed - images disabled")
+        logger.warning("PIL/Pillow not installed - images disabled")
     if not os.path.exists(logo_path):
-        print(f"Warning: Logo file not found at {logo_path}")
+        logger.warning("Logo file not found at %s", logo_path)
     
     # Create sheets
     first_sheet_processed = False
@@ -112,110 +125,142 @@ def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | N
         # Add logo to first sheet and Executive Summary/Summary sheets
         add_logo = (not first_sheet_processed) or ('Summary' in sheet_name or 'SUMMARY' in sheet_name)
         
-        if add_logo and has_logo:
+        if add_logo and has_logo and not write_only:
             try:
-                print(f"Adding logo to sheet: {sheet_name}")
+                logger.debug("Adding logo to sheet: %s", sheet_name)
                 img = ExcelImage(logo_path)
                 # Resize logo to fit nicely
                 img.width = 120
                 img.height = 60
                 # Place at E1 (top-right area, won't interfere with main content)
                 ws.add_image(img, 'E1')
-                print(f"Logo added successfully to {sheet_name}")
+                logger.debug("Logo added successfully to %s", sheet_name)
                 if not first_sheet_processed:
                     first_sheet_processed = True
             except Exception as e:
-                print(f"Error adding logo to {sheet_name}: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.exception("Error adding logo to %s: %s", sheet_name, e)
         
         # Write data
         start_row = 1
-        for row_idx, row_data in enumerate(sheet_rows, start_row):
-            is_date_device_row = False
-            first_cell = row_data[0] if row_data else None
-            if isinstance(first_cell, str) and (first_cell.startswith('DATE:') or first_cell.startswith('DEVICE:')):
-                is_date_device_row = True
-            is_engineer_row = isinstance(first_cell, str) and first_cell.startswith('ENGINEER:')
-            is_engineer_table_header = (
-                isinstance(first_cell, str)
-                and first_cell == "Timestamp"
-                and len(row_data) > 1
-                and str(row_data[1]) == "Stage"
-            )
-            engineer_fill = None
-            if is_engineer_row:
-                engineer_key = first_cell.split('ENGINEER:', 1)[-1].strip().lower()
-                color_index = sum(ord(ch) for ch in engineer_key) % len(engineer_fills)
-                engineer_fill = engineer_fills[color_index]
-                zebra_index = 0
+        # If sheet_rows is a generator/iterator (e.g., server-side cursor), we will consume in batches
+        is_generator = not isinstance(sheet_rows, list) and hasattr(sheet_rows, '__iter__') and not isinstance(sheet_rows, (str, bytes))
 
-            is_data_row = (
-                is_engineer_sheet
-                and not is_date_device_row
-                and not is_engineer_row
-                and not is_engineer_table_header
-                and any(cell is not None and str(cell).strip() for cell in row_data)
-            )
-            apply_zebra = is_data_row and (zebra_index % 2 == 1)
-            if is_data_row:
-                zebra_index += 1
+        if write_only:
+            # In write-only mode many styling features are not supported. Use WriteOnlyCell for limited styling.
+            row_counter = 0
+            if is_generator:
+                for batch_row in sheet_rows:
+                    row_cells = []
+                    for col_idx, cell_value in enumerate(batch_row, 1):
+                        wcell = WriteOnlyCell(ws, value=cell_value)
+                        # minimal alignment
+                        try:
+                            wcell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
+                        except Exception:
+                            pass
+                        row_cells.append(wcell)
+                    ws.append(row_cells)
+                    row_counter += 1
+            else:
+                for row_idx, row_data in enumerate(sheet_rows, start_row):
+                    row_cells = []
+                    for col_idx, cell_value in enumerate(row_data, 1):
+                        wcell = WriteOnlyCell(ws, value=cell_value)
+                        try:
+                            wcell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
+                        except Exception:
+                            pass
+                        row_cells.append(wcell)
+                    ws.append(row_cells)
+                    row_counter += 1
+        else:
+            for row_idx, row_data in enumerate(sheet_rows, start_row):
+                is_date_device_row = False
+                first_cell = row_data[0] if row_data else None
+                if isinstance(first_cell, str) and (first_cell.startswith('DATE:') or first_cell.startswith('DEVICE:')):
+                    is_date_device_row = True
+                is_engineer_row = isinstance(first_cell, str) and first_cell.startswith('ENGINEER:')
+                is_engineer_table_header = (
+                    isinstance(first_cell, str)
+                    and first_cell == "Timestamp"
+                    and len(row_data) > 1
+                    and str(row_data[1]) == "Stage"
+                )
+                engineer_fill = None
+                if is_engineer_row:
+                    engineer_key = first_cell.split('ENGINEER:', 1)[-1].strip().lower()
+                    color_index = sum(ord(ch) for ch in engineer_key) % len(engineer_fills)
+                    engineer_fill = engineer_fills[color_index]
+                    zebra_index = 0
 
-            for col_idx, cell_value in enumerate(row_data, 1):
-                cell = ws.cell(row=row_idx, column=col_idx, value=cell_value)
-                cell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
-                cell.border = border
-                
-                # Style first row (title row) specially if it contains report title
-                if row_idx == 1 and isinstance(cell_value, str) and 'REPORT' in cell_value.upper():
-                    cell.font = Font(bold=True, size=16, color="1F4E78")
-                    cell.alignment = Alignment(wrap_text=True, vertical='center', horizontal='left')
-                # Style headers
-                elif row_idx > 1 and any(isinstance(cell_value, str) and cell_value in ['Key Metric', 'Metric', 'Rank', 'Engineer'] for cell_value in row_data):
-                    cell.fill = header_fill
-                    cell.font = header_font
-                # Style section headers (rows with single merged cell or key column)
-                elif isinstance(cell_value, str) and cell_value.isupper() and len(str(cell_value)) > 3:
-                    # Check if it's a section header (all caps, longer than 3 chars)
-                    if col_idx == 1 and any(cell_value.startswith(x) for x in ['EXECUTIVE', 'PERFORMANCE', 'TARGET', 'TOP', 'ALL', 'BREAKDOWN', 'ENGINEER', 'HISTORICAL', 'WEEKLY', 'SPEED', 'CATEGORY', 'CONSISTENCY', 'REPORT', 'GLOSSARY', 'DATE', 'DEVICE']):
+                is_data_row = (
+                    is_engineer_sheet
+                    and not is_date_device_row
+                    and not is_engineer_row
+                    and not is_engineer_table_header
+                    and any(cell is not None and str(cell).strip() for cell in row_data)
+                )
+                apply_zebra = is_data_row and (zebra_index % 2 == 1)
+                if is_data_row:
+                    zebra_index += 1
+
+                for col_idx, cell_value in enumerate(row_data, 1):
+                    cell = ws.cell(row=row_idx, column=col_idx, value=cell_value)
+                    cell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='left')
+                    cell.border = border
+                    
+                    # Style first row (title row) specially if it contains report title
+                    if row_idx == 1 and isinstance(cell_value, str) and 'REPORT' in cell_value.upper():
+                        cell.font = Font(bold=True, size=16, color="1F4E78")
+                        cell.alignment = Alignment(wrap_text=True, vertical='center', horizontal='left')
+                    # Style headers
+                    elif row_idx > 1 and any(isinstance(cell_value, str) and cell_value in ['Key Metric', 'Metric', 'Rank', 'Engineer'] for cell_value in row_data):
+                        cell.fill = header_fill
+                        cell.font = header_font
+                    # Style section headers (rows with single merged cell or key column)
+                    elif isinstance(cell_value, str) and cell_value.isupper() and len(str(cell_value)) > 3:
+                        # Check if it's a section header (all caps, longer than 3 chars)
+                        if col_idx == 1 and any(cell_value.startswith(x) for x in ['EXECUTIVE', 'PERFORMANCE', 'TARGET', 'TOP', 'ALL', 'BREAKDOWN', 'ENGINEER', 'HISTORICAL', 'WEEKLY', 'SPEED', 'CATEGORY', 'CONSISTENCY', 'REPORT', 'GLOSSARY', 'DATE', 'DEVICE']):
+                            cell.fill = section_fill
+                            cell.font = section_font
+                    if is_date_device_row:
                         cell.fill = section_fill
                         cell.font = section_font
-                if is_date_device_row:
-                    cell.fill = section_fill
-                    cell.font = section_font
-                if is_engineer_row and engineer_fill:
-                    cell.fill = engineer_fill
-                    cell.font = Font(bold=True, size=11)
-                    cell.alignment = Alignment(wrap_text=False, vertical='center', horizontal='left')
-                if apply_zebra and not (is_engineer_row or is_date_device_row or is_engineer_table_header):
-                    cell.fill = zebra_fill
+                    if is_engineer_row and engineer_fill:
+                        cell.fill = engineer_fill
+                        cell.font = Font(bold=True, size=11)
+                        cell.alignment = Alignment(wrap_text=False, vertical='center', horizontal='left')
+                    if apply_zebra and not (is_engineer_row or is_date_device_row or is_engineer_table_header):
+                        cell.fill = zebra_fill
         
-        # Apply row grouping for collapsible sections
-        for group in sheet_groups:
-            if len(group) >= 4:
-                start, end, level, hidden = group
-                ws.row_dimensions.group(start, end, outline_level=level, hidden=hidden)
+        # Apply row grouping for collapsible sections (not supported in write-only mode)
+        if not write_only:
+            for group in sheet_groups:
+                if len(group) >= 4:
+                    start, end, level, hidden = group
+                    ws.row_dimensions.group(start, end, outline_level=level, hidden=hidden)
 
-        # Auto-adjust column widths
-        for column in ws.columns:
-            max_length = 0
-            col_letter = get_column_letter(column[0].column)
-            for cell in column:
-                try:
-                    if cell.value:
-                        max_length = max(max_length, len(str(cell.value)))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 50)  # Cap at 50
-            ws.column_dimensions[col_letter].width = adjusted_width
+        # Auto-adjust column widths (not supported in write-only mode)
+        if not write_only:
+            for column in ws.columns:
+                max_length = 0
+                col_letter = get_column_letter(column[0].column)
+                for cell in column:
+                    try:
+                        if cell.value:
+                            max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)  # Cap at 50
+                ws.column_dimensions[col_letter].width = adjusted_width
 
-        if sheet_col_widths:
-            for col_idx, width in sheet_col_widths.items():
-                try:
-                    if width:
-                        ws.column_dimensions[get_column_letter(col_idx)].width = width
-                except Exception:
-                    pass
+            if sheet_col_widths:
+                for col_idx, width in sheet_col_widths.items():
+                    try:
+                        if width:
+                            ws.column_dimensions[get_column_letter(col_idx)].width = width
+                    except Exception:
+                        pass
     
     # Save to BytesIO or to file path if requested
     if output_path:

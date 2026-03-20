@@ -24,6 +24,7 @@ from services.db_utils import (
     mariadb_transaction,
     safe_write,
     safe_read,
+    stream_read,
 )
 
 def get_week_dates(period: str) -> Tuple[date, date, str]:
@@ -1043,9 +1044,9 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
 
     events: List[Dict[str, object]] = []
     try:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
+        # Stream rows in batches to avoid large fetchall spikes
+        batch_size = int(os.getenv('EXPORT_BATCH_SIZE', '1000'))
+        query = """
             SELECT date_time, audit_type, user_id, log_description, log_description2
             FROM audit_master
             WHERE audit_type IN (
@@ -1056,39 +1057,36 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
             )
               AND DATE(date_time) >= %s AND DATE(date_time) <= %s
             ORDER BY date_time ASC
-            """,
-            (start_date.isoformat(), end_date.isoformat())
-        )
-        rows = cursor.fetchall()
-
+        """
         stock_ids: List[str] = []
-        for date_time, audit_type, user_id, log_desc, log_desc2 in rows:
-            stock_id = _extract_stock_id(log_desc) or _extract_stock_id(log_desc2)
-            serial = _extract_serial(log_desc2) or _extract_serial(log_desc)
-            if stock_id:
-                stock_ids.append(stock_id)
+        for batch in stream_read(query, (start_date.isoformat(), end_date.isoformat()), batch_size=batch_size):
+            for date_time, audit_type, user_id, log_desc, log_desc2 in batch:
+                stock_id = _extract_stock_id(log_desc) or _extract_stock_id(log_desc2)
+                serial = _extract_serial(log_desc2) or _extract_serial(log_desc)
+                if stock_id:
+                    stock_ids.append(stock_id)
 
-            stage = "QA Data Bearing" if audit_type.startswith("DEAPP_") else "QA Non-Data Bearing"
-            events.append({
-                "timestamp": date_time.isoformat() if isinstance(date_time, (datetime, date)) else date_time,
-                "stage": stage,
-                "stockid": stock_id,
-                "serial": serial,
-                "user": user_id,
-                "location": None,
-                "device_type": None,
-                "manufacturer": None,
-                "model": None,
-                "drive_size": None,
-                "drive_type": None,
-                "drive_count": None,
-                "destination": None,
-                "pallet_id": None,
-                "pallet_destination": None,
-                "pallet_location": None,
-                "pallet_status": None,
-                "source": "audit_master",
-            })
+                stage = "QA Data Bearing" if audit_type.startswith("DEAPP_") else "QA Non-Data Bearing"
+                events.append({
+                    "timestamp": date_time.isoformat() if isinstance(date_time, (datetime, date)) else date_time,
+                    "stage": stage,
+                    "stockid": stock_id,
+                    "serial": serial,
+                    "user": user_id,
+                    "location": None,
+                    "device_type": None,
+                    "manufacturer": None,
+                    "model": None,
+                    "drive_size": None,
+                    "drive_type": None,
+                    "drive_count": None,
+                    "destination": None,
+                    "pallet_id": None,
+                    "pallet_destination": None,
+                    "pallet_location": None,
+                    "pallet_status": None,
+                    "source": "audit_master",
+                })
 
         asset_map: Dict[str, Dict[str, object]] = {}
         if stock_ids:
@@ -1195,10 +1193,9 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
     conn = get_mariadb_connection()
     if conn:
         try:
-            cursor = conn.cursor()
-            # Use subquery to get only one row per stockid from blancco table
-            cursor.execute(
-                """
+            # Stream ITAD_QA_App results to avoid large fetchall
+            batch_size = int(os.getenv('EXPORT_BATCH_SIZE', '1000'))
+            query = """
                 SELECT q.added_date,
                        q.username,
                        q.scanned_location,
@@ -1214,32 +1211,31 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
                 ) b ON b.stockid = q.stockid AND b.rn = 1
                 WHERE DATE(q.added_date) >= %s AND DATE(q.added_date) <= %s
                 ORDER BY q.added_date ASC
-                """,
-                (start_date.isoformat(), end_date.isoformat())
-            )
-            for added_date, username, scanned_location, stockid, serial, manufacturer, model in cursor.fetchall():
-                sort_dt = _parse_timestamp(added_date)
-                history.append({
-                    "timestamp": added_date.isoformat() if isinstance(added_date, (datetime, date)) else added_date,
-                    "stage": "Sorting",
-                    "stockid": stockid,
-                    "serial": serial,
-                    "user": username,
-                    "location": scanned_location,
-                    "device_type": None,
-                    "manufacturer": manufacturer,
-                    "model": model,
-                    "drive_size": None,
-                    "drive_type": None,
-                    "drive_count": None,
-                    "destination": None,
-                    "pallet_id": None,
-                    "pallet_destination": None,
-                    "pallet_location": None,
-                    "pallet_status": None,
-                    "source": "ITAD_QA_App",
-                    "_sort_key": sort_dt
-                })
+            """
+            for batch in stream_read(query, (start_date.isoformat(), end_date.isoformat()), batch_size=batch_size):
+                for added_date, username, scanned_location, stockid, serial, manufacturer, model in batch:
+                    sort_dt = _parse_timestamp(added_date)
+                    history.append({
+                        "timestamp": added_date.isoformat() if isinstance(added_date, (datetime, date)) else added_date,
+                        "stage": "Sorting",
+                        "stockid": stockid,
+                        "serial": serial,
+                        "user": username,
+                        "location": scanned_location,
+                        "device_type": None,
+                        "manufacturer": manufacturer,
+                        "model": model,
+                        "drive_size": None,
+                        "drive_type": None,
+                        "drive_count": None,
+                        "destination": None,
+                        "pallet_id": None,
+                        "pallet_destination": None,
+                        "pallet_location": None,
+                        "pallet_status": None,
+                        "source": "ITAD_QA_App",
+                        "_sort_key": sort_dt
+                    })
             cursor.close()
         except Exception as e:
             print(f"[QA Export] Error fetching device sorting history: {e}")
@@ -1297,6 +1293,7 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
             unique_ids = list({s for s in stock_ids if s})
             if unique_ids:
                 placeholders = ",".join(["%s"] * len(unique_ids))
+                # Stream asset info lookup in a single fetch (safe because unique_ids is expected smaller)
                 cursor.execute(
                     f"""
                     SELECT stockid, `condition`, COALESCE(pallet_id, palletID)
