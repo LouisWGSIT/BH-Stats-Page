@@ -392,6 +392,9 @@ def get_qa_daily_totals_range(start_date: date, end_date: date) -> List[Dict[str
         from datetime import datetime, timedelta
         start_dt = datetime.combine(start_date, datetime.min.time())
         end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+        # Also prepare ISO date strings for audit_master queries
+        start_str = start_date.isoformat()
+        end_str = end_date.isoformat()
 
         cursor.execute("""
             SELECT DATE(added_date) as scan_date, COUNT(*) as total_scans
