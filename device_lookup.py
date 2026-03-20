@@ -11,6 +11,56 @@ import re
 import time
 import logging
 from concurrent.futures import ThreadPoolExecutor
+import concurrent.futures
+from threading import Lock
+
+# Simple in-memory TTL cache for device lookups to avoid repeated heavy work
+_DEVICE_LOOKUP_CACHE = {}
+_DEVICE_LOOKUP_CACHE_LOCK = Lock()
+
+
+def _cache_get(key: str):
+    try:
+        with _DEVICE_LOOKUP_CACHE_LOCK:
+            v = _DEVICE_LOOKUP_CACHE.get(key)
+            if not v:
+                return None
+            expires, value = v
+            if time.time() > expires:
+                try:
+                    del _DEVICE_LOOKUP_CACHE[key]
+                except Exception:
+                    pass
+                return None
+            return value
+    except Exception:
+        return None
+
+
+def _cache_set(key: str, value, ttl: int = 60):
+    try:
+        with _DEVICE_LOOKUP_CACHE_LOCK:
+            _DEVICE_LOOKUP_CACHE[key] = (time.time() + float(ttl), value)
+    except Exception:
+        pass
+
+
+def _run_with_timeout(fn, timeout: float):
+    """Run fn() in a thread and return (result, timed_out_bool).
+
+    Note: this does not cancel the underlying DB work, but it prevents
+    the caller from blocking indefinitely waiting for a slow query.
+    """
+    try:
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(fn)
+            try:
+                res = fut.result(timeout=float(timeout))
+                return res, False
+            except concurrent.futures.TimeoutError:
+                return None, True
+    except Exception:
+        return None, False
 
 
 def normalize_loc(name: str) -> str:
@@ -129,6 +179,35 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
         except Exception:
             # best-effort only; if canonicalization fails, continue with original input
             pass
+
+        # Check in-memory cache first to avoid repeating heavy lookups
+        try:
+            try:
+                cache_ttl = int(os.getenv('DEVICE_LOOKUP_CACHE_TTL', '45'))
+            except Exception:
+                cache_ttl = 45
+            cache_key = f"device_lookup:{stockid}:{AUDIT_LOOKBACK_DAYS}:{int(SIMPLE_MODE)}"
+            cached = _cache_get(cache_key)
+            if cached:
+                return cached[:top_n]
+        except Exception:
+            pass
+
+        # query timeout and neighbor limits
+        try:
+            QUERY_TIMEOUT = float(os.getenv('DEVICE_LOOKUP_QUERY_TIMEOUT', '5'))
+        except Exception:
+            QUERY_TIMEOUT = 5.0
+        try:
+            NEIGHBOR_LIMIT = int(os.getenv('DEVICE_LOOKUP_NEIGHBOR_LIMIT', '8'))
+        except Exception:
+            NEIGHBOR_LIMIT = 8
+        try:
+            NEIGHBOR_BATCH = int(os.getenv('DEVICE_LOOKUP_NEIGHBOR_BATCH', '5'))
+        except Exception:
+            NEIGHBOR_BATCH = 5
+        logger = logging.getLogger('device_lookup')
+        t_start_total = time.time()
 
         # If SIMPLE_HYPOTHESES is enabled, run a lightweight, timestamp-driven
         # collection of signals and return a recency-only ranked list. This
@@ -492,7 +571,90 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
                     })
                 cur.close()
                 conn.close()
+                # cache the simple-mode output for a short TTL
+                try:
+                    _cache_set(cache_key, out[:top_n], ttl=cache_ttl)
+                except Exception:
+                    pass
                 return out[:top_n]
+
+    # Lightweight short-circuit: if local confirmed location, explicit pallet,
+    # or asset_info.location exists and is recent, return a small result set
+    # immediately to avoid the heavier neighbor/co-location and audit_master scans.
+    try:
+        try:
+            RECENT_ASSET_INFO_HOURS = float(os.getenv('RECENT_ASSET_INFO_HOURS', '24'))
+        except Exception:
+            RECENT_ASSET_INFO_HOURS = 24.0
+        # confirmed_locations quick probe
+        try:
+            sqlite_conn = sqlite3.connect(db.DB_PATH)
+            sqlite_cur = sqlite_conn.cursor()
+            sqlite_cur.execute("SELECT location, user, ts FROM confirmed_locations WHERE stockid = ? ORDER BY ts DESC LIMIT 1", (stockid,))
+            conf_quick = sqlite_cur.fetchone()
+            sqlite_cur.close()
+            sqlite_conn.close()
+        except Exception:
+            conf_quick = None
+
+        pallet_quick = None
+        asset_loc_quick = None
+        asset_last_update = None
+        try:
+            cur.execute("SELECT COALESCE(pallet_id, palletID) as pallet_id, last_update, location FROM ITAD_asset_info WHERE stockid = %s OR serialnumber = %s LIMIT 1", (stockid, stockid))
+            r = cur.fetchone()
+            if r:
+                pallet_quick = r[0]
+                asset_last_update = r[1]
+                asset_loc_quick = r[2]
+        except Exception:
+            pallet_quick = None
+            asset_loc_quick = None
+
+        strong = False
+        if conf_quick:
+            strong = True
+        elif pallet_quick:
+            strong = True
+        elif asset_loc_quick and asset_last_update:
+            try:
+                dt = _parse_timestamp(asset_last_update) if _parse_timestamp else None
+                if dt:
+                    age_hours = (datetime.utcnow() - dt).total_seconds() / 3600.0
+                    if age_hours <= RECENT_ASSET_INFO_HOURS:
+                        strong = True
+            except Exception:
+                strong = True
+
+        if strong:
+            quick_out = []
+            try:
+                if conf_quick:
+                    loc, user, ts = conf_quick
+                    quick_out.append({'location': f"Confirmed: {loc}", 'score': 100, 'raw_score': 100, 'evidence': [{'source': 'confirmed_locations', 'username': user, 'last_seen': ts}], 'last_seen': (ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)), 'type': 'physical', 'explanation': 'Confirmed location from local store', 'ai_explanation': None, 'rank': 1})
+                elif pallet_quick:
+                    # fetch pallet summary
+                    try:
+                        cur.execute("SELECT pallet_location, destination FROM ITAD_pallet WHERE pallet_id = %s LIMIT 1", (pallet_quick,))
+                        prow = cur.fetchone()
+                        pallet_label = f"Pallet {pallet_quick} ({(prow[0] if prow and prow[0] else (prow[1] if prow and prow[1] else 'unknown'))})"
+                    except Exception:
+                        pallet_label = f"Pallet {pallet_quick}"
+                    quick_out.append({'location': pallet_label, 'score': 95, 'raw_score': 95, 'evidence': [{'source': 'Stockbypallet/ITAD_pallet', 'pallet_id': pallet_quick}], 'last_seen': None, 'type': 'physical', 'explanation': 'Device assigned to a pallet', 'ai_explanation': None, 'rank': 1})
+                elif asset_loc_quick:
+                    quick_out.append({'location': asset_loc_quick, 'score': 90, 'raw_score': 90, 'evidence': [{'source': 'ITAD_asset_info', 'last_update': asset_last_update}], 'last_seen': (asset_last_update.isoformat() if hasattr(asset_last_update, 'isoformat') else str(asset_last_update)), 'type': 'physical', 'explanation': 'Recent asset_info location', 'ai_explanation': None, 'rank': 1})
+            except Exception:
+                pass
+            # cache and return quickly
+            try:
+                _cache_set(cache_key, quick_out, ttl=cache_ttl)
+            except Exception:
+                pass
+            cur.close()
+            conn.close()
+            return quick_out[:top_n]
+    except Exception:
+        pass
 
         # Gather primary asset row
         cur.execute(
@@ -827,42 +989,68 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
 
             # Co-location / temporal correlation heuristic (conservative)
             try:
-                # Find other devices on the same pallet (limit to reasonable number)
-                cur.execute("SELECT stockid FROM Stockbypallet WHERE pallet_id = %s AND stockid <> %s LIMIT 20", (pid, stockid))
-                neighbors = [r[0] for r in cur.fetchall() if r and r[0]]
-                if neighbors:
-                    loc_counts = {}
-                    blancco_count = 0
-                    checked = 0
-                    for n in neighbors:
-                        if checked >= 20:
-                            break
-                        checked += 1
-                        # try last asset_info location
-                        try:
-                            cur.execute("SELECT location, roller_location FROM ITAD_asset_info WHERE stockid = %s LIMIT 1", (n,))
-                            arow = cur.fetchone()
-                            if arow:
-                                for v in (arow[0], arow[1]):
-                                    if v:
-                                        loc_counts[v] = loc_counts.get(v, 0) + 1
-                        except Exception:
-                            pass
-                        # try QA latest scanned_location
-                        try:
-                            cur.execute("SELECT scanned_location FROM ITAD_QA_App WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (n,))
-                            q = cur.fetchone()
-                            if q and q[0]:
-                                loc_counts[q[0]] = loc_counts.get(q[0], 0) + 1
-                        except Exception:
-                            pass
-                        # check blancco presence
-                        try:
-                            cur.execute("SELECT 1 FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (n,))
-                            if cur.fetchone():
-                                blancco_count += 1
-                        except Exception:
-                            pass
+                    # Find other devices on the same pallet (limited)
+                    try:
+                        cur.execute("SELECT stockid FROM Stockbypallet WHERE pallet_id = %s AND stockid <> %s LIMIT %s", (pid, stockid, NEIGHBOR_LIMIT))
+                        neighbors = [r[0] for r in cur.fetchall() if r and r[0]]
+                    except Exception:
+                        neighbors = []
+
+                    if neighbors:
+                        loc_counts = {}
+                        blancco_count = 0
+                        checked = 0
+                        # Process neighbors in small batches to avoid large result sets
+                        for i in range(0, len(neighbors), NEIGHBOR_BATCH):
+                            batch = neighbors[i:i+NEIGHBOR_BATCH]
+                            for n in batch:
+                                if checked >= NEIGHBOR_LIMIT:
+                                    break
+                                checked += 1
+                                # try last asset_info location
+                                try:
+                                    def _asset_info_lookup():
+                                        cur.execute("SELECT location, roller_location FROM ITAD_asset_info WHERE stockid = %s LIMIT 1", (n,))
+                                        return cur.fetchone()
+
+                                    arow, timed_out = _run_with_timeout(_asset_info_lookup, QUERY_TIMEOUT)
+                                    if timed_out:
+                                        logger.warning(f"asset_info lookup timeout for neighbor {n}")
+                                        continue
+                                    if arow:
+                                        for v in (arow[0], arow[1]):
+                                            if v:
+                                                loc_counts[v] = loc_counts.get(v, 0) + 1
+                                except Exception:
+                                    pass
+                                # try QA latest scanned_location
+                                try:
+                                    def _qa_lookup():
+                                        cur.execute("SELECT scanned_location FROM ITAD_QA_App WHERE stockid = %s ORDER BY added_date DESC LIMIT 1", (n,))
+                                        return cur.fetchone()
+
+                                    q, timed_out = _run_with_timeout(_qa_lookup, QUERY_TIMEOUT)
+                                    if timed_out:
+                                        logger.warning(f"QA lookup timeout for neighbor {n}")
+                                    else:
+                                        if q and q[0]:
+                                            loc_counts[q[0]] = loc_counts.get(q[0], 0) + 1
+                                except Exception:
+                                    pass
+                                # check blancco presence
+                                try:
+                                    def _blancco_check():
+                                        cur.execute("SELECT 1 FROM ITAD_asset_info_blancco WHERE stockid = %s LIMIT 1", (n,))
+                                        return cur.fetchone()
+
+                                    bres, timed_out = _run_with_timeout(_blancco_check, QUERY_TIMEOUT)
+                                    if timed_out:
+                                        logger.warning(f"blancco check timeout for neighbor {n}")
+                                    else:
+                                        if bres:
+                                            blancco_count += 1
+                                except Exception:
+                                    pass
 
                     # If a location appears in at least 2 neighbors, add a small inferred boost
                     for loc_name, cnt in loc_counts.items():

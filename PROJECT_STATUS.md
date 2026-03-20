@@ -196,6 +196,20 @@ Treat the above as mandatory guidelines — commit/rollback discipline and short
 - **Validation:** Add basic schema validation for the HWID payload (optional) to prevent malformed entries.
 - **Monitoring:** Add an alert/heartbeat for the `GET /hwid` health check or a periodic task that verifies log writes.
 
+### Recent Code-Only Device Lookup Optimizations (ready for test)
+
+The following code-only changes were implemented to make `device_lookup` fast and safe without any DB schema changes:
+
+- Added an in-memory TTL cache for device lookups (`DEVICE_LOOKUP_CACHE_TTL`, default 45s).
+- Added a fast short-circuit path that immediately returns when strong local evidence exists (confirmed_locations, Stockbypallet, or recent `ITAD_asset_info`).
+- Rewrote QA queries to use datetime range comparisons (no DATE(...) wrapping) so indexes can be effective when DB-side indices are added by ops.
+- Added a query timeout wrapper (`DEVICE_LOOKUP_QUERY_TIMEOUT`, default 5s) to bound per-neighbor DB calls and avoid blocking the web dyno.
+- Reduced neighbor scan limits and added batching (`DEVICE_LOOKUP_NEIGHBOR_LIMIT`, default 8; `DEVICE_LOOKUP_NEIGHBOR_BATCH`, default 5) to cap work done per lookup.
+- Wrapped per-neighbor DB calls with timeouts and added logging warnings for timeouts to aid diagnosis.
+- Added an `ops/device_lookup_test.py` perf script to run repeat lookups and report timings for sample stockids.
+
+These changes are code-only and safe to deploy; they aim to make typical interactive device lookups return in a few seconds or less. Please deploy and run the perf script or exercise the manager UI to validate responsiveness. If you see slow cases, capture the `stockid` and logs and I'll tune the limits or add finer-grained telemetry.
+
 ## Actionable Backlog (short)
 - **High:** Verify Power BI auth and refresh; ensure `POWERBI_API_KEY` is configured in Render.
 - **Medium:** Add `HWID_API_KEY` and rotate keys; add payload schema validation and unit tests for `main.py` hooks.
@@ -227,6 +241,72 @@ We're prioritising performance and safety for the `device_lookup` flow. The foll
    - Examples: if `asset_info` + `local_erasures` + `Stockbypallet` provide a strong location signal, skip the heavier QA history scan, or only request a small sample of QA rows.
 
 Status: Working on items 1–5 now; code changes and index recommendations will be implemented in staging, validated with `EXPLAIN`, then rolled to production during a maintenance window.
+
+#### Step 2 — Index DDL & EXPLAIN (DBA instructions)
+
+You have readonly permissions on MariaDB. Below are safe, copy-paste-ready commands and example `EXPLAIN` queries your DBA or infra team can run in staging (or a maintenance window) to create the recommended index and validate query plans. Ask them to capture the `EXPLAIN` output (JSON or text) and share it back so we can confirm the new plan reduces scanned rows and uses the index.
+
+- Recommended (simple) index to create in staging first:
+
+```sql
+-- Basic composite index
+CREATE INDEX idx_itad_qa_stockid_added_date
+   ON ITAD_QA_App (stockid, added_date);
+```
+
+- If your MariaDB build supports online DDL and you want minimal locking, consider:
+
+```sql
+ALTER TABLE ITAD_QA_App
+   ADD INDEX idx_itad_qa_stockid_added_date (stockid, added_date)
+   ALGORITHM=INPLACE, LOCK=NONE;
+```
+
+- Representative queries to `EXPLAIN` before and after the index (use a real `stockid` and substitute `{start_dt}` / `{end_dt}` as timestamps):
+
+```sql
+-- Device-specific recent rows (30 days)
+EXPLAIN FORMAT=JSON
+SELECT stockid, added_date, username, scanned_location
+FROM ITAD_QA_App
+WHERE stockid = '12345678'
+   AND added_date >= '{start_dt}'
+   AND added_date <  '{end_dt}'
+ORDER BY added_date DESC
+LIMIT 100;
+
+-- Period aggregation (30-day window)
+EXPLAIN FORMAT=JSON
+SELECT DATE(added_date) as scan_date, COUNT(*) as total_scans
+FROM ITAD_QA_App
+WHERE added_date >= '{start_dt}'
+   AND added_date <  '{end_dt}'
+GROUP BY DATE(added_date)
+ORDER BY scan_date;
+```
+
+- What to look for in `EXPLAIN`:
+   - `key` or the JSON `query_block` -> `table` -> `used_index` showing `idx_itad_qa_stockid_added_date` (or the index name you created).
+   - A significant reduction in `rows` scanned for the representative queries (compare before/after).
+   - If the plan still shows `ALL` / full table scan, we'll need to validate the predicate shapes match the index (e.g., `stockid = ... AND added_date >= ...`).
+
+- Optional: create a covering index if the queries select a small fixed set of columns frequently (beware index size):
+
+```sql
+-- Covering index example (only if sizing is acceptable)
+CREATE INDEX idx_itad_qa_stockid_addeddate_cover
+   ON ITAD_QA_App (stockid, added_date, username, scanned_location);
+```
+
+- After creating the index, capture `EXPLAIN FORMAT=JSON` outputs for both the 30-day and 120-day representative queries and paste them into a gist or a repo file (e.g., `ops/explain_30d.json`, `ops/explain_120d.json`) so we can review.
+
+- If your DB team needs a safe rollback path, they can drop the index:
+
+```sql
+DROP INDEX idx_itad_qa_stockid_added_date ON ITAD_QA_App;
+```
+
+If you'd like, I can also prepare a small README-style snippet or a one-shot SQL script that runs the `EXPLAIN` queries for a given `stockid` and time windows and writes results to files. Tell me a sample `stockid` (or confirm you want me to use placeholders) and I'll prepare that next.
 
 
 ## Agent Onboarding Notes (Feb 2026)

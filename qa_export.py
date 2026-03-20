@@ -117,15 +117,27 @@ def get_qa_data_bounds() -> Tuple[date | None, date | None]:
         return None, None
     try:
         cursor = conn.cursor()
+        # Use MIN/MAX on the raw datetime column to allow index use
         cursor.execute("""
-            SELECT MIN(DATE(added_date)) AS min_date,
-                   MAX(DATE(added_date)) AS max_date
+            SELECT MIN(added_date) AS min_date,
+                   MAX(added_date) AS max_date
             FROM ITAD_QA_App
         """)
         row = cursor.fetchone()
         cursor.close()
         conn.close()
-        return row[0], row[1]
+        if not row or (row[0] is None and row[1] is None):
+            return None, None
+        # Return date objects for compatibility with callers
+        try:
+            min_dt = row[0].date() if hasattr(row[0], 'date') else row[0]
+        except Exception:
+            min_dt = row[0]
+        try:
+            max_dt = row[1].date() if hasattr(row[1], 'date') else row[1]
+        except Exception:
+            max_dt = row[1]
+        return min_dt, max_dt
     except Exception as e:
         print(f"[QA Export] Error fetching QA data bounds: {e}")
         if conn:
@@ -140,16 +152,19 @@ def get_daily_qa_data(date_obj: date) -> Dict[str, Dict]:
     
     try:
         cursor = conn.cursor()
-        date_str = date_obj.isoformat()
-        
-        # Query QA records for this date
+        # Build a datetime range covering the requested date: [start, end)
+        from datetime import datetime, timedelta
+        start_dt = datetime.combine(date_obj, datetime.min.time())
+        end_dt = start_dt + timedelta(days=1)
+
+        # Query QA records for this date range using range comparisons so indexes can be used
         cursor.execute("""
             SELECT username, scanned_location, COUNT(*) as scans,
                    SUM(CASE WHEN photo_location IS NOT NULL THEN 1 ELSE 0 END) as with_photo
             FROM ITAD_QA_App
-            WHERE DATE(added_date) = %s
+            WHERE added_date >= %s AND added_date < %s
             GROUP BY username, scanned_location
-        """, (date_str,))
+        """, (start_dt, end_dt))
         
         rows = cursor.fetchall()
         
@@ -189,20 +204,22 @@ def get_weekly_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict
     
     try:
         cursor = conn.cursor()
-        start_str = start_date.isoformat()
-        end_str = end_date.isoformat()
-        
-        # Get aggregated stats
+        # Use datetime range comparisons to allow index seeks on added_date
+        from datetime import datetime, timedelta
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+
+        # Get aggregated stats (scan_date derived from added_date)
         cursor.execute("""
             SELECT username, 
                    COUNT(*) as total_scans,
                    SUM(CASE WHEN photo_location IS NOT NULL THEN 1 ELSE 0 END) as with_photo,
                    DATE(added_date) as scan_date
             FROM ITAD_QA_App
-            WHERE DATE(added_date) >= %s AND DATE(added_date) <= %s
+            WHERE added_date >= %s AND added_date < %s
             GROUP BY username, DATE(added_date)
             ORDER BY username, scan_date
-        """, (start_str, end_str))
+        """, (start_dt, end_dt))
         
         rows = cursor.fetchall()
         
@@ -367,16 +384,18 @@ def get_qa_daily_totals_range(start_date: date, end_date: date) -> List[Dict[str
     totals = defaultdict(lambda: {"qaApp": 0, "deQa": 0, "nonDeQa": 0})
     try:
         cursor = conn.cursor()
-        start_str = start_date.isoformat()
-        end_str = end_date.isoformat()
+        # Use datetime ranges to allow index usage on added_date
+        from datetime import datetime, timedelta
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
 
         cursor.execute("""
             SELECT DATE(added_date) as scan_date, COUNT(*) as total_scans
             FROM ITAD_QA_App
-            WHERE DATE(added_date) >= %s AND DATE(added_date) <= %s
+            WHERE added_date >= %s AND added_date < %s
             GROUP BY DATE(added_date)
             ORDER BY scan_date
-        """, (start_str, end_str))
+        "", (start_dt, end_dt))
         for scan_date, total_scans in cursor.fetchall():
             if scan_date:
                 totals[scan_date]["qaApp"] = int(total_scans or 0)
