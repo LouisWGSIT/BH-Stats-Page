@@ -803,28 +803,15 @@ def get_weekly_engineer_stats() -> List[Dict]:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Compute current workweek (Monday -> Friday)
+    # Compute current workweek (Monday -> Friday). On weekends return previous Mon–Fri
     from datetime import date, timedelta
     today = date.today()
     # weekday(): Monday=0 .. Sunday=6
-    if today.weekday() >= 5:
-        # Saturday or Sunday: return zeroed counts to represent 'reset' state
-        # Fetch list of known engineers so UI shows rows but zeros for days/consistency
-        cursor.execute("SELECT DISTINCT initials FROM engineer_stats ORDER BY initials")
-        initials_rows = cursor.fetchall()
-        conn.close()
-        return [
-            {
-                "initials": r[0],
-                "weeklyTotal": 0,
-                "daysActive": 0,
-                "consistency": 0.0
-            }
-            for r in initials_rows
-        ]
-
-    # For Monday-Friday, compute Monday and Friday dates
+    # Get this week's Monday
     monday = today - timedelta(days=today.weekday())
+    # If today is Saturday (6) or Sunday (0 treated as end of week), use previous week
+    if today.weekday() >= 5:
+        monday = monday - timedelta(days=7)
     friday = monday + timedelta(days=4)
     start = monday.isoformat()
     end = friday.isoformat()
@@ -1158,45 +1145,55 @@ def get_weekly_stats(date_str: str = None) -> Dict:
     if date_str is None:
         date_str = get_today_str()
     
-    from datetime import timedelta
+    from datetime import timedelta, date as _date
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
-    # Get past 7 days including today
-    week_start = (datetime.strptime(date_str, '%Y-%m-%d') - timedelta(days=6)).strftime('%Y-%m-%d')
-    week_end = date_str
-    
-    # Get all daily totals for the week
+
+    # Compute Monday->Friday workweek. If today is Sat/Sun, return previous Mon->Fri
+    today = datetime.strptime(date_str, '%Y-%m-%d').date()
+    monday = today - timedelta(days=today.weekday())
+    if today.weekday() >= 5:
+        monday = monday - timedelta(days=7)
+    friday = monday + timedelta(days=4)
+    week_start = monday.strftime('%Y-%m-%d')
+    week_end = friday.strftime('%Y-%m-%d')
+
+    # Get all daily totals for the workweek (Mon-Fri)
     cursor.execute("""
         SELECT date, erased
         FROM daily_stats
         WHERE date >= ? AND date <= ?
         ORDER BY date DESC
     """, (week_start, week_end))
-    
+
     daily_totals = cursor.fetchall()
-    
+
     if not daily_totals:
         conn.close()
         return {
             "weekTotal": 0,
             "bestDayOfWeek": {"date": None, "count": 0},
             "weekAverage": 0,
-            "daysActive": 0
+            "daysActive": 0,
+            "weekStart": week_start,
+            "weekEnd": week_end
         }
-    
+
     week_total = sum(total[1] for total in daily_totals)
     best_day = max(daily_totals, key=lambda x: x[1])
     days_active = len([t for t in daily_totals if t[1] > 0])
-    week_average = round(week_total / 7) if len(daily_totals) > 0 else 0
-    
+    # Average across 5 workdays
+    week_average = round(week_total / 5) if len(daily_totals) > 0 else 0
+
     conn.close()
-    
+
     return {
         "weekTotal": week_total,
         "bestDayOfWeek": {"date": best_day[0], "count": best_day[1]},
         "weekAverage": week_average,
-        "daysActive": days_active
+        "daysActive": days_active,
+        "weekStart": week_start,
+        "weekEnd": week_end
     }
 
 def get_performance_trends(target: int = 500) -> Dict:

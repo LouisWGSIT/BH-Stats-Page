@@ -3663,6 +3663,10 @@ function renderSVGSparkline(svgElem, data) {
 
         // Add weekly statistics
         if (weekly?.weekTotal || weekly?.daysActive) {
+          // If server provided explicit week range, include it in the header for clarity
+          if (weekly.weekStart && weekly.weekEnd) {
+            csv.push([`Workweek: ${weekly.weekStart} to ${weekly.weekEnd}`]);
+          }
           csv.push(['WEEKLY PERFORMANCE (Workweek Mon–Fri)']);
           csv.push(['Metric', 'Value', 'Comparison', 'Notes']);
           csv.push(['Week Total', weekly.weekTotal || 0, `${Math.round((weekly.weekTotal / (parseInt(target) * 5)) * 100)}% of weekly goal`, '']);
@@ -4073,8 +4077,7 @@ function renderSVGSparkline(svgElem, data) {
     }
   });
 
-  // Add button listener
-  document.getElementById('downloadBtn')?.addEventListener('click', downloadExcel);
+  // Download button removed from dashboard - exports available via manager.html
 
   // ==================== INITIALIZATION ====================
   // Kick off refresh loops (after all functions are defined)
