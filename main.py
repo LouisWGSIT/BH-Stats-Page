@@ -134,6 +134,14 @@ class TTLCache:
 configure_logging(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")))
 app = FastAPI(title="Warehouse Stats Service")
 
+# Export job routes (enqueue / status) - optional Redis/RQ integration
+try:
+    import export_jobs
+    app.include_router(export_jobs.router)
+except Exception:
+    # If the module or dependencies aren't available at runtime, skip router
+    pass
+
 from uuid import uuid4
 import request_context
 

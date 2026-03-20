@@ -192,7 +192,7 @@ def get_daily_qa_data(date_obj: date) -> Dict[str, Dict]:
         return dict(data)
     
     except Exception as e:
-        print(f"[QA Export] Error fetching daily QA data for {date_str}: {e}")
+        print(f"[QA Export] Error fetching daily QA data for {date_obj}: {e}")
         if conn:
             conn.close()
         return {}
@@ -209,6 +209,9 @@ def get_weekly_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict
         from datetime import datetime, timedelta
         start_dt = datetime.combine(start_date, datetime.min.time())
         end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+        # String forms for audit_master queries
+        start_str = start_date.isoformat()
+        end_str = end_date.isoformat()
 
         # Get aggregated stats (scan_date derived from added_date)
         cursor.execute("""
@@ -1037,14 +1040,17 @@ def _extract_serial(text: str | None) -> str | None:
     return _extract_from_text(text, patterns)
 
 def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[str, object]]:
-    """Return QA device events (data bearing + non-data bearing) between dates."""
+    """Return QA device events (data bearing + non-data bearing) between dates.
+
+    Streams `audit_master` rows in batches and performs small follow-up lookups
+    for serial/manufacturer info. Uses `stream_read()` to avoid large fetchall spikes.
+    """
     conn = get_mariadb_connection()
     if not conn:
         return []
 
     events: List[Dict[str, object]] = []
     try:
-        # Stream rows in batches to avoid large fetchall spikes
         batch_size = int(os.getenv('EXPORT_BATCH_SIZE', '1000'))
         query = """
             SELECT date_time, audit_type, user_id, log_description, log_description2
@@ -1058,6 +1064,7 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
               AND DATE(date_time) >= %s AND DATE(date_time) <= %s
             ORDER BY date_time ASC
         """
+
         stock_ids: List[str] = []
         for batch in stream_read(query, (start_date.isoformat(), end_date.isoformat()), batch_size=batch_size):
             for date_time, audit_type, user_id, log_desc, log_desc2 in batch:
@@ -1088,50 +1095,88 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
                     "source": "audit_master",
                 })
 
+        # Do follow-up lookups for discovered stock_ids to enrich events
         asset_map: Dict[str, Dict[str, object]] = {}
         if stock_ids:
             unique_ids = list({s for s in stock_ids if s})
             if unique_ids:
-                placeholders = ",".join(["%s"] * len(unique_ids))
-                cursor.execute(
-                    f"""
-                    SELECT stockid, serialnumber, manufacturer, description, `condition`, 
-                           COALESCE(pallet_id, palletID), location, roller_location, last_update
-                    FROM ITAD_asset_info
-                    WHERE stockid IN ({placeholders})
-                    """,
-                    unique_ids
-                )
-                for row in cursor.fetchall():
-                    stockid, serialnumber, manufacturer, description, condition, pallet_id, location, roller_location, last_update = row
-                    asset_map[str(stockid)] = {
-                        "serial": serialnumber,
-                        "manufacturer": manufacturer,
-                        "model": description,
-                        "destination": condition,
-                        "pallet_id": pallet_id,
-                        "asset_location": location,
-                        "roller_location": roller_location,
-                        "last_update": str(last_update) if last_update else None,
-                    }
-
-                missing_pallet_ids = [
-                    stockid for stockid in unique_ids
-                    if not asset_map.get(str(stockid), {}).get("pallet_id")
-                ]
-                if missing_pallet_ids:
-                    placeholders = ",".join(["%s"] * len(missing_pallet_ids))
+                cursor = conn.cursor()
+                try:
+                    placeholders = ",".join(["%s"] * len(unique_ids))
                     cursor.execute(
                         f"""
-                        SELECT stockid, pallet_id
-                        FROM Stockbypallet
+                        SELECT stockid, serialnumber, manufacturer, description, `condition`, 
+                               COALESCE(pallet_id, palletID), location, roller_location, last_update
+                        FROM ITAD_asset_info
                         WHERE stockid IN ({placeholders})
                         """,
-                        missing_pallet_ids
+                        unique_ids,
                     )
-                    for stockid, pallet_id in cursor.fetchall():
-                        if pallet_id:
-                            asset_map.setdefault(str(stockid), {})["pallet_id"] = pallet_id
+                    for row in cursor.fetchall():
+                        stockid, serialnumber, manufacturer, description, condition, pallet_id, location, roller_location, last_update = row
+                        asset_map[str(stockid)] = {
+                            "serial": serialnumber,
+                            "manufacturer": manufacturer,
+                            "model": description,
+                            "destination": condition,
+                            "pallet_id": pallet_id,
+                            "asset_location": location,
+                            "roller_location": roller_location,
+                            "last_update": str(last_update) if last_update else None,
+                        }
+
+                    # Fill any missing pallet ids from Stockbypallet
+                    missing_pallet_ids = [
+                        stockid for stockid in unique_ids
+                        if not asset_map.get(str(stockid), {}).get("pallet_id")
+                    ]
+                    if missing_pallet_ids:
+                        placeholders = ",".join(["%s"] * len(missing_pallet_ids))
+                        cursor.execute(
+                            f"""
+                            SELECT stockid, pallet_id
+                            FROM Stockbypallet
+                            WHERE stockid IN ({placeholders})
+                            """,
+                            missing_pallet_ids,
+                        )
+                        for stockid, pallet_id in cursor.fetchall():
+                            if pallet_id:
+                                asset_map.setdefault(str(stockid), {})["pallet_id"] = pallet_id
+                finally:
+                    try:
+                        cursor.close()
+                    except Exception:
+                        pass
+
+        # Enrich events with asset_map and pallet info
+        pallet_ids = [str(event.get("pallet_id")) for event in events if event.get("pallet_id")]
+        unique_pallets = list({p for p in pallet_ids if p})
+        pallet_map: Dict[str, Dict[str, object]] = {}
+        if unique_pallets:
+            # ensure cursor exists
+            cursor = conn.cursor()
+            try:
+                placeholders = ",".join(["%s"] * len(unique_pallets))
+                cursor.execute(
+                    f"""
+                    SELECT pallet_id, destination, pallet_location, pallet_status
+                    FROM ITAD_pallet
+                    WHERE pallet_id IN ({placeholders})
+                    """,
+                    unique_pallets,
+                )
+                for pallet_id, destination, pallet_location, pallet_status in cursor.fetchall():
+                    pallet_map[str(pallet_id)] = {
+                        "pallet_destination": destination,
+                        "pallet_location": pallet_location,
+                        "pallet_status": pallet_status,
+                    }
+            finally:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
 
         for event in events:
             stock_id = event.get("stockid")
@@ -1147,11 +1192,33 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
                 event["roller_location"] = asset.get("roller_location")
                 event["last_update"] = asset.get("last_update")
 
-        pallet_ids = [str(event.get("pallet_id")) for event in events if event.get("pallet_id")]
+        # Attach pallet info where present
+        for event in events:
+            pallet_id = event.get("pallet_id")
+            if pallet_id and str(pallet_id) in pallet_map:
+                pallet = pallet_map[str(pallet_id)]
+                event["pallet_destination"] = pallet.get("pallet_destination")
+                event["pallet_location"] = pallet.get("pallet_location")
+                event["pallet_status"] = pallet.get("pallet_status")
+
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return events
+    except Exception as e:
+        print(f"[QA Export] Error fetching QA device events: {e}")
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return []
         unique_pallets = list({p for p in pallet_ids if p})
         pallet_map: Dict[str, Dict[str, object]] = {}
         if unique_pallets:
             placeholders = ",".join(["%s"] * len(unique_pallets))
+            if 'cursor' not in locals():
+                cursor = conn.cursor()
             cursor.execute(
                 f"""
                 SELECT pallet_id, destination, pallet_location, pallet_status
@@ -1175,8 +1242,17 @@ def get_qa_device_events_range(start_date: date, end_date: date) -> List[Dict[st
                 event["pallet_location"] = pallet.get("pallet_location")
                 event["pallet_status"] = pallet.get("pallet_status")
 
-        cursor.close()
-        conn.close()
+        try:
+            if 'cursor' in locals():
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
         return events
     except Exception as e:
         print(f"[QA Export] Error fetching QA device events: {e}")
@@ -1236,7 +1312,7 @@ def get_device_history_range(start_date: date, end_date: date) -> List[Dict[str,
                         "source": "ITAD_QA_App",
                         "_sort_key": sort_dt
                     })
-            cursor.close()
+            # stream_read manages its own cursor; no local cursor to close here
         except Exception as e:
             print(f"[QA Export] Error fetching device sorting history: {e}")
         finally:
