@@ -119,6 +119,13 @@ Warehouse stats dashboards for TV displays and staff access. The app provides Er
 ### March 2026 (recent, actionable)
 - 2026-03-09: Added `POST /hwid` endpoint and `GET /hwid` health check to capture HashID data from USB boot scripts. Logs are written to `logs/hwid_log.jsonl`. (See `main.py`.)
 - 2026-03-09: Endpoint authentication re-uses existing `WEBHOOK_API_KEY` behavior (checks `x-api-key` or `Authorization: Bearer ...`).
+ - 2026-03-09: Added `POST /hwid` endpoint and `GET /hwid` health check to capture HashID data from USB boot scripts. Logs are written to `logs/hwid_log.jsonl`. (See `main.py`.)
+ - 2026-03-09: Endpoint authentication re-uses existing `WEBHOOK_API_KEY` behavior (checks `x-api-key` or `Authorization: Bearer ...`).
+ - 2026-03-20: Addressed gradual memory growth observed on Render:
+    - Replaced unbounded in-process caches with a small thread-safe TTL/LRU cache (`TTLCache`) for `QA_CACHE`, `_summary_cache`, and dashboard caches to avoid unbounded memory accumulation.
+    - Added optional `tracemalloc` snapshotting and an admin-only endpoint `POST /admin/memory-snapshot` to capture heap allocation top-lists for post-mortem analysis. Controlled by `ENABLE_TRACEMALLOC` and `TRACE_SNAPSHOT_THRESHOLD_MB` env vars.
+    - Changed Excel export flow to write the workbook to a temporary file and serve it via `FileResponse` (deleted after send) to avoid holding large BytesIO objects in the web dyno memory.
+    - Added RSS logging around heavy endpoints to correlate memory use with requests; `psutil` is optional (falls back to `resource` or `/proc` parsing).
 
 These March entries reflect recent backend work that should be deployed to Render and validated with the USB boot/test script.
 

@@ -5,6 +5,11 @@ from openpyxl.utils import get_column_letter
 from typing import List, Dict, Tuple
 from io import BytesIO
 import os
+import logging
+try:
+    import psutil  # type: ignore
+except Exception:
+    psutil = None
 
 # Try to import image support
 try:
@@ -14,7 +19,7 @@ except ImportError:
     IMAGE_SUPPORT = False
     print("Warning: Image support not available in openpyxl")
 
-def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
+def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | None = None) -> BytesIO | None:
     """
     Create a multi-sheet Excel workbook from sheets_data dict.
     
@@ -24,6 +29,29 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
     Returns:
         BytesIO object containing the Excel file
     """
+    logger = logging.getLogger("excel_export")
+    def _get_rss():
+        try:
+            if psutil:
+                return psutil.Process().memory_info().rss
+            try:
+                import resource
+                return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+            except Exception:
+                try:
+                    with open('/proc/self/status', 'r') as f:
+                        for line in f:
+                            if line.startswith('VmRSS:'):
+                                parts = line.split()
+                                return int(parts[1]) * 1024
+                except Exception:
+                    return None
+        except Exception:
+            return None
+
+    rss_before = _get_rss()
+    logger.info("create_excel_report start: sheets=%d rss_before=%s", len(sheets_data), str(rss_before))
+
     wb = Workbook()
     wb.remove(wb.active)  # Remove default sheet
     
@@ -189,8 +217,26 @@ def create_excel_report(sheets_data: Dict[str, List[List]]) -> BytesIO:
                 except Exception:
                     pass
     
-    # Save to BytesIO
-    output = BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return output
+    # Save to BytesIO or to file path if requested
+    if output_path:
+        try:
+            wb.save(output_path)
+            try:
+                rss_after = _get_rss()
+                logger.info("create_excel_report complete: file=%s bytes=%s rss_after=%s", output_path, os.path.getsize(output_path), str(rss_after))
+            except Exception:
+                logger.info("create_excel_report complete: file=%s", output_path)
+            return None
+        except Exception:
+            logger.exception("Failed to save Excel to %s", output_path)
+            raise
+    else:
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        try:
+            rss_after = _get_rss()
+            logger.info("create_excel_report complete: bytes=%d rss_after=%s", output.getbuffer().nbytes, str(rss_after))
+        except Exception:
+            pass
+        return output

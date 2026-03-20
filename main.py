@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from starlette.background import BackgroundTask
+import tempfile
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -20,6 +22,113 @@ import sqlite3
 import qa_export
 import logging
 from logging_config import configure_logging
+from collections import OrderedDict
+import threading
+
+# Optional psutil import (not required at runtime)
+try:
+    import psutil  # type: ignore
+except Exception:
+    psutil = None
+
+# Tracemalloc / snapshot settings
+ENABLE_TRACEMALLOC = os.getenv("ENABLE_TRACEMALLOC", "false").lower() in ("1", "true", "yes")
+TRACE_SNAPSHOT_THRESHOLD_MB = int(os.getenv("TRACE_SNAPSHOT_THRESHOLD_MB", "450"))
+TRACE_SNAPSHOT_DIR = os.getenv("TRACE_SNAPSHOT_DIR", "logs/memory")
+if ENABLE_TRACEMALLOC:
+    try:
+        import tracemalloc
+        tracemalloc.start(25)
+    except Exception:
+        tracemalloc = None
+else:
+    tracemalloc = None
+
+def take_tracemalloc_snapshot(reason: str = "threshold", meta: dict | None = None) -> str | None:
+    """Take a tracemalloc snapshot and write a human-readable top-list to TRACE_SNAPSHOT_DIR.
+
+    Returns path to written file or None on failure.
+    """
+    try:
+        if tracemalloc is None:
+            return None
+        os.makedirs(TRACE_SNAPSHOT_DIR, exist_ok=True)
+        snap = tracemalloc.take_snapshot()
+        ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        fname = f"memsnap-{ts}-{reason}.txt"
+        path = os.path.join(TRACE_SNAPSHOT_DIR, fname)
+        top_stats = snap.statistics('lineno')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(f"Tracemalloc snapshot: {ts}\nReason: {reason}\n")
+            if meta:
+                f.write(f"Meta: {json.dumps(meta)}\n")
+            try:
+                rss = None
+                if psutil:
+                    rss = psutil.Process().memory_info().rss
+                f.write(f"Process RSS: {rss}\n\n")
+            except Exception:
+                pass
+            f.write("Top 100 memory blocks (filename:lineno: size bytes)\n")
+            for i, stat in enumerate(top_stats[:100], 1):
+                try:
+                    frame = stat.traceback[0]
+                    f.write(f"{i}: {frame.filename}:{frame.lineno}: {stat.size} bytes ({stat.count} blocks)\n")
+                except Exception:
+                    f.write(f"{i}: {stat}\n")
+        return path
+    except Exception:
+        return None
+
+
+# Simple thread-safe TTL + max-size cache to avoid unbounded growth in-process
+class TTLCache:
+    def __init__(self, maxsize: int = 256, ttl: float = 60.0):
+        self.maxsize = maxsize
+        self.ttl = ttl
+        self._store = OrderedDict()  # key -> (value, ts)
+        self._lock = threading.Lock()
+
+    def get(self, key, default=None):
+        now = time()
+        with self._lock:
+            item = self._store.get(key)
+            if not item:
+                return default
+            value, ts = item
+            if now - ts > self.ttl:
+                try:
+                    del self._store[key]
+                except Exception:
+                    pass
+                return default
+            # move to end as recently used
+            try:
+                self._store.move_to_end(key)
+            except Exception:
+                pass
+            return value
+
+    def set(self, key, value):
+        now = time()
+        with self._lock:
+            if key in self._store:
+                try:
+                    del self._store[key]
+                except Exception:
+                    pass
+            self._store[key] = (value, now)
+            # Evict oldest if over capacity
+            try:
+                while len(self._store) > self.maxsize:
+                    self._store.popitem(last=False)
+            except Exception:
+                pass
+
+    def clear(self):
+        with self._lock:
+            self._store.clear()
+
 
 # Configure root logger to emit structured JSON logs (includes request_id)
 configure_logging(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")))
@@ -102,19 +211,15 @@ DEVICE_TOKENS_DB = os.getenv("DEVICE_TOKENS_DB", "").strip()
 POWERBI_API_KEY_FILE = "powerbi_api_key.txt"
 DEVICE_TOKEN_EXPIRY_DAYS = 7  # Remember device for 7 days
 
-QA_CACHE_TTL_SECONDS = 60
-QA_CACHE: Dict[str, Dict[str, object]] = {}
+QA_CACHE_TTL_SECONDS = float(os.getenv("QA_CACHE_TTL_SECONDS", "60"))
+# Bounded TTL cache for QA/dashboard responses
+QA_CACHE = TTLCache(maxsize=int(os.getenv("QA_CACHE_MAXSIZE", "256")), ttl=QA_CACHE_TTL_SECONDS)
 
 def _get_cached_response(cache_key: str):
-    entry = QA_CACHE.get(cache_key)
-    if not entry:
-        return None
-    if time() - entry.get("ts", 0) > QA_CACHE_TTL_SECONDS:
-        return None
-    return entry.get("data")
+    return QA_CACHE.get(cache_key)
 
 def _set_cached_response(cache_key: str, data: Dict[str, object]):
-    QA_CACHE[cache_key] = {"ts": time(), "data": data}
+    QA_CACHE.set(cache_key, data)
     return data
 
 def load_device_tokens():
@@ -1595,6 +1700,28 @@ async def admin_revoke_device(req: Request):
         return {"status": "ok", "revoked": True}
     return {"status": "ok", "revoked": False}
 
+
+@app.post("/admin/memory-snapshot")
+async def admin_memory_snapshot(req: Request):
+    """Trigger a tracemalloc snapshot and return path (admin only)."""
+    require_admin(req)
+    body = {}
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    reason = (body.get('reason') if isinstance(body, dict) else None) or req.query_params.get('reason') or 'manual'
+    meta = {}
+    try:
+        meta = body.get('meta') if isinstance(body, dict) else {}
+    except Exception:
+        meta = {}
+    path = take_tracemalloc_snapshot(reason, meta)
+    if path:
+        return {"status": "ok", "path": path}
+    else:
+        raise HTTPException(status_code=500, detail="tracemalloc not available or snapshot failed")
+
 def _extract_initials_from_obj(obj: Any):
     # Try common explicit keys first
     if isinstance(obj, dict):
@@ -2008,14 +2135,62 @@ async def export_excel(req: Request):
     try:
         body = await req.json()
         sheets_data = body.get("sheetsData", {})
-        
-        excel_file = excel_export.create_excel_report(sheets_data)
-        
-        return StreamingResponse(
-            iter([excel_file.getvalue()]),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename=warehouse-stats.xlsx"}
-        )
+        import logging
+        logger = logging.getLogger("export")
+        try:
+            # Log memory before heavy export
+            rss_before = None
+            try:
+                if psutil:
+                    rss_before = psutil.Process().memory_info().rss
+                else:
+                    try:
+                        import resource
+                        rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+                    except Exception:
+                        rss_before = None
+            except Exception:
+                rss_before = None
+            logger.info("Excel export start: sheets=%d rss_before=%s", len(sheets_data), str(rss_before))
+        except Exception:
+            pass
+
+        # Save workbook directly to a temp file to avoid keeping large BytesIO in memory
+        fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
+        os.close(fd)
+        try:
+            excel_export.create_excel_report(sheets_data, output_path=tmp_path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+            raise
+
+        # Log RSS after export and optionally take snapshot
+        try:
+            rss_after = None
+            if psutil:
+                rss_after = psutil.Process().memory_info().rss
+            else:
+                try:
+                    import resource
+                    rss_after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+                except Exception:
+                    rss_after = None
+            logger.info("Excel export written to %s rss_after=%s", tmp_path, str(rss_after))
+            try:
+                if rss_after and TRACE_SNAPSHOT_THRESHOLD_MB and (rss_after > TRACE_SNAPSHOT_THRESHOLD_MB * 1024 * 1024):
+                    snap_path = take_tracemalloc_snapshot("export_threshold", {"sheets": len(sheets_data), "rss_after": rss_after})
+                    if snap_path:
+                        logger.warning("Tracemalloc snapshot written to %s due to export RSS %s", snap_path, rss_after)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        filename = "warehouse-stats.xlsx"
+        return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=filename, background=BackgroundTask(lambda: os.remove(tmp_path)))
     except HTTPException:
         raise
     except Exception as e:
@@ -2150,18 +2325,21 @@ async def export_engineer_deepdive(request: Request, period: str = "this_week"):
         # Generate the analysis
         sheets_data = engineer_export.generate_engineer_deepdive_export(period)
         
-        # Create Excel file
-        excel_file = excel_export.create_excel_report(sheets_data)
-        
-        # Format filename with period
+        # Create Excel file on disk to avoid large memory use
+        fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
+        os.close(fd)
+        try:
+            excel_export.create_excel_report(sheets_data, output_path=tmp_path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+            raise
+
         period_label = period.replace("_", "-")
         filename = f"engineer-deepdive-{period_label}.xlsx"
-        
-        return StreamingResponse(
-            iter([excel_file.getvalue()]),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
+        return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=filename, background=BackgroundTask(lambda: os.remove(tmp_path)))
     except HTTPException:
         raise
     except Exception as e:
@@ -3810,23 +3988,23 @@ async def device_lookup(stock_id: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-_summary_cache = {}
-_SUMMARY_TTL = 60.0
+_SUMMARY_TTL = float(os.getenv("SUMMARY_TTL", "60"))
+# Short-lived cache for device summary
+_summary_cache = TTLCache(maxsize=int(os.getenv("SUMMARY_MAXSIZE", "512")), ttl=_SUMMARY_TTL)
 
 @app.get("/api/device-lookup/{stock_id}/summary")
 async def device_lookup_summary(stock_id: str, request: Request):
     """Return a lightweight top suggestion for a device. Cached for short TTL."""
     require_manager_or_admin(request)
-    now = time.time()
     cached = _summary_cache.get(stock_id)
-    if cached and now - cached[0] < _SUMMARY_TTL:
-        return {"stock_id": stock_id, "summary": cached[1], "cached": True}
+    if cached is not None:
+        return {"stock_id": stock_id, "summary": cached, "cached": True}
     try:
         import device_lookup as dl
         # request a single top hypothesis; device_lookup's SIMPLE_MODE will keep this light
         hyps = dl.get_device_location_hypotheses(stock_id, top_n=1)
         top = hyps[0] if hyps else None
-        _summary_cache[stock_id] = (now, top)
+        _summary_cache.set(stock_id, top)
         return {"stock_id": stock_id, "summary": top, "cached": False}
     except Exception as e:
         return {"stock_id": stock_id, "summary": None, "error": str(e)}
@@ -4005,22 +4183,22 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
     from datetime import date as _date, datetime as _dt
     import time
 
-    # Initialize a short-lived in-memory cache for identical dashboard queries
+    # Use a short-lived TTL cache for identical dashboard queries
     global _bottleneck_dashboard_cache
     try:
         _bottleneck_dashboard_cache
     except NameError:
-        _bottleneck_dashboard_cache = {}
+        _bottleneck_dashboard_cache = TTLCache(maxsize=256, ttl=60)
 
-    CACHE_TTL = 60  # seconds
+    CACHE_TTL = 60  # seconds (kept for compatibility)
 
     target_date = date if date else _date.today().isoformat()
     cache_key = f"{target_date}|{(qa_user or '').lower()}|default"
     print(f"[Bottleneck-From-Dashboard] request date={target_date} qa_user={(qa_user or '')} cache_key={cache_key}")
     cache_entry = _bottleneck_dashboard_cache.get(cache_key)
-    if cache_entry and (time.time() - cache_entry.get('ts', 0) < CACHE_TTL):
+    if cache_entry is not None:
         print(f"[Bottleneck-From-Dashboard] cache hit for {cache_key}")
-        return JSONResponse(status_code=200, content=cache_entry['value'])
+        return JSONResponse(status_code=200, content=cache_entry)
     print(f"[Bottleneck-From-Dashboard] cache miss for {cache_key}; calling dashboard endpoints")
 
     try:
@@ -4131,7 +4309,7 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
 
         print(f"[Bottleneck-From-Dashboard] computed awaiting_qa={awaiting_qa} awaiting_sorting={awaiting_sorting}")
         try:
-            _bottleneck_dashboard_cache[cache_key] = {"ts": time.time(), "value": result}
+            _bottleneck_dashboard_cache.set(cache_key, result)
             print(f"[Bottleneck-From-Dashboard] cached result for {cache_key}")
         except Exception:
             print("[Bottleneck-From-Dashboard] cache write failed")
@@ -4525,33 +4703,48 @@ async def export_qa_stats(
             # If only one chunk, just return it directly
             if len(chunks) == 1:
                 suffix, sheets_data = chunks[0]
-                excel_file = excel_export.create_excel_report(sheets_data)
+                # write single chunk to temp file
+                fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
+                os.close(fd)
+                try:
+                    excel_export.create_excel_report(sheets_data, output_path=tmp_path)
+                except Exception:
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
+                    raise
                 period_label = period.replace("_", "-")
                 filename = f"qa-engineer-stats-{period_label}.xlsx"
-                return StreamingResponse(
-                    iter([excel_file.getvalue()]),
-                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": f"attachment; filename={filename}"}
-                )
+                return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=filename, background=BackgroundTask(lambda: os.remove(tmp_path)))
             
             # Multiple chunks - create ZIP file
-            zip_buffer = io.BytesIO()
+            # Create a temporary zip file and add each chunk file to it (avoid building all files in memory)
             period_label = period.replace("_", "-")
-            
-            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                for suffix, sheets_data in chunks:
-                    excel_file = excel_export.create_excel_report(sheets_data)
-                    excel_filename = f"qa-engineer-stats-{period_label}{suffix}.xlsx"
-                    zip_file.writestr(excel_filename, excel_file.getvalue())
-            
-            zip_buffer.seek(0)
-            zip_filename = f"qa-engineer-stats-{period_label}-weekly.zip"
-            
-            return StreamingResponse(
-                iter([zip_buffer.getvalue()]),
-                media_type="application/zip",
-                headers={"Content-Disposition": f"attachment; filename={zip_filename}"}
-            )
+            fd_zip, tmp_zip_path = tempfile.mkstemp(suffix=".zip")
+            os.close(fd_zip)
+            try:
+                with zipfile.ZipFile(tmp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    for suffix, sheets_data in chunks:
+                        fd, tmp_xlsx = tempfile.mkstemp(suffix=".xlsx")
+                        os.close(fd)
+                        try:
+                            excel_export.create_excel_report(sheets_data, output_path=tmp_xlsx)
+                            excel_filename = f"qa-engineer-stats-{period_label}{suffix}.xlsx"
+                            zip_file.write(tmp_xlsx, arcname=excel_filename)
+                        finally:
+                            try:
+                                os.remove(tmp_xlsx)
+                            except Exception:
+                                pass
+                zip_filename = f"qa-engineer-stats-{period_label}-weekly.zip"
+                return FileResponse(tmp_zip_path, media_type="application/zip", filename=zip_filename, background=BackgroundTask(lambda: os.remove(tmp_zip_path)))
+            except Exception:
+                try:
+                    os.remove(tmp_zip_path)
+                except Exception:
+                    pass
+                raise
         
         # Short periods - single file export
         sheets_data = qa_export.generate_qa_engineer_export(
@@ -4562,18 +4755,21 @@ async def export_qa_stats(
             end_month=end_month
         )
         
-        # Create Excel file
-        excel_file = excel_export.create_excel_report(sheets_data)
-        
-        # Format filename with period
+        # Create Excel file on disk to avoid large memory use
+        fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
+        os.close(fd)
+        try:
+            excel_export.create_excel_report(sheets_data, output_path=tmp_path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+            raise
+
         period_label = period.replace("_", "-")
         filename = f"qa-engineer-stats-{period_label}.xlsx"
-        
-        return StreamingResponse(
-            iter([excel_file.getvalue()]),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
+        return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=filename, background=BackgroundTask(lambda: os.remove(tmp_path)))
     except HTTPException:
         raise
     except Exception as e:
