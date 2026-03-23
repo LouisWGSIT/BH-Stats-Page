@@ -114,7 +114,6 @@ def get_device_location_hypotheses(stockid: str, top_n: int = 3) -> List[Dict[st
     if not conn:
         return []
 
-    try:
         # prefer autocommit/read-only to avoid accidental write locks
         try:
             conn.autocommit = True
