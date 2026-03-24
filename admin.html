@@ -377,6 +377,7 @@
         }
         .btn-confirm:hover { background: #10b981; color: white; }
     </style>
+    <script src="vendor/chart.umd.js"></script>
 </head>
 <body>
     <div class="container">
@@ -491,6 +492,26 @@
                         <div style="font-size:13px;color:#666;">Memory (RSS):</div>
                         <div id="memoryValue" style="font-weight:800;color:#0a84ff;">-</div>
                         <div id="memorySparkline" style="flex:1;min-width:180px;max-width:420px;height:36px;"></div>
+                    </div>
+                    <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+                        <label style="font-size:13px;color:#666;">Bucket:</label>
+                        <select id="memoryBucketSelect" style="max-width:120px;">
+                            <option value="5">5s</option>
+                            <option value="10" selected>10s</option>
+                            <option value="30">30s</option>
+                            <option value="60">60s</option>
+                            <option value="300">5m</option>
+                        </select>
+                        <label style="font-size:13px;color:#666;">Lookback:</label>
+                        <select id="memoryLookbackSelect" style="max-width:120px;">
+                            <option value="60">1h</option>
+                            <option value="180">3h</option>
+                            <option value="720">12h</option>
+                            <option value="1440" selected>24h</option>
+                        </select>
+                    </div>
+                    <div style="margin-top:8px;">
+                        <canvas id="memoryChartCanvas" width="900" height="200"></canvas>
                     </div>
                 </div>
                 <div id="activityContainer" class="stats" style="display:none; max-height:420px; overflow:auto;">
@@ -1013,7 +1034,7 @@
             }
         }
 
-        <!-- `downloadEngineerDeepDive` removed (admin-only). Manager side export remains in `manager.html`. -->
+        // `downloadEngineerDeepDive` removed (admin-only). Manager side export remains in manager.html.
 
         async function undoLastInitials() {
             const resultDiv = document.getElementById('undoFixResult');
@@ -1412,12 +1433,18 @@
             });
         }
 
+        let memoryChart = null;
+
         async function fetchAndRenderMemorySeries() {
             const memPanel = document.getElementById('memoryPanel');
             const memVal = document.getElementById('memoryValue');
             const spark = document.getElementById('memorySparkline');
+            const bucketSel = document.getElementById('memoryBucketSelect');
+            const lookbackSel = document.getElementById('memoryLookbackSelect');
+            const bucket = bucketSel ? parseInt(bucketSel.value || '10', 10) : 10;
+            const minutes = lookbackSel ? parseInt(lookbackSel.value || '1440', 10) : 1440;
             try {
-                const res = await fetch('/admin/activity/memory-series', { headers: getAuthHeaders(false) });
+                const res = await fetch(`/admin/activity/memory-series?minutes=${minutes}&bucket_seconds=${bucket}`, { headers: getAuthHeaders(false) });
                 if (!res.ok) throw new Error('no memory series');
                 const j = await res.json();
                 const series = (j.series || []).map(s => ({ ts: s.ts, v: s.rss }));
@@ -1429,9 +1456,60 @@
                 const last = series[series.length-1].v || 0;
                 memVal.textContent = last.toLocaleString();
                 renderInlineSparkline(spark, series.map(s => s.v));
+                // Update Chart.js chart
+                updateMemoryChart(series);
             } catch (e) {
                 memPanel.style.display = 'none';
             }
+        }
+
+        function initMemoryChart() {
+            const ctx = document.getElementById('memoryChartCanvas');
+            if (!ctx) return null;
+            if (memoryChart) return memoryChart;
+            const config = {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'RSS bytes',
+                        data: [],
+                        borderColor: '#0a84ff',
+                        backgroundColor: 'rgba(10,132,255,0.08)',
+                        tension: 0.2,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            display: true,
+                            title: { display: false }
+                        },
+                        y: {
+                            display: true,
+                            title: { display: false }
+                        }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            };
+            memoryChart = new Chart(ctx.getContext('2d'), config);
+            return memoryChart;
+        }
+
+        function updateMemoryChart(series) {
+            try {
+                const chart = initMemoryChart();
+                if (!chart) return;
+                const labels = series.map(s => s.ts);
+                const data = series.map(s => s.v);
+                chart.data.labels = labels;
+                chart.data.datasets[0].data = data;
+                chart.update();
+            } catch (e) { console.warn('updateMemoryChart failed', e); }
         }
 
         function renderInlineSparkline(container, data) {
