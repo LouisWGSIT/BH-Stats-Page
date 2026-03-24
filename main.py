@@ -24,6 +24,8 @@ import logging
 from logging_config import configure_logging
 from collections import OrderedDict
 import threading
+from collections import deque
+import queue
 
 # Optional psutil import (not required at runtime)
 try:
@@ -151,14 +153,36 @@ async def add_request_id_middleware(request: Request, call_next):
     rid = uuid4().hex
     # store in contextvar for other modules (e.g., DB logging) to read
     request_context.request_id.set(rid)
-    # include header for clients
+    start_ts = time()
     try:
         response = await call_next(request)
         response.headers['X-Request-ID'] = rid
+        return response
     finally:
         # clear contextvar to avoid leaking across requests in long-lived tasks
         request_context.request_id.set(None)
-    return response
+        # Record activity for diagnostic purposes (keep lightweight)
+        try:
+            dur = int((time() - start_ts) * 1000)
+            client_ip = get_client_ip(request) if 'get_client_ip' in globals() else (request.client.host if request.client else '0.0.0.0')
+            rss = None
+            try:
+                if psutil:
+                    rss = psutil.Process().memory_info().rss
+            except Exception:
+                rss = None
+            record_activity({
+                'ts': datetime.utcnow().isoformat(),
+                'request_id': rid,
+                'path': request.url.path,
+                'method': request.method,
+                'client_ip': client_ip,
+                'status_code': getattr(response, 'status_code', None),
+                'duration_ms': dur,
+                'rss': rss
+            })
+        except Exception:
+            pass
 
 # ============= BLANCCO API CONFIG =============
 BLANCCO_API_URL = os.getenv("BLANCCO_API_URL", "")  # Set this if Blancco has an API
@@ -229,6 +253,165 @@ def _get_cached_response(cache_key: str):
 def _set_cached_response(cache_key: str, data: Dict[str, object]):
     QA_CACHE.set(cache_key, data)
     return data
+
+
+# Activity log (in-memory ring buffer). Each entry: {ts, path, method, role, client_ip, note, rss}
+ACTIVITY_LOG = deque(maxlen=5000)
+
+def record_activity(entry: dict):
+    try:
+        # Ensure timestamp in ISO
+        entry.setdefault('ts', datetime.utcnow().isoformat())
+        ACTIVITY_LOG.append(entry)
+        # Enqueue to persistent writer if available (non-blocking)
+        try:
+            writer = getattr(app.state, 'activity_writer', None)
+            if writer:
+                writer.enqueue(entry)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+# SQLite-backed async writer to persist activity entries without blocking requests
+class ActivityWriter:
+    def __init__(self, db_path: str = 'logs/activity.sqlite', retention_days: int = 7, max_queue: int = 10000):
+        self.db_path = db_path
+        self.retention_days = retention_days
+        self.queue = queue.Queue(maxsize=max_queue)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        os.makedirs(os.path.dirname(self.db_path) or '.', exist_ok=True)
+        self._ensure_schema()
+        self._thread.start()
+
+    def _get_conn(self):
+        # allow cross-thread use
+        conn = sqlite3.connect(self.db_path, timeout=5, check_same_thread=False)
+        return conn
+
+    def _ensure_schema(self):
+        conn = self._get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS activity (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts TEXT,
+                    request_id TEXT,
+                    path TEXT,
+                    method TEXT,
+                    client_ip TEXT,
+                    role TEXT,
+                    note TEXT,
+                    duration_ms INTEGER,
+                    rss INTEGER
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS ix_activity_ts ON activity(ts)')
+            cur.execute('CREATE INDEX IF NOT EXISTS ix_activity_path ON activity(path)')
+            conn.commit()
+        finally:
+            conn.close()
+
+    def enqueue(self, entry: dict):
+        try:
+            # Non-blocking; drop if queue full to avoid backpressure
+            self.queue.put_nowait(entry)
+        except queue.Full:
+            # Silently drop
+            pass
+
+    def _run(self):
+        conn = self._get_conn()
+        cur = conn.cursor()
+        batch = []
+        try:
+            while not self._stop.is_set():
+                try:
+                    item = self.queue.get(timeout=1.0)
+                except Exception:
+                    item = None
+                if item is None:
+                    # flush any pending
+                    if batch:
+                        for row in batch:
+                            try:
+                                cur.execute('INSERT INTO activity(ts, request_id, path, method, client_ip, role, note, duration_ms, rss) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (
+                                    row.get('ts'), row.get('request_id'), row.get('path'), row.get('method'), row.get('client_ip'), row.get('role'), row.get('note'), row.get('duration_ms'), row.get('rss')
+                                ))
+                            except Exception:
+                                continue
+                        conn.commit()
+                        batch = []
+                    continue
+
+                batch.append(item)
+                # commit in chunks to reduce I/O
+                if len(batch) >= 20:
+                    for row in batch:
+                        try:
+                            cur.execute('INSERT INTO activity(ts, request_id, path, method, client_ip, role, note, duration_ms, rss) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (
+                                row.get('ts'), row.get('request_id'), row.get('path'), row.get('method'), row.get('client_ip'), row.get('role'), row.get('note'), row.get('duration_ms'), row.get('rss')
+                            ))
+                        except Exception:
+                            continue
+                    conn.commit()
+                    batch = []
+
+        finally:
+            try:
+                if batch:
+                    for row in batch:
+                        try:
+                            cur.execute('INSERT INTO activity(ts, request_id, path, method, client_ip, role, note, duration_ms, rss) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (
+                                row.get('ts'), row.get('request_id'), row.get('path'), row.get('method'), row.get('client_ip'), row.get('role'), row.get('note'), row.get('duration_ms'), row.get('rss')
+                            ))
+                        except Exception:
+                            continue
+                    conn.commit()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join(timeout=2.0)
+
+    def prune_older_than_days(self, days: int):
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+            cur.execute('DELETE FROM activity WHERE ts < ?', (cutoff,))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+
+# Initialize persistent activity writer on startup
+@app.on_event('startup')
+def _start_activity_writer():
+    try:
+        writer = ActivityWriter(db_path=os.getenv('ACTIVITY_DB_PATH', 'logs/activity.sqlite'))
+        app.state.activity_writer = writer
+    except Exception:
+        app.state.activity_writer = None
+
+
+@app.on_event('shutdown')
+def _stop_activity_writer():
+    try:
+        writer = getattr(app.state, 'activity_writer', None)
+        if writer:
+            writer.stop()
+    except Exception:
+        pass
 
 def load_device_tokens():
     """Load device tokens from persistent storage."""
@@ -335,6 +518,91 @@ def admin_db_processlist(request: Request, limit: int = 100):
             pass
         print(f"[Admin] db-processlist error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/admin/activity")
+def admin_activity(request: Request):
+    """Return recent dashboard activity for last 24 hours.
+
+    Aggregates: exports, device searches, fix-initials, memory samples, connected devices.
+    Requires admin access.
+    """
+    require_admin(request)
+    now = datetime.utcnow()
+    cutoff = now - timedelta(hours=24)
+
+    # Prefer DB-backed entries if writer is present
+    recent = []
+    try:
+        writer = getattr(app.state, 'activity_writer', None)
+        if writer:
+            conn = sqlite3.connect(writer.db_path, timeout=5, check_same_thread=False)
+            cur = conn.cursor()
+            cur.execute('SELECT ts, request_id, path, method, client_ip, duration_ms, rss FROM activity WHERE ts >= ? ORDER BY ts DESC LIMIT 500', (cutoff.isoformat(),))
+            rows = cur.fetchall()
+            for r in rows:
+                recent.append({'ts': r[0], 'request_id': r[1], 'path': r[2], 'method': r[3], 'client_ip': r[4], 'duration_ms': r[5], 'rss': r[6]})
+            conn.close()
+        else:
+            # Fallback to in-memory ring buffer
+            for e in list(ACTIVITY_LOG):
+                try:
+                    ts = datetime.fromisoformat(e.get('ts')) if isinstance(e.get('ts'), str) else None
+                except Exception:
+                    ts = None
+                if ts and ts >= cutoff:
+                    recent.append(e)
+    except Exception:
+        # on any error, fall back to ACTIVITY_LOG
+        for e in list(ACTIVITY_LOG):
+            try:
+                ts = datetime.fromisoformat(e.get('ts')) if isinstance(e.get('ts'), str) else None
+            except Exception:
+                ts = None
+            if ts and ts >= cutoff:
+                recent.append(e)
+
+    # Basic aggregates
+    exports = [x for x in recent if '/export' in (x.get('path') or '')]
+    device_searches = [x for x in recent if '/api/device-lookup' in (x.get('path') or '')]
+    fix_initials = [x for x in recent if '/admin/fix-initials' in (x.get('path') or '') or '/admin/undo-last-initials' in (x.get('path') or '')]
+
+    memory_samples = [x.get('rss') for x in recent if x.get('rss')]
+    memory_peak = max(memory_samples) if memory_samples else None
+
+    # Connected devices summary
+    tokens = load_device_tokens()
+    connected = []
+    try:
+        for token, info in tokens.items():
+            connected.append({
+                'token': token,
+                'initials': info.get('initials'),
+                'role': info.get('role'),
+                'last_seen': info.get('last_seen'),
+                'last_client_ip': info.get('last_client_ip'),
+                'user_agent': info.get('user_agent')
+            })
+    except Exception:
+        connected = []
+
+    # Build lightweight activity timeline (most recent first)
+    recent_sorted = sorted(recent, key=lambda r: r.get('ts', ''), reverse=True)[:500]
+
+    return {
+        'now': now.isoformat(),
+        'cutoff': cutoff.isoformat(),
+        'counts': {
+            'total_events': len(recent),
+            'exports': len(exports),
+            'device_searches': len(device_searches),
+            'fix_initials': len(fix_initials),
+            'unique_client_ips': len(set([x.get('client_ip') for x in recent if x.get('client_ip')]))
+        },
+        'memory_peak_rss': memory_peak,
+        'connected_devices': connected,
+        'recent': recent_sorted
+    }
 
 def save_device_tokens(tokens):
     """Save device tokens to persistent storage."""

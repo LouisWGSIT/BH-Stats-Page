@@ -451,35 +451,15 @@
             <div class="section admin-only">
                 <h2>Engineer Statistics</h2>
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-                    <button onclick="loadStats()">📊 Refresh Stats</button>
+                    <!-- Refresh Stats button removed (function removed) -->
                     <button id="syncTypeBtn" onclick="syncEngineerTypeStats()">🔁 Sync Category Trends</button>
                     <small style="color:#666;font-size:12px;">(Syncs per-device-type counts from the erasures table)</small>
                 </div>
                 <div id="bottleneckDetails" class="stats" style="display: block; margin-top: 12px;"></div>
-                <div id="statsContainer" class="stats" style="display: none; margin-top: 20px;">
-                    <h3>Engineer Breakdown</h3>
-                    <div id="statsContent"></div>
-                </div>
+                <!-- Engineer Breakdown removed -->
             </div>
 
-            <!-- Section 5: Engineer Deep Dive Export -->
-            <div class="section admin-only">
-                <h2>📊 Engineer Deep Dive Export</h2>
-                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                    Download comprehensive Excel reports analyzing each engineer's performance, device breakdown, manufacturers, models, and daily activity.
-                </p>
-                <div class="form-group">
-                    <label for="exportPeriod">Time Period:</label>
-                    <select id="exportPeriod" style="max-width: 200px;">
-                        <option value="this_week">This Week</option>
-                        <option value="last_week">Last Week</option>
-                        <option value="this_month">This Month</option>
-                        <option value="last_month">Last Month</option>
-                    </select>
-                </div>
-                <button onclick="downloadEngineerDeepDive()">📥 Download Report</button>
-                <div id="exportResult" class="result"></div>
-            </div>
+            <!-- Engineer Deep Dive Export removed -->
 
 
             <!-- Section 6: Connected Devices -->
@@ -492,6 +472,25 @@
                 <div id="devicesContainer" class="stats" style="display: none; margin-top: 20px;">
                     <h3>Active Sessions</h3>
                     <div id="devicesContent"></div>
+                </div>
+            </div>
+
+            <!-- Section 7: Dashboard Activity (last 24 hours) -->
+            <div class="section admin-only">
+                <h2>📈 Dashboard Activity (24h)</h2>
+                <p style="color: #666; margin-bottom: 8px; font-size: 14px;">
+                    Tracks exports, device searches, memory samples, and Fix Initials usage to help identify causes of memory spikes.
+                </p>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                    <button id="refreshActivityBtn" onclick="fetchAdminActivity()">🔄 Refresh Activity</button>
+                    <label style="font-size:13px;color:#666;"><input type="checkbox" id="autoPollActivity"> Auto-refresh every 30s</label>
+                </div>
+                <div id="activitySummary" style="margin-bottom:10px; display:none;"></div>
+                <div id="activityContainer" class="stats" style="display:none; max-height:420px; overflow:auto;">
+                    <table class="table" style="width:100%;">
+                        <thead><tr><th>Time (UTC)</th><th>Path</th><th>Method</th><th>Client IP</th><th>Duration ms</th><th>RSS bytes</th></tr></thead>
+                        <tbody id="activityTableBody"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -626,7 +625,6 @@
                     try { data = JSON.parse(dataText); } catch (e) { data = { detail: dataText }; }
                     if (resp.ok) {
                         showResult(resultDiv, 'success', '✅ Synced', `Synced ${data.synced_records || 0} records${data.date ? ' for ' + data.date : ''}`);
-                        loadStats();
                     } else {
                         showResult(resultDiv, 'error', '❌ Error', data.detail || 'Sync failed');
                     }
@@ -677,7 +675,6 @@
                     showResult(resultDiv, 'success', '✅ Success!', 
                         `Assigned ${data.affected_records} unassigned erasures to engineer ${data.to_initials}`);
                     document.getElementById('assignTo').value = '';
-                    loadStats();
                 } else {
                     showResult(resultDiv, 'error', '❌ Error', data.detail || 'Failed to assign records');
                 }
@@ -738,12 +735,11 @@
                 let data = {};
                 try { data = JSON.parse(dataText); } catch (e) { data = { detail: dataText }; }
 
-                if (response.ok) {
+                    if (response.ok) {
                     showResult(resultDiv, 'success', '✅ Success!', 
                         `Fixed ${data.affected_records || 0} erasures: ${fromInitials || '(blank)'} → ${data.to_initials || toInitials}`);
                     document.getElementById('fixFrom').value = '';
                     if (document.getElementById('fixTo').tagName.toLowerCase() === 'select') document.getElementById('fixTo').value = '';
-                    loadStats();
                     loadInitialsList();
                     populateFromDropdown(); // Refresh the dropdown
                 } else {
@@ -757,41 +753,7 @@
             }
         }
 
-        async function loadStats() {
-            const container = document.getElementById('statsContainer');
-            const content = document.getElementById('statsContent');
-
-            try {
-                const response = await fetch('/metrics/engineers/leaderboard?scope=all&limit=20', {
-                    headers: getAuthHeaders(false)
-                });
-
-                const data = await response.json();
-                const engineers = data.items || [];
-
-                if (engineers.length === 0) {
-                    content.innerHTML = '<p style="color: #999;">No engineer data available yet.</p>';
-                } else {
-                    let html = '<div class="stats-grid">';
-                    engineers.forEach(eng => {
-                        const initials = eng.initials || '(unassigned)';
-                        html += `
-                            <div class="stat-card">
-                                <div class="stat-value">${eng.count || 0}</div>
-                                <div class="stat-label">${initials}</div>
-                            </div>
-                        `;
-                    });
-                    html += '</div>';
-                    content.innerHTML = html;
-                }
-
-                container.style.display = 'block';
-            } catch (error) {
-                content.innerHTML = '<p style="color: #c00;">Error loading stats: ' + error.message + '</p>';
-                container.style.display = 'block';
-            }
-        }
+        <!-- `loadStats` removed (admin-only) -->
 
         function showResult(div, type, title, message) {
             div.className = 'result ' + type;
@@ -928,10 +890,12 @@
             if (!ok) return;
             applyRoleVisibility();
             if (userRole === 'admin') {
-                loadStats();
                 loadInitialsList();
                 populateFromDropdown();
                 loadConnectedDevices();
+                // Load activity and enable auto-poll checkbox wiring
+                try { fetchAdminActivity(); } catch (e) { /* ignore */ }
+                try { setupActivityAutoPoll(); } catch (e) { /* ignore */ }
             }
         });
 
@@ -1042,45 +1006,7 @@
             }
         }
 
-        async function downloadEngineerDeepDive() {
-            const period = document.getElementById('exportPeriod').value;
-            const resultDiv = document.getElementById('exportResult');
-            
-            resultDiv.innerHTML = '<p style="color: #667eea;">⏳ Generating report...</p>';
-            
-            try {
-                const response = await fetch(`/export/engineer-deepdive?period=${period}`, {
-                    headers: getAuthHeaders(false)
-                });
-                if (!response.ok) {
-                    throw new Error(`Export failed (HTTP ${response.status})`);
-                }
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `engineer-deepdive-${period.replace('_', '-')}.xlsx`;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                window.URL.revokeObjectURL(url);
-
-                const periodLabels = {
-                    'this_week': 'This Week',
-                    'last_week': 'Last Week',
-                    'this_month': 'This Month',
-                    'last_month': 'Last Month',
-                    'this_year': 'This Year',
-                    'last_year': 'Last Year'
-                };
-                resultDiv.innerHTML = `<p style="color: #10b981;">✅ Download started for ${periodLabels[period]}!</p>`;
-                setTimeout(() => {
-                    resultDiv.innerHTML = '';
-                }, 3000);
-            } catch (error) {
-                resultDiv.innerHTML = '<p style="color: #c00;">❌ Error: ' + error.message + '</p>';
-            }
-        }
+        <!-- `downloadEngineerDeepDive` removed (admin-only). Manager side export remains in `manager.html`. -->
 
         async function undoLastInitials() {
             const resultDiv = document.getElementById('undoFixResult');
@@ -1099,7 +1025,6 @@
                 } else {
                     resultDiv.innerHTML = `<p style="color: #10b981;">✅ Restored ${data.undone} records (${data.from_initials} ← ${data.to_initials})</p>`;
                 }
-                loadStats();
                 loadInitialsList();
                 populateFromDropdown();
             } catch (error) {
@@ -1422,6 +1347,60 @@
                 content.innerHTML = '<p style="color: #c00;">Error loading devices: ' + error.message + '</p>';
                 container.style.display = 'block';
             }
+        }
+
+        // -------- Dashboard Activity (admin) --------
+        let _activityAutoTimer = null;
+        async function fetchAdminActivity() {
+            const summaryEl = document.getElementById('activitySummary');
+            const container = document.getElementById('activityContainer');
+            const tbody = document.getElementById('activityTableBody');
+            const btn = document.getElementById('refreshActivityBtn');
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="loading"></span> Refreshing...';
+                const res = await fetch('/admin/activity', { headers: getAuthHeaders(false) });
+                if (!res.ok) throw new Error('Failed to fetch activity');
+                const data = await res.json();
+                summaryEl.style.display = 'block';
+                summaryEl.innerHTML = `<strong>Events (24h):</strong> ${data.counts.total_events} — <strong>Exports:</strong> ${data.counts.exports} — <strong>Device searches:</strong> ${data.counts.device_searches} — <strong>Fix initials:</strong> ${data.counts.fix_initials} — <strong>Unique IPs:</strong> ${data.counts.unique_client_ips}`;
+                // Connected devices summary
+                if (data.connected_devices && data.connected_devices.length) {
+                    summaryEl.innerHTML += `<br><strong>Connected devices:</strong> ${data.connected_devices.length}`;
+                }
+
+                // Render recent table
+                tbody.innerHTML = '';
+                (data.recent || []).forEach(ev => {
+                    const tr = document.createElement('tr');
+                    const ts = ev.ts ? ev.ts : '';
+                    tr.innerHTML = `<td style="font-size:12px;">${ts}</td><td style="font-size:12px;">${ev.path || ''}</td><td style="font-size:12px;">${ev.method || ''}</td><td style="font-size:12px;">${ev.client_ip || ''}</td><td style="font-size:12px;">${ev.duration_ms || ''}</td><td style="font-size:12px;">${ev.rss || ''}</td>`;
+                    tbody.appendChild(tr);
+                });
+                container.style.display = 'block';
+            } catch (err) {
+                summaryEl.style.display = 'block';
+                summaryEl.innerHTML = `<span style="color:#c00;">Failed to load activity: ${err.message}</span>`;
+                container.style.display = 'none';
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔄 Refresh Activity';
+            }
+        }
+
+        function setupActivityAutoPoll() {
+            const cb = document.getElementById('autoPollActivity');
+            if (!cb) return;
+            cb.addEventListener('change', () => {
+                if (cb.checked) {
+                    // immediate fetch + schedule
+                    fetchAdminActivity();
+                    _activityAutoTimer = setInterval(fetchAdminActivity, 30000);
+                } else {
+                    if (_activityAutoTimer) clearInterval(_activityAutoTimer);
+                    _activityAutoTimer = null;
+                }
+            });
         }
 
         async function revokeDevice(token) {

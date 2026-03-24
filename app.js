@@ -2649,14 +2649,57 @@ function renderSVGSparkline(svgElem, data) {
       }
     });
   }, 500);
+  // Periodic competition refresh (adaptive: respects Page Visibility and viewer role)
+  function createAdaptivePoll(fn, baseIntervalMs, opts = {}) {
+    const viewerMultiplier = opts.viewerMultiplier || 6;
+    const hiddenMultiplier = opts.hiddenMultiplier || 5;
+    let timer = null;
+    let stopped = false;
 
-  // Periodic competition refresh
-  setInterval(() => {
+    function roleIsViewer() {
+      return (sessionStorage.getItem('userRole') || 'viewer') === 'viewer';
+    }
+
+    function effectiveInterval() {
+      let iv = baseIntervalMs * (roleIsViewer() ? viewerMultiplier : 1);
+      if (document.hidden) iv = Math.max(iv, baseIntervalMs * hiddenMultiplier);
+      return iv;
+    }
+
+    async function tick() {
+      if (stopped) return;
+      try { await fn(); } catch (e) { console.warn('Adaptive poll error', e); }
+      schedule();
+    }
+
+    function schedule() {
+      clearTimeout(timer);
+      if (stopped) return;
+      timer = setTimeout(tick, effectiveInterval());
+    }
+
+    // Visibility-aware adjustments
+    document.addEventListener('visibilitychange', () => {
+      clearTimeout(timer);
+      if (!stopped) schedule();
+    });
+
+    // Start immediately
+    schedule();
+
+    return {
+      stop() { stopped = true; clearTimeout(timer); },
+      start() { if (stopped) { stopped = false; schedule(); } }
+    };
+  }
+
+  // Use adaptive poll for competitions so leaving a tab open won't hammer the server
+  createAdaptivePoll(async () => {
     refreshSpeedChallenge('am', 'speedAmList', 'speedAmStatus');
     refreshSpeedChallenge('pm', 'speedPmList', 'speedPmStatus');
     refreshCategorySpecialists();
     refreshConsistency();
-  }, cfg.refreshSeconds * 1000);
+  }, cfg.refreshSeconds * 1000, { viewerMultiplier: 6, hiddenMultiplier: 10 });
 
   // Initial competition data load
   refreshSpeedChallenge('am', 'speedAmList', 'speedAmStatus');
@@ -2664,10 +2707,10 @@ function renderSVGSparkline(svgElem, data) {
   refreshCategorySpecialists();
   refreshConsistency();
 
-  // Refresh analytics every 5 minutes
-  setInterval(() => {
-    initializeAnalytics();
-  }, 300000);
+  // Refresh analytics every 5 minutes (adaptive)
+  createAdaptivePoll(async () => {
+    await initializeAnalytics();
+  }, 300000, { viewerMultiplier: 4, hiddenMultiplier: 8 });
 
   // ==================== DASHBOARD SWITCHING ====================
   
