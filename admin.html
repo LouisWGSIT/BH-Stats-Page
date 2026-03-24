@@ -486,6 +486,13 @@
                     <label style="font-size:13px;color:#666;"><input type="checkbox" id="autoPollActivity"> Auto-refresh every 30s</label>
                 </div>
                 <div id="activitySummary" style="margin-bottom:10px; display:none;"></div>
+                <div id="memoryPanel" style="display:none;margin-bottom:10px;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div style="font-size:13px;color:#666;">Memory (RSS):</div>
+                        <div id="memoryValue" style="font-weight:800;color:#0a84ff;">-</div>
+                        <div id="memorySparkline" style="flex:1;min-width:180px;max-width:420px;height:36px;"></div>
+                    </div>
+                </div>
                 <div id="activityContainer" class="stats" style="display:none; max-height:420px; overflow:auto;">
                     <table class="table" style="width:100%;">
                         <thead><tr><th>Time (UTC)</th><th>Path</th><th>Method</th><th>Client IP</th><th>Duration ms</th><th>RSS bytes</th></tr></thead>
@@ -1378,6 +1385,8 @@
                     tbody.appendChild(tr);
                 });
                 container.style.display = 'block';
+                // fetch memory series and render
+                try { await fetchAndRenderMemorySeries(); } catch (e) { console.warn('memory series render failed', e); }
             } catch (err) {
                 summaryEl.style.display = 'block';
                 summaryEl.innerHTML = `<span style="color:#c00;">Failed to load activity: ${err.message}</span>`;
@@ -1401,6 +1410,56 @@
                     _activityAutoTimer = null;
                 }
             });
+        }
+
+        async function fetchAndRenderMemorySeries() {
+            const memPanel = document.getElementById('memoryPanel');
+            const memVal = document.getElementById('memoryValue');
+            const spark = document.getElementById('memorySparkline');
+            try {
+                const res = await fetch('/admin/activity/memory-series', { headers: getAuthHeaders(false) });
+                if (!res.ok) throw new Error('no memory series');
+                const j = await res.json();
+                const series = (j.series || []).map(s => ({ ts: s.ts, v: s.rss }));
+                if (!series.length) {
+                    memPanel.style.display = 'none';
+                    return;
+                }
+                memPanel.style.display = 'block';
+                const last = series[series.length-1].v || 0;
+                memVal.textContent = last.toLocaleString();
+                renderInlineSparkline(spark, series.map(s => s.v));
+            } catch (e) {
+                memPanel.style.display = 'none';
+            }
+        }
+
+        function renderInlineSparkline(container, data) {
+            if (!container) return;
+            container.innerHTML = '';
+            if (!data || data.length === 0) return;
+            const width = Math.min(420, Math.max(180, container.clientWidth || 300));
+            const height = 36;
+            const min = Math.min(...data);
+            const max = Math.max(...data);
+            const range = max - min || 1;
+            const step = width / (data.length - 1);
+            const svgNS = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(svgNS, 'svg');
+            svg.setAttribute('width', width);
+            svg.setAttribute('height', height);
+            const pathD = data.map((v, i) => {
+                const x = i * step;
+                const y = height - ((v - min) / range) * (height - 4) - 2;
+                return (i === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2);
+            }).join(' ');
+            const path = document.createElementNS(svgNS, 'path');
+            path.setAttribute('d', pathD);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', '#0a84ff');
+            path.setAttribute('stroke-width', '2');
+            svg.appendChild(path);
+            container.appendChild(svg);
         }
 
         async function revokeDevice(token) {

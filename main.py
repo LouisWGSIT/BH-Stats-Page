@@ -658,6 +658,66 @@ def admin_activity(request: Request):
         'recent': recent_sorted
     }
 
+
+@app.get("/admin/activity/memory-series")
+def admin_activity_memory_series(request: Request, minutes: int = 1440, bucket_seconds: int = 60):
+    """Return a downsampled time series of RSS memory samples for the last `minutes` minutes.
+
+    - `minutes`: lookback in minutes (default 1440 = 24h)
+    - `bucket_seconds`: aggregate bucket size in seconds (default 60s)
+    """
+    require_admin(request)
+    try:
+        now = datetime.utcnow()
+        cutoff = now - timedelta(minutes=minutes)
+        writer = getattr(app.state, 'activity_writer', None)
+        rows = []
+        if writer:
+            conn = sqlite3.connect(writer.db_path, timeout=5, check_same_thread=False)
+            cur = conn.cursor()
+            cur.execute('SELECT ts, rss FROM activity WHERE rss IS NOT NULL AND ts >= ? ORDER BY ts ASC', (cutoff.isoformat(),))
+            rows = cur.fetchall()
+            conn.close()
+        else:
+            # fallback to in-memory
+            for e in list(ACTIVITY_LOG):
+                try:
+                    ts = e.get('ts')
+                    rss = e.get('rss')
+                    if not ts or not rss:
+                        continue
+                    t = datetime.fromisoformat(ts)
+                    if t >= cutoff:
+                        rows.append((ts, rss))
+                except Exception:
+                    continue
+
+        # Aggregate into buckets
+        buckets = {}
+        for ts_str, rss in rows:
+            try:
+                t = datetime.fromisoformat(ts_str)
+                # bucket key as epoch seconds // bucket_seconds
+                key = int(t.timestamp()) // bucket_seconds
+                if key not in buckets:
+                    buckets[key] = {'sum': 0, 'count': 0, 'ts': t}
+                buckets[key]['sum'] += int(rss or 0)
+                buckets[key]['count'] += 1
+            except Exception:
+                continue
+
+        # Build series sorted by bucket key
+        series = []
+        for k in sorted(buckets.keys()):
+            b = buckets[k]
+            avg = int(b['sum'] / b['count']) if b['count'] else 0
+            ts = datetime.utcfromtimestamp(k * bucket_seconds).isoformat()
+            series.append({'ts': ts, 'rss': avg})
+
+        return {'series': series, 'bucket_seconds': bucket_seconds}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 def save_device_tokens(tokens):
     """Save device tokens to persistent storage."""
     # If configured, save to SQLite DB for persistence across deploys (set DEVICE_TOKENS_DB env var)
