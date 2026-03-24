@@ -377,7 +377,7 @@
         }
         .btn-confirm:hover { background: #10b981; color: white; }
     </style>
-    <script src="vendor/chart.umd.js"></script>
+    <!-- Chart.js will be lazy-loaded when the memory chart is first displayed -->
 </head>
 <body>
     <div class="container">
@@ -1435,6 +1435,18 @@
 
         let memoryChart = null;
 
+        async function ensureChartLoaded() {
+            if (window.Chart) return;
+            return new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = 'vendor/chart.js-4.5.1/package/dist/chart.umd.min.js';
+                s.async = true;
+                s.onload = () => resolve();
+                s.onerror = (e) => reject(new Error('Failed to load Chart.js'));
+                document.head.appendChild(s);
+            });
+        }
+
         async function fetchAndRenderMemorySeries() {
             const memPanel = document.getElementById('memoryPanel');
             const memVal = document.getElementById('memoryValue');
@@ -1459,12 +1471,14 @@
                 const last = series[series.length-1].v || 0;
                 memVal.textContent = last.toLocaleString();
                 renderInlineSparkline(spark, series.map(s => s.v));
-                // Update Chart.js chart
+                // Ensure Chart.js loaded and update Chart.js chart
+                try { await ensureChartLoaded(); } catch (e) { console.warn('Chart load failed', e); }
                 updateMemoryChart(series);
             } catch (e) {
                 memPanel.style.display = 'block';
                 memVal.textContent = '-';
                 renderInlineSparkline(spark, []);
+                try { await ensureChartLoaded(); } catch (ee) { /* ignore */ }
                 updateMemoryChart([]);
             }
         }

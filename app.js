@@ -3297,10 +3297,23 @@ function renderSVGSparkline(svgElem, data) {
       if (techniciansGrid) {
         techniciansGrid.innerHTML = '';
       }
-      // Load QA data when switching to QA dashboard
+      // Load QA data when switching to QA dashboard (but skip on initial restore)
       const periodValue = document.getElementById('dateSelector')?.value || 'this-week';
       const period = periodValue.replace(/-/g, '_');  // Convert "this-week" to "this_week"
-      loadQADashboard(period);
+      if (!_initialDashboardRestore) {
+        loadQADashboard(period);
+      } else {
+        // Show a lightweight placeholder so page doesn't hammer QA endpoints
+        const performersGrid = document.getElementById('qaTopPerformersGrid');
+        if (performersGrid) performersGrid.innerHTML = '<div style="grid-column: 1 / -1; padding: 24px; text-align: center; color: #999;">QA data deferred — click to load</div>';
+        // Attach click to view to trigger a manual load when user interacts
+        const qaViewEl = qaView;
+        const oneTimeLoad = () => {
+          qaViewEl.removeEventListener('click', oneTimeLoad);
+          loadQADashboard(period);
+        };
+        qaViewEl.addEventListener('click', oneTimeLoad);
+      }
     }
     
     // Store preference
@@ -3345,9 +3358,16 @@ function renderSVGSparkline(svgElem, data) {
     lockDashboard();
   }
   
-  // Restore last dashboard view
+  // Restore last dashboard view but avoid auto-fetching QA data on page load
   const savedDashboard = parseInt(localStorage.getItem('currentDashboard') || '0');
-  switchDashboard(savedDashboard);
+  // If savedDashboard is QA (1) we will restore the view but defer the initial QA data load
+  let _initialDashboardRestore = true;
+  function restoreDashboard(index) {
+    // switchDashboard will not trigger QA fetch when _initialDashboardRestore is true
+    switchDashboard(index);
+    _initialDashboardRestore = false;
+  }
+  restoreDashboard(savedDashboard);
   
   // Refresh QA data when period changes
   if (document.getElementById('dateSelector')) {
