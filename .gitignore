@@ -23,3 +23,4 @@ venv/
 .env
 *.log
 warehouse_stats.db
+device_tokens.json
