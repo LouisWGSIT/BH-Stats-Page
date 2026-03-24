@@ -487,7 +487,7 @@
                     <label style="font-size:13px;color:#666;"><input type="checkbox" id="autoPollActivity"> Auto-refresh every 30s</label>
                 </div>
                 <div id="activitySummary" style="margin-bottom:10px; display:none;"></div>
-                <div id="memoryPanel" style="display:none;margin-bottom:10px;">
+                <div id="memoryPanel" style="display:block;margin-bottom:10px;">
                     <div style="display:flex;align-items:center;gap:12px;">
                         <div style="font-size:13px;color:#666;">Memory (RSS):</div>
                         <div id="memoryValue" style="font-weight:800;color:#0a84ff;">-</div>
@@ -514,7 +514,7 @@
                         <canvas id="memoryChartCanvas" width="900" height="200"></canvas>
                     </div>
                 </div>
-                <div id="activityContainer" class="stats" style="display:none; max-height:420px; overflow:auto;">
+                <div id="activityContainer" class="stats" style="max-height:420px; overflow:auto;">
                     <table class="table" style="width:100%;">
                         <thead><tr><th>Time (UTC)</th><th>Path</th><th>Method</th><th>Client IP</th><th>Duration ms</th><th>RSS bytes</th></tr></thead>
                         <tbody id="activityTableBody"></tbody>
@@ -1448,18 +1448,24 @@
                 if (!res.ok) throw new Error('no memory series');
                 const j = await res.json();
                 const series = (j.series || []).map(s => ({ ts: s.ts, v: s.rss }));
+                // Keep the panel visible always; show placeholder if no data
+                memPanel.style.display = 'block';
                 if (!series.length) {
-                    memPanel.style.display = 'none';
+                    memVal.textContent = '-';
+                    renderInlineSparkline(spark, []);
+                    updateMemoryChart([]);
                     return;
                 }
-                memPanel.style.display = 'block';
                 const last = series[series.length-1].v || 0;
                 memVal.textContent = last.toLocaleString();
                 renderInlineSparkline(spark, series.map(s => s.v));
                 // Update Chart.js chart
                 updateMemoryChart(series);
             } catch (e) {
-                memPanel.style.display = 'none';
+                memPanel.style.display = 'block';
+                memVal.textContent = '-';
+                renderInlineSparkline(spark, []);
+                updateMemoryChart([]);
             }
         }
 
