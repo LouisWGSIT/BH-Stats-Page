@@ -163,24 +163,33 @@ async def add_request_id_middleware(request: Request, call_next):
         request_context.request_id.set(None)
         # Record activity for diagnostic purposes (keep lightweight)
         try:
-            dur = int((time() - start_ts) * 1000)
-            client_ip = get_client_ip(request) if 'get_client_ip' in globals() else (request.client.host if request.client else '0.0.0.0')
-            rss = None
+            # Only record requests that pass the should_record_request filter
+            do_record = True
             try:
-                if psutil:
-                    rss = psutil.Process().memory_info().rss
+                if not should_record_request(request):
+                    do_record = False
             except Exception:
+                do_record = True
+
+            if do_record:
+                dur = int((time() - start_ts) * 1000)
+                client_ip = get_client_ip(request) if 'get_client_ip' in globals() else (request.client.host if request.client else '0.0.0.0')
                 rss = None
-            record_activity({
-                'ts': datetime.utcnow().isoformat(),
-                'request_id': rid,
-                'path': request.url.path,
-                'method': request.method,
-                'client_ip': client_ip,
-                'status_code': getattr(response, 'status_code', None),
-                'duration_ms': dur,
-                'rss': rss
-            })
+                try:
+                    if psutil:
+                        rss = psutil.Process().memory_info().rss
+                except Exception:
+                    rss = None
+                record_activity({
+                    'ts': datetime.utcnow().isoformat(),
+                    'request_id': rid,
+                    'path': request.url.path,
+                    'method': request.method,
+                    'client_ip': client_ip,
+                    'status_code': getattr(response, 'status_code', None),
+                    'duration_ms': dur,
+                    'rss': rss
+                })
         except Exception:
             pass
 
@@ -272,6 +281,51 @@ def record_activity(entry: dict):
             pass
     except Exception:
         pass
+
+
+# Paths/prefixes to exclude from activity logging (noisy dashboard GETs)
+ACTIVITY_EXCLUDE_PREFIXES = [
+    '/analytics',
+    '/metrics',
+    '/competitions',
+    '/vendor',
+    '/assets',
+    '/styles.css',
+    '/favicon.ico',
+    '/auth/status',
+    '/auth',
+    '/health',
+    '/static'
+]
+
+def should_record_request(request: Request) -> bool:
+    """Return True if the request should be recorded in activity log.
+
+    Rules:
+    - Always record explicit exports, device-lookup, and admin actions.
+    - Record non-GET methods by default.
+    - Skip common noisy GET prefixes defined in ACTIVITY_EXCLUDE_PREFIXES.
+    """
+    try:
+        path = request.url.path or ''
+        method = request.method or 'GET'
+
+        # Always record exports and important admin/device actions
+        if '/export' in path or '/api/device-lookup' in path or path.startswith('/admin'):
+            return True
+
+        # Record non-GET requests
+        if method != 'GET':
+            return True
+
+        # Skip common noisy GETs
+        for p in ACTIVITY_EXCLUDE_PREFIXES:
+            if path.startswith(p):
+                return False
+
+        return True
+    except Exception:
+        return True
 
 
 # SQLite-backed async writer to persist activity entries without blocking requests
