@@ -81,6 +81,9 @@
   function formatQaName(rawName) { return window.formatQaName ? window.formatQaName(rawName) : (rawName || ''); }
   function getQaInitials(displayName) { return window.getQaInitials ? window.getQaInitials(displayName) : ''; }
 
+  // Safe delegate for summary refresh — implemented in `dashboard/common.js` or `dashboard/erasure/erasure.js`
+  async function refreshSummary() { return window.refreshSummary ? window.refreshSummary() : Promise.resolve(); }
+
   // Safe wrappers (call sites use these) to avoid name collisions with global implementations
   async function callRefreshSpeedChallenge(when, listId, statusId) {
     if (typeof window.refreshSpeedChallenge === 'function' && window.refreshSpeedChallenge !== callRefreshSpeedChallenge) {
