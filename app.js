@@ -137,6 +137,32 @@
     return null;
   }
 
+  // --- Safety fallbacks: prevent page from throwing if migrated bundles aren't loaded yet ---
+  if (typeof window.refreshByTypeCounts !== 'function') {
+    window.refreshByTypeCounts = async function() { console.warn('noop: refreshByTypeCounts'); return Promise.resolve(); };
+  }
+  if (typeof window.refreshTopByTypeAllScopes !== 'function') {
+    window.refreshTopByTypeAllScopes = async function() { console.warn('noop: refreshTopByTypeAllScopes'); return Promise.resolve(); };
+  }
+  if (typeof window.refreshAllTopListsWithFlip !== 'function') {
+    window.refreshAllTopListsWithFlip = async function() { console.warn('noop: refreshAllTopListsWithFlip'); return Promise.resolve(); };
+  }
+  if (typeof window.refreshCategoryRotatorCards !== 'function') {
+    window.refreshCategoryRotatorCards = async function() { console.warn('noop: refreshCategoryRotatorCards'); return Promise.resolve(); };
+  }
+  if (typeof window.setupCategoryFlipCards !== 'function') {
+    window.setupCategoryFlipCards = function() { console.warn('noop: setupCategoryFlipCards'); };
+  }
+  if (typeof window.renderTopListWithLabel !== 'function') {
+    window.renderTopListWithLabel = function(listId, engineers, label, total) {
+      try {
+        const el = document.getElementById(listId);
+        if (!el) return;
+        el.innerHTML = '<div style="padding:12px;text-align:center;color:#888">No data</div>';
+      } catch (e) { console.warn('renderTopListWithLabel fallback error', e); }
+    };
+  }
+
   function updateRace(leaderboardData) {
     const topEngineers = leaderboardData.slice(0, 5);
     const maxErasures = topEngineers.length > 0 ? topEngineers[0].erasures || 1 : 1;
