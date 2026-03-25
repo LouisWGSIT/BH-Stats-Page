@@ -2,7 +2,18 @@
 (function(){
   function loadScript(src, attrs) {
     const s = document.createElement('script');
-    s.src = src;
+    // Determine asset version: prefer explicit window.__assetVersion, else meta tag, else timestamp
+    const assetVersion = (function(){
+      try {
+        if (window.__assetVersion) return window.__assetVersion;
+        const meta = document.querySelector('meta[name="asset-version"]');
+        if (meta && meta.content) return meta.content;
+      } catch (e) {}
+      return 'v' + Math.floor(Date.now() / 1000);
+    })();
+    // Append cache-busting param unless already present
+    const hasVersion = /[?&]v=/.test(src);
+    s.src = hasVersion ? src : src + (src.indexOf('?') === -1 ? '?' : '&') + 'v=' + encodeURIComponent(assetVersion);
     if (attrs) Object.keys(attrs).forEach(k => s.setAttribute(k, attrs[k]));
     document.head.appendChild(s);
     return s;
