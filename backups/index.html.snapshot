@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GSIT Warehouse Stats</title>
+  <meta name="description" content="BH Stats dashboard — ITAD erasure and QA stats, weekly engineer performance and manager exports." />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="icon" type="image/png" href="assets/logo_gsit.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="assets/todays_highlights.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div class="brand">
+        <img src="assets/logo_gsit.png" alt="GSIT" class="logo" />
+        <h1>ITAD &amp; SWAP Services - Date Erasure and QA Stats</h1>
+      </div>
+      <div class="meta">
+        <div class="dashboard-nav">
+          <button id="prevDashboard" class="nav-arrow" title="Previous dashboard">←</button>
+          <span id="dashboardTitle" class="dashboard-title">Erasure Stats</span>
+          <button id="nextDashboard" class="nav-arrow" title="Next dashboard">→</button>
+        </div>
+        <!-- date selector removed from dashboard; exports via Manager page -->
+        <button id="loginUpgradeIcon" class="login-upgrade-icon" title="Upgrade to manager access" style="display: none;">🔐</button>
+        <a href="manager.html" class="manager-btn" title="Manager tools" style="display: none;">📊 Manager</a>
+        <a href="admin.html" class="admin-btn" title="Admin panel">⚙️ Admin</a>
+        <span id="last-updated">Last updated: --</span>
+        <span id="stale-indicator" class="stale hidden">Stale</span>
+      </div>
+    </header>
+
+... (snapshot truncated for brevity) ...

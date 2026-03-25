@@ -1,0 +1,531 @@
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from starlette.background import BackgroundTask
+import tempfile
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+import os
+from typing import Any, Dict
+from datetime import datetime, timedelta, date
+import asyncio
+import database as db
+import excel_export
+import ipaddress
+import json
+import hashlib
+import secrets
+import httpx  # For making API calls to Blancco
+from time import time
+import zipfile
+import io
+import sqlite3
+import qa_export
+import logging
+from logging_config import configure_logging
+from collections import OrderedDict
+import threading
+from collections import deque
+import queue
+
+# Optional psutil import (not required at runtime)
+try:
+    import psutil  # type: ignore
+except Exception:
+    psutil = None
+
+# Tracemalloc / snapshot settings
+ENABLE_TRACEMALLOC = os.getenv("ENABLE_TRACEMALLOC", "false").lower() in ("1", "true", "yes")
+TRACE_SNAPSHOT_THRESHOLD_MB = int(os.getenv("TRACE_SNAPSHOT_THRESHOLD_MB", "450"))
+TRACE_SNAPSHOT_DIR = os.getenv("TRACE_SNAPSHOT_DIR", "logs/memory")
+if ENABLE_TRACEMALLOC:
+    try:
+        import tracemalloc
+        tracemalloc.start(25)
+    except Exception:
+        tracemalloc = None
+else:
+    tracemalloc = None
+
+def take_tracemalloc_snapshot(reason: str = "threshold", meta: dict | None = None) -> str | None:
+    """Take a tracemalloc snapshot and write a human-readable top-list to TRACE_SNAPSHOT_DIR.
+
+    Returns path to written file or None on failure.
+    """
+    try:
+        if tracemalloc is None:
+            return None
+        os.makedirs(TRACE_SNAPSHOT_DIR, exist_ok=True)
+        snap = tracemalloc.take_snapshot()
+        ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        fname = f"memsnap-{ts}-{reason}.txt"
+        path = os.path.join(TRACE_SNAPSHOT_DIR, fname)
+        top_stats = snap.statistics('lineno')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(f"Tracemalloc snapshot: {ts}\nReason: {reason}\n")
+            if meta:
+                f.write(f"Meta: {json.dumps(meta)}\n")
+            try:
+                rss = None
+                if psutil:
+                    rss = psutil.Process().memory_info().rss
+                f.write(f"Process RSS: {rss}\n\n")
+            except Exception:
+                pass
+            f.write("Top 100 memory blocks (filename:lineno: size bytes)\n")
+            for i, stat in enumerate(top_stats[:100], 1):
+                try:
+                    frame = stat.traceback[0]
+                    f.write(f"{i}: {frame.filename}:{frame.lineno}: {stat.size} bytes ({stat.count} blocks)\n")
+                except Exception:
+                    f.write(f"{i}: {stat}\n")
+        return path
+    except Exception:
+        return None
+
+
+# Simple thread-safe TTL + max-size cache to avoid unbounded growth in-process
+class TTLCache:
+    def __init__(self, maxsize: int = 256, ttl: float = 60.0):
+        self.maxsize = maxsize
+        self.ttl = ttl
+        self._store = OrderedDict()  # key -> (value, ts)
+        self._lock = threading.Lock()
+
+    def get(self, key, default=None):
+        now = time()
+        with self._lock:
+            item = self._store.get(key)
+            if not item:
+                return default
+            value, ts = item
+            if now - ts > self.ttl:
+                try:
+                    del self._store[key]
+                except Exception:
+                    pass
+                return default
+            # move to end as recently used
+            try:
+                self._store.move_to_end(key)
+            except Exception:
+                pass
+            return value
+
+    def set(self, key, value):
+        now = time()
+        with self._lock:
+            if key in self._store:
+                try:
+                    del self._store[key]
+                except Exception:
+                    pass
+            self._store[key] = (value, now)
+            # Evict oldest if over capacity
+            try:
+                while len(self._store) > self.maxsize:
+                    self._store.popitem(last=False)
+            except Exception:
+                pass
+
+    def clear(self):
+        with self._lock:
+            self._store.clear()
+
+
+# Configure root logger to emit structured JSON logs (includes request_id)
+configure_logging(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")))
+app = FastAPI(title="Warehouse Stats Service")
+
+# Export job routes (enqueue / status) - optional Redis/RQ integration
+try:
+    import export_jobs
+    app.include_router(export_jobs.router)
+except Exception:
+    # If the module or dependencies aren't available at runtime, skip router
+    pass
+
+from uuid import uuid4
+import request_context
+
+# Middleware: add a request-id to each incoming HTTP request for log correlation
+@app.middleware("http")
+async def add_request_id_middleware(request: Request, call_next):
+    rid = uuid4().hex
+    # store in contextvar for other modules (e.g., DB logging) to read
+    request_context.request_id.set(rid)
+    start_ts = time()
+    try:
+        response = await call_next(request)
+        response.headers['X-Request-ID'] = rid
+        return response
+    finally:
+        # clear contextvar to avoid leaking across requests in long-lived tasks
+        request_context.request_id.set(None)
+        # Record activity for diagnostic purposes (keep lightweight)
+        try:
+            # Only record requests that pass the should_record_request filter
+            do_record = True
+            try:
+                if not should_record_request(request):
+                    do_record = False
+            except Exception:
+                do_record = True
+
+            if do_record:
+                dur = int((time() - start_ts) * 1000)
+                client_ip = get_client_ip(request) if 'get_client_ip' in globals() else (request.client.host if request.client else '0.0.0.0')
+                rss = None
+                try:
+                    if psutil:
+                        rss = psutil.Process().memory_info().rss
+                except Exception:
+                    rss = None
+                record_activity({
+                    'ts': datetime.utcnow().isoformat(),
+                    'request_id': rid,
+                    'path': request.url.path,
+                    'method': request.method,
+                    'client_ip': client_ip,
+                    'status_code': getattr(response, 'status_code', None),
+                    'duration_ms': dur,
+                    'rss': rss
+                })
+        except Exception:
+            pass
+
+# ============= BLANCCO API CONFIG =============
+BLANCCO_API_URL = os.getenv("BLANCCO_API_URL", "")  # Set this if Blancco has an API
+BLANCCO_API_KEY = os.getenv("BLANCCO_API_KEY", "")
+QA_CONFIRMED_SCORE = int(os.getenv("QA_CONFIRMED_SCORE", "95"))
+
+async def fetch_blancco_device_details(job_id: str):
+    """
+    Fetch device details from Blancco API using job ID.
+    Returns dict with manufacturer, model, drive info, or None if unavailable.
+    """
+    if not BLANCCO_API_URL or not job_id:
+        return None
+    
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            headers = {}
+            if BLANCCO_API_KEY:
+                headers["Authorization"] = f"Bearer {BLANCCO_API_KEY}"
+            
+            # Adjust this endpoint to match Blancco's actual API
+            response = await client.get(
+                f"{BLANCCO_API_URL}/reports/{job_id}",
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                # Extract hardware details from Blancco response
+                # Adjust field names based on actual Blancco API response
+                return {
+                    "manufacturer": data.get("hardware", {}).get("manufacturer"),
+                    "model": data.get("hardware", {}).get("model"),
+                    "drive_size": data.get("storage", {}).get("totalCapacity"),
+                    "drive_count": data.get("storage", {}).get("driveCount"),
+                    "drive_type": data.get("storage", {}).get("type")
+                }
+    except Exception as e:
+        print(f"[BLANCCO API] Failed to fetch device details for job {job_id}: {e}")
+    
+    return None
+
+# ============= SECURITY CONFIG =============
+# Local network subnet(s) that don't require auth (e.g., 192.168.x.x, 10.x.x.x)
+LOCAL_NETWORKS = [
+    ipaddress.ip_network("192.168.0.0/16"),   # 192.168.x.x
+    ipaddress.ip_network("10.0.0.0/8"),       # 10.x.x.x
+    ipaddress.ip_network("172.16.0.0/12"),    # 172.16.x.x
+]
+
+# Manager and admin passwords for external access (set via environment or use defaults)
+MANAGER_PASSWORD = os.getenv("DASHBOARD_MANAGER_PASSWORD", "Gr33n5af3!")
+ADMIN_PASSWORD = os.getenv("DASHBOARD_ADMIN_PASSWORD", "P!nkarrow")
+
+# Device token storage (persistent across redeployments)
+DEVICE_TOKENS_FILE = "device_tokens.json"
+DEVICE_TOKENS_DB = os.getenv("DEVICE_TOKENS_DB", "").strip()
+POWERBI_API_KEY_FILE = "powerbi_api_key.txt"
+DEVICE_TOKEN_EXPIRY_DAYS = 7  # Remember device for 7 days
+
+QA_CACHE_TTL_SECONDS = float(os.getenv("QA_CACHE_TTL_SECONDS", "60"))
+# Bounded TTL cache for QA/dashboard responses
+QA_CACHE = TTLCache(maxsize=int(os.getenv("QA_CACHE_MAXSIZE", "256")), ttl=QA_CACHE_TTL_SECONDS)
+
+def _get_cached_response(cache_key: str):
+    return QA_CACHE.get(cache_key)
+
+def _set_cached_response(cache_key: str, data: Dict[str, object]):
+    QA_CACHE.set(cache_key, data)
+    return data
+
+
+# Activity log (in-memory ring buffer). Each entry: {ts, path, method, role, client_ip, note, rss}
+ACTIVITY_LOG = deque(maxlen=5000)
+
+def record_activity(entry: dict):
+    try:
+        # Ensure timestamp in ISO
+        entry.setdefault('ts', datetime.utcnow().isoformat())
+        ACTIVITY_LOG.append(entry)
+        # Enqueue to persistent writer if available (non-blocking)
+        try:
+            writer = getattr(app.state, 'activity_writer', None)
+            if writer:
+                writer.enqueue(entry)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+# Paths/prefixes to exclude from activity logging (noisy dashboard GETs)
+ACTIVITY_EXCLUDE_PREFIXES = [
+    '/analytics',
+    '/metrics',
+    '/competitions',
+    '/vendor',
+    '/assets',
+    '/styles.css',
+    '/favicon.ico',
+    '/auth/status',
+    '/auth',
+    '/health',
+    '/static'
+]
+
+def should_record_request(request: Request) -> bool:
+    """Return True if the request should be recorded in activity log.
+
+    Rules:
+    - Always record explicit exports, device-lookup, and admin actions.
+    - Record non-GET methods by default.
+    - Skip common noisy GET prefixes defined in ACTIVITY_EXCLUDE_PREFIXES.
+    """
+    try:
+        path = request.url.path or ''
+        method = request.method or 'GET'
+
+        # Always record exports and important admin/device actions
+        if '/export' in path or '/api/device-lookup' in path or path.startswith('/admin'):
+            return True
+
+        # Record non-GET requests
+        if method != 'GET':
+            return True
+
+        # Skip common noisy GETs
+        for p in ACTIVITY_EXCLUDE_PREFIXES:
+            if path.startswith(p):
+                return False
+
+        return True
+    except Exception:
+        return True
+
+
+# SQLite-backed async writer to persist activity entries without blocking requests
+class ActivityWriter:
+    def __init__(self, db_path: str = 'logs/activity.sqlite', retention_days: int = 7, max_queue: int = 10000):
+        self.db_path = db_path
+        self.retention_days = retention_days
+        self.queue = queue.Queue(maxsize=max_queue)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        os.makedirs(os.path.dirname(self.db_path) or '.', exist_ok=True)
+        self._ensure_schema()
+        self._thread.start()
+
+    def _get_conn(self):
+        # allow cross-thread use
+        conn = sqlite3.connect(self.db_path, timeout=5, check_same_thread=False)
+        return conn
+
+    def _ensure_schema(self):
+        conn = self._get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS activity (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts TEXT,
+                    request_id TEXT,
+                    path TEXT,
+                    method TEXT,
+                    client_ip TEXT,
+                    role TEXT,
+                    note TEXT,
+                    duration_ms INTEGER,
+                    rss INTEGER
+                )
+            ''')
+            cur.execute('CREATE INDEX IF NOT EXISTS ix_activity_ts ON activity(ts)')
+            cur.execute('CREATE INDEX IF NOT EXISTS ix_activity_path ON activity(path)')
+            conn.commit()
+        finally:
+            conn.close()
+
+    def enqueue(self, entry: dict):
+        try:
+            # Non-blocking; drop if queue full to avoid backpressure
+            self.queue.put_nowait(entry)
+        except queue.Full:
+            # Silently drop
+            pass
+
+    def _run(self):
+        conn = self._get_conn()
+        cur = conn.cursor()
+        batch = []
+        try:
+            while not self._stop.is_set():
+                try:
+                    item = self.queue.get(timeout=1.0)
+                except Exception:
+                    item = None
+                if item is None:
+                    # flush any pending
+                    if batch:
+                        for row in batch:
+                            try:
+                                cur.execute('INSERT INTO activity(ts, request_id, path, method, client_ip, role, note, duration_ms, rss) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (
+                                    row.get('ts'), row.get('request_id'), row.get('path'), row.get('method'), row.get('client_ip'), row.get('role'), row.get('note'), row.get('duration_ms'), row.get('rss')
+                                ))
+                            except Exception:
+                                continue
+                        conn.commit()
+                        batch = []
+                    continue
+
+                batch.append(item)
+                # commit in chunks to reduce I/O
+                if len(batch) >= 20:
+                    for row in batch:
+                        try:
+                            cur.execute('INSERT INTO activity(ts, request_id, path, method, client_ip, role, note, duration_ms, rss) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (
+                                row.get('ts'), row.get('request_id'), row.get('path'), row.get('method'), row.get('client_ip'), row.get('role'), row.get('note'), row.get('duration_ms'), row.get('rss')
+                            ))
+                        except Exception:
+                            continue
+                    conn.commit()
+                    batch = []
+
+        finally:
+            try:
+                if batch:
+                    for row in batch:
+                        try:
+                            cur.execute('INSERT INTO activity(ts, request_id, path, method, client_ip, role, note, duration_ms, rss) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (
+                                row.get('ts'), row.get('request_id'), row.get('path'), row.get('method'), row.get('client_ip'), row.get('role'), row.get('note'), row.get('duration_ms'), row.get('rss')
+                            ))
+                        except Exception:
+                            continue
+                    conn.commit()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join(timeout=2.0)
+
+    def prune_older_than_days(self, days: int):
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+            cur.execute('DELETE FROM activity WHERE ts < ?', (cutoff,))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+
+# Initialize persistent activity writer on startup
+@app.on_event('startup')
+def _start_activity_writer():
+    try:
+        writer = ActivityWriter(db_path=os.getenv('ACTIVITY_DB_PATH', 'logs/activity.sqlite'))
+        app.state.activity_writer = writer
+    except Exception:
+        app.state.activity_writer = None
+
+
+@app.on_event('shutdown')
+def _stop_activity_writer():
+    try:
+        writer = getattr(app.state, 'activity_writer', None)
+        if writer:
+            writer.stop()
+    except Exception:
+        pass
+
+def load_device_tokens():
+    """Load device tokens from persistent storage."""
+    # Prefer SQLite-backed storage if configured (set DEVICE_TOKENS_DB env var)
+    if DEVICE_TOKENS_DB:
+        try:
+            result = {}
+            with db.sqlite_transaction(DEVICE_TOKENS_DB, timeout=2) as (conn, cur):
+                cur.execute("CREATE TABLE IF NOT EXISTS device_tokens (token TEXT PRIMARY KEY, data TEXT)")
+                cur.execute("SELECT data FROM device_tokens")
+                rows = cur.fetchall()
+                for (d,) in rows:
+                    try:
+                        parsed = json.loads(d)
+                        token_key = parsed.get('token') or parsed.get('device_token')
+                        if token_key:
+                            # remove embedded token key to avoid duplication
+                            parsed.pop('token', None)
+                            parsed.pop('device_token', None)
+                            result[token_key] = parsed
+                    except Exception:
+                        continue
+            return result
+        except Exception as e:
+            print(f"Error loading device tokens from DB ({DEVICE_TOKENS_DB}): {e}")
+
+    # Fallback to JSON file
+    try:
+        if os.path.exists(DEVICE_TOKENS_FILE):
+            with open(DEVICE_TOKENS_FILE, 'r') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+@app.get("/health/db")
+async def health_db():
+    """Quick read-only health check against MariaDB to fail fast if DB is unreachable."""
+    try:
+        conn = qa_export.get_mariadb_connection()
+        if not conn:
+            return JSONResponse(status_code=503, content={"status": "fail", "detail": "MariaDB connection failed"})
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            if row and row[0] == 1:
+                return JSONResponse(status_code=200, content{"status": "ok", "db": "ok"})
+            else:
+                return JSONResponse(status_code=503, content={"status": "fail", "detail": "unexpected db result"})
+        except Exception as e:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            print(f"[HealthDB] query failed: {e}")
+            return JSONResponse(status_code=503, content={"status": "fail", "detail": "query failed"})
+    except Exception as e:
+        print(f"[HealthDB] unexpected error: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "detail": "internal error"})
