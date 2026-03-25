@@ -99,3 +99,15 @@
   window.populateMonthOptions = window.populateMonthOptions || function(){};
 
 })();
+
+// Ensure Impl-suffixed aliases for migration compatibility
+(function ensureErasureImplAliases() {
+  const names = ['generateCSV','refreshTopByTypeAllScopes','refreshAllTopListsWithFlip','refreshCategoryRotatorCards','setupCategoryFlipCards','renderTopListWithLabel'];
+  try {
+    names.forEach(n => {
+      if (typeof window[n] === 'function' && typeof window[n + 'Impl'] !== 'function') {
+        window[n + 'Impl'] = window[n];
+      }
+    });
+  } catch (e) {}
+})();

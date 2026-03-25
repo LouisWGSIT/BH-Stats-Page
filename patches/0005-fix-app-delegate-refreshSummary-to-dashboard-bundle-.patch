@@ -1,0 +1,27 @@
+From f820c94c86167d4f702f47765aaa51cf47dc9886 Mon Sep 17 00:00:00 2001
+From: Louis Whitehouse <louisw@GSIT.local>
+Date: Wed, 25 Mar 2026 08:48:02 +0000
+Subject: [PATCH 5/9] fix(app): delegate refreshSummary to dashboard bundle to
+ avoid ReferenceError
+
+---
+ app.js | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/app.js b/app.js
+index a402cd6..b51c914 100644
+--- a/app.js
++++ b/app.js
+@@ -81,6 +81,9 @@
+   function formatQaName(rawName) { return window.formatQaName ? window.formatQaName(rawName) : (rawName || ''); }
+   function getQaInitials(displayName) { return window.getQaInitials ? window.getQaInitials(displayName) : ''; }
+ 
++  // Safe delegate for summary refresh — implemented in `dashboard/common.js` or `dashboard/erasure/erasure.js`
++  async function refreshSummary() { return window.refreshSummary ? window.refreshSummary() : Promise.resolve(); }
++
+   // Safe wrappers (call sites use these) to avoid name collisions with global implementations
+   async function callRefreshSpeedChallenge(when, listId, statusId) {
+     if (typeof window.refreshSpeedChallenge === 'function' && window.refreshSpeedChallenge !== callRefreshSpeedChallenge) {
+-- 
+2.52.0.windows.1
+

@@ -1,0 +1,235 @@
+From 58eb7d3cef06c8a8f1d690d2cc307653e4ea03f7 Mon Sep 17 00:00:00 2001
+From: Louis Whitehouse <louisw@GSIT.local>
+Date: Wed, 25 Mar 2026 08:12:32 +0000
+Subject: [PATCH 2/9] fix(admin): restore admin.html redirect stub, update
+ manager stub and snapshot endpoint
+
+---
+ admin.html | 213 ++++-------------------------------------------------
+ 1 file changed, 14 insertions(+), 199 deletions(-)
+
+diff --git a/admin.html b/admin.html
+index 40423a6..aa12a86 100644
+--- a/admin.html
++++ b/admin.html
+@@ -1,203 +1,18 @@
+-<!DOCTYPE html>
++<!doctype html>
+ <html lang="en">
+-<head>
+-    <meta charset="UTF-8">
+-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+-    <title>Admin Panel - BH Stats</title>
+-    <meta name="description" content="Admin panel for BH Stats — configuration and maintenance tools for the dashboard." />
+-    <style>
+-        * {
+-            margin: 0;
+-            padding: 0;
+-            box-sizing: border-box;
+-        }
+-
+-        body {
+-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+-            min-height: 100vh;
+-            padding: 20px;
+-        }
+-
+-        .container {
+-            max-width: 1000px;
+-            margin: 0 auto;
+-            background: white;
+-            border-radius: 12px;
+-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+-            overflow: hidden;
+-        }
+-
+-        .header {
+-            <!doctype html>
+-            <html lang="en">
+-              <head>
+-                <meta charset="utf-8" />
+-                <meta name="viewport" content="width=device-width,initial-scale=1" />
+-                <title>Admin - Redirect</title>
+-                <meta http-equiv="refresh" content="0; url=/admin/admin.html" />
+-                <style>body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f7fafc;color:#111}</style>
+-              </head>
+-              <body>
+-                <div>
+-                  <p>Admin panel moved to <a href="/admin/admin.html">/admin/admin.html</a>. If you are not redirected automatically, follow the link.</p>
+-                </div>
+-              </body>
+-            </html>
+-            padding: 8px;
+-            border-radius: 6px;
+-            font-size: 12px;
+-        }
+-
+-        .bottleneck-list {
+-            margin-top: 6px;
+-            display: grid;
+-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+-            gap: 6px;
+-            font-size: 12px;
+-        }
+-
+-        .stats-grid {
+-            display: grid;
+-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+-            gap: 15px;
+-            margin-top: 15px;
+-        }
+-
+-        .stat-card {
+-            background: white;
+-            padding: 15px;
+-            border-radius: 6px;
+-            text-align: center;
+-            border-left: 4px solid #667eea;
+-        }
+-
+-        .stat-value {
+-            font-size: 24px;
+-            font-weight: bold;
+-            color: #667eea;
+-            margin-bottom: 5px;
+-        }
+-
+-        .stat-label {
+-            font-size: 12px;
+-            color: #999;
+-            text-transform: uppercase;
+-            letter-spacing: 0.5px;
+-        }
+-
+-        .back-link {
+-            display: inline-block;
+-            margin-bottom: 20px;
+-            color: #667eea;
+-            text-decoration: none;
+-            font-weight: 600;
+-            font-size: 14px;
+-        }
+-
+-        .back-link:hover {
+-            text-decoration: underline;
+-        }
+-
+-        .loading {
+-            display: inline-block;
+-            width: 12px;
+-            height: 12px;
+-            border: 2px solid rgba(255,255,255,.3);
+-            border-radius: 50%;
+-            border-top-color: white;
+-            animation: spin 0.8s linear infinite;
+-        }
+-
+-        @keyframes spin {
+-            to { transform: rotate(360deg); }
+-        }
+-
+-        /* Connected devices layout */
+-        .devices-row {
+-            display: flex;
+-            gap: 16px;
+-            overflow-x: auto;
+-            padding: 12px 4px;
+-            align-items: flex-start;
+-        }
+-
+-        .device-card {
+-            flex: 0 0 300px;
+-            min-width: 260px;
+-            max-width: 360px;
+-            background: #fff;
+-            border-radius: 10px;
+-            padding: 12px;
+-            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+-            border-left: 6px solid #667eea;
+-            display: flex;
+-            flex-direction: column;
+-            gap: 8px;
+-        }
+-
+-        .device-meta { font-size: 12px; color: #444; }
+-        .device-actions { display:flex; gap:8px; margin-top:6px; }
+-        .device-actions button { flex: 1; }
+-        .ai-explanation {
+-            font-size:13px;
+-            color:#222;
+-            margin-top:6px;
+-            background:#fff;
+-            padding:10px;
+-            border-radius:6px;
+-            border:1px solid #e6e6e6;
+-            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+-        }
+-        /* Badge styles for hypotheses */
+-        .badge { display:inline-block; margin-right:6px; padding:2px 6px; border-radius:999px; font-size:11px; font-weight:700; }
+-        .badge.most-recent { background:#e6f9f2; color:#047857; }
+-        
+-        .badge.inferred { background:#f3f4f6; color:#374151; }
+-        .badge.confirmed { background:#eef2ff; color:#1e40af; }
+-        .badge-legend { margin-top:8px; font-size:12px; color:#334155; }
+-        /* Small confirm button */
+-        .btn-confirm {
+-            background: transparent;
+-            color: #065f46;
+-            border: 1px solid #10b981;
+-            padding: 6px 10px;
+-            font-size: 13px;
+-            border-radius: 6px;
+-            cursor: pointer;
+-            font-weight: 700;
+-        }
+-        .btn-confirm:hover { background: #10b981; color: white; }
+-    </style>
+-    <!-- Chart.js will be lazy-loaded when the memory chart is first displayed -->
+-</head>
+-<body>
+-    <div class="container">
+-        <div class="header">
+-            <a href="index.html" class="back-link">← Back to Dashboard</a>
+-            <h1 id="panelTitle">⚙️ Admin Panel</h1>
+-            <p id="panelSubtitle">Manage engineer initials and fix data mistakes</p>
+-            <div id="roleBadge" class="role-badge" style="display: none;"></div>
+-        </div>
+-
+-        <div class="content">
+-            <!-- Section 1: Assign Unassigned -->
+-            <div class="section admin-only">
+-                <h2>Assign Unassigned Erasures</h2>
+-                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+-                    Assign all erasures with missing engineer initials to a specific engineer.
+-                </p>
+-                <div class="form-group">
+-                    <label for="assignTo">Engineer Initials:</label>
+-                    <input type="text" id="assignTo" placeholder="e.g., MS" maxlength="3" style="max-width: 100px;">
+-                </div>
+-                <button onclick="assignUnassigned()" id="assignBtn">Assign Unassigned</button>
+-                <div id="assignResult" class="result"></div>
+-            </div>
+-            <div id="syncTypeResult" class="result" style="display:none;margin-top:12px;"></div>
+-
+-            <!-- Section 2: Fix Initials -->
+-            <div class="section admin-only">
++  <head>
++    <meta charset="utf-8" />
++    <meta name="viewport" content="width=device-width,initial-scale=1" />
++    <title>Admin - Redirect</title>
++    <meta http-equiv="refresh" content="0; url=/admin/admin.html" />
++    <style>body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f7fafc;color:#111}</style>
++  </head>
++  <body>
++    <div>
++      <p>Admin panel moved to <a href="/admin/admin.html">/admin/admin.html</a>. If you are not redirected automatically, follow the link.</p>
++    </div>
++  </body>
++</html>
+                 <h2>Fix/Correct Initials</h2>
+                 <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+                     Change all erasures from one set of initials to another. Useful for fixing typos or mistakes.
+-- 
+2.52.0.windows.1
+

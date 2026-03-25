@@ -120,47 +120,61 @@
   function getQaInitials(displayName) { return window.getQaInitials ? window.getQaInitials(displayName) : ''; }
 
   // Safe delegate for summary refresh — implemented in dashboard bundles.
+  // Resolve preferred implementation for a named API: prefer `<name>Impl`,
+  // then `__dashboard<NameCamel>`, then legacy plain `window.<name>`.
+  function toPascal(s) {
+    return s.replace(/(^|_|-)([a-z])/g, (_,a,b) => b.toUpperCase());
+  }
+  function resolveImpl(name) {
+    try {
+      if (typeof window[name + 'Impl'] === 'function') return window[name + 'Impl'];
+      const dash = toPascal(name);
+      if (typeof window['__dashboard' + dash.charAt(0).toUpperCase() + dash.slice(1)] === 'function') return window['__dashboard' + dash.charAt(0).toUpperCase() + dash.slice(1)];
+      if (typeof window[name] === 'function') return window[name];
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
   async function refreshSummaryDelegate() {
     try {
-      if (typeof window.__dashboardRefreshSummary === 'function') return window.__dashboardRefreshSummary();
-      if (typeof window.refreshSummaryImpl === 'function') return window.refreshSummaryImpl();
-      // If a dashboard bundle exposes `window.refreshSummary` (the implementation), call it
-      if (typeof window.refreshSummary === 'function' && window.refreshSummary !== refreshSummaryDelegate) return window.refreshSummary();
-    } catch (e) {
-      console.warn('refreshSummaryDelegate error', e);
-    }
+      const fn = resolveImpl('refreshSummary');
+      if (typeof fn === 'function') return fn();
+    } catch (e) { console.warn('refreshSummaryDelegate error', e); }
     return Promise.resolve();
   }
 
   // Safe wrapper for refreshAllTopLists to delegate to migrated implementation
   async function refreshAllTopListsDelegate() {
     try {
-      if (typeof window.refreshAllTopLists === 'function' && window.refreshAllTopLists !== refreshAllTopListsDelegate) return window.refreshAllTopLists();
-      if (typeof window.refreshAllTopListsWithFlip === 'function') return window.refreshAllTopListsWithFlip();
+      const fn = resolveImpl('refreshAllTopLists') || resolveImpl('refreshAllTopListsWithFlip');
+      if (typeof fn === 'function') return fn();
     } catch (e) { console.warn('refreshAllTopListsDelegate error', e); }
     return Promise.resolve();
   }
 
   // Safe wrappers (call sites use these) to avoid name collisions with global implementations
   async function callRefreshSpeedChallenge(when, listId, statusId) {
-    if (typeof window.refreshSpeedChallenge === 'function' && window.refreshSpeedChallenge !== callRefreshSpeedChallenge) {
-      return window.refreshSpeedChallenge(when, listId, statusId);
-    }
+    try {
+      const fn = resolveImpl('refreshSpeedChallenge');
+      if (typeof fn === 'function') return fn(when, listId, statusId);
+    } catch (e) {}
     return Promise.resolve();
   }
 
   function callRefreshCategorySpecialists() {
-    if (typeof window.refreshCategorySpecialists === 'function' && window.refreshCategorySpecialists !== callRefreshCategorySpecialists) {
-      return window.refreshCategorySpecialists();
-    }
+    try {
+      const fn = resolveImpl('refreshCategorySpecialists');
+      if (typeof fn === 'function') return fn();
+    } catch (e) {}
     return null;
   }
 
   // Wrapper for refreshConsistency (may be implemented in common/erasure bundles)
   function callRefreshConsistency() {
-    if (typeof window.refreshConsistency === 'function' && window.refreshConsistency !== callRefreshConsistency) {
-      return window.refreshConsistency();
-    }
+    try {
+      const fn = resolveImpl('refreshConsistency');
+      if (typeof fn === 'function') return fn();
+    } catch (e) {}
     return null;
   }
 
@@ -2449,7 +2463,13 @@
   }
 
   // Enhanced: fetches for today, month, all-time for flip faces
-  async function refreshTopByTypeAllScopesDelegate(type, listId) { return window.refreshTopByTypeAllScopes ? window.refreshTopByTypeAllScopesDelegate(type, listId) : Promise.resolve(); }
+  async function refreshTopByTypeAllScopesDelegate(type, listId) {
+    try {
+      const fn = resolveImpl('refreshTopByTypeAllScopes');
+      if (typeof fn === 'function') return fn(type, listId);
+    } catch (e) {}
+    return Promise.resolve();
+  }
 
   // Enhanced: fetch all scopes for each category
   function refreshAllTopListsWithFlip() {
@@ -2457,9 +2477,21 @@
   }
 
   // NEW: Refresh category rotator cards (delegate to migrated implementation)
-  async function refreshCategoryRotatorCards() { return window.refreshCategoryRotatorCards ? window.refreshCategoryRotatorCards() : Promise.resolve(); }
+  async function refreshCategoryRotatorCards() {
+    try {
+      const fn = resolveImpl('refreshCategoryRotatorCards');
+      if (typeof fn === 'function') return fn();
+    } catch (e) {}
+    return Promise.resolve();
+  }
 
-  function setupCategoryFlipCards() { return window.setupCategoryFlipCards ? window.setupCategoryFlipCards() : null; }
+  function setupCategoryFlipCards() {
+    try {
+      const fn = resolveImpl('setupCategoryFlipCards');
+      if (typeof fn === 'function') return fn();
+    } catch (e) {}
+    return null;
+  }
 
 
 

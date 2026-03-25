@@ -1,0 +1,49 @@
+9fdb628 fix(frontend): add early global no-op fallbacks to prevent ReferenceErrors during bundle sync
+app.js
+
+d93679b fix(frontend): add safe no-op fallbacks for migrated dashboard functions to avoid runtime crashes when bundles are stale
+app.js
+
+986804d chore(frontend): add cache-busting token to dynamic loader; document change in PROJECT_STATUS.md
+PROJECT_STATUS.md
+app.js
+
+906848b fix(app): avoid global recursion — add refreshSummaryDelegate and refreshAllTopListsDelegate and use them in refresh loops
+app.js
+
+f820c94 fix(app): delegate refreshSummary to dashboard bundle to avoid ReferenceError
+app.js
+
+a8e1317 chore(dashboard): remove duplicate root copies of qa.js and erasure.js (use subfolder versions)
+dashboard/erasure.js
+dashboard/qa.js
+
+5768138 chore(admin): add admin/index redirect and fix erasure rotator rendering
+admin/index.html
+dashboard/erasure.js
+
+58eb7d3 fix(admin): restore admin.html redirect stub, update manager stub and snapshot endpoint
+admin.html
+
+00e828b feat: add root redirect stubs and admin memory-snapshot endpoint; move manager/admin pages into subfolders
+.dockerignore
+Dockerfile
+admin.html
+admin/admin.html
+app.js
+backups/app.js.snapshot
+backups/index.html.snapshot
+backups/main.py.snapshot
+dashboard/common.js
+dashboard/erasure.js
+dashboard/erasure/erasure.js
+dashboard/qa.js
+dashboard/qa/qa.js
+docker-compose.yml
+index.html
+logs/activity.sqlite
+main.py
+manager.html
+manager/manager.html
+powerbi/powerbi_api_key.txt
+qa_routes.py

@@ -16,3 +16,15 @@
   try { window.__dashboardQAReady = true; } catch(e){}
 
 })();
+
+// Add Impl aliases for QA helpers
+(function ensureQaImplAliases() {
+  const names = ['formatQaName','getQaInitials','loadQADashboard','startQARotator','populateQACard','populateQAAppCard','populateMetricsCard','showQAError'];
+  try {
+    names.forEach(n => {
+      if (typeof window[n] === 'function' && typeof window[n + 'Impl'] !== 'function') {
+        window[n + 'Impl'] = window[n];
+      }
+    });
+  } catch (e) {}
+})();

@@ -1,0 +1,73 @@
+From 906848be1bb6eb7c24001f3116cb71dd542b2d59 Mon Sep 17 00:00:00 2001
+From: Louis Whitehouse <louisw@GSIT.local>
+Date: Wed, 25 Mar 2026 08:57:11 +0000
+Subject: [PATCH 6/9] =?UTF-8?q?fix(app):=20avoid=20global=20recursion=20?=
+ =?UTF-8?q?=E2=80=94=20add=20refreshSummaryDelegate=20and=20refreshAllTopL?=
+ =?UTF-8?q?istsDelegate=20and=20use=20them=20in=20refresh=20loops?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ app.js | 31 +++++++++++++++++++++++++------
+ 1 file changed, 25 insertions(+), 6 deletions(-)
+
+diff --git a/app.js b/app.js
+index b51c914..d037ada 100644
+--- a/app.js
++++ b/app.js
+@@ -81,8 +81,27 @@
+   function formatQaName(rawName) { return window.formatQaName ? window.formatQaName(rawName) : (rawName || ''); }
+   function getQaInitials(displayName) { return window.getQaInitials ? window.getQaInitials(displayName) : ''; }
+ 
+-  // Safe delegate for summary refresh — implemented in `dashboard/common.js` or `dashboard/erasure/erasure.js`
+-  async function refreshSummary() { return window.refreshSummary ? window.refreshSummary() : Promise.resolve(); }
++  // Safe delegate for summary refresh — implemented in dashboard bundles.
++  async function refreshSummaryDelegate() {
++    try {
++      if (typeof window.__dashboardRefreshSummary === 'function') return window.__dashboardRefreshSummary();
++      if (typeof window.refreshSummaryImpl === 'function') return window.refreshSummaryImpl();
++      // If a dashboard bundle exposes `window.refreshSummary` (the implementation), call it
++      if (typeof window.refreshSummary === 'function' && window.refreshSummary !== refreshSummaryDelegate) return window.refreshSummary();
++    } catch (e) {
++      console.warn('refreshSummaryDelegate error', e);
++    }
++    return Promise.resolve();
++  }
++
++  // Safe wrapper for refreshAllTopLists to delegate to migrated implementation
++  async function refreshAllTopListsDelegate() {
++    try {
++      if (typeof window.refreshAllTopLists === 'function' && window.refreshAllTopLists !== refreshAllTopListsDelegate) return window.refreshAllTopLists();
++      if (typeof window.refreshAllTopListsWithFlip === 'function') return window.refreshAllTopListsWithFlip();
++    } catch (e) { console.warn('refreshAllTopListsDelegate error', e); }
++    return Promise.resolve();
++  }
+ 
+   // Safe wrappers (call sites use these) to avoid name collisions with global implementations
+   async function callRefreshSpeedChallenge(when, listId, statusId) {
+@@ -2275,8 +2294,8 @@
+ 
+   // ==================== INITIALIZATION ====================
+   // Kick off refresh loops (after all functions are defined)
+-  refreshSummary();
+-  refreshAllTopLists();
++  refreshSummaryDelegate();
++  refreshAllTopListsDelegate();
+   refreshByTypeCounts();
+   refreshLeaderboard();
+   
+@@ -2292,8 +2311,8 @@
+ 
+ 
+   setInterval(() => {
+-    refreshSummary();
+-    refreshAllTopLists();
++    refreshSummaryDelegate();
++    refreshAllTopListsDelegate();
+     refreshByTypeCounts();
+     refreshLeaderboard();
+     checkAndTriggerWinner();
+-- 
+2.52.0.windows.1
+

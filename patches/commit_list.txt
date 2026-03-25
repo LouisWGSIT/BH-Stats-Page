@@ -1,0 +1,9 @@
+9fdb628 2026-03-25 Louis Whitehouse fix(frontend): add early global no-op fallbacks to prevent ReferenceErrors during bundle sync
+d93679b 2026-03-25 Louis Whitehouse fix(frontend): add safe no-op fallbacks for migrated dashboard functions to avoid runtime crashes when bundles are stale
+986804d 2026-03-25 Louis Whitehouse chore(frontend): add cache-busting token to dynamic loader; document change in PROJECT_STATUS.md
+906848b 2026-03-25 Louis Whitehouse fix(app): avoid global recursion — add refreshSummaryDelegate and refreshAllTopListsDelegate and use them in refresh loops
+f820c94 2026-03-25 Louis Whitehouse fix(app): delegate refreshSummary to dashboard bundle to avoid ReferenceError
+a8e1317 2026-03-25 Louis Whitehouse chore(dashboard): remove duplicate root copies of qa.js and erasure.js (use subfolder versions)
+5768138 2026-03-25 Louis Whitehouse chore(admin): add admin/index redirect and fix erasure rotator rendering
+58eb7d3 2026-03-25 Louis Whitehouse fix(admin): restore admin.html redirect stub, update manager stub and snapshot endpoint
+00e828b 2026-03-25 Louis Whitehouse feat: add root redirect stubs and admin memory-snapshot endpoint; move manager/admin pages into subfolders

@@ -296,3 +296,21 @@ function renderSVGSparkline(svgElem, data) {
 (function(){
   window.__dashboardCommonLoaded = true;
 })();
+
+// Create Impl-suffixed aliases for any plain globals exported by bundles.
+// This allows the loader (`app.js`) to prefer explicit Impl names during migration.
+(function ensureImplAliases() {
+  const names = [
+    'refreshTopByTypeAllScopes','refreshAllTopListsWithFlip','refreshCategoryRotatorCards',
+    'setupCategoryFlipCards','renderTopListWithLabel','refreshAllTopLists','refreshByTypeCounts',
+    'refreshLeaderboard','refreshSpeedChallenge','refreshCategorySpecialists','refreshConsistency',
+    'loadQADashboard','startQARotator','generateCSV'
+  ];
+  try {
+    names.forEach(n => {
+      if (typeof window[n] === 'function' && typeof window[n + 'Impl'] !== 'function') {
+        window[n + 'Impl'] = window[n];
+      }
+    });
+  } catch (e) { /* ignore */ }
+})();

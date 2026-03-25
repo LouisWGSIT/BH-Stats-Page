@@ -1,0 +1,56 @@
+From 5768138d58bfcf7ff5143893409a95b53e462e37 Mon Sep 17 00:00:00 2001
+From: Louis Whitehouse <louisw@GSIT.local>
+Date: Wed, 25 Mar 2026 08:41:44 +0000
+Subject: [PATCH 3/9] chore(admin): add admin/index redirect and fix erasure
+ rotator rendering
+
+---
+ admin/index.html     | 15 +++++++++++++++
+ dashboard/erasure.js |  7 ++++---
+ 2 files changed, 19 insertions(+), 3 deletions(-)
+ create mode 100644 admin/index.html
+
+diff --git a/admin/index.html b/admin/index.html
+new file mode 100644
+index 0000000..0e5f53e
+--- /dev/null
++++ b/admin/index.html
+@@ -0,0 +1,15 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="utf-8" />
++    <meta name="viewport" content="width=device-width,initial-scale=1" />
++    <title>Admin — Redirect</title>
++    <meta http-equiv="refresh" content="0; url=admin.html" />
++    <style>body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f7fafc;color:#111}</style>
++  </head>
++  <body>
++    <div>
++      <p>The admin panel is at <a href="admin.html">admin.html</a>. If you are not redirected automatically, follow the link.</p>
++    </div>
++  </body>
++</html>
+diff --git a/dashboard/erasure.js b/dashboard/erasure.js
+index 59498e7..11f03f7 100644
+--- a/dashboard/erasure.js
++++ b/dashboard/erasure.js
+@@ -562,11 +562,12 @@
+         const allTimeTotalData = await allTimeTotalRes.json();
+         const allTimeTotal = allTimeTotalData.total || 0;
+ 
+-        renderTopList(cat.todayListId, todayData.engineers);
++        // Use renderTopListWithLabel (supports labelled faces) so live updates work
++        renderTopListWithLabel(cat.todayListId, todayData.engineers, 'Today', todayTotal);
+         const todayCountEl = document.getElementById(cat.todayCountId); if (todayCountEl) todayCountEl.textContent = todayTotal;
+-        renderTopList(cat.monthListId, monthData.engineers);
++        renderTopListWithLabel(cat.monthListId, monthData.engineers, 'This Month', monthTotal);
+         const monthCountEl = document.getElementById(cat.monthCountId); if (monthCountEl) monthCountEl.textContent = monthTotal;
+-        renderTopList(cat.allTimeListId, allTimeData.engineers);
++        renderTopListWithLabel(cat.allTimeListId, allTimeData.engineers, 'All Time', allTimeTotal);
+         const allTimeCountEl = document.getElementById(cat.allTimeCountId); if (allTimeCountEl) allTimeCountEl.textContent = allTimeTotal;
+ 
+       } catch (err) {
+-- 
+2.52.0.windows.1
+
