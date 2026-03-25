@@ -1,0 +1,1443 @@
+// --- SVG Sparkline Renderer (must be top-level for all uses) ---
+function renderSVGSparkline(svgElem, data) {
+  const width = 400;
+  const height = 48;
+  if (!svgElem) return;
+  svgElem.innerHTML = '';
+  if (!data || data.length < 1) return;
+  // If only one point or all values are the same, draw a flat line
+  const allSame = data.every(v => v === data[0]);
+  if (data.length === 1 || allSame) {
+    const y = height / 2;
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', `M0,${y} L${width},${y}`);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#8cf04a');
+    path.setAttribute('stroke-width', '2');
+    svgElem.appendChild(path);
+    return;
+  }
+  // Find min/max for scaling
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  // Build path
+  const step = width / (data.length - 1);
+  let d = '';
+  data.forEach((val, i) => {
+    const x = i * step;
+    // Invert y (SVG origin is top-left)
+    const y = height - ((val - min) / range) * (height - 6) - 3;
+    d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2) + ' ';
+  });
+  // Draw filled area
+  let fillD = d + `L ${width},${height} L 0,${height} Z`;
+  const fill = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  fill.setAttribute('d', fillD);
+  fill.setAttribute('fill', 'rgba(140,240,74,0.15)');
+  svgElem.appendChild(fill);
+  // Draw line
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', '#8cf04a');
+  path.setAttribute('stroke-width', '2');
+  path.setAttribute('stroke-linejoin', 'round');
+  svgElem.appendChild(path);
+}
+(async function () {
+  // ==================== AUTHENTICATION ====================
+  
+  function setupAuthHeaders(token) {
+    // Store token globally and wrap fetch
+    window.__authToken = token;
+    const originalFetch = window.fetch;
+    
+    window.fetch = function(resource, config = {}) {
+      // Add auth header to all API requests
+      if (typeof resource === 'string' && (resource.startsWith('/') || resource.startsWith('http'))) {
+        config.headers = config.headers || {};
+        config.headers['Authorization'] = 'Bearer ' + window.__authToken;
+      }
+      return originalFetch.call(this, resource, config);
+    };
+  }
+
+  async function checkAuth() {
+    try {
+      const existingToken = sessionStorage.getItem('authToken') || localStorage.getItem('deviceToken');
+      if (existingToken) {
+        try {
+          const statusRes = await fetch('/auth/status', {
+            headers: { 'Authorization': 'Bearer ' + existingToken }
+          });
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            if (statusData.role) {
+              sessionStorage.setItem('userRole', statusData.role);
+            }
+            if (statusData.authenticated) {
+              setupAuthHeaders(existingToken);
+              return true;
+            }
+          }
+        } catch (statusErr) {
+          console.warn('Auth status with token failed:', statusErr);
+        }
+      }
+
+      const authRes = await fetch('/auth/status');
+      const authData = await authRes.json();
+
+      if (authData.role) {
+        sessionStorage.setItem('userRole', authData.role);
+      }
+
+      if (authData.authenticated) {
+        console.log('Local network access granted, role:', authData.role);
+        if (authData.role === 'viewer') {
+          sessionStorage.setItem('userRole', 'viewer');
+        }
+        return true;
+      }
+
+      console.log('External access requires password');
+      // If the user previously dismissed the prompt for this session, treat as viewer
+      if (sessionStorage.getItem('loginDismissed')) {
+        sessionStorage.setItem('userRole', 'viewer');
+        applyRolePermissions();
+        return true;
+      }
+      showLoginModal();
+      return false;
+    } catch (err) {
+      console.error('Auth check failed:', err);
+      // On error, allow user to dismiss and continue as viewer for the session
+      if (sessionStorage.getItem('loginDismissed')) {
+        sessionStorage.setItem('userRole', 'viewer');
+        applyRolePermissions();
+        return true;
+      }
+      showLoginModal();
+      return false;
+    }
+  }
+
+  function showLoginModal() {
+    console.log('showLoginModal called');
+    const modal = document.getElementById('loginModal');
+    const form = document.getElementById('loginForm');
+    const accessMsg = document.getElementById('accessMessage');
+    const passwordInput = document.getElementById('passwordInput');
+    const accessGranted = document.getElementById('accessGranted');
+    
+    console.log('Modal element:', modal);
+    
+    if (!modal) {
+      console.error('Login modal element not found!');
+      return;
+    }
+    
+    modal.classList.remove('hidden');
+    console.log('Modal should now be visible');
+    accessMsg.textContent = 'This dashboard is protected. External access requires a password.';
+    form.style.display = 'flex';
+    accessGranted.style.display = 'none';
+    
+    if (!form.dataset.bound) {
+      form.dataset.bound = 'true';
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const password = passwordInput.value;
+        
+        try {
+          const loginRes = await fetch('/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+          });
+          
+          if (loginRes.ok) {
+            const loginData = await loginRes.json();
+            // Store device token for future auto-login (persists across refreshes)
+            if (loginData.device_token) {
+              localStorage.setItem('deviceToken', loginData.device_token);
+              console.log('Device remembered for future logins');
+            }
+            // Store role for UI control
+            if (loginData.role) {
+              sessionStorage.setItem('userRole', loginData.role);
+            }
+            // Also store session token for this session
+            sessionStorage.setItem('authToken', loginData.token);
+            
+            // Set auth header for future requests
+            setupAuthHeaders(loginData.token);
+            
+            // Apply role permissions to UI
+            applyRolePermissions();
+            
+            // Show success and continue
+            form.style.display = 'none';
+            accessGranted.style.display = 'block';
+            
+            // Close modal after brief delay
+            setTimeout(() => {
+              modal.classList.add('hidden');
+              // Page will continue loading after modal closes
+            }, 1000);
+          } else {
+            passwordInput.style.borderColor = '#f44336';
+            passwordInput.value = '';
+            accessMsg.textContent = 'Invalid password. Please try again.';
+            accessMsg.style.color = '#f44336';
+            setTimeout(() => {
+              passwordInput.style.borderColor = 'var(--ring-secondary)';
+              accessMsg.style.color = 'var(--muted)';
+              accessMsg.textContent = 'This dashboard is protected. External access requires a password.';
+            }, 2000);
+          }
+        } catch (err) {
+          console.error('Login failed:', err);
+          accessMsg.textContent = 'Connection error. Please try again.';
+          accessMsg.style.color = '#f44336';
+        }
+      });
+    }
+
+    // Bind dismiss button to allow view-only access without token for this session
+    const dismissBtn = document.getElementById('dismissLoginBtn');
+    if (dismissBtn && !dismissBtn.dataset.bound) {
+      dismissBtn.dataset.bound = 'true';
+      dismissBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        // Mark dismissed for this session
+        sessionStorage.setItem('loginDismissed', '1');
+        sessionStorage.setItem('userRole', 'viewer');
+        applyRolePermissions();
+        // Request a viewer device token from the server so API calls succeed and the device appears in connected list
+        try {
+          // Prompt for an optional device name to make it easier to identify TVs/devices in admin
+          let deviceName = '';
+          try {
+            deviceName = (window.prompt && window.prompt('Name this device (optional):', '')) || '';
+          } catch (e) {
+            deviceName = '';
+          }
+
+          const res = await fetch('/auth/ephemeral-viewer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: deviceName }) });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.device_token) {
+              // Persist so refreshes keep the viewer logged in
+              localStorage.setItem('deviceToken', data.device_token);
+              sessionStorage.setItem('authToken', data.token || data.device_token);
+              setupAuthHeaders(data.token || data.device_token);
+            }
+          } else {
+            // Fall back to session-only viewer token (no API access)
+            sessionStorage.setItem('authToken', 'viewer-dismissed');
+          }
+        } catch (err) {
+          console.warn('Ephemeral viewer token request failed:', err);
+          sessionStorage.setItem('authToken', 'viewer-dismissed');
+        }
+
+        modal.classList.add('hidden');
+      });
+    }
+    
+    // Focus password input
+    passwordInput.focus();
+  }
+
+  // Check auth before proceeding
+  const isAuthenticated = await checkAuth();
+  
+  if (!isAuthenticated) {
+    // Wait for user to login
+    await new Promise(resolve => {
+      const checkInterval = setInterval(() => {
+        const token = sessionStorage.getItem('authToken');
+        if (token) {
+          clearInterval(checkInterval);
+          setupAuthHeaders(token);
+          resolve();
+        }
+      }, 100);
+    });
+  }
+
+  // Now proceed with app initialization
+  const cfg = await fetch('config.json').then(r => r.json());
+
+  // ==================== UI ROLE CONTROLS ====================
+  // Hide export and admin buttons for viewer role
+  function applyRolePermissions() {
+    const userRole = sessionStorage.getItem('userRole') || 'viewer';
+    const downloadBtn = document.getElementById('downloadBtn');
+    const managerBtn = document.querySelector('.manager-btn');
+    const adminBtn = document.querySelector('.admin-btn');
+    const loginUpgradeIcon = document.getElementById('loginUpgradeIcon');
+    
+    if (userRole === 'viewer') {
+      // Viewer mode: hide export, manager, admin; show upgrade icon
+      if (downloadBtn) downloadBtn.style.display = 'none';
+      if (managerBtn) managerBtn.style.display = 'none';
+      if (adminBtn) adminBtn.style.display = 'none';
+      if (loginUpgradeIcon) loginUpgradeIcon.style.display = 'inline-block';
+    } else if (userRole === 'manager') {
+      // Manager mode: export + manager tools
+      if (downloadBtn) downloadBtn.style.display = 'inline-block';
+      if (managerBtn) managerBtn.style.display = 'inline-block';
+      if (adminBtn) adminBtn.style.display = 'none';
+      if (loginUpgradeIcon) loginUpgradeIcon.style.display = 'inline-block';
+    } else if (userRole === 'admin') {
+      // Admin mode: export + manager + admin
+      if (downloadBtn) downloadBtn.style.display = 'inline-block';
+      if (managerBtn) managerBtn.style.display = 'inline-block';
+      if (adminBtn) adminBtn.style.display = 'inline-block';
+      if (loginUpgradeIcon) loginUpgradeIcon.style.display = 'none';
+    }
+  }
+  
+  // Apply role permissions on load
+  applyRolePermissions();
+  
+  // Upgrade icon click handler
+  const loginUpgradeIcon = document.getElementById('loginUpgradeIcon');
+  if (loginUpgradeIcon) {
+    loginUpgradeIcon.addEventListener('click', () => {
+      showLoginModal();
+    });
+  }
+
+  // ==================== ALL TIME TOTALS ====================
+  async function refreshAllTimeTotals() {
+    try {
+      const res = await fetch('/metrics/all-time-totals');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const allTime = data.allTimeTotal || 0;
+      // Update All Time card value
+      const allTimeEl = document.getElementById('allTimeValue');
+      if (allTimeEl) {
+        allTimeEl.textContent = allTime;
+        animateNumberUpdate('allTimeValue');
+      }
+      // (Removed global pip update. Pip is now updated per card/period in renderTopListWithLabel)
+    } catch (err) {
+      console.error('All Time totals fetch error:', err);
+    }
+  }
+
+  // Call on load
+  refreshAllTimeTotals();
+
+  // ==================== CHART PLUGINS ====================
+
+  // Depth/gloss plugin to give donuts a subtle 3D feel (optimized for TV performance)
+  const donutDepthPlugin = {
+    id: 'donutDepth',
+    afterDatasetsDraw(chart) {
+      const meta = chart.getDatasetMeta(0);
+      const arc = meta?.data?.[0];
+      if (!arc) return;
+
+      const { ctx } = chart;
+      const { x, y, innerRadius, outerRadius } = arc;
+      
+      // Validate that values are finite before drawing
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(innerRadius) || !Number.isFinite(outerRadius)) {
+        return;
+      }
+
+      const ringThickness = outerRadius - innerRadius;
+      if (ringThickness <= 0) return;
+
+      // Simplified shadow - just the bottom part for subtle depth
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-over';
+      try {
+        const shadowGrad = ctx.createRadialGradient(
+          x,
+          y + ringThickness * 0.5,
+          outerRadius * 0.7,
+          x,
+          y + ringThickness * 0.5,
+          outerRadius + 8
+        );
+        shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.1)');
+        shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = shadowGrad;
+        ctx.beginPath();
+        ctx.arc(x, y, outerRadius + 6, 0, Math.PI * 2);
+        ctx.fill();
+      } catch (e) {
+        // Silently fail - not critical
+      }
+      ctx.restore();
+
+      // Very subtle top gloss - simplified
+      ctx.save();
+      try {
+        const shineGrad = ctx.createLinearGradient(x, y - outerRadius, x, y - innerRadius);
+        shineGrad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+        shineGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = shineGrad;
+        ctx.beginPath();
+        ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+        ctx.arc(x, y, innerRadius, 0, Math.PI * 2, true);
+        ctx.closePath();
+        ctx.fill();
+      } catch (e) {
+        // Silently fail - not critical
+      }
+      ctx.restore();
+    },
+  };
+
+  Chart.register(donutDepthPlugin);
+
+  function donut(canvasId) {
+    const ctxEl = document.getElementById(canvasId);
+    const primary = getComputedStyle(document.documentElement)
+      .getPropertyValue('--ring-primary').trim();
+    const secondary = getComputedStyle(document.documentElement)
+      .getPropertyValue('--ring-secondary').trim();
+
+    const chart = new Chart(ctxEl, {
+      type: 'doughnut',
+      data: {
+        labels: ['Value', 'Remaining'],
+        datasets: [{
+          data: [0, 0],
+          backgroundColor: [secondary, primary],
+          borderWidth: 0,
+          borderRadius: 0,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        cutout: '68%',
+        animation: { duration: 400 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: true,
+            callbacks: {
+              label: function(ctx) {
+                return ctx.label + ': ' + ctx.raw;
+              }
+            }
+          }
+        }
+      }
+    });
+    
+    return chart;
+  }
+
+  // Apply theme variables
+  const root = document.documentElement;
+  root.style.setProperty('--bg', cfg.theme.bg);
+  root.style.setProperty('--text', cfg.theme.text);
+  root.style.setProperty('--muted', cfg.theme.muted);
+  root.style.setProperty('--ring-primary', cfg.theme.ringPrimary);
+  root.style.setProperty('--ring-secondary', cfg.theme.ringSecondary);
+
+  // Targets
+  document.getElementById('erasedTarget').textContent = cfg.targets.erased;
+  if (cfg.targets.month) {
+    const mt = document.getElementById('monthTarget');
+    if (mt) mt.textContent = cfg.targets.month;
+  }
+
+  // Charts
+  const totalTodayChart = donut('chartTotalToday');
+  const monthChart = donut('chartMonthToday');
+
+  const categories = [
+    { key: 'laptops_desktops', label: 'Laptops/Desktops', countId: 'countLD', listId: 'topLD' },
+    { key: 'servers', label: 'Servers', countId: 'countServers', listId: 'topServers' },
+    { key: 'macs', label: 'Macs', countId: 'countMacs', listId: 'topMacs' },
+    { key: 'mobiles', label: 'Mobiles', countId: 'countMobiles', listId: 'topMobiles' },
+  ];
+
+  const SHIFT_HOURS = 8; // Standard shift duration (08:00-16:00)
+
+  // Track leaderboard state for Greenie commentary
+  let leaderboardState = { leader: null, gap: null };
+
+  // Track race data for winner announcement
+  let raceData = { engineer1: null, engineer2: null, engineer3: null, firstFinisher: null, winnerAnnounced: false };
+  
+  // Track speed challenges
+  let speedChallengeData = {
+    am: { lastWinner: null, isFinished: false, wasActive: false },
+    pm: { lastWinner: null, isFinished: false, wasActive: false },
+  };
+
+  function triggerGreenie(quote) {
+    const container = document.getElementById('greenieContainer');
+    const quoteEl = document.getElementById('greenieQuote');
+    const wrapper = container.querySelector('.greenie-wrapper');
+
+    // Set the custom quote directly
+    if (quoteEl && quote) {
+      quoteEl.textContent = quote;
+    }
+
+    // Remove exit animation class if present
+    wrapper.classList.remove('exit');
+
+    // Show Greenie
+    container.classList.remove('hidden');
+    greenieState.lastShowTime = Date.now();
+
+    // Auto-hide after 14 seconds total (2s in + 10s display + 2s out)
+    setTimeout(() => {
+      wrapper.classList.add('exit');
+      setTimeout(() => {
+        container.classList.add('hidden');
+        wrapper.classList.remove('exit');
+      }, 2000);
+    }, 10000);
+  }
+
+  function animateNumberUpdate(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.classList.add('pulse-update');
+    setTimeout(() => el.classList.remove('pulse-update'), 1000);
+  }
+
+  function triggerRaceConfetti() {
+    // Check if someone has crossed the finish line
+    const racePositions = ['racePos1', 'racePos2', 'racePos3', 'racePos4', 'racePos5'].map(id => {
+      const el = document.getElementById(id);
+      return el ? parseInt(el.style.bottom) || 0 : -9999;
+    });
+    
+    const maxPosition = Math.max(...racePositions);
+    if (maxPosition >= 85) { // Near finish line (90% height)
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+      return true;
+    }
+    return false;
+  }
+
+  // Greenie state
+  let greenieState = {
+    currentStats: { todayTotal: 0, monthTotal: 0, byType: {} },
+    lastQuotes: [],
+    lastShowTime: 0,
+  };
+
+  // Wake helpers to keep Fire Stick screen alive
+  let wakeLock = null;
+  let audioCtx = null;
+  let silentOsc = null;
+  let keepAliveVideo = null;
+
+  const greenieQuotes = {
+    praise: [
+      (eng) => `${eng}, you're crushing it! Keep up the amazing work! 💪`,
+      (eng) => `${eng}, you're the star of the show today! ⭐`,
+      (eng) => `Way to go ${eng}! You're on fire! 🔥`,
+      (eng) => `${eng}, absolutely dominating the leaderboard! 👑`,
+    ],
+    targetProgress: [
+      (diff) => `We're only ${diff} erasures away from today's target! Push push push! 🎯`,
+      (diff) => `${diff} more erasures to hit today's goal! We've got this! 💪`,
+      (diff) => `Just ${diff} erasures left to smash today's target! 🚀`,
+      (diff) => `Target incoming! Only ${diff} to go! 🎉`,
+    ],
+    categoryWins: [
+      (cat) => `${cat} erasures are looking absolutely stellar today! 🌟`,
+      (cat) => `${cat} team, you're absolutely crushing it! Keep that momentum! 🚀`,
+      (cat) => `Outstanding work on the ${cat}! That's what I like to see! 💯`,
+    ],
+    motivation: [
+      `Data erasure heroes, that's what you all are! 🦸‍♀️`,
+      `Every erasure counts! Keep up the fantastic work! ✨`,
+      `You're doing amazing work protecting data today! 🛡️`,
+      `This team is unstoppable! Let's keep rolling! 🎯`,
+      `Making a real difference one erasure at a time! 👍`,
+      `The warehouse is looking spotless thanks to you! ✨`,
+    ],
+  };
+
+  function getGreenieQuote() {
+    // Update current stats for dynamic quotes
+    const todayTotal = parseInt(document.getElementById('totalTodayValue').textContent) || 0;
+    const target = parseInt(document.getElementById('erasedTarget').textContent) || 500;
+    const leaderboardBody = document.getElementById('leaderboardBody');
+    const topEngineer = leaderboardBody?.querySelector('tr')?.textContent || '';
+    
+    greenieState.currentStats = {
+      todayTotal,
+      target,
+      diff: Math.max(0, target - todayTotal),
+    };
+
+    // Get random quote category
+    const quoteCategories = ['praise', 'targetProgress', 'categoryWins', 'motivation'];
+    let selectedCategory;
+    let quote;
+    let attempts = 0;
+
+    // Try to avoid repeating the same category/type
+    do {
+      selectedCategory = quoteCategories[Math.floor(Math.random() * quoteCategories.length)];
+      const quoteList = greenieQuotes[selectedCategory];
+      
+      if (selectedCategory === 'praise') {
+        // Get top engineer initials
+        const initials = topEngineer.split('\n')[0] || 'Team';
+        quote = quoteList[Math.floor(Math.random() * quoteList.length)](initials);
+      } else if (selectedCategory === 'targetProgress') {
+        quote = quoteList[Math.floor(Math.random() * quoteList.length)](greenieState.currentStats.diff);
+      } else if (selectedCategory === 'categoryWins') {
+        const categoryList = ['Laptops/Desktops', 'Servers', 'Macs', 'Mobiles'];
+        const category = categoryList[Math.floor(Math.random() * categoryList.length)];
+        quote = quoteList[Math.floor(Math.random() * quoteList.length)](category);
+      } else {
+        quote = quoteList[Math.floor(Math.random() * quoteList.length)];
+      }
+
+      attempts++;
+    } while (greenieState.lastQuotes.includes(quote) && attempts < 5);
+
+    // Track quote to avoid repeats
+    greenieState.lastQuotes.push(quote);
+    if (greenieState.lastQuotes.length > 8) {
+      greenieState.lastQuotes.shift();
+    }
+
+    return quote;
+  }
+
+  function showGreenie() {
+    const container = document.getElementById('greenieContainer');
+    const quoteEl = document.getElementById('greenieQuote');
+    const wrapper = container.querySelector('.greenie-wrapper');
+
+    // Get quote and display
+    const quote = getGreenieQuote();
+    quoteEl.textContent = quote;
+
+    // Remove exit animation class if present
+    wrapper.classList.remove('exit');
+
+    // Show Greenie
+    container.classList.remove('hidden');
+    greenieState.lastShowTime = Date.now();
+
+    // Auto-hide after 14 seconds total (2s in + 10s display + 2s out)
+    setTimeout(() => {
+      wrapper.classList.add('exit');
+      setTimeout(() => {
+        container.classList.add('hidden');
+        wrapper.classList.remove('exit');
+      }, 2000);
+    }, 10000);
+  }
+
+  function checkGreenieTime() {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+
+    // Only show between 8:00 and 16:00
+    if (hours < 8 || hours >= 16) return;
+
+    // Check if 15 minutes have passed since last show
+    const timeSinceLastShow = Date.now() - greenieState.lastShowTime;
+    const fifteenMinutes = 15 * 60 * 1000;
+
+    if (timeSinceLastShow >= fifteenMinutes) {
+      // Only show at specific times to avoid random triggers: :00, :15, :30, :45
+      if (minutes === 0 || minutes === 15 || minutes === 30 || minutes === 45) {
+        showGreenie();
+      }
+    }
+  }
+
+  async function refreshSummary() {
+    try {
+      const res = await fetch('/metrics/summary');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+
+      const todayTotal = data.todayTotal || 0;
+      const monthTotal = data.monthTotal || 0;
+      
+      // Animate number updates
+      const todayEl = document.getElementById('totalTodayValue');
+      const monthEl = document.getElementById('monthTotalValue');
+      if (todayEl) {
+        const oldValue = parseInt(todayEl.textContent) || 0;
+        if (oldValue !== todayTotal) {
+          todayEl.classList.add('count-animating');
+          setTimeout(() => todayEl.classList.remove('count-animating'), 500);
+        }
+        todayEl.textContent = todayTotal;
+        animateNumberUpdate('totalTodayValue');
+      }
+      if (monthEl) {
+        const oldValue = parseInt(monthEl.textContent) || 0;
+        if (oldValue !== monthTotal) {
+          monthEl.classList.add('count-animating');
+          setTimeout(() => monthEl.classList.remove('count-animating'), 500);
+        }
+        monthEl.textContent = monthTotal;
+        animateNumberUpdate('monthTotalValue');
+      }
+
+      updateDonut(totalTodayChart, todayTotal, cfg.targets.erased);
+      updateDonut(monthChart, monthTotal, cfg.targets.month || 10000);
+
+      const lastUpdated = Date.now();
+      document.getElementById('last-updated').textContent = 'Last updated: ' + new Date(lastUpdated).toLocaleTimeString();
+      document.getElementById('stale-indicator').classList.add('hidden');
+      
+      // Keep screen alive by logging activity
+      keepScreenAlive();
+    } catch (err) {
+      console.error('Summary refresh error:', err);
+      document.getElementById('stale-indicator').classList.remove('hidden');
+    }
+  }
+
+  // Make truncateInitials available globally
+  function truncateInitials(name) {
+    if (!name) return '';
+    return name.length > 4 ? name.slice(0, 4) + '…' : name;
+  }
+
+  function renderTopList(listId, engineers) {
+    const el = document.getElementById(listId);
+    el.innerHTML = '';
+    if (engineers && engineers.length > 0) {
+      engineers.forEach((eng) => {
+        const name = truncateInitials((eng.initials || '').toString().trim());
+        if (!name) return;
+        const li = document.createElement('li');
+        const avatar = getAvatarDataUri(name);
+        li.innerHTML = `
+          <span class="engineer-chip">
+            <span class="engineer-avatar" style="background-image: url(${avatar})"></span>
+            <span class="engineer-name">${name}</span>
+          </span>
+          <span class="value">${eng.count}</span>`;
+        el.appendChild(li);
+      });
+    } else {
+      // Show "No data yet" message
+      const li = document.createElement('li');
+      li.style.color = 'var(--muted)';
+      li.style.textAlign = 'center';
+      li.style.padding = '12px 0';
+      li.textContent = 'No data yet';
+      el.appendChild(li);
+    }
+  }
+
+  async function refreshTopByType(type, listId) {
+    try {
+      const res = await fetch(`/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      renderTopList(listId, data.engineers);
+    } catch (err) {
+      console.error('Top-by-type refresh error:', type, err);
+    }
+  }
+
+  function refreshAllTopLists() {
+    categories.forEach(c => refreshTopByType(c.key, c.listId));
+  }
+
+  async function refreshByTypeCounts() {
+    try {
+      const res = await fetch('/metrics/by-type');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const counts = {
+          laptops_desktops: data.laptops_desktops || 0,
+          servers: data.servers || 0,
+          macs: data.macs || 0,
+          mobiles: data.mobiles || 0,
+      };
+      categories.forEach(c => {
+        const el = document.getElementById(c.countId);
+        if (el) el.textContent = counts[c.key] || 0;
+      });
+      renderBars(counts);
+    } catch (err) {
+      console.error('By-type refresh error:', err);
+    }
+  }
+
+  async function refreshSpeedChallenge(window, listId, statusId) {
+    try {
+      const res = await fetch(`/competitions/speed-challenge?window=${window}`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const list = document.getElementById(listId);
+      const statusEl = document.getElementById(statusId);
+      
+      // Get tracker for this window
+      const tracker = speedChallengeData[window];
+      if (!tracker) return;
+
+      if (statusEl && data.status) {
+        const st = data.status;
+        const liveBadge = st.isActive ? 'LIVE · ' : '';
+        const remaining = st.isActive ? `${st.timeRemainingMinutes} mins left` : `${st.startTime} - ${st.endTime}`;
+        statusEl.textContent = `${liveBadge}${st.name} (${remaining})`;
+        
+        // Check if challenge just finished (was active, now isn't)
+        if (tracker.wasActive && !st.isActive && !tracker.isFinished) {
+          tracker.isFinished = true;
+          // Announce the winner after a short delay to let data settle
+          setTimeout(() => {
+            const firstPlace = (data.leaderboard || [])[0];
+            if (firstPlace && firstPlace.initials) {
+              const announcementType = window === 'am' 
+                ? announcementTypes.SPEED_CHALLENGE_AM 
+                : announcementTypes.SPEED_CHALLENGE_PM;
+              showAnnouncement(announcementType, {
+                initials: firstPlace.initials,
+                erasures: firstPlace.erasures || 0,
+              });
+            }
+          }, 500);
+        }
+        
+        // Track if active for next check
+        tracker.wasActive = st.isActive;
+        
+        // Reset finished flag when challenge becomes active again (next day)
+        if (st.isActive && tracker.isFinished) {
+          tracker.isFinished = false;
+        }
+      }
+
+      if (!list) return;
+      list.innerHTML = '';
+      const fragment = document.createDocumentFragment();
+      (data.leaderboard || []).forEach((row, idx) => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <span class="speed-rank">${idx + 1}.</span>
+          <span class="speed-name">${row.initials || '—'}</span>
+          <span class="speed-count">${row.erasures || 0}</span>
+        `;
+        fragment.appendChild(li);
+      });
+      list.appendChild(fragment);
+    } catch (err) {
+      console.error('Speed challenge fetch error:', err);
+    }
+  }
+
+  async function refreshCategorySpecialists() {
+    try {
+      const res = await fetch('/competitions/category-specialists');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const map = {
+        laptops_desktops: 'specLD',
+        servers: 'specServers',
+        macs: 'specMacs',
+        mobiles: 'specMobiles'
+      };
+      Object.entries(map).forEach(([key, listId]) => {
+        const list = document.getElementById(listId);
+        if (!list) return;
+        list.innerHTML = '';
+        const rows = (data.specialists && data.specialists[key]) || [];
+        const fragment = document.createDocumentFragment();
+        rows.forEach((row, idx) => {
+          const li = document.createElement('li');
+          const trophyClass = idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze';
+          li.innerHTML = `
+            <span class="speed-rank">${idx + 1}.</span>
+            <span class="speed-name">${row.initials || '—'}</span>
+            <span class="speed-count">${row.count || 0}</span>
+            <span class="trophy ${trophyClass}"></span>
+          `;
+          fragment.appendChild(li);
+        });
+        list.appendChild(fragment);
+      });
+    } catch (err) {
+      console.error('Category specialists fetch error:', err);
+    }
+  }
+
+  async function refreshConsistency() {
+    try {
+      const res = await fetch('/competitions/consistency');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const list = document.getElementById('consistencyList');
+      if (!list) return;
+      list.innerHTML = '';
+      const fragment = document.createDocumentFragment();
+      (data.leaderboard || []).forEach((row, idx) => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <span class="speed-rank">${idx + 1}.</span>
+          <span class="speed-name">${row.initials || '—'}</span>
+          <div class="consistency-stats">
+            <span class="speed-count">${row.erasures || 0} erasures</span>
+            <span class="gap">avg time between actions: ${row.avgGapMinutes || 0} min • consistency (lower is steadier): ${row.consistencyScore || 0}</span>
+          </div>
+        `;
+        fragment.appendChild(li);
+      });
+      list.appendChild(fragment);
+    } catch (err) {
+      console.error('Consistency refresh error:', err);
+    }
+  }
+
+  async function refreshLeaderboard() {
+    try {
+      const res = await fetch('/metrics/engineers/leaderboard?scope=today&limit=5');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const body = document.getElementById('leaderboardBody');
+      body.innerHTML = '';
+      const fragment = document.createDocumentFragment();
+      // Display all top engineers in the leaderboard table (up to 5 to match race lanes)
+      (data.items || []).slice(0, 5).forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        const color = getEngineerColor(row.initials || '');
+        const avatar = getAvatarDataUri(row.initials || '');
+        const lastActive = formatTimeAgo(row.lastActive);
+        if (idx === 0) tr.classList.add('leader');
+        tr.innerHTML = `
+          <td>
+            <span class="engineer-avatar" style="background-image: url(${avatar}); border-color: ${color}"></span>
+            <span class="engineer-name">${row.initials || ''}</span>
+          </td>
+          <td class="value-strong">${row.erasures || 0}</td>
+          <td class="time-ago">${lastActive}</td>
+        `;
+        fragment.appendChild(tr);
+      });
+      body.appendChild(fragment);
+
+      // Update race positions with all top 5 engineers
+      updateRace(data.items || []);
+    } catch (err) {
+      console.error('Leaderboard refresh error:', err);
+    }
+  }
+
+  function updateRace(leaderboardData) {
+    const topEngineers = leaderboardData.slice(0, 5);
+    const maxErasures = topEngineers.length > 0 ? topEngineers[0].erasures || 1 : 1;
+
+    // Update all 5 lanes
+    for (let i = 1; i <= 5; i++) {
+      const carEl = document.getElementById(`racePos${i}`);
+      const trailEl = document.getElementById(`trail${i}`);
+      const labelEl = document.getElementById(`driver${i}`);
+      
+      if (!carEl || !trailEl || !labelEl) continue;
+      
+      const engineer = topEngineers[i - 1];
+      
+      if (engineer) {
+        const erasures = engineer.erasures || 0;
+        let percentage = Math.min((erasures / maxErasures) * 100, 100);
+        
+        // Cap at 80% so car doesn't go past finish line until 15:58
+        percentage = Math.min(percentage, 80);
+        
+        // Only update if value actually changed to reduce DOM thrashing
+        if (carEl.style.bottom !== `${percentage}%`) {
+          carEl.style.bottom = `${percentage}%`;
+        }
+        
+        // Update trail height from bottom to current car position
+        if (trailEl.style.height !== `${percentage}%`) {
+          trailEl.style.height = `${percentage}%`;
+        }
+        
+        // Color trail to match engineer color - use solid color instead of gradient for TV performance
+        const engineerColor = getEngineerColor(engineer.initials || '');
+        if (trailEl.style.background !== engineerColor) {
+          trailEl.style.background = engineerColor;
+        }
+        
+        // Update label with engineer initials
+        if (labelEl.textContent !== engineer.initials) {
+          labelEl.textContent = `${engineer.initials || '?'}`;
+        }
+        if (labelEl.style.color !== engineerColor) {
+          labelEl.style.color = engineerColor;
+        }
+
+        // Check if car has finished (reached top/100%)
+        // Only trigger finish message at 15:58 when race officially ends
+        if (erasures >= maxErasures && !engineer.finished) {
+          const now = new Date();
+          const hours = now.getHours();
+          const minutes = now.getMinutes();
+          
+          // Only at 15:58 does the race officially finish
+          if (hours === 15 && minutes === 58) {
+            engineer.finished = true;
+            triggerRaceConfetti();
+            triggerGreenie(`🏁 ${engineer.initials} CROSSES THE FINISH LINE! What a performance! 🎉`);
+            
+            // Trigger winner announcement if this is the first to finish
+            if (!raceData.firstFinisher) {
+              raceData.firstFinisher = engineer;
+              announceWinner();
+            }
+          }
+        }
+      } else {
+        // No engineer data for this lane - reset it
+        carEl.style.bottom = '0%';
+        trailEl.style.height = '0%';
+        labelEl.textContent = '—';
+        labelEl.style.color = 'var(--muted)';
+      }
+    }
+
+    raceData.engineer1 = topEngineers[0] || null;
+    raceData.engineer2 = topEngineers[1] || null;
+    raceData.engineer3 = topEngineers[2] || null;
+  }
+
+  function checkAndTriggerWinner() {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+
+    // Trigger at 15:58
+    if (hours === 15 && minutes === 58 && !raceData.winnerAnnounced) {
+      announceWinner();
+    }
+
+    // Reset flag at midnight for next day
+    if (hours === 0 && minutes === 0) {
+      raceData.winnerAnnounced = false;
+      raceData.firstFinisher = null;
+    }
+  }
+
+  // Enhanced announcement system
+  const announcementTypes = {
+    DAILY_SUMMARY: 'daily-summary',
+    DAILY_RACE_WINNER: 'daily-race-winner',
+    SPEED_CHALLENGE_AM: 'speed-challenge-am',
+    SPEED_CHALLENGE_PM: 'speed-challenge-pm',
+    CATEGORY_SPECIALIST: 'category-specialist',
+    CONSISTENCY_KING: 'consistency-king',
+    TOP_PERFORMER: 'top-performer',
+  };
+
+  const announcementMessages = {
+    'daily-summary': (summary) => ({
+      title: summary.title || '🏆 End of Day Awards',
+      subtitle: summary.subtitle || '',
+      duration: 600000, // 10 minutes
+      emoji: '🏆🎉',
+    }),
+    'daily-race-winner': (winner) => ({
+      title: `🏆 ${winner.initials} WINS THE DAILY RACE! 🏆`,
+      subtitle: `Finished with ${winner.erasures} erasures today`,
+      duration: 600000, // 10 minutes - display until they leave warehouse
+      emoji: '🏁🎉',
+    }),
+    'speed-challenge-am': (winner) => ({
+      title: `⚡ ${winner.initials} CRUSHES THE AM SPEED CHALLENGE! ⚡`,
+      subtitle: `${winner.erasures} erasures in record time`,
+      duration: 60000, // 1 minute
+      emoji: '🏃💨',
+    }),
+    'speed-challenge-pm': (winner) => ({
+      title: `🌙 ${winner.initials} DOMINATES THE PM SPEED CHALLENGE! 🌙`,
+      subtitle: `${winner.erasures} erasures in the afternoon blitz`,
+      duration: 60000, // 1 minute
+      emoji: '🌟⚡',
+    }),
+    'category-specialist': (specialist) => ({
+      title: `🎯 ${specialist.initials} IS THE ${specialist.category} SPECIALIST! 🎯`,
+      subtitle: `Master of ${specialist.category} erasures`,
+      duration: 7000,
+      emoji: '👑✨',
+    }),
+    'consistency-king': (winner) => ({
+      title: `🎪 ${winner.initials} IS TODAY'S CONSISTENCY KING/QUEEN! 🎪`,
+      subtitle: `${winner.erasures} erasures with flawless pacing`,
+      duration: 7000,
+      emoji: '⏱️💯',
+    }),
+    'top-performer': (winner) => ({
+      title: `⭐ ALL HAIL ${winner.initials}, TOP PERFORMER! ⭐`,
+      subtitle: `${winner.erasures} erasures and counting`,
+      duration: 7000,
+      emoji: '👏🔥',
+    }),
+  };
+
+  async function safeFetchJson(url) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function buildDailySummary() {
+    const [leaderboardData, speedAmData, speedPmData, consistencyData, specialistsData] = await Promise.all([
+      safeFetchJson('/metrics/engineers/leaderboard?scope=today&limit=1'),
+      safeFetchJson('/competitions/speed-challenge?window=am'),
+      safeFetchJson('/competitions/speed-challenge?window=pm'),
+      safeFetchJson('/competitions/consistency'),
+      safeFetchJson('/competitions/category-specialists'),
+    ]);
+
+    const items = [];
+
+    const raceWinner = (leaderboardData && leaderboardData.items && leaderboardData.items[0]) || raceData.engineer1;
+    if (raceWinner) {
+      items.push({
+        icon: '🏁',
+        label: 'Daily Race',
+        winner: raceWinner.initials || '—',
+        value: `${raceWinner.erasures || 0} erasures`,
+      });
+    }
+
+    const amWinner = speedAmData && speedAmData.leaderboard && speedAmData.leaderboard[0];
+    if (amWinner) {
+      items.push({
+        icon: '⚡',
+        label: 'Speed Challenge (AM)',
+        winner: amWinner.initials || '—',
+        value: `${amWinner.erasures || 0} erasures`,
+      });
+    }
+
+    const pmWinner = speedPmData && speedPmData.leaderboard && speedPmData.leaderboard[0];
+    if (pmWinner) {
+      items.push({
+        icon: '🌙',
+        label: 'Speed Challenge (PM)',
+        winner: pmWinner.initials || '—',
+        value: `${pmWinner.erasures || 0} erasures`,
+      });
+    }
+
+    const consistencyWinner = consistencyData && consistencyData.leaderboard && consistencyData.leaderboard[0];
+    if (consistencyWinner) {
+      items.push({
+        icon: '⏱️',
+        label: 'Consistency King/Queen',
+        winner: consistencyWinner.initials || '—',
+        value: `${consistencyWinner.erasures || 0} erasures`,
+      });
+    }
+
+    const specialists = (specialistsData && specialistsData.specialists) || {};
+    const specialistLabels = {
+      laptops_desktops: 'Laptops/Desktops Specialist',
+      servers: 'Servers Specialist',
+      macs: 'Macs Specialist',
+      mobiles: 'Mobiles Specialist',
+    };
+    Object.entries(specialistLabels).forEach(([key, label]) => {
+      const row = (specialists[key] || [])[0];
+      if (row) {
+        items.push({
+          icon: '🎯',
+          label,
+          winner: row.initials || '—',
+          value: `${row.count || 0} erasures`,
+        });
+      }
+    });
+
+    if (items.length === 0) {
+      items.push({
+        icon: 'ℹ️',
+        label: 'No results yet',
+        winner: '—',
+        value: 'Waiting for data',
+      });
+    }
+
+    const todayLabel = new Date().toLocaleDateString(undefined, {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    });
+
+    return {
+      title: '🏆 End of Day Awards',
+      subtitle: `${todayLabel} • Winners`,
+      items,
+    };
+  }
+
+  function showAnnouncement(type, data) {
+    const config = announcementMessages[type];
+    if (!config) return;
+
+    const message = config(data);
+    const modal = document.getElementById('winnerModal');
+    const winnerText = document.getElementById('winnerText');
+    const winnerSubtext = document.getElementById('winnerSubtext');
+    const summaryContainer = document.getElementById('announcementSummary');
+    const summaryTitle = document.getElementById('summaryTitle');
+    const summarySubtitle = document.getElementById('summarySubtitle');
+    const summaryGrid = document.getElementById('summaryGrid');
+
+    if (type === announcementTypes.DAILY_SUMMARY && summaryContainer) {
+      if (winnerText) winnerText.style.display = 'none';
+      if (winnerSubtext) winnerSubtext.style.display = 'none';
+      summaryContainer.classList.remove('hidden');
+      if (summaryTitle) summaryTitle.textContent = data.title || message.title;
+      if (summarySubtitle) summarySubtitle.textContent = data.subtitle || message.subtitle || '';
+      if (summaryGrid) {
+        summaryGrid.innerHTML = (data.items || []).map(item => `
+          <div class="summary-item">
+            <div class="summary-item-left">
+              <span class="summary-icon">${item.icon || '🏆'}</span>
+              <div>
+                <div class="summary-label">${escapeHtml(item.label || '')}</div>
+                <div class="summary-winner">${escapeHtml(item.winner || '—')}</div>
+              </div>
+            </div>
+            <div class="summary-value">${escapeHtml(item.value || '')}</div>
+          </div>
+        `).join('');
+      }
+    } else {
+      if (summaryContainer) summaryContainer.classList.add('hidden');
+      if (winnerText) {
+        winnerText.style.display = '';
+        winnerText.textContent = message.title;
+      }
+      if (winnerSubtext) {
+        winnerSubtext.style.display = '';
+        winnerSubtext.textContent = message.subtitle;
+      }
+    }
+
+    modal.classList.remove('hidden');
+
+    // Trigger confetti for more impressive effect
+    triggerConfetti();
+
+    // Hide modal after configured duration
+    setTimeout(() => {
+      modal.classList.add('hidden');
+    }, message.duration);
+  }
+
+  async function announceWinner() {
+    if (raceData.winnerAnnounced) return;
+    raceData.winnerAnnounced = true;
+    const summary = await buildDailySummary();
+    showAnnouncement(announcementTypes.DAILY_SUMMARY, summary);
+  }
+
+  function triggerConfetti() {
+    if (typeof confetti === 'undefined') {
+      console.warn('Confetti library not loaded');
+      return;
+    }
+
+    const confettiColors = [
+      '#ff1ea3', // pink
+      '#8cf04a', // green
+      '#00d4ff', // cyan
+      '#ffcc00', // yellow
+    ];
+
+    const defaults = {
+      origin: { y: 0.3 },
+      zIndex: 10000,
+      disableForReducedMotion: true,
+    };
+
+    // Single optimized burst for TV performance
+    confetti({
+      ...defaults,
+      particleCount: 50, // Reduced from 100
+      spread: 90,
+      startVelocity: 40,
+      colors: confettiColors,
+      ticks: 120, // Limit animation duration
+    });
+  }
+
+  function renderBars(counts) {
+    const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+    const defs = categories;
+    const container = document.getElementById('byTypeBars');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    // Use DocumentFragment for better performance
+    const fragment = document.createDocumentFragment();
+    defs.forEach(def => {
+      const val = counts[def.key] || 0;
+      const pct = Math.round((val / total) * 100);
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      row.innerHTML = `
+        <div class="bar-label">${def.label}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        <div class="bar-value">${val}</div>
+      `;
+      fragment.appendChild(row);
+    });
+    container.appendChild(fragment);
+  }
+
+  function updateDonut(chart, value, target) {
+    const remaining = Math.max(target - value, 0);
+    chart.data.datasets[0].data = [value, remaining];
+    chart.canvas.dataset.target = target;
+    chart.update('none'); // Skip animation for better performance
+    
+    // Trigger pulse animation on chart container
+    const container = chart.canvas.closest('.donut-card');
+    if (container) {
+      container.classList.add('pulse-update');
+      setTimeout(() => container.classList.remove('pulse-update'), 600);
+    }
+  }
+
+  async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } catch (err) {
+      console.warn('Wake lock request failed', err);
+    }
+  }
+
+  function ensureSilentAudio() {
+    // Very quiet oscillator to count as activity and keep Fire Stick awake
+    try {
+      if (silentOsc && audioCtx && audioCtx.state !== 'closed') {
+        if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+        return;
+      }
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      audioCtx = new Ctx();
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.0001;
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      silentOsc = osc;
+    } catch (err) {
+      console.warn('Silent audio keep-alive failed', err);
+    }
+  }
+
+  function startKeepAliveVideo() {
+    // Hidden muted looping video to keep media session active on devices that permit autoplay
+    try {
+      if (keepAliveVideo && keepAliveVideo.readyState > 0) {
+        keepAliveVideo.play().catch(() => {});
+        return;
+      }
+      const vid = document.createElement('video');
+      vid.muted = true;
+      vid.loop = true;
+      vid.playsInline = true;
+      vid.autoplay = true;
+      vid.setAttribute('playsinline', '');
+      vid.style.position = 'fixed';
+      vid.style.width = '1px';
+      vid.style.height = '1px';
+      vid.style.opacity = '0.001';
+      vid.style.bottom = '0';
+      vid.style.left = '0';
+      vid.style.pointerEvents = 'none';
+      // 1s silent WebM
+      vid.src = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC9+BBQvWBAULpgQRC8YEEQvGBAAAB9uWdlYm0BVmVyc2lvbj4xAAAAAAoAAABHYXZrVjkAAAAAAAAD6aNjYWI9AAAZY2FkYwEAAAAAAAAAAAAAAAAAAAAAAAACdC9hAAAAAAACAAEAAQAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+      document.body.appendChild(vid);
+      keepAliveVideo = vid;
+      vid.play().catch(() => {});
+    } catch (err) {
+      console.warn('Keep-alive video failed', err);
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      requestWakeLock();
+      ensureSilentAudio();
+      startKeepAliveVideo();
+    }
+  });
+
+  function keepScreenAlive() {
+    if (document.hidden) return;
+    requestWakeLock();
+    ensureSilentAudio();
+    startKeepAliveVideo();
+    document.body.style.opacity = '0.999';
+    setTimeout(() => { document.body.style.opacity = '1'; }, 80);
+  }
+  
+  // Keep screen alive every 2 minutes to avoid Fire Stick sleep
+  setInterval(keepScreenAlive, 2 * 60 * 1000);
+
+  // First shot on load
+  keepScreenAlive();
+
+  // Auto-reload page at 2 AM daily to clear cache and keep memory clean (off-hours)
+  function scheduleNightlyReload() {
+    const now = new Date();
+    let reloadTime = new Date();
+    reloadTime.setHours(2, 0, 0, 0); // 2 AM
+    
+    // If 2 AM has passed today, schedule for tomorrow
+    if (now > reloadTime) {
+      reloadTime.setDate(reloadTime.getDate() + 1);
+    }
+    
+    const msUntilReload = reloadTime - now;
+    setTimeout(() => {
+      location.reload();
+      scheduleNightlyReload(); // Reschedule for next day
+    }, msUntilReload);
+  }
+  scheduleNightlyReload();
+
+  function formatDuration(sec) {
+    if (sec == null || isNaN(sec)) return '--:--';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+... (snapshot truncated for brevity) ...
