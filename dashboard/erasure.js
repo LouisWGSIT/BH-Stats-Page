@@ -562,11 +562,12 @@
         const allTimeTotalData = await allTimeTotalRes.json();
         const allTimeTotal = allTimeTotalData.total || 0;
 
-        renderTopList(cat.todayListId, todayData.engineers);
+        // Use renderTopListWithLabel (supports labelled faces) so live updates work
+        renderTopListWithLabel(cat.todayListId, todayData.engineers, 'Today', todayTotal);
         const todayCountEl = document.getElementById(cat.todayCountId); if (todayCountEl) todayCountEl.textContent = todayTotal;
-        renderTopList(cat.monthListId, monthData.engineers);
+        renderTopListWithLabel(cat.monthListId, monthData.engineers, 'This Month', monthTotal);
         const monthCountEl = document.getElementById(cat.monthCountId); if (monthCountEl) monthCountEl.textContent = monthTotal;
-        renderTopList(cat.allTimeListId, allTimeData.engineers);
+        renderTopListWithLabel(cat.allTimeListId, allTimeData.engineers, 'All Time', allTimeTotal);
         const allTimeCountEl = document.getElementById(cat.allTimeCountId); if (allTimeCountEl) allTimeCountEl.textContent = allTimeTotal;
 
       } catch (err) {
