@@ -81,8 +81,27 @@
   function formatQaName(rawName) { return window.formatQaName ? window.formatQaName(rawName) : (rawName || ''); }
   function getQaInitials(displayName) { return window.getQaInitials ? window.getQaInitials(displayName) : ''; }
 
-  // Safe delegate for summary refresh — implemented in `dashboard/common.js` or `dashboard/erasure/erasure.js`
-  async function refreshSummary() { return window.refreshSummary ? window.refreshSummary() : Promise.resolve(); }
+  // Safe delegate for summary refresh — implemented in dashboard bundles.
+  async function refreshSummaryDelegate() {
+    try {
+      if (typeof window.__dashboardRefreshSummary === 'function') return window.__dashboardRefreshSummary();
+      if (typeof window.refreshSummaryImpl === 'function') return window.refreshSummaryImpl();
+      // If a dashboard bundle exposes `window.refreshSummary` (the implementation), call it
+      if (typeof window.refreshSummary === 'function' && window.refreshSummary !== refreshSummaryDelegate) return window.refreshSummary();
+    } catch (e) {
+      console.warn('refreshSummaryDelegate error', e);
+    }
+    return Promise.resolve();
+  }
+
+  // Safe wrapper for refreshAllTopLists to delegate to migrated implementation
+  async function refreshAllTopListsDelegate() {
+    try {
+      if (typeof window.refreshAllTopLists === 'function' && window.refreshAllTopLists !== refreshAllTopListsDelegate) return window.refreshAllTopLists();
+      if (typeof window.refreshAllTopListsWithFlip === 'function') return window.refreshAllTopListsWithFlip();
+    } catch (e) { console.warn('refreshAllTopListsDelegate error', e); }
+    return Promise.resolve();
+  }
 
   // Safe wrappers (call sites use these) to avoid name collisions with global implementations
   async function callRefreshSpeedChallenge(when, listId, statusId) {
@@ -2275,8 +2294,8 @@
 
   // ==================== INITIALIZATION ====================
   // Kick off refresh loops (after all functions are defined)
-  refreshSummary();
-  refreshAllTopLists();
+  refreshSummaryDelegate();
+  refreshAllTopListsDelegate();
   refreshByTypeCounts();
   refreshLeaderboard();
   
@@ -2292,8 +2311,8 @@
 
 
   setInterval(() => {
-    refreshSummary();
-    refreshAllTopLists();
+    refreshSummaryDelegate();
+    refreshAllTopListsDelegate();
     refreshByTypeCounts();
     refreshLeaderboard();
     checkAndTriggerWinner();
