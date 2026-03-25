@@ -127,6 +127,56 @@ Warehouse stats dashboards for TV displays and staff access. The app provides Er
     - Changed Excel export flow to write the workbook to a temporary file and serve it via `FileResponse` (deleted after send) to avoid holding large BytesIO objects in the web dyno memory.
     - Added RSS logging around heavy endpoints to correlate memory use with requests; `psutil` is optional (falls back to `resource` or `/proc` parsing).
 
+### 2026-03-25: Cache-busting for frontend bundles
+
+- Added a lightweight cache-busting token to the dynamic loader in `app.js` so script URLs now include a `v=` query parameter (sourced from `window.__assetVersion`, a `meta[name="asset-version"]` tag if present, or a timestamp). This forces clients to fetch updated `dashboard/common.js` and side bundles after deployments and reduces the chance of mixed/stale assets causing runtime ReferenceErrors.
+  
+
+## File reorganization & dashboard roadmap (Mar 2026)
+
+- Split frontend bundles and organized dashboard assets into clear subfolders to improve maintainability and safe deployment:
+   - `dashboard/common.js`, `dashboard/qa/qa.js`, `dashboard/erasure/erasure.js` hold shared and feature-specific JS.
+   - Administrative and manager pages moved into `admin/` and `manager/` subfolders; root `admin.html` and `manager.html` are now safe redirect stubs to their new locations to preserve external links while we complete the migration.
+- Rationale: isolate feature areas so new dashboard "sides" can be added without confusing the loader and to make review/ownership easier.
+
+- Dev/test workflow updated: added a `Dockerfile` and `docker-compose.yml` scaffold so the entire stack (FastAPI + static files) can be run locally in a container during development and for CI smoke tests. Use the container to validate exports and endpoints before pushing to Render.
+
+- Roadmap: prepare to add additional dashboard "sides" as separate bundles and pages:
+   - `IA` (Inspection/Audit) — operational inspections and audit summaries
+   - `Breakfix` — repair/rework dashboard for returned devices needing fixes
+   - `Refurb` — refurbishment throughput and quality metrics
+   - `Goods In` — inbound receipts and staging visibility
+
+- Migration approach taken: staged cut-over
+   1. Add redirect stubs at root to avoid immediate 404s.
+   2. Update loader paths and internal references to new subfolders.
+   3. Run smoke tests and short-term observability (tracemalloc snapshots) before removing root files entirely.
+
+## Memory investigation status
+
+- Context: overnight memory creep was observed (Render/hosted process RSS slowly increasing). To minimise risk we avoided a full cut-over until the root cause is better understood.
+- Actions taken so far:
+   - Replaced unbounded caches with a thread-safe `TTLCache` for QA and summary caches.
+   - Changed heavy exports to use temporary files and `FileResponse` to avoid holding large in-memory buffers.
+   - Added optional `tracemalloc` snapshotting and an admin-only endpoint `POST /admin/memory-snapshot` to capture allocation top-lists on demand.
+   - Added RSS logging and lightweight `ActivityWriter` to persist activity and correlate spikes.
+
+- Next steps to find root cause:
+   1. Run the app with `ENABLE_TRACEMALLOC=1` and capture snapshots at intervals (e.g., start, +4h, +12h) — compare top allocation sites.
+ 2. Temporarily reduce cache sizes and TTLs (e.g., QA_CACHE_TTL, QA_CACHE_MAXSIZE) to see if growth slows.
+ 3. Monitor `ActivityWriter` queue sizes and ensure background thread is flushing entries; watch for blocked disk I/O or file handles.
+ 4. Audit background tasks (check_daily_reset, export jobs, any long-running loops) for unbounded data retention or growth in closures.
+ 5. If snapshots point to a specific module (e.g., large lists in memory), add targeted mitigations (clear caches after export, stream large responses, or batch processing).
+
+- Operational note: you can take an on-demand snapshot using the admin endpoint (requires admin auth):
+
+```
+curl -X POST -H "Authorization: Bearer <ADMIN_PASSWORD>" http://localhost:8001/admin/memory-snapshot
+```
+
+The endpoint writes human-readable top-lists into `logs/memory/` (see `TRACE_SNAPSHOT_DIR`). Share those files and I will analyse them and propose fixes.
+
+
 These March entries reflect recent backend work that should be deployed to Render and validated with the USB boot/test script.
 
 ## Known Issues / Risks
