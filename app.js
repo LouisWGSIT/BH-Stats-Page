@@ -38,6 +38,33 @@
   }
 })();
 
+// --- Early global fallbacks to avoid ReferenceErrors during bundle sync ---
+// Define both `window.` properties and plain globals so existing call sites work
+(function(){
+  function makeNoop(name) {
+    const fn = async function(){ console.warn('noop:', name); return Promise.resolve(); };
+    try { window[name] = window[name] || fn; } catch (e) {}
+    try { if (typeof this[name] === 'undefined') this[name] = window[name]; } catch (e) {}
+  }
+  makeNoop('refreshByTypeCounts');
+  makeNoop('refreshLeaderboard');
+  makeNoop('refreshTopByTypeAllScopes');
+  makeNoop('refreshAllTopListsWithFlip');
+  makeNoop('refreshCategoryRotatorCards');
+  makeNoop('setupCategoryFlipCards');
+  // renderTopListWithLabel should be sync-friendly (not async) so provide a simple implementation
+  if (typeof window.renderTopListWithLabel !== 'function') {
+    window.renderTopListWithLabel = function(listId, engineers, label, total) {
+      try {
+        const el = document.getElementById(listId);
+        if (!el) return;
+        el.innerHTML = '<div style="padding:12px;text-align:center;color:#888">No data</div>';
+      } catch (e) { console.warn('renderTopListWithLabel fallback error', e); }
+    };
+    try { if (typeof renderTopListWithLabel === 'undefined') renderTopListWithLabel = window.renderTopListWithLabel; } catch (e) {}
+  }
+})();
+
   // Apply theme variables
   // Ensure `cfg` exists (fallback for local static loads where server doesn't inject config)
   if (typeof cfg === 'undefined') {
