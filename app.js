@@ -2363,11 +2363,11 @@
   }
 
   // Enhanced: fetches for today, month, all-time for flip faces
-  async function refreshTopByTypeAllScopes(type, listId) { return window.refreshTopByTypeAllScopes ? window.refreshTopByTypeAllScopes(type, listId) : Promise.resolve(); }
+  async function refreshTopByTypeAllScopesDelegate(type, listId) { return window.refreshTopByTypeAllScopes ? window.refreshTopByTypeAllScopesDelegate(type, listId) : Promise.resolve(); }
 
   // Enhanced: fetch all scopes for each category
   function refreshAllTopListsWithFlip() {
-    categories.forEach(c => refreshTopByTypeAllScopes(c.key, c.listId));
+    categories.forEach(c => refreshTopByTypeAllScopesDelegate(c.key, c.listId));
   }
 
   // NEW: Refresh category rotator cards (delegate to migrated implementation)
