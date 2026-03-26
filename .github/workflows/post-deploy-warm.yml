@@ -12,10 +12,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Wait for deploy to settle
+      - name: Wait for deploy to become healthy
         run: |
-          echo "Waiting 30s for deployment to finish..."
-          sleep 30
+          echo "Waiting up to 5 minutes for ${SERVICE_URL} to become healthy..."
+          set -e
+          ATTEMPTS=30
+          SLEEP=10
+          OK=1
+          for i in $(seq 1 $ATTEMPTS); do
+            echo "Attempt $i: checking ${SERVICE_URL}/health"
+            if curl -fsS --max-time 5 "${SERVICE_URL}/health" >/dev/null 2>&1; then
+              echo "Service is healthy. Proceeding to warm cache."
+              OK=0
+              break
+            fi
+            sleep $SLEEP
+          done
+          if [ "$OK" -ne 0 ]; then
+            echo "Service did not become healthy after $((ATTEMPTS * SLEEP))s - continuing to attempt warm but it may fail."
+          fi
 
       - name: Run warm script
         env:
