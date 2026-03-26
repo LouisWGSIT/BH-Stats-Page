@@ -271,6 +271,79 @@ def _set_cached_response(cache_key: str, data: Dict[str, object]):
     return data
 
 
+# Warm common dashboard caches on startup to avoid cold-start slowness
+async def warm_cache_on_startup():
+    try:
+        # brief delay to allow startup syncs to complete
+        await asyncio.sleep(1)
+        # daily metrics
+        try:
+            data = db.get_daily_stats()
+            _set_cached_response('/metrics/today', data)
+        except Exception:
+            pass
+
+        # monthly / momentum data
+        try:
+            data = db.get_monthly_momentum()
+            _set_cached_response('/metrics/monthly-momentum', data)
+        except Exception:
+            pass
+
+        # summary (if available via db helper)
+        try:
+            if hasattr(db, 'get_summary'):
+                data = db.get_summary()
+                _set_cached_response('/metrics/summary', data)
+        except Exception:
+            pass
+
+        # QA insights window (last 7 days) - use qa_export helper if present
+        try:
+            if hasattr(qa_export, 'get_qa_daily_totals_range'):
+                end = datetime.now().date()
+                start = end - timedelta(days=7)
+                qa_data = qa_export.get_qa_daily_totals_range(start, end)
+                _set_cached_response('/api/insights/qa', {'data': qa_data})
+        except Exception:
+            pass
+
+    except Exception:
+        # never fail startup because of warm cache
+        pass
+
+
+# Memory watchdog: clear QA_CACHE when process RSS grows above a threshold
+async def memory_watchdog():
+    try:
+        if psutil is None:
+            return
+        # Determine memory limit (bytes) from env or default 512MB
+        try:
+            limit = int(os.getenv('MEMORY_LIMIT_BYTES', str(512 * 1024 * 1024)))
+        except Exception:
+            limit = 512 * 1024 * 1024
+        threshold = int(limit * 0.85)
+        while True:
+            try:
+                rss = psutil.Process().memory_info().rss
+                if rss and rss >= threshold:
+                    try:
+                        QA_CACHE.clear()
+                    except Exception:
+                        pass
+                    # take an optional memory snapshot if tracemalloc enabled
+                    try:
+                        take_tracemalloc_snapshot(reason='memory_watchdog', meta={'rss': rss})
+                    except Exception:
+                        pass
+                await asyncio.sleep(30)
+            except Exception:
+                await asyncio.sleep(30)
+    except Exception:
+        return
+
+
 # Activity log (in-memory ring buffer). Each entry: {ts, path, method, role, client_ip, note, rss}
 ACTIVITY_LOG = deque(maxlen=5000)
 
@@ -1184,8 +1257,18 @@ async def startup_event():
         print(f"[Startup] Engineer stats by device type sync complete: {synced_type} records")
     except Exception as e:
         print(f"[Startup] Error syncing engineer stats by device type: {e}")
-
     asyncio.create_task(check_daily_reset())
+    # Warm commonly used dashboard caches to avoid slow cold-start requests
+    try:
+        asyncio.create_task(warm_cache_on_startup())
+    except Exception:
+        pass
+
+    # Start memory watchdog to clear cache if RSS grows too large
+    try:
+        asyncio.create_task(memory_watchdog())
+    except Exception:
+        pass
 
 @app.post("/hooks/erasure")
 async def erasure_hook(req: Request):
