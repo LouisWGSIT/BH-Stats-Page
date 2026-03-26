@@ -4,6 +4,7 @@ from starlette.background import BackgroundTask
 import tempfile
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 import os
 from typing import Any, Dict
 from datetime import datetime, timedelta, date
@@ -135,6 +136,8 @@ class TTLCache:
 # Configure root logger to emit structured JSON logs (includes request_id)
 configure_logging(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")))
 app = FastAPI(title="Warehouse Stats Service")
+# Enable GZip compression for responses over a threshold to reduce payload sizes
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Export job routes (enqueue / status) - optional Redis/RQ integration
 try:
@@ -1208,8 +1211,13 @@ async def erasure_hook(req: Request):
         return {"status": "ok", "event_accepted": event, "count": stats["erased"]}
 
 @app.get("/metrics/today")
-async def get_metrics():
-    return db.get_daily_stats()
+async def get_metrics(req: Request):
+    cache_key = f"{req.url.path}" if not req.url.query else f"{req.url.path}?{req.url.query}"
+    cached = _get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+    data = db.get_daily_stats()
+    return _set_cached_response(cache_key, data)
 
 @app.get("/metrics/yesterday")
 async def get_yesterday_metrics():
@@ -1846,37 +1854,73 @@ async def erasure_detail(req: Request):
 
 # Summary metrics powering the new dashboard
 @app.get("/metrics/summary")
-async def metrics_summary(date: str = None, startDate: str = None, endDate: str = None):
+async def metrics_summary(req: Request, date: str = None, startDate: str = None, endDate: str = None):
     """Get summary for a specific date (YYYY-MM-DD), date range, or today if not provided"""
+    # Only cache non-range (single-date or today) requests; range queries bypass cache
     if startDate and endDate:
         return db.get_summary_date_range(startDate, endDate)
-    return db.get_summary_today_month(date)
+    cache_key = f"{req.url.path}" if not req.url.query else f"{req.url.path}?{req.url.query}"
+    cached = _get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+    data = db.get_summary_today_month(date)
+    return _set_cached_response(cache_key, data)
 
 @app.get("/metrics/by-type")
-async def metrics_by_type():
-    return db.get_counts_by_type_today()
+async def metrics_by_type(req: Request):
+    cache_key = f"{req.url.path}"
+    cached = _get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+    data = db.get_counts_by_type_today()
+    return _set_cached_response(cache_key, data)
 
 @app.get("/metrics/errors")
-async def metrics_errors():
-    return db.get_error_distribution_today()
+async def metrics_errors(req: Request):
+    cache_key = f"{req.url.path}"
+    cached = _get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+    data = db.get_error_distribution_today()
+    return _set_cached_response(cache_key, data)
 
 @app.get("/metrics/engineers/top2")
-async def metrics_engineers_top(scope: str = "today", type: str | None = None, limit: int = 3):
-    return {"engineers": db.top_engineers(scope=scope, device_type=type, limit=limit)}
+async def metrics_engineers_top(req: Request, scope: str = "today", type: str | None = None, limit: int = 3):
+    cache_key = f"{req.url.path}?scope={scope}&type={type}&limit={limit}"
+    cached = _get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+    data = {"engineers": db.top_engineers(scope=scope, device_type=type, limit=limit)}
+    return _set_cached_response(cache_key, data)
 
 @app.get("/metrics/engineers/leaderboard")
-async def metrics_engineers_leaderboard(scope: str = "today", limit: int = 6, date: str = None):
-    return {"items": db.leaderboard(scope=scope, limit=limit, date_str=date)}
+async def metrics_engineers_leaderboard(req: Request, scope: str = "today", limit: int = 6, date: str = None):
+    cache_key = f"{req.url.path}?scope={scope}&limit={limit}&date={date}"
+    cached = _get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+    data = {"items": db.leaderboard(scope=scope, limit=limit, date_str=date)}
+    return _set_cached_response(cache_key, data)
 
 @app.get("/metrics/engineers/weekly-stats")
-async def metrics_engineers_weekly_stats(startDate: str, endDate: str):
+async def metrics_engineers_weekly_stats(req: Request, startDate: str, endDate: str):
     """Get weekly breakdown of erasures by engineer for a date range"""
-    return {"engineers": db.get_engineer_weekly_stats(startDate, endDate)}
+    cache_key = f"{req.url.path}?start={startDate}&end={endDate}"
+    cached = _get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+    data = {"engineers": db.get_engineer_weekly_stats(startDate, endDate)}
+    return _set_cached_response(cache_key, data)
 
 @app.get("/metrics/month-comparison")
-async def metrics_month_comparison(currentStart: str, currentEnd: str, previousStart: str, previousEnd: str):
+async def metrics_month_comparison(req: Request, currentStart: str, currentEnd: str, previousStart: str, previousEnd: str):
     """Get month-over-month comparison"""
-    return db.get_month_over_month_comparison(currentStart, currentEnd, previousStart, previousEnd)
+    cache_key = f"{req.url.path}?curStart={currentStart}&curEnd={currentEnd}&prevStart={previousStart}&prevEnd={previousEnd}"
+    cached = _get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+    data = db.get_month_over_month_comparison(currentStart, currentEnd, previousStart, previousEnd)
+    return _set_cached_response(cache_key, data)
 
 @app.get("/admin/initials-list")
 async def admin_get_initials_list(req: Request):
