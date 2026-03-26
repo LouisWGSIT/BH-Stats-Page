@@ -249,6 +249,10 @@ LOCAL_NETWORKS = [
 MANAGER_PASSWORD = os.getenv("DASHBOARD_MANAGER_PASSWORD", "Gr33n5af3!")
 ADMIN_PASSWORD = os.getenv("DASHBOARD_ADMIN_PASSWORD", "P!nkarrow")
 
+# If set to a truthy value, allow read-only public GET access to dashboard metrics
+# Use only for short-lived public tests (e.g., Lighthouse). Defaults to false.
+DASHBOARD_PUBLIC = os.getenv("DASHBOARD_PUBLIC", "false").lower() in ("1", "true", "yes")
+
 # Device token storage (persistent across redeployments)
 DEVICE_TOKENS_FILE = "device_tokens.json"
 DEVICE_TOKENS_DB = os.getenv("DEVICE_TOKENS_DB", "").strip()
@@ -1003,6 +1007,13 @@ async def auth_middleware(request: Request, call_next):
             if request.url.path.startswith("/admin") and role != "admin":
                 return JSONResponse(status_code=403, content={"detail": "Admin access required."})
             return await call_next(request)
+
+    # Public read-only toggle: allow GETs to metrics/analytics when DASHBOARD_PUBLIC is enabled
+    try:
+        if DASHBOARD_PUBLIC and request.method == "GET" and request.url.path.startswith(("/metrics", "/analytics")):
+            return await call_next(request)
+    except Exception:
+        pass
     
     # External access: check for password
     # Check Authorization header with password
