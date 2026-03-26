@@ -4144,10 +4144,89 @@ function renderSVGSparkline(svgElem, data) {
 
   // ==================== INITIALIZATION ====================
   // Kick off refresh loops (after all functions are defined)
-  refreshSummary();
-  refreshAllTopLists();
-  refreshByTypeCounts();
-  refreshLeaderboard();
+  async function refreshAggregated() {
+    try {
+      const res = await fetch('/metrics/qa-summary');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+
+      // Summary
+      const summary = data.summary || {};
+      const todayTotal = (summary.todayTotal != null) ? summary.todayTotal : (data.today && data.today.erased) || 0;
+      const monthTotal = (summary.monthTotal != null) ? summary.monthTotal : (summary.monthTotal) || 0;
+
+      const todayEl = document.getElementById('totalTodayValue');
+      const monthEl = document.getElementById('monthTotalValue');
+      if (todayEl) { todayEl.textContent = todayTotal; animateNumberUpdate('totalTodayValue'); }
+      if (monthEl) { monthEl.textContent = monthTotal; animateNumberUpdate('monthTotalValue'); }
+      updateDonut(totalTodayChart, todayTotal, cfg.targets.erased);
+      updateDonut(monthChart, monthTotal, cfg.targets.month || 10000);
+
+      // By-type counts
+      const byType = data.byType || {};
+      const counts = {
+        laptops_desktops: byType.laptops_desktops || 0,
+        servers: byType.servers || 0,
+        macs: byType.macs || 0,
+        mobiles: byType.mobiles || 0,
+      };
+      categories.forEach(c => {
+        const el = document.getElementById(c.countId);
+        if (el) el.textContent = counts[c.key] || 0;
+      });
+      renderBars(counts);
+
+      // Leaderboard
+      const lb = (data.engineersLeaderboard && data.engineersLeaderboard.items) || [];
+      const body = document.getElementById('leaderboardBody');
+      if (body) {
+        body.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+        (lb || []).slice(0,5).forEach((row, idx) => {
+          const tr = document.createElement('tr');
+          const color = getEngineerColor(row.initials || '');
+          const avatar = getAvatarDataUri(row.initials || '');
+          const lastActive = formatTimeAgo(row.lastActive);
+          if (idx === 0) tr.classList.add('leader');
+          tr.innerHTML = `
+            <td>
+              <span class="engineer-avatar" style="background-image: url(${avatar}); border-color: ${color}"></span>
+              <span class="engineer-name">${row.initials || ''}</span>
+            </td>
+            <td class="value-strong">${row.erasures || 0}</td>
+            <td class="time-ago">${lastActive}</td>
+          `;
+          fragment.appendChild(tr);
+        });
+        body.appendChild(fragment);
+        // Update race positions
+        updateRace(lb || []);
+      }
+
+      // QA sparkline
+      if (data.qaLast7 && Array.isArray(data.qaLast7)) {
+        // find sparkline element and render if present
+        const spark = document.getElementById('qaSparkline');
+        if (spark) {
+          const series = data.qaLast7.map(r => r.qaTotal || r.deQa + (r.nonDeQa || 0) || 0);
+          renderSVGSparkline(spark, series);
+        }
+      }
+
+      // Keep screen alive by logging activity
+      keepScreenAlive();
+    } catch (err) {
+      console.error('Aggregated refresh error:', err);
+      // fallback to individual refreshes if aggregated fails
+      try { refreshSummary(); } catch(e){}
+      try { refreshAllTopLists(); } catch(e){}
+      try { refreshByTypeCounts(); } catch(e){}
+      try { refreshLeaderboard(); } catch(e){}
+    }
+  }
+
+  // Kick off using aggregated payload
+  refreshAggregated();
   
   // Initialize new flip cards
   updateRecordsMilestones();
@@ -4161,10 +4240,7 @@ function renderSVGSparkline(svgElem, data) {
 
 
   setInterval(() => {
-    refreshSummary();
-    refreshAllTopLists();
-    refreshByTypeCounts();
-    refreshLeaderboard();
+    refreshAggregated();
     checkAndTriggerWinner();
     checkGreenieTime();
     // Update new flip cards

@@ -1960,6 +1960,75 @@ async def metrics_summary(req: Request, date: str = None, startDate: str = None,
     data = db.get_summary_today_month(date)
     return _set_cached_response(cache_key, data)
 
+
+@app.get("/metrics/qa-summary")
+async def metrics_qa_summary(req: Request):
+    """Aggregated payload for the dashboard initial load.
+
+    Combines: summary, today, monthly momentum, by-type counts,
+    and top engineers plus a small QA series. Cached as a single
+    payload to reduce client round-trips on first render.
+    """
+    cache_key = f"{req.url.path}"
+    cached = _get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+
+    result: Dict[str, object] = {}
+    try:
+        # Summary (today + month)
+        try:
+            result['summary'] = db.get_summary_today_month()
+        except Exception:
+            result['summary'] = {}
+
+        # Daily stats
+        try:
+            result['today'] = db.get_daily_stats()
+        except Exception:
+            result['today'] = {}
+
+        # Monthly momentum
+        try:
+            result['monthlyMomentum'] = db.get_monthly_momentum()
+        except Exception:
+            result['monthlyMomentum'] = {}
+
+        # By-type counts
+        try:
+            result['byType'] = db.get_counts_by_type_today()
+        except Exception:
+            result['byType'] = {}
+
+        # Leaderboard (top items)
+        try:
+            items = db.leaderboard(scope='today', limit=6)
+            result['engineersLeaderboard'] = {'items': items}
+        except Exception:
+            result['engineersLeaderboard'] = {'items': []}
+
+        # Small QA series for sparklines (last 7 days) if qa_export available
+        try:
+            import qa_export as _qa
+            end = datetime.now().date()
+            start = end - timedelta(days=7)
+            result['qaLast7'] = _qa.get_qa_daily_totals_range(start, end)
+        except Exception:
+            result['qaLast7'] = []
+
+    except Exception:
+        # In case of unexpected failure, return minimal payload
+        result = {
+            'summary': {},
+            'today': {},
+            'monthlyMomentum': {},
+            'byType': {},
+            'engineersLeaderboard': {'items': []},
+            'qaLast7': []
+        }
+
+    return _set_cached_response(cache_key, result)
+
 @app.get("/metrics/by-type")
 async def metrics_by_type(req: Request):
     cache_key = f"{req.url.path}"

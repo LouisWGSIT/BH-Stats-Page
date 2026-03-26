@@ -27,5 +27,6 @@ warm "$SERVICE_URL/api/insights/qa"
 warm "$SERVICE_URL/metrics/today"
 warm "$SERVICE_URL/metrics/monthly-momentum"
 warm "$SERVICE_URL/metrics/engineers/leaderboard?scope=today&limit=10"
+warm "$SERVICE_URL/metrics/qa-summary"
 
 echo "Cache warm complete."
