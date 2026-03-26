@@ -1,0 +1,26 @@
+name: Post-deploy Warm Cache
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  warm-cache:
+    name: Warm cache after deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Wait for deploy to settle
+        run: |
+          echo "Waiting 30s for deployment to finish..."
+          sleep 30
+
+      - name: Run warm script
+        env:
+          SERVICE_URL: ${{ secrets.SERVICE_URL }}
+          SERVICE_AUTH: ${{ secrets.SERVICE_AUTH }}
+        run: |
+          echo "Warming cache at ${SERVICE_URL}"
+          bash scripts/warm_cache.sh
