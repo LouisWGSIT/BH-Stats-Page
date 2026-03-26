@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Manager Tools - BH Stats</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        body { font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:#f3f4f6; margin:0; padding:20px; }
+        .card { background:white; border-radius:8px; padding:18px; box-shadow: 0 6px 18px rgba(0,0,0,0.06); max-width:1100px; margin:0 auto; }
+        h1 { margin-bottom:8px; }
+        .row { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+        .col { flex:1; min-width:260px; }
+        label { font-weight:700; display:block; margin-bottom:6px; }
+        input, select { width:100%; padding:8px 10px; border:1px solid #e5e7eb; border-radius:6px; }
+        button { background:#2563eb; color:white; padding:10px 14px; border:none; border-radius:6px; cursor:pointer; font-weight:700; }
+        button.secondary { background:#6b7280; }
+        .small { font-size:13px; color:#6b7280; }
+        .result { margin-top:12px; padding:10px; border-radius:6px; display:none; }
+        .result.ok { background:#ecfeff; color:#036666; display:block; }
+        .result.err { background:#fff1f2; color:#7f1d1d; display:block; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Manager Tools</h1>
+        <p class="small">Device search and exports for managers. Use the search below to find devices by serial, trader, or partial matches.</p>
+
+        <div class="row" style="margin-top:16px;">
+            <div class="col">
+                <label for="q">Search Query</label>
+                <input id="q" placeholder="Serial number, trader name, or partial match">
+            </div>
+            <div style="display:flex; gap:8px; align-items:end;">
+                <div>
+                    <label>&nbsp;</label>
+                    <button onclick="searchDevice()">Search</button>
+                </div>
+                <div>
+                    <label>&nbsp;</label>
+                    <button class="secondary" onclick="openAdvanced()">Advanced</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="searchResult" class="result" style="margin-top:16px;"></div>
+
+        <section style="margin-top:20px;">
+            <h2 style="margin-bottom:8px;">Exports</h2>
+            <p class="small">Download exports for reporting or share with engineers.</p>
+            <div style="display:flex; gap:8px; margin-top:8px;">
+                <button onclick="exportQA()">Export QA CSV</button>
+                <button onclick="exportEngineers()" class="secondary">Export Engineers</button>
+            </div>
+            <div id="exportResult" class="result"></div>
+        </section>
+    </div>
+
+    <script>
+        async function searchDevice() {
+            const q = document.getElementById('q').value.trim();
+            const resDiv = document.getElementById('searchResult');
+            if (!q) { resDiv.className='result err'; resDiv.textContent = 'Please enter a search query'; return; }
+            resDiv.className='result'; resDiv.style.display='block'; resDiv.textContent = 'Searching...';
+            try {
+                const r = await fetch('/api/search?q=' + encodeURIComponent(q));
+                if (!r.ok) throw new Error('Search failed');
+                const data = await r.json();
+                resDiv.className='result ok';
+                resDiv.innerHTML = `<strong>${data.length}</strong> results. Show in console.`;
+                console.log('Search results', data);
+            } catch (err) {
+                resDiv.className='result err'; resDiv.textContent = err.message || 'Error';
+            }
+        }
+
+        function openAdvanced(){ alert('Advanced search not implemented in this build'); }
+        function exportQA(){ window.location='/exports/qa.csv'; }
+        function exportEngineers(){ window.location='/exports/engineers.csv'; }
+    </script>
+    <!-- Chart.js (needed by shared app.js) -->
+    <script src="/vendor/chart.js-4.5.1/package/dist/chart.umd.min.js"></script>
+    <script src="/app.js"></script>
+    <!-- Hidden placeholders so shared app.js can initialize without errors -->
+    <div id="dashboardPlaceholders" style="display:none;">
+        <canvas id="chartTotalToday"></canvas>
+        <canvas id="chartMonthToday"></canvas>
+        <div id="byTypeBars"></div>
+        <div id="topLD"></div>
+        <div id="topLDMonth"></div>
+        <div id="topLDAllTime"></div>
+        <span id="countLD"></span>
+        <span id="countLDMonth"></span>
+        <span id="countLDAllTime"></span>
+        <tbody id="leaderboardBody"></tbody>
+        <tbody id="weeklyLeaderboardBody"></tbody>
+        <div id="specMobiles"></div>
+        <div id="consistencyList"></div>
+        <!-- Items used by dashboard JS that manager page doesn't render visibly -->
+        <div id="totalTodayValue" style="display:none;">0</div>
+        <div id="monthTotalValue" style="display:none;">0</div>
+        <span id="erasedTarget" style="display:none;">0</span>
+        <span id="monthTarget" style="display:none;">0</span>
+        <div id="allTimeValue" style="display:none;">0</div>
+    </div>
+        <script>
+            // Quick visual diagnostic to confirm app.js populated metrics
+            setTimeout(() => {
+                try {
+                    const totalLD = document.getElementById('countLD')?.textContent || '(no count)';
+                    const topEng = document.querySelector('#leaderboardBody tr td')?.textContent || '(no top)';
+                    const dbg = document.createElement('div');
+                    dbg.style.cssText = 'position:fixed;right:12px;bottom:12px;background:rgba(0,0,0,0.6);color:#fff;padding:8px 12px;border-radius:8px;font-size:13px;z-index:99999;';
+                    dbg.id = 'mgrDebugBox';
+                    dbg.innerText = `Top: ${topEng} | LD Today: ${totalLD}`;
+                    document.body.appendChild(dbg);
+                } catch (e) { console.error('mgr debug failed', e); }
+            }, 1200);
+        </script>
+</body>
+</html>

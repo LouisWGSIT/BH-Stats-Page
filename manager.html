@@ -589,7 +589,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <a href="index.html" class="back-link">← Back to Dashboard</a>
+            <a href="/" class="back-link">← Back to Dashboard</a>
             <h1>📊 Manager Tools</h1>
             <p>Device tracking, exports, and operational insights</p>
             <div id="roleBadge" class="role-badge" style="display: none;"></div>
@@ -704,7 +704,7 @@
 
             const password = prompt('Manager or admin password required');
             if (!password) {
-                window.location.href = 'index.html';
+                window.location.href = '/';
                 return false;
             }
 
@@ -716,14 +716,14 @@
 
             if (!loginRes.ok) {
                 alert('Invalid password');
-                window.location.href = 'index.html';
+                window.location.href = '/';
                 return false;
             }
 
             const loginData = await loginRes.json();
             if (loginData.role !== 'admin' && loginData.role !== 'manager') {
                 alert('Manager or admin access required');
-                window.location.href = 'index.html';
+                window.location.href = '/';
                 return false;
             }
 
