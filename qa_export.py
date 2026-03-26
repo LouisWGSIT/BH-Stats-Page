@@ -407,30 +407,30 @@ def get_qa_daily_totals_range(start_date: date, end_date: date) -> List[Dict[str
             if scan_date:
                 totals[scan_date]["qaApp"] = int(total_scans or 0)
 
-        cursor.execute("""
-            SELECT DATE(date_time) as scan_date, COUNT(DISTINCT sales_order) as total_scans
-            FROM audit_master
-            WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
-              AND user_id IS NOT NULL AND user_id <> ''
-              AND sales_order IS NOT NULL AND sales_order <> ''
-              AND DATE(date_time) >= %s AND DATE(date_time) <= %s
-            GROUP BY DATE(date_time)
-            ORDER BY scan_date
-        """, (start_str, end_str))
+                cursor.execute("""
+                        SELECT DATE(date_time) as scan_date, COUNT(DISTINCT sales_order) as total_scans
+                        FROM audit_master
+                        WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
+                            AND user_id IS NOT NULL AND user_id <> ''
+                            AND sales_order IS NOT NULL AND sales_order <> ''
+                            AND date_time >= %s AND date_time < %s
+                        GROUP BY DATE(date_time)
+                        ORDER BY scan_date
+                """, (start_dt, end_dt))
         for scan_date, total_scans in cursor.fetchall():
             if scan_date:
                 totals[scan_date]["deQa"] = int(total_scans or 0)
 
-        cursor.execute("""
-            SELECT DATE(date_time) as scan_date, COUNT(DISTINCT sales_order) as total_scans
-            FROM audit_master
-            WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
-              AND user_id IS NOT NULL AND user_id <> ''
-              AND sales_order IS NOT NULL AND sales_order <> ''
-              AND DATE(date_time) >= %s AND DATE(date_time) <= %s
-            GROUP BY DATE(date_time)
-            ORDER BY scan_date
-        """, (start_str, end_str))
+                cursor.execute("""
+                        SELECT DATE(date_time) as scan_date, COUNT(DISTINCT sales_order) as total_scans
+                        FROM audit_master
+                        WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+                            AND user_id IS NOT NULL AND user_id <> ''
+                            AND sales_order IS NOT NULL AND sales_order <> ''
+                            AND date_time >= %s AND date_time < %s
+                        GROUP BY DATE(date_time)
+                        ORDER BY scan_date
+                """, (start_dt, end_dt))
         for scan_date, total_scans in cursor.fetchall():
             if scan_date:
                 totals[scan_date]["nonDeQa"] = int(total_scans or 0)
