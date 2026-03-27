@@ -1428,7 +1428,23 @@
                     headers: getAuthHeaders(false)
                 });
                 if (!response.ok) {
-                    throw new Error(`Export failed (HTTP ${response.status})`);
+                    // Try to surface server error details for debugging
+                    let msg = `Export failed (HTTP ${response.status})`;
+                    try {
+                        const ct = response.headers.get('content-type') || '';
+                        if (ct.includes('application/json')) {
+                            const j = await response.json();
+                            if (j.detail) msg += `: ${j.detail}`;
+                            else if (j.error) msg += `: ${j.error}`;
+                            else msg += `: ${JSON.stringify(j)}`;
+                        } else {
+                            const text = await response.text();
+                            if (text) msg += `: ${text.substring(0, 500)}`;
+                        }
+                    } catch (e) {
+                        // ignore parse errors
+                    }
+                    throw new Error(msg);
                 }
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
