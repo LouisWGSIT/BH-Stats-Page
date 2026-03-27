@@ -2895,6 +2895,18 @@ def admin_last_error(request: Request):
         return {'found': True, 'error': {'error': str(e)}}
 
 
+@app.get('/manager/last-error')
+def manager_last_error(request: Request):
+    """Return the last server-side error captured (manager or admin)."""
+    require_manager_or_admin(request)
+    try:
+        if LAST_SERVER_ERROR is None:
+            return {'found': False, 'message': 'No recent server error recorded'}
+        return {'found': True, 'error': LAST_SERVER_ERROR}
+    except Exception as e:
+        return {'found': True, 'error': {'error': str(e)}}
+
+
 @app.post('/admin/revoke-device')
 async def admin_revoke_device(request: Request):
     require_admin(request)
