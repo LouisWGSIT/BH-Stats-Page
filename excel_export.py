@@ -65,7 +65,17 @@ def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | N
         wb = Workbook(write_only=True)
     else:
         wb = Workbook()
-    wb.remove(wb.active)  # Remove default sheet
+        # Remove default sheet if present and supported (some openpyxl/workbook
+        # configurations may not expose an active sheet or in write-only mode)
+        try:
+            if not getattr(wb, 'write_only', False):
+                active = getattr(wb, 'active', None)
+                # worksheets is the safe list of sheet objects
+                if active is not None and active in getattr(wb, 'worksheets', []):
+                    wb.remove(active)
+        except Exception:
+            # Don't fail export just because the default sheet couldn't be removed
+            pass
     
     # Style definitions
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
