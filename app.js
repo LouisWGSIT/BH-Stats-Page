@@ -4213,6 +4213,17 @@ function renderSVGSparkline(svgElem, data) {
         }
       }
 
+      // Update last-updated display
+      try {
+        const lastUpdated = Date.now();
+        const lastEl = document.getElementById('last-updated');
+        if (lastEl) lastEl.textContent = 'Last updated: ' + new Date(lastUpdated).toLocaleTimeString();
+        const stale = document.getElementById('stale-indicator');
+        if (stale) stale.classList.add('hidden');
+      } catch (e) {
+        // ignore
+      }
+
       // Keep screen alive by logging activity
       keepScreenAlive();
     } catch (err) {
