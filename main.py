@@ -44,6 +44,9 @@ if ENABLE_TRACEMALLOC:
         tracemalloc.start(25)
     except Exception:
         tracemalloc = None
+
+        # Store last server error details for admin debugging (in-memory)
+        LAST_SERVER_ERROR = None
 else:
     tracemalloc = None
 
@@ -2834,7 +2837,18 @@ async def export_excel(req: Request):
     except HTTPException:
         raise
     except Exception as e:
+        import traceback as _tb
         print(f"Excel export error: {e}")
+        try:
+            global LAST_SERVER_ERROR
+            LAST_SERVER_ERROR = {
+                'ts': datetime.utcnow().isoformat(),
+                'path': '/export/excel',
+                'error': str(e),
+                'trace': _tb.format_exc()
+            }
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2867,6 +2881,18 @@ async def admin_connected_devices(request: Request):
     # Sort by last_seen desc
     devices.sort(key=lambda d: d.get('last_seen') or '', reverse=True)
     return {'devices': devices}
+
+
+@app.get('/admin/last-error')
+def admin_last_error(request: Request):
+    """Return the last server-side error captured (admin only)."""
+    require_admin(request)
+    try:
+        if LAST_SERVER_ERROR is None:
+            return {'found': False, 'message': 'No recent server error recorded'}
+        return {'found': True, 'error': LAST_SERVER_ERROR}
+    except Exception as e:
+        return {'found': True, 'error': {'error': str(e)}}
 
 
 @app.post('/admin/revoke-device')
@@ -2983,9 +3009,18 @@ async def export_engineer_deepdive(request: Request, period: str = "this_week"):
     except HTTPException:
         raise
     except Exception as e:
+        import traceback as _tb
         print(f"Engineer deep-dive export error: {e}")
-        import traceback
-        traceback.print_exc()
+        try:
+            global LAST_SERVER_ERROR
+            LAST_SERVER_ERROR = {
+                'ts': datetime.utcnow().isoformat(),
+                'path': '/export/engineer-deepdive',
+                'error': str(e),
+                'trace': _tb.format_exc()
+            }
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/device-lookup/{stock_id}")
@@ -5416,9 +5451,18 @@ async def export_qa_stats(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback as _tb
         print(f"QA stats export error: {e}")
-        import traceback
-        traceback.print_exc()
+        try:
+            global LAST_SERVER_ERROR
+            LAST_SERVER_ERROR = {
+                'ts': datetime.utcnow().isoformat(),
+                'path': '/export/qa-stats',
+                'error': str(e),
+                'trace': _tb.format_exc()
+            }
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/qa-dashboard")
