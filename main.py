@@ -4834,7 +4834,7 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
 
 
 @app.get("/api/bottlenecks")
-async def get_bottleneck_snapshot(request: Request, days: int = 7):
+async def get_bottleneck_snapshot(request: Request, days: int = 7, debug: bool = False):
     """Return CURRENT bottleneck snapshot - warehouse state NOW (manager only)."""
     require_manager_or_admin(request)
     # Lightweight bottleneck implementation using recent-window counts.
@@ -4879,8 +4879,10 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
         # 3) Awaiting QA: infer from local SQLite erasure feed vs MariaDB
         stats_db = os.getenv('STATS_DB_PATH', 'warehouse_stats.db')
         erased_awaiting_qa = 0
+        diagnostics = {"sqlite_found": False, "sqlite_rows": 0, "batches": 0, "errors": []}
         try:
             if os.path.exists(stats_db):
+                diagnostics["sqlite_found"] = True
                 conn = sqlite3.connect(stats_db)
                 cur = conn.cursor()
                 # Pull distinct stockids with their latest erasure ts in the window
@@ -4890,6 +4892,7 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
                 conn.close()
 
                 if rows:
+                    diagnostics["sqlite_rows"] = len(rows)
                     # Build map of stockid -> last erasure ts
                     stock_ts = {str(r[0]): r[1] for r in rows if r and r[0]}
                     stockids = list(stock_ts.keys())
@@ -4916,6 +4919,7 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
 
                     for i in range(0, len(stockids), batch_size):
                         batch = stockids[i:i+batch_size]
+                        diagnostics["batches"] += 1
                         placeholders = ",".join(["%s"] * len(batch))
 
                         # 1) Check which stockids exist in ITAD_asset_info and get last_update
@@ -4966,6 +4970,7 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
             else:
                 erased_awaiting_qa = 0
         except Exception as _e:
+            diagnostics["errors"].append(str(_e))
             print(f"[Bottleneck] sqlite local_erasures read failed: {_e}")
 
         # 4) QA'd awaiting Sorting (ITAD_QA_App left join Stockbypallet)
@@ -5019,6 +5024,13 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
             "dispositions": {"awaiting_refurb": awaiting_refurb, "awaiting_breakfix": awaiting_breakfix},
             "sla_overdue": sla_overdue,
         }
+
+        # Attach diagnostics when requested (admin/manager only)
+        try:
+            if debug:
+                result["diagnostics"] = diagnostics
+        except Exception:
+            pass
 
         try:
             _bottleneck_cache.set(cache_key, result)
