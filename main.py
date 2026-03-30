@@ -5177,8 +5177,27 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7, debug: bool =
 
                 if rows:
                     diagnostics["sqlite_rows"] = len(rows)
-                    # Build map of stockid -> last erasure ts
-                    stock_ts = {str(r[0]): r[1] for r in rows if r and r[0]}
+                    # Build map key -> last erasure ts where key is COALESCE(stockid, system_serial)
+                    stock_ts = {}
+                    for r in rows:
+                        # r may be (stockid, last_ts) or (stockid, last_ts, system_serial) depending on query
+                        s = r[0]
+                        sys = None
+                        try:
+                            # if the row has a second column that's the ts, keep it as ts
+                            ts_val = r[1]
+                            # attempt to pick system_serial if stockid is falsy
+                            if len(r) > 2:
+                                sys = r[2]
+                        except Exception:
+                            continue
+                        key = None
+                        if s is not None and str(s).strip() != '':
+                            key = str(s)
+                        elif sys is not None and str(sys).strip() != '':
+                            key = str(sys)
+                        if key:
+                            stock_ts[key] = ts_val
                     stockids = list(stock_ts.keys())
                     batch_size = 200
                     awaiting = 0
@@ -5206,10 +5225,28 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7, debug: bool =
                         diagnostics["batches"] += 1
                         placeholders = ",".join(["%s"] * len(batch))
 
-                        # 1) Check which stockids exist in ITAD_asset_info and get last_update
-                        q_asset = f"SELECT stockid, last_update FROM ITAD_asset_info WHERE stockid IN ({placeholders})"
-                        asset_rows = db_utils.safe_read(q_asset, tuple(batch)) or []
-                        asset_map = {str(r[0]): r[1] for r in asset_rows if r and r[0]}
+                        # 1) Check ITAD_asset_info for matches by stockid OR system_serial and get last_update
+                        q_asset = f"SELECT stockid, last_update, system_serial FROM ITAD_asset_info WHERE stockid IN ({placeholders}) OR system_serial IN ({placeholders})"
+                        asset_rows = db_utils.safe_read(q_asset, tuple(batch) + tuple(batch)) or []
+                        # asset_map holds last_update keyed by canonical stockid
+                        asset_map = {}
+                        # key_to_stockid maps the incoming key (stockid or system_serial) -> canonical stockid
+                        key_to_stockid = {}
+                        for ar in asset_rows:
+                            try:
+                                a_stockid = str(ar[0]) if ar[0] is not None else None
+                                a_last = ar[1]
+                                a_sys = str(ar[2]) if len(ar) > 2 and ar[2] is not None else None
+                            except Exception:
+                                continue
+                            if a_stockid:
+                                asset_map[a_stockid] = a_last
+                                # map by stockid
+                                if a_stockid in batch:
+                                    key_to_stockid[a_stockid] = a_stockid
+                            if a_sys:
+                                # map system_serial back to canonical stockid when available
+                                key_to_stockid[a_sys] = a_stockid or a_sys
 
                         # 2) Check for any QA/audit rows after erasure ts (ITAD_QA_App + audit_master)
                         # Use UNION ALL to combine sources and get the max added_date per stockid
@@ -5219,25 +5256,42 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7, debug: bool =
                             f"SELECT stockid, added_date FROM audit_master WHERE stockid IN ({placeholders})"
                             f") x GROUP BY stockid"
                         )
-                        qa_params = tuple(batch) + tuple(batch)
-                        qa_rows = db_utils.safe_read(q_qa, qa_params) or []
-                        qa_map = {str(r[0]): r[1] for r in qa_rows if r and r[0]}
+                        # For QA lookup, prefer canonical stockids mapped from the asset query
+                        canonical_ids = list({key_to_stockid[k] for k in batch if k in key_to_stockid and key_to_stockid[k]})
+                        qa_map = {}
+                        if canonical_ids:
+                            q_place = ",".join(["%s"] * len(canonical_ids))
+                            q_qa_specific = (
+                                f"SELECT stockid, MAX(added_date) as last_qa FROM ("
+                                f"SELECT stockid, added_date FROM ITAD_QA_App WHERE stockid IN ({q_place}) UNION ALL "
+                                f"SELECT stockid, added_date FROM audit_master WHERE stockid IN ({q_place})"
+                                f") x GROUP BY stockid"
+                            )
+                            qa_params = tuple(canonical_ids) + tuple(canonical_ids)
+                            qa_rows = db_utils.safe_read(q_qa_specific, qa_params) or []
+                            qa_map = {str(r[0]): r[1] for r in qa_rows if r and r[0]}
+                        else:
+                            qa_rows = []
 
                         # Evaluate each stockid in the batch
                         for sid in batch:
                             er_ts_raw = stock_ts.get(sid)
                             er_ts_dt = _parse_ts(er_ts_raw)
 
-                            a_last_raw = asset_map.get(sid)
-                            a_last_dt = _parse_ts(a_last_raw)
-
-                            q_last_raw = qa_map.get(sid)
-                            q_last_dt = _parse_ts(q_last_raw)
-
-                            # If not present in MariaDB asset_info -> likely awaiting QA
-                            if a_last_raw is None:
+                            # Resolve asset mapping: try to find a canonical stockid for this key
+                            a_last_raw = None
+                            q_last_raw = None
+                            canonical = key_to_stockid.get(sid)
+                            if canonical:
+                                a_last_raw = asset_map.get(canonical)
+                                q_last_raw = qa_map.get(canonical)
+                            else:
+                                # No matching asset found by stockid/system_serial -> treat as awaiting
                                 awaiting += 1
                                 continue
+
+                            a_last_dt = _parse_ts(a_last_raw)
+                            q_last_dt = _parse_ts(q_last_raw)
 
                             # If no QA/audit seen after the erasure ts -> awaiting QA
                             if not q_last_dt:
