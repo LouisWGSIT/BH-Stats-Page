@@ -5119,7 +5119,7 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7, debug: bool =
                             cur2 = conn2.cursor()
                             days_back = int(getenv('AUTO_BACKFILL_DAYS', '7'))
                             limit = int(getenv('AUTO_BACKFILL_LIMIT', '2000'))
-                            from datetime import datetime, timedelta as _td
+                            from datetime import timedelta as _td
                             start_back = (datetime.utcnow() - _td(days=days_back)).isoformat()
                             q_back = ("SELECT id, job_id, system_serial, ts, device_type, initials FROM erasures "
                                       "WHERE event = 'success' AND ts >= ? ORDER BY ts ASC LIMIT ?")
