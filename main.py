@@ -4837,27 +4837,118 @@ def _build_bottleneck_snapshot(destination: str = None, limit_engineers: int = 5
 async def get_bottleneck_snapshot(request: Request, days: int = 7):
     """Return CURRENT bottleneck snapshot - warehouse state NOW (manager only)."""
     require_manager_or_admin(request)
+    # Lightweight bottleneck implementation using recent-window counts.
+    # Uses MariaDB via services.db_utils and local SQLite erasure feed for early erasure signals.
     try:
-        # Temporarily disable live bottleneck generation to avoid heavy DB work.
-        # Return a lightweight empty snapshot so the frontend remains functional.
-        now_iso = datetime.now().isoformat()
-        empty_snapshot = {
-            "timestamp": now_iso,
-            "filter_period": "disabled",
-            "total_unpalleted": 0,
-            "awaiting_erasure": 0,
-            "awaiting_qa": 0,
-            "awaiting_pallet": 0,
-            "destination_counts": [],
-            "engineer_missing_pallets": [],
-            "flagged_engineers": [],
-            "roller_queue": {"total": 0, "awaiting_qa": 0, "awaiting_sorting": 0},
-            "roller_breakdown": [],
-            "note": "Bottleneck generation temporarily disabled — using lightweight snapshot. Contact admin to re-enable."
+        from services import db_utils
+        import sqlite3
+        import os
+
+        # Simple cache to avoid repeated heavy calls
+        global _bottleneck_cache
+        try:
+            _bottleneck_cache
+        except NameError:
+            _bottleneck_cache = TTLCache(maxsize=128, ttl=int(os.getenv('BOTTLENECK_CACHE_TTL', '60')))
+
+        now = datetime.utcnow()
+        days = max(1, min(int(days or 7), 90))
+        start = (now - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+        end = now.strftime('%Y-%m-%d %H:%M:%S')
+        cache_key = f"bottleneck|{start}|{end}"
+        cached = _bottleneck_cache.get(cache_key)
+        if cached is not None:
+            return JSONResponse(status_code=200, content=cached)
+
+        # 1) Goods In (Stockbypallet) - best-effort
+        q_goods = "SELECT COUNT(DISTINCT pallet_id) FROM Stockbypallet WHERE received_date >= %s AND received_date < %s"
+        goods_res = db_utils.safe_read(q_goods, (start, end))
+        goods_in = int(goods_res[0][0]) if goods_res and isinstance(goods_res, list) and goods_res[0] and goods_res[0][0] is not None else 0
+
+        # 2) Awaiting Erasure (stage_current='IA' and no blancco)
+        q_awaiting = (
+            "SELECT COUNT(*) FROM ITAD_asset_info a "
+            "WHERE (a.warehouse IS NULL OR a.warehouse = 'Berry Hill') "
+            "AND a.stage_current = 'IA' "
+            "AND NOT EXISTS (SELECT 1 FROM ITAD_asset_info_blancco b WHERE b.stockid = a.stockid) "
+            "AND a.sla_complete_date >= %s AND a.sla_complete_date < %s"
+        )
+        awaiting_res = db_utils.safe_read(q_awaiting, (start, end))
+        awaiting_erasure = int(awaiting_res[0][0]) if awaiting_res and awaiting_res[0] and awaiting_res[0][0] is not None else 0
+
+        # 3) Erased awaiting QA (local SQLite erasure feed)
+        stats_db = os.getenv('STATS_DB_PATH', 'warehouse_stats.db')
+        erased_awaiting_qa = 0
+        try:
+            if os.path.exists(stats_db):
+                conn = sqlite3.connect(stats_db)
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(DISTINCT stockid) FROM local_erasures WHERE ts >= ? AND ts < ?", (start, end))
+                row = cur.fetchone()
+                erased_awaiting_qa = int(row[0]) if row and row[0] is not None else 0
+                cur.close()
+                conn.close()
+            else:
+                erased_awaiting_qa = 0
+        except Exception as _e:
+            print(f"[Bottleneck] sqlite local_erasures read failed: {_e}")
+
+        # 4) QA'd awaiting Sorting (ITAD_QA_App left join Stockbypallet)
+        q_qa_sort = (
+            "SELECT COUNT(DISTINCT q.stockid) FROM ITAD_QA_App q "
+            "LEFT JOIN Stockbypallet s ON s.stockid = q.stockid "
+            "WHERE (q.warehouse IS NULL OR q.warehouse = 'Berry Hill') "
+            "AND s.stockid IS NULL "
+            "AND q.added_date >= %s AND q.added_date < %s"
+        )
+        qa_sort_res = db_utils.safe_read(q_qa_sort, (start, end))
+        qa_awaiting_sorting = int(qa_sort_res[0][0]) if qa_sort_res and qa_sort_res[0] and qa_sort_res[0][0] is not None else 0
+
+        # 5) Sorted count
+        q_sorted = "SELECT COUNT(DISTINCT stockid) FROM Stockbypallet WHERE received_date >= %s AND received_date < %s"
+        sorted_res = db_utils.safe_read(q_sorted, (start, end))
+        sorted_count = int(sorted_res[0][0]) if sorted_res and sorted_res[0] and sorted_res[0][0] is not None else 0
+
+        # 6) Disposition breakout from ITAD_asset_info
+        q_disp = (
+            "SELECT "
+            "SUM(CASE WHEN a.condition = 'Dest:Refurbishment' THEN 1 ELSE 0 END) AS awaiting_refurb, "
+            "SUM(CASE WHEN a.condition = 'Dest:Breakfix' THEN 1 ELSE 0 END) AS awaiting_breakfix "
+            "FROM ITAD_asset_info a WHERE (a.warehouse IS NULL OR a.warehouse = 'Berry Hill') "
+            "AND a.sla_complete_date >= %s AND a.sla_complete_date < %s"
+        )
+        disp_res = db_utils.safe_read(q_disp, (start, end))
+        awaiting_refurb = int(disp_res[0][0] or 0) if disp_res and disp_res[0] else 0
+        awaiting_breakfix = int(disp_res[0][1] or 0) if disp_res and disp_res[0] else 0
+
+        # 7) SLA overdue
+        q_sla = (
+            "SELECT COUNT(*) FROM ITAD_asset_info a WHERE (a.warehouse IS NULL OR a.warehouse = 'Berry Hill') "
+            "AND a.sla_complete_date < NOW() - INTERVAL 5 DAY "
+            "AND (a.de_completed_date IS NULL OR a.de_completed_date = '')"
+        )
+        sla_res = db_utils.safe_read(q_sla)
+        sla_overdue = int(sla_res[0][0]) if sla_res and sla_res[0] and sla_res[0][0] is not None else 0
+
+        result = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "filter_period": f"last_{days}_days",
+            "goods_in_totes": goods_in,
+            "awaiting_erasure": awaiting_erasure,
+            "erased_awaiting_qa": erased_awaiting_qa,
+            "qa_awaiting_sorting": qa_awaiting_sorting,
+            "sorted": sorted_count,
+            "dispositions": {"awaiting_refurb": awaiting_refurb, "awaiting_breakfix": awaiting_breakfix},
+            "sla_overdue": sla_overdue,
         }
-        return JSONResponse(status_code=200, content=empty_snapshot)
+
+        try:
+            _bottleneck_cache.set(cache_key, result)
+        except Exception:
+            pass
+
+        return JSONResponse(status_code=200, content=result)
     except Exception as e:
-        # Log full traceback but return a safe JSON error to clients
         import traceback as _tb
         print("Bottleneck snapshot error:")
         _tb.print_exc()

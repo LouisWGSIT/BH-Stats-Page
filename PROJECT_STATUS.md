@@ -196,6 +196,175 @@ Treat the above as mandatory guidelines — commit/rollback discipline and short
 - **Validation:** Add basic schema validation for the HWID payload (optional) to prevent malformed entries.
 - **Monitoring:** Add an alert/heartbeat for the `GET /hwid` health check or a periodic task that verifies log writes.
 
+**Bottleneck Radar — Morning Manager Workflow**
+
+- **Purpose:** Provide a one-click snapshot for managers showing devices by processing stage so morning checks are fast and actionable.
+- **Manager Flow:** Open the manager page, click `Run Bottleneck Radar`; the UI shows stage counts, quick links to device lists, and disposition filters (refurb, breakfix).
+- **Stages to count (suggested):**
+   - **Goods In / Totes received:** counts of incoming pallets/totes from Goods In (use `ITAD_pallet` / `Stockbypallet`).
+   - **Awaiting Erasure (IA done):** devices recorded as processed by IA but not yet erased (audit_master or `ITAD_asset_info` flags showing IA/received state).
+   - **Erased, awaiting QA:** devices with Blancco/local erasure evidence but no QA confirmation yet (merge `ITAD_asset_info_blancco` + `local_erasures` and exclude QA rows).
+   - **QA'd, awaiting Sorting:** devices with QA-confirmed scans (audit_master / ITAD_QA_App) but no pallet assignment.
+   - **Sorted:** devices assigned to a pallet and classified as sorted (Stockbypallet / ITAD_pallet evidence).
+- **Disposition fork:** from Sorted, show counts by disposition buckets (refurb, breakfix, resale, disposal, quarantine). For manager morning view, surface only **awaiting refurb** and **awaiting breakfix** prominently.
+- **Data sources:** MariaDB tables `ITAD_QA_App`, `audit_master`, `ITAD_asset_info`, `ITAD_asset_info_blancco`, `Stockbypallet`, `ITAD_pallet`; local SQLite `erasures` and `local_erasures` for recent Blancco/erasure messages.
+- **API endpoint (proposal):** `/api/bottlenecks?days=7&summary=true` returning stage counts and disposition breakdown. Also `/api/bottlenecks/details?category=erased_awaiting_qa` for device lists.
+- **Response schema (example):**
+
+```
+{
+   "ts": "2026-03-27T08:00:00Z",
+   "counts": {
+      "goods_in_totes": 12,
+      "awaiting_erasure_ia_done": 27,
+      "erased_awaiting_qa": 18,
+      "qa_awaiting_sorting": 34,
+      "sorted": 240
+   },
+   "dispositions": {
+      "awaiting_refurb": 9,
+      "awaiting_breakfix": 4
+   }
+}
+```
+
+- **Sample SQL snippets (placeholders — tune predicates and indexes):**
+
+```
+-- Goods in totes
+SELECT COUNT(DISTINCT pallet_id) FROM Stockbypallet WHERE received_date >= DATE_SUB(NOW(), INTERVAL 7 DAY);
+
+-- Awaiting Erasure (IA done, not erased)
+SELECT COUNT(*) FROM ITAD_asset_info a
+ WHERE a.stage_current = 'IA' AND NOT EXISTS (
+    SELECT 1 FROM ITAD_asset_info_blancco b WHERE b.stockid = a.stockid
+ );
+
+-- Erased awaiting QA
+SELECT COUNT(*) FROM local_erasures e
+ LEFT JOIN audit_master am ON am.stockid = e.stockid
+ WHERE am.stockid IS NULL AND e.ts >= DATE_SUB(NOW(), INTERVAL 30 DAY);
+
+-- QA'd awaiting sorting (no pallet)
+SELECT COUNT(DISTINCT q.stockid) FROM ITAD_QA_App q
+ LEFT JOIN Stockbypallet s ON s.stockid = q.stockid
+ WHERE s.stockid IS NULL AND q.added_date >= DATE_SUB(NOW(), INTERVAL 30 DAY);
+```
+
+- **UI suggestions:**
+   - Compact summary cards for each stage with colored badges (Goods In, IA→Erasure, Erased→QA, QA→Sort, Sorted).
+   - Click a card to open a paginated device list (device, last_event, suggested action) and export CSV/Excel.
+   - Disposition filters and quick-action buttons: `Mark inspected`, `Assign to refurb`, `Assign to breakfix` (manager-only actions should open a confirmation modal and optionally create a local note, not change upstream DBs).
+- **Testing & validation:**
+   - Add unit tests for `/api/bottlenecks` using known fixtures (sample rows in a test MariaDB or local docker db).
+   - Add a staging-only endpoint that returns the raw SQL `EXPLAIN` for heavy queries to validate index usage before production rollout.
+- **Next steps:**
+   - I'll iterate on the exact headings/filters you provide and add them to this plan; then implement the backend counts and a manager UI modal for `manager.html`.
+
+**ITAD_asset_info mappings (manager-provided)**
+
+- **Warehouse filter:** only include rows where `warehouse` IS NULL or equals `Berry Hill` for Bottleneck Radar counts.
+- **Condition mapping:** treat `condition` values as follows for disposition counts:
+   - `Dest:Refurbishment` → `Refurb` (show as awaiting refurb)
+   - `Dest:Breakfix`      → `Breakfix` (show as awaiting breakfix)
+   - Rows with `condition` NULL/empty → treated as still **awaiting QA** (no disposition assigned yet).
+- **Dates / SLA:** most devices have a 5-day SLA; use `sla_complete_date` to compute SLA windows and highlight overdue items.
+- **Relevant date columns:** `last_update` (metadata), `de_completed_date` (misnamed; this is actually the QA completion timestamp). Use `de_completed_date` as the QA completion marker when deciding "erased → QA" or "QA → sorted" transitions.
+- **Recommendation:** keep these mappings in the repo as a short reference (this file) and encode the logic in the SQL predicates used by `/api/bottlenecks` so results match manager expectations.
+
+### Operational notes: Trader / IA / Goods In / Pallet IDs
+
+- **Asset numbers / sysid assignment:** devices do not receive an asset number until processed by IA via the Trader tool. That means many devices are not present in MariaDB until QA touches them — plan the Radar around signals that exist prior to QA (SQLite erasure records, Stockbypallet/ITAD_pallet where available).
+- **Erasure records lifecycle:** erasure / Blancco events are captured locally in SQLite (`local_erasures` / `erasures`) and are not always present in MariaDB until a QA engineer clicks `Fetch Certificate`. Treat the SQLite erasure feed as the canonical early-erasure signal for the Radar.
+- **Goods In source:** `pallet_id` values like `A100XXXX` indicate pallets but may not reliably represent Goods In origin; find/confirm the incoming-tote table or manifest source for accurate Goods In counts. Leave `Goods In` as "TBD source" until we confirm the correct table; for now use `Stockbypallet`/`ITAD_pallet` where `received_date` exists.
+- **Pallet naming & disposition scans:** pallet names and scan locations encode disposition (e.g., `REFURB1` scanned when a device goes to Refurb). Use pallet scan location and `condition` mapping together to determine `awaiting_refurb` and `awaiting_breakfix` counts.
+- **Practical impact:** because `ITAD_asset_info` is very large (7M+ rows), rely on recent-date predicates and the SQLite erasure feed for early-stage counts; use MariaDB QA tables for later stages where asset numbers exist.
+
+### ITAD_pallet observations (manager note)
+
+- The `ITAD_pallet` table includes a `department` column which contains values like `Refurbishment` and `IA` — this may help identify goods-in flows and IA-assigned pallets.
+- Other useful columns to inspect: `destination`, `pallet_type`, and `create_date`. These fields may indicate where pallets are routed and when they were created, and could help infer IA/refurb assignments when combined with `ITAD_asset_info` and `Stockbypallet`.
+- Action: verify these columns on Monday and, if helpful, include `ITAD_pallet` queries in the Bottleneck Radar SQLs to better capture pallet-level dispositions.
+
+### SQL Query Templates for Bottleneck Radar (draft)
+
+Notes: all queries must be called with a narrow date window (`{start_dt}` / `{end_dt}`) and the `warehouse` filter to avoid full-table scans on the 7M+ `ITAD_asset_info` table. Replace placeholders with real timestamps (ISO) and adapt parameter style to your DB driver.
+
+-- 1) Goods In (example using `ITAD_pallet` / `Stockbypallet` if available)
+SELECT COUNT(DISTINCT pallet_id) AS goods_in_totes
+FROM Stockbypallet
+WHERE received_date >= '{start_dt}' AND received_date < '{end_dt}';
+
+-- 2) Awaiting Erasure (IA done, no Blancco/erasure evidence)
+SELECT COUNT(*) AS awaiting_erasure
+FROM ITAD_asset_info a
+WHERE (a.warehouse IS NULL OR a.warehouse = 'Berry Hill')
+   AND a.stage_current = 'IA'
+   AND NOT EXISTS (
+      SELECT 1 FROM ITAD_asset_info_blancco b WHERE b.stockid = a.stockid
+   )
+   AND a.sla_complete_date >= '{start_dt}' AND a.sla_complete_date < '{end_dt}';
+
+-- 3) Erased → awaiting QA (use SQLite local erasure feed as early signal)
+SELECT COUNT(DISTINCT e.stockid) AS erased_awaiting_qa
+FROM local_erasures e
+LEFT JOIN audit_master am
+   ON am.stockid = e.stockid
+   AND am.added_date >= '{start_dt}' AND am.added_date < '{end_dt}'
+WHERE (e.warehouse IS NULL OR e.warehouse = 'Berry Hill')
+   AND am.stockid IS NULL
+   AND e.ts >= '{start_dt}' AND e.ts < '{end_dt}';
+
+-- 4) QA'd → awaiting Sorting (QA evidence exists, no pallet assigned)
+SELECT COUNT(DISTINCT q.stockid) AS qa_awaiting_sorting
+FROM ITAD_QA_App q
+LEFT JOIN Stockbypallet s ON s.stockid = q.stockid
+WHERE (q.warehouse IS NULL OR q.warehouse = 'Berry Hill')
+   AND s.stockid IS NULL
+   AND q.added_date >= '{start_dt}' AND q.added_date < '{end_dt}';
+
+-- 5) Sorted (devices assigned to pallet)
+SELECT COUNT(DISTINCT s.stockid) AS sorted_count
+FROM Stockbypallet s
+WHERE s.received_date >= '{start_dt}' AND s.received_date < '{end_dt}';
+
+-- 6) Disposition breakout (awaiting refurb / breakfix)
+SELECT
+   SUM(CASE WHEN a.condition = 'Dest:Refurbishment' THEN 1 ELSE 0 END) AS awaiting_refurb,
+   SUM(CASE WHEN a.condition = 'Dest:Breakfix' THEN 1 ELSE 0 END) AS awaiting_breakfix
+FROM ITAD_asset_info a
+WHERE (a.warehouse IS NULL OR a.warehouse = 'Berry Hill')
+   AND a.sla_complete_date >= '{start_dt}' AND a.sla_complete_date < '{end_dt}';
+
+-- 7) SLA overdue (5-day SLA example)
+SELECT COUNT(*) AS sla_overdue
+FROM ITAD_asset_info a
+WHERE (a.warehouse IS NULL OR a.warehouse = 'Berry Hill')
+   AND a.sla_complete_date < NOW() - INTERVAL 5 DAY
+   AND (a.de_completed_date IS NULL OR a.de_completed_date = '');
+
+-- 8) Top N offenders (oldest by sla_complete_date)
+SELECT stockid, sla_complete_date, last_update
+FROM ITAD_asset_info
+WHERE (warehouse IS NULL OR warehouse = 'Berry Hill')
+   AND (de_completed_date IS NULL OR de_completed_date = '')
+ORDER BY sla_complete_date ASC
+LIMIT 50;
+
+-- Detail pages should always be paginated and constrained to {start_dt}/{end_dt}.
+
+Index recommendations (high impact):
+- `ITAD_QA_App(stockid, added_date)`
+- `ITAD_asset_info (warehouse, sla_complete_date)` or `ITAD_asset_info (sla_complete_date, warehouse)` depending on predicate order
+- `Stockbypallet (received_date)`
+
+Practical performance tips:
+- Always use `column >= start_dt AND column < end_dt` for date ranges; avoid `DATE(column)` wrapping.
+- Use `EXPLAIN FORMAT=JSON` during testing to confirm index usage; capture plans in staging before production rollout.
+- Consider a nightly `bottleneck_summary` materialised table with precomputed counts for instant morning reads.
+
+
+
 ### Recent Code-Only Device Lookup Optimizations (ready for test)
 
 The following code-only changes were implemented to make `device_lookup` fast and safe without any DB schema changes:

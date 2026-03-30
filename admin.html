@@ -1229,14 +1229,14 @@
             resultDiv.className = 'result info';
             resultDiv.style.display = 'block';
             resultDiv.innerHTML = '<p>📡 Fetching today\'s bottleneck snapshot...</p>';
-            console.log('[UI] runBottleneckRadar clicked - building URL and calling /api/bottlenecks/from-dashboard');
+            console.log('[UI] runBottleneckRadar clicked - building URL and calling /api/bottlenecks');
             contentDiv.style.display = 'none';
 
             try {
                 const today = new Date().toISOString().slice(0, 10);
                 const qaUser = 'solomon';
                 const rollers = 'IA-ROLLER1,IA-ROLLER2';
-                const url = `/api/bottlenecks/from-dashboard?date=${encodeURIComponent(today)}&qa_user=${encodeURIComponent(qaUser)}&rollers=${encodeURIComponent(rollers)}`;
+                const url = `/api/bottlenecks?days=7`;
 
                 console.log('[UI] fetching', url);
                 const response = await fetch(url, { headers: getAuthHeaders(false) });
