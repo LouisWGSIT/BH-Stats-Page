@@ -315,6 +315,24 @@ WHERE (e.warehouse IS NULL OR e.warehouse = 'Berry Hill')
    AND am.stockid IS NULL
    AND e.ts >= '{start_dt}' AND e.ts < '{end_dt}';
 
+-- NOTE: Awaiting QA wiring (proposal)
+-- Problem: not all 'awaiting QA' devices are erased/non-data-bearing; counting only erased events misses data-bearing items.
+-- Idea: use the local SQLite erasure/erasures feed as an early signal and compare with MariaDB `ITAD_asset_info` to infer awaiting QA.
+-- Heuristic:
+--  - If a stockid exists in SQLite `local_erasures` (recent ts) but has no matching QA/audit row in MariaDB (no audit_master/ITAD_QA_App after the erasure ts), count as awaiting QA.
+--  - If stockid exists in SQLite but is missing from MariaDB `ITAD_asset_info`, treat as likely awaiting QA (asset number present locally but not yet recorded in MariaDB).
+--  - If SQLite's last_update/ts for the stockid is more recent than `ITAD_asset_info.last_update`, the device may have been re-erased and should be re-counted as awaiting QA.
+-- Sample pseudo-SQL (MariaDB + SQLite hybrid):
+--  1) Pull distinct stockids from SQLite `local_erasures` for the window.
+--  2) In MariaDB, LEFT JOIN those stockids to `ITAD_asset_info` and `ITAD_QA_App`/`audit_master` to determine:
+--     - missing in `ITAD_asset_info` => +1 awaiting_qa (data-bearing but not in MariaDB)
+--     - present but no QA/audit rows after erasure_ts => +1 awaiting_qa
+-- Caveats:
+--  - Requires mapping stockid values from SQLite extraction into a temporary table or using an IN (...) clause for batching to avoid huge queries.
+--  - In some edge-cases, stockids may be recorded under different formats; normalize before comparison.
+--  - This heuristic focuses on data-bearing devices early; non-data-bearing items will be covered later when MariaDB reflects erasure/QA.
+
+
 -- 4) QA'd → awaiting Sorting (QA evidence exists, no pallet assigned)
 SELECT COUNT(DISTINCT q.stockid) AS qa_awaiting_sorting
 FROM ITAD_QA_App q
