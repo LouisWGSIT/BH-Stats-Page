@@ -1183,6 +1183,52 @@ async def analytics_hourly_totals():
 async def analytics_daily_totals():
     return {"days": db.get_daily_totals()}
 
+
+# Ingestion endpoint for external erasure producers (secure)
+@app.post("/api/ingest/local-erasure")
+async def ingest_local_erasure(request: Request):
+    """Accept a JSON erasure event and insert into local_erasures via database.add_local_erasure.
+
+    Authentication: supply the ingestion API key via `Authorization: Bearer <INGESTION_KEY>`
+    or `X-INGESTION-KEY` header. The key should be set in env `INGESTION_KEY` on the server.
+    """
+    import os
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
+
+    # Validate ingestion key
+    ingestion_key = os.getenv('INGESTION_KEY')
+    if not ingestion_key:
+        return JSONResponse(status_code=403, content={"detail": "Ingestion not configured on server"})
+
+    auth_header = request.headers.get('Authorization', '')
+    bearer = auth_header[7:] if auth_header.startswith('Bearer ') else None
+    header_key = request.headers.get('X-INGESTION-KEY') or request.headers.get('x-ingestion-key')
+    if (bearer != ingestion_key) and (header_key != ingestion_key):
+        return JSONResponse(status_code=401, content={"detail": "Invalid ingestion key"})
+
+    # Extract fields from payload
+    stockid = body.get('stockid')
+    system_serial = body.get('system_serial') or body.get('systemSerial')
+    job_id = body.get('job_id') or body.get('jobId')
+    ts = body.get('ts') or body.get('timestamp')
+    warehouse = body.get('warehouse')
+    source = body.get('source') or 'ingest'
+    payload = body.get('payload') or body
+
+    try:
+        # Import here to avoid top-level cycles
+        from database import add_local_erasure
+        add_local_erasure(stockid=stockid, system_serial=system_serial, job_id=job_id, ts=ts, warehouse=warehouse, source=source, payload=payload)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"detail": f"failed to insert: {e}"})
+
+    return JSONResponse(status_code=200, content={"ok": True, "inserted": True})
+
 @app.get("/metrics/monthly-momentum")
 async def get_monthly_momentum():
     """Get weekly totals for the current month for monthly momentum chart"""
