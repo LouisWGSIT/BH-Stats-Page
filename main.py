@@ -5126,6 +5126,16 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7, debug: bool =
                             cur2.execute(q_back, (start_back, limit))
                             back_rows = cur2.fetchall()
                             inserted = 0
+                            # Initialize auto-backfill progress so UI can poll
+                            try:
+                                BACKFILL_PROGRESS['running'] = True
+                                BACKFILL_PROGRESS['total'] = len(back_rows)
+                                BACKFILL_PROGRESS['processed'] = 0
+                                BACKFILL_PROGRESS['percent'] = 0
+                                BACKFILL_PROGRESS['last_updated'] = datetime.utcnow().isoformat()
+                                BACKFILL_PROGRESS['errors'] = []
+                            except Exception:
+                                pass
                             for r in back_rows:
                                 eid, job_id, system_serial, ts_val, device_type, initials = r
                                 jid = job_id if job_id else f"erasures-backfill-{eid}"
@@ -5134,6 +5144,17 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7, debug: bool =
                                     inserted += 1
                                 except Exception as _e:
                                     diagnostics.setdefault('errors', []).append(str(_e))
+                                    try:
+                                        BACKFILL_PROGRESS['errors'].append(str(_e))
+                                    except Exception:
+                                        pass
+                                finally:
+                                    try:
+                                        BACKFILL_PROGRESS['processed'] = BACKFILL_PROGRESS.get('processed', 0) + 1
+                                        BACKFILL_PROGRESS['percent'] = int((BACKFILL_PROGRESS.get('processed', 0) / (BACKFILL_PROGRESS.get('total') or 1)) * 100)
+                                        BACKFILL_PROGRESS['last_updated'] = datetime.utcnow().isoformat()
+                                    except Exception:
+                                        pass
                             cur2.close()
                             conn2.close()
                             # re-open the local_erasures query to pick up inserted rows
@@ -5145,6 +5166,12 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7, debug: bool =
                                 cur.close()
                                 conn.close()
                                 diagnostics['auto_backfilled'] = inserted
+                            # Mark auto-backfill finished
+                            try:
+                                BACKFILL_PROGRESS['running'] = False
+                                BACKFILL_PROGRESS['last_updated'] = datetime.utcnow().isoformat()
+                            except Exception:
+                                pass
                     except Exception as _e:
                         diagnostics.setdefault('errors', []).append(str(_e))
 
