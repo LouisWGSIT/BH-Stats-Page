@@ -4876,18 +4876,93 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
         awaiting_res = db_utils.safe_read(q_awaiting, (start, end))
         awaiting_erasure = int(awaiting_res[0][0]) if awaiting_res and awaiting_res[0] and awaiting_res[0][0] is not None else 0
 
-        # 3) Erased awaiting QA (local SQLite erasure feed)
+        # 3) Awaiting QA: infer from local SQLite erasure feed vs MariaDB
         stats_db = os.getenv('STATS_DB_PATH', 'warehouse_stats.db')
         erased_awaiting_qa = 0
         try:
             if os.path.exists(stats_db):
                 conn = sqlite3.connect(stats_db)
                 cur = conn.cursor()
-                cur.execute("SELECT COUNT(DISTINCT stockid) FROM local_erasures WHERE ts >= ? AND ts < ?", (start, end))
-                row = cur.fetchone()
-                erased_awaiting_qa = int(row[0]) if row and row[0] is not None else 0
+                # Pull distinct stockids with their latest erasure ts in the window
+                cur.execute("SELECT stockid, MAX(ts) as last_ts FROM local_erasures WHERE ts >= ? AND ts < ? GROUP BY stockid", (start, end))
+                rows = cur.fetchall()
                 cur.close()
                 conn.close()
+
+                if rows:
+                    # Build map of stockid -> last erasure ts
+                    stock_ts = {str(r[0]): r[1] for r in rows if r and r[0]}
+                    stockids = list(stock_ts.keys())
+                    batch_size = 200
+                    awaiting = 0
+
+                    # Helper to parse timestamps robustly
+                    from datetime import datetime as _dt
+                    def _parse_ts(v):
+                        if not v:
+                            return None
+                        if isinstance(v, _dt):
+                            return v
+                        s = str(v).strip()
+                        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                            try:
+                                return _dt.strptime(s, fmt)
+                            except Exception:
+                                continue
+                        try:
+                            return _dt.fromisoformat(s.replace('Z', '+00:00'))
+                        except Exception:
+                            return None
+
+                    for i in range(0, len(stockids), batch_size):
+                        batch = stockids[i:i+batch_size]
+                        placeholders = ",".join(["%s"] * len(batch))
+
+                        # 1) Check which stockids exist in ITAD_asset_info and get last_update
+                        q_asset = f"SELECT stockid, last_update FROM ITAD_asset_info WHERE stockid IN ({placeholders})"
+                        asset_rows = db_utils.safe_read(q_asset, tuple(batch)) or []
+                        asset_map = {str(r[0]): r[1] for r in asset_rows if r and r[0]}
+
+                        # 2) Check for any QA/audit rows after erasure ts (ITAD_QA_App + audit_master)
+                        # Use UNION ALL to combine sources and get the max added_date per stockid
+                        q_qa = (
+                            f"SELECT stockid, MAX(added_date) as last_qa FROM ("
+                            f"SELECT stockid, added_date FROM ITAD_QA_App WHERE stockid IN ({placeholders}) UNION ALL "
+                            f"SELECT stockid, added_date FROM audit_master WHERE stockid IN ({placeholders})"
+                            f") x GROUP BY stockid"
+                        )
+                        qa_params = tuple(batch) + tuple(batch)
+                        qa_rows = db_utils.safe_read(q_qa, qa_params) or []
+                        qa_map = {str(r[0]): r[1] for r in qa_rows if r and r[0]}
+
+                        # Evaluate each stockid in the batch
+                        for sid in batch:
+                            er_ts_raw = stock_ts.get(sid)
+                            er_ts_dt = _parse_ts(er_ts_raw)
+
+                            a_last_raw = asset_map.get(sid)
+                            a_last_dt = _parse_ts(a_last_raw)
+
+                            q_last_raw = qa_map.get(sid)
+                            q_last_dt = _parse_ts(q_last_raw)
+
+                            # If not present in MariaDB asset_info -> likely awaiting QA
+                            if a_last_raw is None:
+                                awaiting += 1
+                                continue
+
+                            # If no QA/audit seen after the erasure ts -> awaiting QA
+                            if not q_last_dt:
+                                awaiting += 1
+                                continue
+
+                            if er_ts_dt and q_last_dt and q_last_dt < er_ts_dt:
+                                # QA happened before the latest erasure -> awaiting again
+                                awaiting += 1
+
+                    erased_awaiting_qa = int(awaiting)
+                else:
+                    erased_awaiting_qa = 0
             else:
                 erased_awaiting_qa = 0
         except Exception as _e:
