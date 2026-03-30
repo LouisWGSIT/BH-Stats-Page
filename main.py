@@ -1090,6 +1090,19 @@ async def auth_middleware(request: Request, call_next):
             return await call_next(request)
     except Exception:
         pass
+
+    # Allow ingestion key to authenticate ingestion endpoints before the final API block
+    try:
+        from os import getenv
+        ingest_key = getenv('INGESTION_KEY')
+        if ingest_key and request.url.path.startswith('/api/ingest'):
+            auth_header = request.headers.get('Authorization', '')
+            bearer_key = auth_header[7:] if auth_header.startswith('Bearer ') else None
+            header_key = request.headers.get('X-INGESTION-KEY') or request.headers.get('x-ingestion-key')
+            if bearer_key == ingest_key or header_key == ingest_key:
+                return await call_next(request)
+    except Exception:
+        pass
     
     # External access: check for password
     # Check Authorization header with password
