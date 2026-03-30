@@ -5012,6 +5012,45 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7, debug: bool =
                 rows = cur.fetchall()
                 cur.close()
                 conn.close()
+                # If local_erasures is empty and AUTO_BACKFILL enabled, try to seed from erasures table
+                if not rows:
+                    try:
+                        from os import getenv
+                        if str(getenv('AUTO_BACKFILL', '')).lower() in ('1', 'true', 'yes'):
+                            # backfill from erasures (recent events)
+                            from database import DB_PATH, add_local_erasure
+                            conn2 = sqlite3.connect(DB_PATH)
+                            cur2 = conn2.cursor()
+                            days_back = int(getenv('AUTO_BACKFILL_DAYS', '7'))
+                            limit = int(getenv('AUTO_BACKFILL_LIMIT', '2000'))
+                            from datetime import datetime, timedelta as _td
+                            start_back = (datetime.utcnow() - _td(days=days_back)).isoformat()
+                            q_back = ("SELECT id, job_id, system_serial, ts, device_type, initials FROM erasures "
+                                      "WHERE event = 'success' AND ts >= ? ORDER BY ts ASC LIMIT ?")
+                            cur2.execute(q_back, (start_back, limit))
+                            back_rows = cur2.fetchall()
+                            inserted = 0
+                            for r in back_rows:
+                                eid, job_id, system_serial, ts_val, device_type, initials = r
+                                jid = job_id if job_id else f"erasures-backfill-{eid}"
+                                try:
+                                    add_local_erasure(stockid=None, system_serial=system_serial, job_id=jid, ts=ts_val, warehouse=None, source='erasures-backfill', payload={'device_type': device_type, 'initials': initials})
+                                    inserted += 1
+                                except Exception as _e:
+                                    diagnostics.setdefault('errors', []).append(str(_e))
+                            cur2.close()
+                            conn2.close()
+                            # re-open the local_erasures query to pick up inserted rows
+                            if inserted > 0:
+                                conn = sqlite3.connect(stats_db)
+                                cur = conn.cursor()
+                                cur.execute("SELECT stockid, MAX(ts) as last_ts FROM local_erasures WHERE ts >= ? AND ts < ? GROUP BY stockid", (start, end))
+                                rows = cur.fetchall()
+                                cur.close()
+                                conn.close()
+                                diagnostics['auto_backfilled'] = inserted
+                    except Exception as _e:
+                        diagnostics.setdefault('errors', []).append(str(_e))
 
                 if rows:
                     diagnostics["sqlite_rows"] = len(rows)
