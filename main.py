@@ -4894,10 +4894,13 @@ async def get_bottleneck_snapshot(request: Request, days: int = 7):
             print(f"[Bottleneck] sqlite local_erasures read failed: {_e}")
 
         # 4) QA'd awaiting Sorting (ITAD_QA_App left join Stockbypallet)
+        # NOTE: ITAD_QA_App does not include a `warehouse` column in some schemas.
+        # Join through ITAD_asset_info to apply the warehouse filter safely.
         q_qa_sort = (
             "SELECT COUNT(DISTINCT q.stockid) FROM ITAD_QA_App q "
             "LEFT JOIN Stockbypallet s ON s.stockid = q.stockid "
-            "WHERE (q.warehouse IS NULL OR q.warehouse = 'Berry Hill') "
+            "LEFT JOIN ITAD_asset_info a ON a.stockid = q.stockid "
+            "WHERE (a.warehouse IS NULL OR a.warehouse = 'Berry Hill') "
             "AND s.stockid IS NULL "
             "AND q.added_date >= %s AND q.added_date < %s"
         )
