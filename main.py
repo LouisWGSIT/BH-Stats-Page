@@ -1242,6 +1242,69 @@ async def ingest_local_erasure(request: Request):
 
     return JSONResponse(status_code=200, content={"ok": True, "inserted": True})
 
+
+@app.post("/admin/backfill-local-erasures")
+async def admin_backfill_local_erasures(request: Request):
+    """Admin-only: run a backfill from `erasures` -> `local_erasures`.
+
+    Query params (optional): `days` (default 7), `limit` (default 5000), `dry_run` (true/false)
+    Requires admin auth (admin password/token).
+    """
+    require_admin(request)
+    from urllib.parse import parse_qs
+    params = dict(request.query_params)
+    try:
+        days = int(params.get('days', 7))
+    except Exception:
+        days = 7
+    try:
+        limit = int(params.get('limit', 5000))
+    except Exception:
+        limit = 5000
+    dry_run = str(params.get('dry_run', 'false')).lower() in ('1','true','yes')
+
+    import sqlite3, os
+    from datetime import datetime, timedelta
+    try:
+        from database import DB_PATH, add_local_erasure
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"detail": f"DB helper import failed: {e}"})
+
+    if not os.path.exists(DB_PATH):
+        return JSONResponse(status_code=500, content={"detail": f"DB not found at {DB_PATH}"})
+
+    now = datetime.utcnow()
+    start = (now - timedelta(days=days)).isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    q = (
+        "SELECT id, job_id, system_serial, ts, device_type, initials FROM erasures "
+        "WHERE event = 'success' AND ts >= ? ORDER BY ts ASC LIMIT ?"
+    )
+    try:
+        cur.execute(q, (start, limit))
+        rows = cur.fetchall()
+    except Exception as e:
+        cur.close(); conn.close()
+        return JSONResponse(status_code=500, content={"detail": f"query failed: {e}"})
+
+    inserted = 0
+    errors = []
+    for r in rows:
+        eid, job_id, system_serial, ts, device_type, initials = r
+        jid = job_id if job_id else f"erasures-backfill-{eid}"
+        payload = {"source": "erasures-backfill", "device_type": device_type, "initials": initials}
+        if dry_run:
+            continue
+        try:
+            add_local_erasure(stockid=None, system_serial=system_serial, job_id=jid, ts=ts, warehouse=None, source="erasures-backfill", payload=payload)
+            inserted += 1
+        except Exception as e:
+            errors.append(str(e))
+
+    cur.close(); conn.close()
+    return JSONResponse(status_code=200, content={"rows_considered": len(rows), "inserted": inserted, "errors": errors, "dry_run": dry_run})
+
 @app.get("/metrics/monthly-momentum")
 async def get_monthly_momentum():
     """Get weekly totals for the current month for monthly momentum chart"""
