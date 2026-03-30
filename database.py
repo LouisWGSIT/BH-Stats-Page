@@ -17,6 +17,7 @@ def get_daily_totals() -> list:
     conn.close()
     return result
 import sqlite3
+import json
 from datetime import datetime, date, timedelta
 from typing import List, Tuple, Dict
 from pathlib import Path
@@ -223,6 +224,22 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_type ON erasures(device_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_initials ON erasures(initials)")
 
+        # Live local erasure feed (Blancco / server messages) - used as early signal for awaiting QA
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS local_erasures (
+                stockid TEXT,
+                system_serial TEXT,
+                job_id TEXT,
+                ts TEXT NOT NULL,
+                warehouse TEXT,
+                source TEXT,
+                payload TEXT,
+                PRIMARY KEY (job_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_local_erasures_stockid ON local_erasures(stockid)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_local_erasures_ts ON local_erasures(ts)")
+
         # Add new columns if they don't exist (migration)
         try:
             cursor.execute("ALTER TABLE erasures ADD COLUMN manufacturer TEXT")
@@ -398,6 +415,29 @@ def add_erasure_event(*, event: str, device_type: str, initials: str = None, dur
             """,
             (ts, d, month, event, device_type, (initials or None), duration_sec, (error_type or None), (job_id or None),
              (manufacturer or None), (model or None), (system_serial or None), (disk_serial or None), (disk_capacity or None), None, None)
+        )
+
+def add_local_erasure(stockid: str = None, system_serial: str = None, job_id: str = None, ts: str = None,
+                      warehouse: str = None, source: str = 'local', payload: dict = None):
+    """Insert or update a local erasure (live Blancco/server message) into `local_erasures`.
+
+    Safe to call repeatedly; uses INSERT OR REPLACE keyed on job_id when available.
+    """
+    from datetime import datetime
+    if ts is None:
+        ts = datetime.utcnow().isoformat()
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute(
+            "INSERT OR REPLACE INTO local_erasures (stockid, system_serial, job_id, ts, warehouse, source, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                stockid,
+                system_serial,
+                job_id,
+                ts,
+                warehouse,
+                source,
+                json.dumps(payload) if payload is not None else None,
+            )
         )
 
 def get_summary_today_month(date_str: str = None):
