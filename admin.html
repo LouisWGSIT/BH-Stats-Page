@@ -1040,7 +1040,7 @@
                                 </div>
                                 <div class="bottleneck-item">
                                     <div style="font-size:20px;font-weight:700;color:#ffd166;">${showVal(data.erased_awaiting_qa)}</div>
-                                    <div style="font-size:12px;color:#cbd5e1;">Awaiting QA</div>
+                                    <div style="font-size:12px;color:#cbd5e1;">Awaiting QA (erased)</div>
                                 </div>
                                 <div class="bottleneck-item">
                                     <div style="font-size:20px;font-weight:700;color:#60a5fa;">${showVal(data.qa_awaiting_sorting)}</div>
@@ -1058,7 +1058,10 @@
                                     <div style="font-size:20px;font-weight:700;color:#fb7185;">${showVal(data.dispositions && typeof data.dispositions.awaiting_breakfix !== 'undefined' ? data.dispositions.awaiting_breakfix : undefined)}</div>
                                     <div style="font-size:12px;color:#cbd5e1;">Awaiting Breakfix</div>
                                 </div>
-                                <!-- SLA Overdue removed per manager request -->
+                                <div class="bottleneck-item">
+                                    <div style="font-size:20px;font-weight:700;color:#f97316;">${showVal(data.sla_overdue)}</div>
+                                    <div style="font-size:12px;color:#cbd5e1;">SLA Overdue</div>
+                                </div>
                             </div>
                             <div style="margin-top:8px;font-size:12px;color:#94a3b8;">Note: live counts use local erasure feed + MariaDB where available (cached ${60}s).</div>
                         </div>
