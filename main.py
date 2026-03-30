@@ -1185,6 +1185,16 @@ async def get_all_time_totals(group_by: str = None):
 # Initialize database tables on startup
 db.init_db()
 
+# Backfill progress status (shared in-memory)
+BACKFILL_PROGRESS = {
+    'running': False,
+    'total': 0,
+    'processed': 0,
+    'percent': 0,
+    'last_updated': None,
+    'errors': []
+}
+
 # For sparkline compatibility: hourly-totals endpoint
 @app.get("/analytics/hourly-totals")
 async def analytics_hourly_totals():
@@ -1207,20 +1217,51 @@ async def ingest_local_erasure(request: Request):
     """
     import os
     try:
+        # Read raw body for HMAC verification, then parse JSON
+        raw_body = await request.body()
         body = await request.json()
     except Exception:
         return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
 
-    # Validate ingestion key
-    ingestion_key = os.getenv('INGESTION_KEY')
-    if not ingestion_key:
-        return JSONResponse(status_code=403, content={"detail": "Ingestion not configured on server"})
+    # Prefer HMAC verification if a secret is configured
+    ingestion_secret = os.getenv('INGESTION_SECRET')
+    if ingestion_secret:
+        import hmac, hashlib
+        # Accept common header names
+        sig_header = (request.headers.get('X-Signature') or
+                      request.headers.get('X-Hub-Signature-256') or
+                      request.headers.get('X-Hub-Signature') or
+                      request.headers.get('x-signature') or
+                      request.headers.get('x-hub-signature-256') or
+                      request.headers.get('x-hub-signature'))
+        if not sig_header:
+            return JSONResponse(status_code=401, content={"detail": "Missing signature header"})
 
-    auth_header = request.headers.get('Authorization', '')
-    bearer = auth_header[7:] if auth_header.startswith('Bearer ') else None
-    header_key = request.headers.get('X-INGESTION-KEY') or request.headers.get('x-ingestion-key')
-    if (bearer != ingestion_key) and (header_key != ingestion_key):
-        return JSONResponse(status_code=401, content={"detail": "Invalid ingestion key"})
+        # Normalize header value (allow formats like 'sha256=<hex>' or raw hex)
+        if sig_header.startswith('sha256='):
+            recv_hex = sig_header.split('=', 1)[1]
+        else:
+            recv_hex = sig_header
+
+        try:
+            expected = hmac.new(ingestion_secret.encode('utf-8'), raw_body or b'', hashlib.sha256).hexdigest()
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "HMAC computation failed"})
+
+        # Use timing-safe comparison
+        if not hmac.compare_digest(expected, recv_hex):
+            return JSONResponse(status_code=401, content={"detail": "Invalid signature"})
+    else:
+        # Fallback: legacy ingestion key behavior
+        ingestion_key = os.getenv('INGESTION_KEY')
+        if not ingestion_key:
+            return JSONResponse(status_code=403, content={"detail": "Ingestion not configured on server"})
+
+        auth_header = request.headers.get('Authorization', '')
+        bearer = auth_header[7:] if auth_header.startswith('Bearer ') else None
+        header_key = request.headers.get('X-INGESTION-KEY') or request.headers.get('x-ingestion-key')
+        if (bearer != ingestion_key) and (header_key != ingestion_key):
+            return JSONResponse(status_code=401, content={"detail": "Invalid ingestion key"})
 
     # Extract fields from payload
     stockid = body.get('stockid')
@@ -1273,6 +1314,10 @@ async def admin_backfill_local_erasures(request: Request):
     if not os.path.exists(DB_PATH):
         return JSONResponse(status_code=500, content={"detail": f"DB not found at {DB_PATH}"})
 
+    # Prevent concurrent backfills
+    if BACKFILL_PROGRESS.get('running'):
+        return JSONResponse(status_code=409, content={"detail": "Backfill already running"})
+
     now = datetime.utcnow()
     start = (now - timedelta(days=days)).isoformat()
     conn = sqlite3.connect(DB_PATH)
@@ -1290,25 +1335,76 @@ async def admin_backfill_local_erasures(request: Request):
 
     inserted = 0
     errors = []
-    for r in rows:
+
+    # Initialize progress
+    try:
+        BACKFILL_PROGRESS['running'] = True
+        BACKFILL_PROGRESS['total'] = len(rows)
+        BACKFILL_PROGRESS['processed'] = 0
+        BACKFILL_PROGRESS['percent'] = 0
+        BACKFILL_PROGRESS['last_updated'] = datetime.utcnow().isoformat()
+        BACKFILL_PROGRESS['errors'] = []
+    except Exception:
+        pass
+
+    for idx, r in enumerate(rows):
         eid, job_id, system_serial, ts, device_type, initials = r
         jid = job_id if job_id else f"erasures-backfill-{eid}"
         payload = {"source": "erasures-backfill", "device_type": device_type, "initials": initials}
         if dry_run:
+            # update processed count for dry run visibility
+            try:
+                BACKFILL_PROGRESS['processed'] = idx + 1
+                BACKFILL_PROGRESS['percent'] = int((BACKFILL_PROGRESS['processed'] / (BACKFILL_PROGRESS['total'] or 1)) * 100)
+                BACKFILL_PROGRESS['last_updated'] = datetime.utcnow().isoformat()
+            except Exception:
+                pass
             continue
         try:
             add_local_erasure(stockid=None, system_serial=system_serial, job_id=jid, ts=ts, warehouse=None, source="erasures-backfill", payload=payload)
             inserted += 1
         except Exception as e:
             errors.append(str(e))
+            try:
+                BACKFILL_PROGRESS['errors'].append(str(e))
+            except Exception:
+                pass
+        finally:
+            try:
+                BACKFILL_PROGRESS['processed'] = idx + 1
+                BACKFILL_PROGRESS['percent'] = int((BACKFILL_PROGRESS['processed'] / (BACKFILL_PROGRESS['total'] or 1)) * 100)
+                BACKFILL_PROGRESS['last_updated'] = datetime.utcnow().isoformat()
+            except Exception:
+                pass
 
     cur.close(); conn.close()
+    # Mark finished
+    try:
+        BACKFILL_PROGRESS['running'] = False
+        BACKFILL_PROGRESS['last_updated'] = datetime.utcnow().isoformat()
+    except Exception:
+        pass
+
     return JSONResponse(status_code=200, content={"rows_considered": len(rows), "inserted": inserted, "errors": errors, "dry_run": dry_run})
 
 @app.get("/metrics/monthly-momentum")
 async def get_monthly_momentum():
     """Get weekly totals for the current month for monthly momentum chart"""
     return db.get_monthly_momentum()
+
+
+@app.get("/admin/backfill-status")
+def admin_backfill_status(request: Request):
+    """Return current backfill status. Accessible to manager or admin."""
+    try:
+        require_manager_or_admin(request)
+    except Exception:
+        raise
+    # Return a shallow copy to avoid external mutation
+    try:
+        return dict(BACKFILL_PROGRESS)
+    except Exception:
+        return BACKFILL_PROGRESS
 
 
 # Endpoint: Mon-Fri daily erasure totals for current week

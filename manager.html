@@ -627,6 +627,7 @@
                     Shows current bottlenecks at each stage - Awaiting Erasure, QA, Pallet ID.
                 </p>
                 <button onclick="runBottleneckRadar()">📡 Run Bottleneck Radar</button>
+                <span id="backfillStatus" style="margin-left:12px; display:none; color:#fff; font-size:13px; vertical-align:middle;"></span>
                 <div id="bottleneckResult" class="result"></div>
                 <div id="bottleneckContent" class="stats" style="display: none; margin-top: 20px;"></div>
                 <div id="bottleneckDetails" class="stats" style="display: block; margin-top: 12px;"></div>
@@ -681,6 +682,57 @@
     <script>
         let authToken = null;
         let userRole = null;
+        let backfillPoller = null;
+
+        function showBackfillStatusHtml(obj) {
+            const el = document.getElementById('backfillStatus');
+            if (!el) return;
+            if (!obj || !obj.running) {
+                el.style.display = 'none';
+                el.innerHTML = '';
+                return;
+            }
+            const pct = obj.percent || 0;
+            const processed = obj.processed || 0;
+            const total = obj.total || 0;
+            el.style.display = 'inline-block';
+            el.style.color = '#fff';
+            el.innerHTML = `<span class="loading" style="vertical-align:middle;margin-right:6px;"></span> Backfill ${pct}% (${processed}/${total})`;
+        }
+
+        async function pollBackfillStatusOnce() {
+            try {
+                const resp = await fetch('/admin/backfill-status', { headers: getAuthHeaders(false) });
+                if (!resp.ok) {
+                    showBackfillStatusHtml(null);
+                    return;
+                }
+                const data = await resp.json();
+                showBackfillStatusHtml(data);
+                if (!data.running) {
+                    // stop polling when finished
+                    stopBackfillPoll();
+                }
+            } catch (e) {
+                // network or auth error
+                showBackfillStatusHtml(null);
+            }
+        }
+
+        function startBackfillPoll() {
+            if (backfillPoller) return;
+            // poll immediately then every second
+            pollBackfillStatusOnce();
+            backfillPoller = setInterval(pollBackfillStatusOnce, 1000);
+        }
+
+        function stopBackfillPoll() {
+            if (backfillPoller) {
+                clearInterval(backfillPoller);
+                backfillPoller = null;
+            }
+            try { showBackfillStatusHtml(null); } catch (e) {}
+        }
 
         async function ensureManagerAccess() {
             const existingToken = sessionStorage.getItem('authToken') || localStorage.getItem('deviceToken');
@@ -1313,6 +1365,8 @@
             resultDiv.className = 'result info';
             resultDiv.style.display = 'block';
             resultDiv.innerHTML = '<p>📡 Fetching today\'s bottleneck snapshot...</p>';
+            // Start polling backfill status to show progress if a backfill is running
+            try { startBackfillPoll(); } catch (e) { console.warn('Backfill poll start failed', e); }
             console.log('[UI] runBottleneckRadar clicked - calling /api/bottlenecks');
             contentDiv.style.display = 'none';
 
