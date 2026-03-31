@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime
 
 
 def test_health_liveness(client):
@@ -100,3 +101,47 @@ def test_static_routes_still_serve_assets(client):
     r_config = client.get("/config.json")
     assert r_config.status_code == 200
     assert "application/json" in r_config.headers.get("content-type", "")
+
+
+def test_admin_activity_requires_admin(client):
+    r = client.get("/admin/activity")
+    assert r.status_code == 401
+
+
+def test_admin_activity_returns_recent_events(client, app_module):
+    app_module.ACTIVITY_LOG.append(
+        {
+            "ts": datetime.utcnow().isoformat(),
+            "path": "/hooks/erasure-detail",
+            "method": "POST",
+            "client_ip": "127.0.0.1",
+            "duration_ms": 12,
+            "rss": 123456,
+        }
+    )
+    r = client.get("/admin/activity", headers={"Authorization": "Bearer test-admin-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert "counts" in body
+    assert "recent" in body
+    assert isinstance(body["recent"], list)
+
+
+def test_admin_activity_memory_series_shape(client, app_module):
+    app_module.ACTIVITY_LOG.append(
+        {
+            "ts": datetime.utcnow().isoformat(),
+            "path": "/app.js",
+            "method": "GET",
+            "client_ip": "127.0.0.1",
+            "rss": 222222,
+        }
+    )
+    r = client.get(
+        "/admin/activity/memory-series?minutes=10&bucket_seconds=60",
+        headers={"Authorization": "Bearer test-admin-pass"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert "series" in body
+    assert body["bucket_seconds"] == 60

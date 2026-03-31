@@ -22,6 +22,7 @@ import io
 import sqlite3
 import backend.qa_export as qa_export
 import routers.health as health_router
+from backend.app.routes.admin_activity import create_admin_activity_router
 from backend.app.routes.auth import create_auth_router
 from backend.app.routes.hwid import create_hwid_router
 from backend.app.routes.static_pages import create_static_pages_router
@@ -662,151 +663,6 @@ def admin_db_processlist(request: Request, limit: int = 100):
         except Exception:
             pass
         print(f"[Admin] db-processlist error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/admin/activity")
-def admin_activity(request: Request):
-    """Return recent dashboard activity for last 24 hours.
-
-    Aggregates: exports, device searches, fix-initials, memory samples, connected devices.
-    Requires admin access.
-    """
-    require_admin(request)
-    now = datetime.utcnow()
-    cutoff = now - timedelta(hours=24)
-
-    # Prefer DB-backed entries if writer is present
-    recent = []
-    try:
-        writer = getattr(app.state, 'activity_writer', None)
-        if writer:
-            conn = sqlite3.connect(writer.db_path, timeout=5, check_same_thread=False)
-            cur = conn.cursor()
-            cur.execute('SELECT ts, request_id, path, method, client_ip, duration_ms, rss FROM activity WHERE ts >= ? ORDER BY ts DESC LIMIT 500', (cutoff.isoformat(),))
-            rows = cur.fetchall()
-            for r in rows:
-                recent.append({'ts': r[0], 'request_id': r[1], 'path': r[2], 'method': r[3], 'client_ip': r[4], 'duration_ms': r[5], 'rss': r[6]})
-            conn.close()
-        else:
-            # Fallback to in-memory ring buffer
-            for e in list(ACTIVITY_LOG):
-                try:
-                    ts = datetime.fromisoformat(e.get('ts')) if isinstance(e.get('ts'), str) else None
-                except Exception:
-                    ts = None
-                if ts and ts >= cutoff:
-                    recent.append(e)
-    except Exception:
-        # on any error, fall back to ACTIVITY_LOG
-        for e in list(ACTIVITY_LOG):
-            try:
-                ts = datetime.fromisoformat(e.get('ts')) if isinstance(e.get('ts'), str) else None
-            except Exception:
-                ts = None
-            if ts and ts >= cutoff:
-                recent.append(e)
-
-    # Basic aggregates
-    exports = [x for x in recent if '/export' in (x.get('path') or '')]
-    device_searches = [x for x in recent if '/api/device-lookup' in (x.get('path') or '')]
-    fix_initials = [x for x in recent if '/admin/fix-initials' in (x.get('path') or '') or '/admin/undo-last-initials' in (x.get('path') or '')]
-
-    memory_samples = [x.get('rss') for x in recent if x.get('rss')]
-    memory_peak = max(memory_samples) if memory_samples else None
-
-    # Connected devices summary
-    tokens = load_device_tokens()
-    connected = []
-    try:
-        for token, info in tokens.items():
-            connected.append({
-                'token': token,
-                'initials': info.get('initials'),
-                'role': info.get('role'),
-                'last_seen': info.get('last_seen'),
-                'last_client_ip': info.get('last_client_ip'),
-                'user_agent': info.get('user_agent')
-            })
-    except Exception:
-        connected = []
-
-    # Build lightweight activity timeline (most recent first)
-    recent_sorted = sorted(recent, key=lambda r: r.get('ts', ''), reverse=True)[:500]
-
-    return {
-        'now': now.isoformat(),
-        'cutoff': cutoff.isoformat(),
-        'counts': {
-            'total_events': len(recent),
-            'exports': len(exports),
-            'device_searches': len(device_searches),
-            'fix_initials': len(fix_initials),
-            'unique_client_ips': len(set([x.get('client_ip') for x in recent if x.get('client_ip')]))
-        },
-        'memory_peak_rss': memory_peak,
-        'connected_devices': connected,
-        'recent': recent_sorted
-    }
-
-
-@app.get("/admin/activity/memory-series")
-def admin_activity_memory_series(request: Request, minutes: int = 1440, bucket_seconds: int = 60):
-    """Return a downsampled time series of RSS memory samples for the last `minutes` minutes.
-
-    - `minutes`: lookback in minutes (default 1440 = 24h)
-    - `bucket_seconds`: aggregate bucket size in seconds (default 60s)
-    """
-    require_admin(request)
-    try:
-        now = datetime.utcnow()
-        cutoff = now - timedelta(minutes=minutes)
-        writer = getattr(app.state, 'activity_writer', None)
-        rows = []
-        if writer:
-            conn = sqlite3.connect(writer.db_path, timeout=5, check_same_thread=False)
-            cur = conn.cursor()
-            cur.execute('SELECT ts, rss FROM activity WHERE rss IS NOT NULL AND ts >= ? ORDER BY ts ASC', (cutoff.isoformat(),))
-            rows = cur.fetchall()
-            conn.close()
-        else:
-            # fallback to in-memory
-            for e in list(ACTIVITY_LOG):
-                try:
-                    ts = e.get('ts')
-                    rss = e.get('rss')
-                    if not ts or not rss:
-                        continue
-                    t = datetime.fromisoformat(ts)
-                    if t >= cutoff:
-                        rows.append((ts, rss))
-                except Exception:
-                    continue
-
-        # Aggregate into buckets
-        buckets = {}
-        for ts_str, rss in rows:
-            try:
-                t = datetime.fromisoformat(ts_str)
-                # bucket key as epoch seconds // bucket_seconds
-                key = int(t.timestamp()) // bucket_seconds
-                if key not in buckets:
-                    buckets[key] = {'sum': 0, 'count': 0, 'ts': t}
-                buckets[key]['sum'] += int(rss or 0)
-                buckets[key]['count'] += 1
-            except Exception:
-                continue
-
-        # Build series sorted by bucket key
-        series = []
-        for k in sorted(buckets.keys()):
-            b = buckets[k]
-            avg = int(b['sum'] / b['count']) if b['count'] else 0
-            ts = datetime.utcfromtimestamp(k * bucket_seconds).isoformat()
-            series.append({'ts': ts, 'rss': avg})
-
-        return {'series': series, 'bucket_seconds': bucket_seconds}
-    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 def save_device_tokens(tokens):
@@ -2769,6 +2625,14 @@ app.include_router(
         save_device_tokens=save_device_tokens,
         touch_device_token=touch_device_token,
         generate_device_token=generate_device_token,
+    )
+)
+app.include_router(
+    create_admin_activity_router(
+        require_admin=require_admin,
+        load_device_tokens=load_device_tokens,
+        activity_log=ACTIVITY_LOG,
+        get_activity_writer=lambda: getattr(app.state, "activity_writer", None),
     )
 )
 
