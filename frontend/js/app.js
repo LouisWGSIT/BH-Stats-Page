@@ -269,7 +269,7 @@ function renderSVGSparkline(svgElem, data) {
   }
 
   // Now proceed with app initialization
-  const cfg = await fetch('config.json').then(r => r.json());
+  const cfg = await fetch('/config.json').then(r => r.json());
 
   // ==================== UI ROLE CONTROLS ====================
   // Hide export and admin buttons for viewer role

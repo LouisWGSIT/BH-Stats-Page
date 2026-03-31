@@ -24,3 +24,7 @@ venv/
 *.log
 warehouse_stats.db
 device_tokens.json
+.pytest_cache/
+.pytest_tmp/
+tests/__pycache__/
+scripts/scratch/

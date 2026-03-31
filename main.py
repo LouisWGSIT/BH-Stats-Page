@@ -254,7 +254,7 @@ DASHBOARD_PUBLIC = os.getenv("DASHBOARD_PUBLIC", "false").lower() in ("1", "true
 # Device token storage (persistent across redeployments)
 DEVICE_TOKENS_FILE = "device_tokens.json"
 DEVICE_TOKENS_DB = os.getenv("DEVICE_TOKENS_DB", "").strip()
-POWERBI_API_KEY_FILE = "powerbi_api_key.txt"
+POWERBI_API_KEY_FILE = os.path.join("config", "powerbi_api_key.txt")
 DEVICE_TOKEN_EXPIRY_DAYS = 7  # Remember device for 7 days
 
 QA_CACHE_TTL_SECONDS = float(os.getenv("QA_CACHE_TTL_SECONDS", "60"))
@@ -886,6 +886,7 @@ def get_powerbi_api_key() -> str:
 
     new_key = secrets.token_urlsafe(32)
     try:
+        os.makedirs(os.path.dirname(POWERBI_API_KEY_FILE) or ".", exist_ok=True)
         with open(POWERBI_API_KEY_FILE, "w") as f:
             f.write(new_key)
     except Exception as e:
@@ -6169,6 +6170,11 @@ async def serve_app_js():
 @app.get("/styles.css", include_in_schema=False)
 async def serve_styles_css():
     return FileResponse(os.path.join(FRONTEND_CSS_DIR, "styles.css"), media_type="text/css")
+
+
+@app.get("/config.json", include_in_schema=False)
+async def serve_config_json():
+    return FileResponse(os.path.join("config", "config.json"), media_type="application/json")
 
 @app.get("/hwid")
 async def hwid_status():
