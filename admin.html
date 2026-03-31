@@ -406,7 +406,10 @@
 
             <!-- Section 2: Fix Initials -->
             <div class="section admin-only">
-                <h2>Fix/Correct Initials</h2>
+                <h2 style="display:flex;align-items:center;gap:8px;">
+                    <span>Fix/Correct Initials</span>
+                    <button id="refreshInitialsBtn" onclick="refreshInitialsDropdowns()" title="Refresh initials list" style="padding:6px 10px;font-size:14px;line-height:1;">↻</button>
+                </h2>
                 <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
                     Change all erasures from one set of initials to another. Useful for fixing typos or mistakes.
                 </p>
@@ -435,20 +438,7 @@
                 <div id="undoFixResult" class="result"></div>
             </div>
 
-            <!-- Section 3: Initials Breakdown -->
-            <div class="section admin-only">
-                <h2>Current Initials in Database</h2>
-                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                    See all unique engineer initials and their counts. Use this to identify what initials to target for fixing.
-                </p>
-                <button onclick="loadInitialsList()">📋 Load Initials List</button>
-                <div id="initialsContainer" class="stats" style="display: none; margin-top: 20px;">
-                    <h3>Engineers & Unassigned Records</h3>
-                    <div id="initialsContent"></div>
-                </div>
-            </div>
-
-            <!-- Section 4: Stats -->
+            <!-- Section 3: Stats -->
             <div class="section admin-only">
                 <h2>Engineer Statistics</h2>
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
@@ -768,8 +758,7 @@
                         `Fixed ${data.affected_records || 0} erasures: ${fromInitials || '(blank)'} → ${data.to_initials || toInitials}`);
                     document.getElementById('fixFrom').value = '';
                     if (document.getElementById('fixTo').tagName.toLowerCase() === 'select') document.getElementById('fixTo').value = '';
-                    loadInitialsList();
-                    populateFromDropdown(); // Refresh the dropdown
+                    refreshInitialsDropdowns();
                 } else {
                     showResult(resultDiv, 'error', '❌ Error', data.detail || data.message || 'Failed to fix records');
                 }
@@ -918,7 +907,6 @@
             if (!ok) return;
             applyRoleVisibility();
             if (userRole === 'admin') {
-                loadInitialsList();
                 populateFromDropdown();
                 loadConnectedDevices();
                 // Load activity and enable auto-poll checkbox wiring
@@ -972,7 +960,7 @@
                     }
                 });
 
-                dropdown.addEventListener('change', () => {
+                dropdown.onchange = () => {
                     const selected = dropdown.options[dropdown.selectedIndex];
                     const count = parseInt(selected.dataset.count || '0', 10);
                     const countInput = document.getElementById('fixCount');
@@ -984,53 +972,27 @@
                     if (hint) {
                         hint.textContent = count ? `Max available: ${count}` : '';
                     }
-                });
+                };
             } catch (error) {
                 console.error('Error loading initials dropdown:', error);
             }
         }
 
-        async function loadInitialsList() {
-            const container = document.getElementById('initialsContainer');
-            const content = document.getElementById('initialsContent');
-
+        async function refreshInitialsDropdowns() {
+            const btn = document.getElementById('refreshInitialsBtn');
             try {
-                const response = await fetch('/admin/initials-list', {
-                    headers: getAuthHeaders(false)
-                });
-
-                const data = await response.json();
-                const initials = data.initials || [];
-
-                if (initials.length === 0) {
-                    content.innerHTML = '<p style="color: #999;">No data available.</p>';
-                } else {
-                    let html = '<div class="stats-grid">';
-                    initials.forEach(item => {
-                        // Handle empty/blank initials display
-                        let displayName = item.initials;
-                        let bgColor = '';
-                        
-                        if (item.initials === '(unassigned)' || !item.initials || item.initials.trim() === '') {
-                            displayName = '❌ No Name';
-                            bgColor = 'border-left-color: #ff6b6b;';
-                        }
-                        
-                        html += `
-                            <div class="stat-card" style="${bgColor}">
-                                <div class="stat-value">${item.count}</div>
-                                <div class="stat-label">${displayName}</div>
-                            </div>
-                        `;
-                    });
-                    html += '</div>';
-                    const showVal = v => (typeof v === 'number' ? String(v) : (v ? String(v) : '-'));
-
-                    // Render initials list HTML into the initials container
-                    content.innerHTML = html;
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '⟳';
                 }
+                await populateFromDropdown();
             } catch (error) {
-                console.error('Error loading initials list:', error);
+                console.error('Error refreshing initials dropdowns:', error);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '↻';
+                }
             }
         }
 
