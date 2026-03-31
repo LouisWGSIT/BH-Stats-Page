@@ -21,6 +21,7 @@ import zipfile
 import io
 import sqlite3
 import qa_export
+import routers.health as health_router
 import logging
 from logging_config import configure_logging
 from collections import OrderedDict
@@ -139,6 +140,7 @@ class TTLCache:
 # Configure root logger to emit structured JSON logs (includes request_id)
 configure_logging(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")))
 app = FastAPI(title="Warehouse Stats Service")
+app.include_router(health_router.router)
 # Enable GZip compression for responses over a threshold to reduce payload sizes
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
@@ -583,35 +585,6 @@ def load_device_tokens():
     except Exception:
         pass
     return {}
-
-
-@app.get("/health/db")
-async def health_db():
-    """Quick read-only health check against MariaDB to fail fast if DB is unreachable."""
-    try:
-        conn = qa_export.get_mariadb_connection()
-        if not conn:
-            return JSONResponse(status_code=503, content={"status": "fail", "detail": "MariaDB connection failed"})
-        try:
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            row = cur.fetchone()
-            cur.close()
-            conn.close()
-            if row and row[0] == 1:
-                return JSONResponse(status_code=200, content={"status": "ok", "db": "ok"})
-            else:
-                return JSONResponse(status_code=503, content={"status": "fail", "detail": "unexpected db result"})
-        except Exception as e:
-            try:
-                conn.close()
-            except Exception:
-                pass
-            print(f"[HealthDB] query failed: {e}")
-            return JSONResponse(status_code=503, content={"status": "fail", "detail": "query failed"})
-    except Exception as e:
-        print(f"[HealthDB] unexpected error: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "detail": "internal error"})
 
 
 @app.get("/admin/db-processlist")
@@ -2523,44 +2496,6 @@ async def admin_undo_last_initials(req: Request):
         "from_initials": from_initials,
         "to_initials": to_initials
     }
-
-@app.get("/admin/connected-devices")
-async def admin_connected_devices(req: Request):
-    """List active device tokens with roles and expiry."""
-    require_admin(req)
-    tokens = load_device_tokens()
-    devices = []
-    for token, info in tokens.items():
-        devices.append({
-            "token": token,
-            "role": info.get("role"),
-            "name": info.get("name") or info.get("device_name") or None,
-            "client_ip": info.get("client_ip"),
-            "user_agent": info.get("user_agent"),
-            "created": info.get("created"),
-            "expiry": info.get("expiry")
-        })
-    return {"status": "ok", "devices": devices}
-
-@app.post("/admin/revoke-device")
-async def admin_revoke_device(req: Request):
-    """Revoke a device token."""
-    require_admin(req)
-    body = {}
-    try:
-        body = await req.json()
-    except Exception:
-        body = {}
-    token = (body.get("token") if isinstance(body, dict) else None) or req.query_params.get("token")
-    if not token:
-        raise HTTPException(status_code=400, detail="token is required")
-    tokens = load_device_tokens()
-    if token in tokens:
-        del tokens[token]
-        save_device_tokens(tokens)
-        return {"status": "ok", "revoked": True}
-    return {"status": "ok", "revoked": False}
-
 
 @app.post("/admin/memory-snapshot")
 async def admin_memory_snapshot(req: Request):

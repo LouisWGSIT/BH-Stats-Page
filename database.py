@@ -153,6 +153,12 @@ def sync_engineer_stats_type_from_erasures(date_str: str = None):
 
 # Use env var for persistent disk path on Render, fall back to local for dev
 DB_PATH = os.getenv("STATS_DB_PATH", str(Path(__file__).parent / "warehouse_stats.db"))
+# Ensure parent directory exists (useful when mounting a persistent volume on Render)
+try:
+    db_dir = os.path.dirname(DB_PATH) or '.'
+    os.makedirs(db_dir, exist_ok=True)
+except Exception:
+    pass
 
 def init_db():
     """Initialize database with required tables"""
