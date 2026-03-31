@@ -70,3 +70,33 @@ def test_hwid_accepts_key_and_writes_log(client, app_module, workspace_temp_dir,
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
     assert Path(log_path).exists()
+
+
+def test_auth_login_admin_returns_admin_role(client, app_module, workspace_temp_dir, monkeypatch):
+    tokens_path = workspace_temp_dir / "device_tokens_test.json"
+    monkeypatch.setattr(app_module, "DEVICE_TOKENS_FILE", str(tokens_path))
+
+    r = client.post("/auth/login", json={"password": "test-admin-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["authenticated"] is True
+    assert body["role"] == "admin"
+    assert "device_token" in body
+
+
+def test_auth_status_with_manager_bearer(client):
+    r = client.get("/auth/status", headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["authenticated"] is True
+    assert body["role"] == "manager"
+
+
+def test_static_routes_still_serve_assets(client):
+    r_index = client.get("/")
+    assert r_index.status_code == 200
+    assert "text/html" in r_index.headers.get("content-type", "")
+
+    r_config = client.get("/config.json")
+    assert r_config.status_code == 200
+    assert "application/json" in r_config.headers.get("content-type", "")

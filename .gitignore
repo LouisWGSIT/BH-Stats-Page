@@ -22,6 +22,7 @@ __pycache__/
 venv/
 .env
 *.log
+logs/*.jsonl
 warehouse_stats.db
 device_tokens.json
 .pytest_cache/

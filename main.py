@@ -22,6 +22,9 @@ import io
 import sqlite3
 import backend.qa_export as qa_export
 import routers.health as health_router
+from backend.app.routes.auth import create_auth_router
+from backend.app.routes.hwid import create_hwid_router
+from backend.app.routes.static_pages import create_static_pages_router
 import logging
 from backend.logging_config import configure_logging
 from collections import OrderedDict
@@ -2753,208 +2756,21 @@ async def get_all_engineers_kpis():
     return {"engineers": kpis}
 
 # ============= AUTH ENDPOINTS =============
-@app.get("/auth/status")
-async def auth_status(request: Request):
-    """Check auth status for current client"""
-    client_ip = get_client_ip(request)
-    
-    # Check for TV browser
-    user_agent = request.headers.get("User-Agent", "").lower()
-    is_tv_browser = "silk" in user_agent or "firetv" in user_agent or "aftt" in user_agent
-    
-    is_local = is_local_network(client_ip)
-    is_authenticated = is_local or is_tv_browser
-    role = "viewer" if (is_local or is_tv_browser) else None
-
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-        if token == ADMIN_PASSWORD:
-            role = "admin"
-            is_authenticated = True
-        elif token == MANAGER_PASSWORD:
-            role = "manager"
-            is_authenticated = True
-        elif is_device_token_valid(token):
-            tokens = load_device_tokens()
-            role = tokens.get(token, {}).get("role") or role
-            # update token metadata for admin panel
-            try:
-                ua = request.headers.get('User-Agent', '')
-                touch_device_token(token, get_client_ips(request), ua)
-            except Exception:
-                pass
-            is_authenticated = True
-    
-    # Log for debugging
-    forwarded_for = request.headers.get("X-Forwarded-For", "")
-    print(f"Auth check - Client IP: {client_ip}, Is Local: {is_local}, Is TV: {is_tv_browser}, Role: {role}, X-Forwarded-For: {forwarded_for}")
-    # If local or TV browser and no explicit token provided, record an ephemeral viewer session
-    try:
-        auth_header = request.headers.get("Authorization", "")
-        if (is_local or is_tv_browser) and not auth_header.startswith("Bearer "):
-            ua = request.headers.get('User-Agent', '')[:512]
-            fingerprint = hashlib.sha256(f"{ua}:{client_ip}".encode()).hexdigest()
-            tokens = load_device_tokens()
-            found = None
-            for t, info in tokens.items():
-                if info.get('fingerprint') == fingerprint and info.get('ephemeral'):
-                    found = t
-                    break
-            if found:
-                touch_device_token(found, get_client_ips(request), ua)
-            else:
-                anon_token = 'ephemeral-' + secrets.token_urlsafe(12)
-                tokens[anon_token] = {
-                    'created': datetime.now().isoformat(),
-                    'expiry': (datetime.now() + timedelta(hours=24)).isoformat(),
-                    'user_agent': ua,
-                    'client_ip': client_ip,
-                    'client_ips': get_client_ips(request),
-                    'last_client_ip': client_ip,
-                    'last_seen': datetime.now().isoformat(),
-                    'role': 'viewer',
-                    'ephemeral': True,
-                    'fingerprint': fingerprint,
-                    'locked': False,
-                }
-                save_device_tokens(tokens)
-    except Exception:
-        pass
-
-    return {
-        "authenticated": is_authenticated,
-        "role": role,
-        "client_ip": client_ip,
-        "is_tv_browser": is_tv_browser,
-        "access_type": "tv-browser" if is_tv_browser else ("local" if is_local else "external"),
-        "message": "TV browser auto-allowed" if is_tv_browser else ("Local network access granted automatically" if is_local else "External access requires password")
-    }
-
-@app.post("/auth/login")
-async def login(request: Request):
-    """Users can login with manager/admin password"""
-    try:
-        body = await request.json()
-        password = body.get("password", "")
-        
-        # Get real client IP
-        forwarded_for = request.headers.get("X-Forwarded-For", "")
-        if forwarded_for:
-            client_ip = forwarded_for.split(",")[0].strip()
-        else:
-            client_ip = request.client.host if request.client else "0.0.0.0"
-        
-        # Admin password accepted anywhere
-        if password == ADMIN_PASSWORD:
-            # Generate device token for future auto-login
-            user_agent = request.headers.get("User-Agent", "Unknown")
-            device_token = generate_device_token(user_agent, client_ip)
-            
-            # Store token with expiry
-            tokens = load_device_tokens()
-            tokens[device_token] = {
-                "created": datetime.now().isoformat(),
-                "expiry": (datetime.now() + timedelta(days=DEVICE_TOKEN_EXPIRY_DAYS)).isoformat(),
-                "user_agent": user_agent,
-                "client_ip": client_ip,
-                "client_ips": [client_ip],
-                "last_client_ip": client_ip,
-                "last_seen": datetime.now().isoformat(),
-                "locked": False,
-                "role": "admin"
-            }
-            save_device_tokens(tokens)
-            
-            print(f"Admin device token created for {client_ip} - expires in {DEVICE_TOKEN_EXPIRY_DAYS} days")
-            
-            return {
-                "authenticated": True,
-                "role": "admin",
-                "device_token": device_token,
-                "token": ADMIN_PASSWORD,
-                "message": "Admin access granted"
-            }
-
-        # Manager password accepted anywhere
-        if password == MANAGER_PASSWORD:
-            user_agent = request.headers.get("User-Agent", "Unknown")
-            device_token = generate_device_token(user_agent, client_ip)
-
-            tokens = load_device_tokens()
-            tokens[device_token] = {
-                "created": datetime.now().isoformat(),
-                "expiry": (datetime.now() + timedelta(days=DEVICE_TOKEN_EXPIRY_DAYS)).isoformat(),
-                "user_agent": user_agent,
-                "client_ip": client_ip,
-                "client_ips": [client_ip],
-                "last_client_ip": client_ip,
-                "last_seen": datetime.now().isoformat(),
-                "locked": False,
-                "role": "manager"
-            }
-            save_device_tokens(tokens)
-
-            print(f"Manager device token created for {client_ip} - expires in {DEVICE_TOKEN_EXPIRY_DAYS} days")
-
-            return {
-                "authenticated": True,
-                "role": "manager",
-                "device_token": device_token,
-                "token": MANAGER_PASSWORD,
-                "message": "Manager access granted"
-            }
-        
-        # Local network users can continue as viewer without password
-        if is_local_network(client_ip):
-            return {"authenticated": True, "role": "viewer", "message": "Local network view-only access"}
-        
-        raise HTTPException(status_code=401, detail="Invalid password")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post('/auth/ephemeral-viewer')
-async def create_ephemeral_viewer(request: Request):
-    """Create a short-lived viewer device token for dismissing the login modal (no password).
-
-    Returns a device_token that can be used as a Bearer token for viewer access.
-    Admins can revoke/lock these tokens via the admin panel.
-    """
-    try:
-        client_ip = get_client_ip(request)
-        ua = request.headers.get('User-Agent', 'Unknown')[:512]
-        # accept optional name in request body
-        name = None
-        try:
-            body = await request.json()
-            if isinstance(body, dict):
-                name = body.get('name') or body.get('device_name') or None
-        except Exception:
-            name = None
-
-        # Generate token and store with expiry (use DEVICE_TOKEN_EXPIRY_DAYS)
-        token = generate_device_token(ua, client_ip)
-        tokens = load_device_tokens()
-        tokens[token] = {
-            'created': datetime.now().isoformat(),
-            'expiry': (datetime.now() + timedelta(days=DEVICE_TOKEN_EXPIRY_DAYS)).isoformat(),
-            'user_agent': ua,
-            'client_ip': client_ip,
-            'client_ips': get_client_ips(request),
-            'last_client_ip': client_ip,
-            'last_seen': datetime.now().isoformat(),
-            'role': 'viewer',
-            'ephemeral': True,
-            'locked': False,
-            'name': name,
-        }
-        save_device_tokens(tokens)
-        return {'device_token': token, 'token': token, 'role': 'viewer', 'name': name, 'message': 'Viewer token issued'}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+app.include_router(
+    create_auth_router(
+        admin_password=ADMIN_PASSWORD,
+        manager_password=MANAGER_PASSWORD,
+        device_token_expiry_days=DEVICE_TOKEN_EXPIRY_DAYS,
+        get_client_ip=get_client_ip,
+        get_client_ips=get_client_ips,
+        is_local_network=is_local_network,
+        is_device_token_valid=is_device_token_valid,
+        load_device_tokens=load_device_tokens,
+        save_device_tokens=save_device_tokens,
+        touch_device_token=touch_device_token,
+        generate_device_token=generate_device_token,
+    )
+)
 
 @app.post("/export/excel")
 async def export_excel(req: Request):
@@ -6136,83 +5952,21 @@ FRONTEND_PAGES_DIR = os.path.join("frontend", "pages")
 FRONTEND_JS_DIR = os.path.join("frontend", "js")
 FRONTEND_CSS_DIR = os.path.join("frontend", "css")
 
+app.include_router(
+    create_static_pages_router(
+        frontend_pages_dir=FRONTEND_PAGES_DIR,
+        frontend_js_dir=FRONTEND_JS_DIR,
+        frontend_css_dir=FRONTEND_CSS_DIR,
+        config_json_path=os.path.join("config", "config.json"),
+    )
+)
 
-@app.get("/", include_in_schema=False)
-async def serve_index():
-    return FileResponse(os.path.join(FRONTEND_PAGES_DIR, "index.html"))
-
-
-@app.get("/index.html", include_in_schema=False)
-async def serve_index_html():
-    return FileResponse(os.path.join(FRONTEND_PAGES_DIR, "index.html"))
-
-
-@app.get("/admin.html", include_in_schema=False)
-async def serve_admin_html():
-    return FileResponse(os.path.join(FRONTEND_PAGES_DIR, "admin.html"))
-
-
-@app.get("/manager.html", include_in_schema=False)
-async def serve_manager_html():
-    return FileResponse(os.path.join(FRONTEND_PAGES_DIR, "manager.html"))
-
-
-@app.get("/qr-code-generator.html", include_in_schema=False)
-async def serve_qr_generator_html():
-    return FileResponse(os.path.join(FRONTEND_PAGES_DIR, "qr-code-generator.html"))
-
-
-@app.get("/app.js", include_in_schema=False)
-async def serve_app_js():
-    return FileResponse(os.path.join(FRONTEND_JS_DIR, "app.js"), media_type="application/javascript")
-
-
-@app.get("/styles.css", include_in_schema=False)
-async def serve_styles_css():
-    return FileResponse(os.path.join(FRONTEND_CSS_DIR, "styles.css"), media_type="text/css")
-
-
-@app.get("/config.json", include_in_schema=False)
-async def serve_config_json():
-    return FileResponse(os.path.join("config", "config.json"), media_type="application/json")
-
-@app.get("/hwid")
-async def hwid_status():
-    """Simple health check so a browser GET confirms the endpoint is alive."""
-    return {"status": "ok", "endpoint": "/hwid", "method": "POST", "description": "HashID capture endpoint. Send POST with JSON body and x-api-key header."}
-
-
-@app.post("/hwid")
-async def capture_hwid(req: Request):
-    """
-    Receives HWID data posted from a USB boot script.
-    Validates x-api-key header, then appends the payload to a JSONL log file.
-    """
-    hdr = req.headers.get("x-api-key") or req.headers.get("Authorization")
-    if not hdr or (hdr != WEBHOOK_API_KEY and hdr != f"Bearer {WEBHOOK_API_KEY}"):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    try:
-        payload = await req.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
-
-    record = {
-        "received_at": datetime.utcnow().isoformat() + "Z",
-        "source_ip": req.client.host if req.client else "unknown",
-        **payload,
-    }
-
-    try:
-        os.makedirs(os.path.dirname(HWID_LOG_PATH), exist_ok=True)
-        with open(HWID_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
-    except Exception as e:
-        logging.error(f"[hwid] Failed to write log: {e}")
-        raise HTTPException(status_code=500, detail="Log write failed")
-
-    logging.info(f"[hwid] Captured record from {record['source_ip']}: {record}")
-    return {"status": "ok", "received_at": record["received_at"]}
+app.include_router(
+    create_hwid_router(
+        webhook_api_key=WEBHOOK_API_KEY,
+        hwid_log_path=HWID_LOG_PATH,
+    )
+)
 
 
 # Serve static files (HTML, CSS, JS)

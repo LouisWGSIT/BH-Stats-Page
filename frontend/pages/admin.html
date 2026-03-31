@@ -511,7 +511,7 @@
                 </div>
                 <div id="activityContainer" class="stats" style="max-height:420px; overflow:auto;">
                     <table class="table" style="width:100%;">
-                        <thead><tr><th>Time (UTC)</th><th>Path</th><th>Method</th><th>Client IP</th><th>Duration ms</th><th>RSS bytes</th></tr></thead>
+                        <thead><tr><th>Time (UK)</th><th>Path</th><th>Method</th><th>Client IP</th><th>Duration ms</th><th>RSS bytes</th></tr></thead>
                         <tbody id="activityTableBody"></tbody>
                     </table>
                 </div>
@@ -1355,6 +1355,7 @@
         let _activityRecentEvents = [];
         const MEMORY_LIMIT_BYTES = 512 * 1024 * 1024;
         const MEMORY_WARN_BYTES = Math.floor(MEMORY_LIMIT_BYTES * 0.8);
+        const ACTIVITY_TZ = 'Europe/London';
 
         function toUtcMillis(ts) {
             if (!ts) return null;
@@ -1368,6 +1369,33 @@
             const b = Number(bytes || 0);
             const mb = b / (1024 * 1024);
             return `${b.toLocaleString()} (${mb.toFixed(1)} MB)`;
+        }
+
+        function formatActivityTimeUk(ts) {
+            const ms = toUtcMillis(ts);
+            if (!ms) return ts || '';
+            return new Intl.DateTimeFormat('en-GB', {
+                timeZone: ACTIVITY_TZ,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            }).format(new Date(ms));
+        }
+
+        function formatChartTimeUk(ts) {
+            const ms = toUtcMillis(ts);
+            if (!ms) return ts || '';
+            return new Intl.DateTimeFormat('en-GB', {
+                timeZone: ACTIVITY_TZ,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            }).format(new Date(ms));
         }
 
         function updateMemoryWarningBadge(bytes) {
@@ -1413,7 +1441,7 @@
                 tbody.innerHTML = '';
                 (data.recent || []).forEach(ev => {
                     const tr = document.createElement('tr');
-                    const ts = ev.ts ? ev.ts : '';
+                    const ts = formatActivityTimeUk(ev.ts);
                     tr.innerHTML = `<td style="font-size:12px;">${ts}</td><td style="font-size:12px;">${ev.path || ''}</td><td style="font-size:12px;">${ev.method || ''}</td><td style="font-size:12px;">${ev.client_ip || ''}</td><td style="font-size:12px;">${ev.duration_ms || ''}</td><td style="font-size:12px;">${ev.rss || ''}</td>`;
                     tbody.appendChild(tr);
                 });
@@ -1551,6 +1579,15 @@
                                     }
                                     const value = Number(context.parsed.y || 0);
                                     return formatBytesWithMb(value);
+                                },
+                                title: (items) => {
+                                    if (!items || !items.length) return '';
+                                    const idx = items[0].dataIndex;
+                                    const meta = items[0].dataset && items[0].dataset.markerMeta
+                                        ? items[0].dataset.markerMeta[idx]
+                                        : null;
+                                    const rawTs = meta && meta.ts ? meta.ts : null;
+                                    return formatActivityTimeUk(rawTs || items[0].label);
                                 }
                             }
                         }
@@ -1565,7 +1602,7 @@
             try {
                 const chart = initMemoryChart();
                 if (!chart) return;
-                const labels = series.map(s => s.ts);
+                const labels = series.map(s => formatChartTimeUk(s.ts));
                 const data = series.map(s => s.v);
                 const labelMs = series.map(s => toUtcMillis(s.ts));
                 const markerData = Array(series.length).fill(null);
