@@ -9,9 +9,10 @@ Quick steps
 2. Set environment variables in your Render service settings (Environment -> Environment Variables):
    - `STATS_DB_PATH` = `/data/warehouse_stats.db`  # path on the mounted persistent disk
    - `MARIADB_HOST`, `MARIADB_USER`, `MARIADB_PASSWORD`, `MARIADB_DB`, `MARIADB_PORT` (if needed)
-   - `INGESTION_KEY` or `INGESTION_SECRET` (to secure ingestion endpoints)
+   - `WEBHOOK_API_KEY` (for `/hooks/*` and `/hwid` endpoints)
+   - `INGESTION_SECRET` (preferred) or `INGESTION_KEY` (legacy) for `/api/ingest/local-erasure`
    - `DASHBOARD_ADMIN_PASSWORD`, `DASHBOARD_MANAGER_PASSWORD`
-   - Other optional envs: `AUTO_BACKFILL`, `AUTO_BACKFILL_DAYS`, `POWERBI_API_KEY`, etc.
+   - Other optional envs: `AUTO_BACKFILL`, `AUTO_BACKFILL_DAYS`, etc.
 3. Commit & push your changes; deploy on Render.
 4. After deployment, verify:
    - The DB file exists on the mounted disk: ssh into instance or use the Render shell and run `ls -l /data/warehouse_stats.db`.

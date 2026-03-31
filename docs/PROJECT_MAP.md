@@ -11,6 +11,19 @@ This file is a quick orientation guide for the active code paths.
 - Frontend JS: `frontend/js/app.js` (served at `/app.js`)
 - Frontend CSS: `frontend/css/styles.css` (served at `/styles.css`)
 
+## Backend routing
+
+- Route modules live under `backend/app/routes/`.
+- Current extracted domains include:
+  - auth/static/hwid/webhooks
+  - admin activity/devices/diagnostics/initials/maintenance/backfill/exports
+  - erasure insights
+  - QA insights
+  - metrics + analytics
+  - device lookup
+  - bottlenecks
+- Shared startup/cache/watchdog helpers: `backend/app/runtime_tasks.py`
+
 ## Data layers
 
 - SQLite stats/events: `backend/database.py` (default DB at project root `warehouse_stats.db`)
@@ -35,6 +48,8 @@ This file is a quick orientation guide for the active code paths.
 ## Ops/Deploy
 
 - Render deploy notes: `docs/RENDER_DEPLOY.md`
+- Container build: `Dockerfile`
+- Local container debug: `docker-compose.debug.yml`
 - CI warm-cache workflow: `.github/workflows/post-deploy-warm.yml`
 - Utility scripts: `scripts/`
 - Local one-off scratch scripts: `scripts/scratch/` (git-ignored)
