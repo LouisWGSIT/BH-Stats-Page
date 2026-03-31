@@ -389,21 +389,7 @@
         </div>
 
         <div class="content">
-            <!-- Section 1: Assign Unassigned -->
-            <div class="section admin-only">
-                <h2>Assign Unassigned Erasures</h2>
-                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                    Assign all erasures with missing engineer initials to a specific engineer.
-                </p>
-                <div class="form-group">
-                    <label for="assignTo">Engineer Initials:</label>
-                    <input type="text" id="assignTo" placeholder="e.g., MS" maxlength="3" style="max-width: 100px;">
-                </div>
-                <button onclick="assignUnassigned()" id="assignBtn">Assign Unassigned</button>
-                <div id="assignResult" class="result"></div>
-            </div>
-
-            <!-- Section 2: Fix Initials -->
+            <!-- Section 1: Fix Initials -->
             <div class="section admin-only">
                 <h2 style="display:flex;align-items:center;gap:8px;">
                     <span>Fix/Correct Initials</span>
@@ -629,42 +615,6 @@
                 if (src.username) return `${sname} by ${src.username}`;
                 return JSON.stringify(src).slice(0,80);
             } catch (e) { return '' }
-        }
-
-        async function assignUnassigned() {
-            const initials = document.getElementById('assignTo').value.trim().toUpperCase();
-            const resultDiv = document.getElementById('assignResult');
-            const btn = document.getElementById('assignBtn');
-
-            if (!initials) {
-                showResult(resultDiv, 'error', 'Error', 'Please enter engineer initials');
-                return;
-            }
-
-            btn.disabled = true;
-            btn.innerHTML = '<span class="loading"></span> Processing...';
-
-            try {
-                const response = await fetch('/admin/assign-unassigned?to=' + encodeURIComponent(initials), {
-                    method: 'POST',
-                    headers: getAuthHeaders(true)
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    showResult(resultDiv, 'success', '✅ Success!', 
-                        `Assigned ${data.affected_records} unassigned erasures to engineer ${data.to_initials}`);
-                    document.getElementById('assignTo').value = '';
-                } else {
-                    showResult(resultDiv, 'error', '❌ Error', data.detail || 'Failed to assign records');
-                }
-            } catch (error) {
-                showResult(resultDiv, 'error', '❌ Error', error.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'Assign Unassigned';
-            }
         }
 
         async function fixInitials() {

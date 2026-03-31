@@ -145,3 +145,42 @@ def test_admin_activity_memory_series_shape(client, app_module):
     body = r.json()
     assert "series" in body
     assert body["bucket_seconds"] == 60
+
+
+def test_admin_last_error_requires_admin(client):
+    r = client.get("/admin/last-error")
+    assert r.status_code == 401
+
+
+def test_admin_revoke_device_round_trip(client, app_module, workspace_temp_dir, monkeypatch):
+    tokens_path = workspace_temp_dir / "device_tokens_roundtrip.json"
+    monkeypatch.setattr(app_module, "DEVICE_TOKENS_FILE", str(tokens_path))
+
+    app_module.save_device_tokens(
+        {
+            "tok-1": {
+                "expiry": "2099-01-01T00:00:00",
+                "role": "viewer",
+                "user_agent": "pytest",
+            }
+        }
+    )
+
+    r = client.post(
+        "/admin/revoke-device",
+        headers={"Authorization": "Bearer test-admin-pass"},
+        json={"token": "tok-1"},
+    )
+    assert r.status_code == 200
+    assert r.json()["revoked"] is True
+
+    tokens = app_module.load_device_tokens()
+    assert "tok-1" not in tokens
+
+
+def test_admin_db_processlist_handles_db_unavailable(client, app_module, monkeypatch):
+    monkeypatch.setattr(app_module.qa_export, "get_mariadb_connection", lambda: None)
+    r = client.get("/admin/db-processlist", headers={"Authorization": "Bearer test-admin-pass"})
+    assert r.status_code == 503
+    body = r.json()
+    assert body["status"] == "fail"

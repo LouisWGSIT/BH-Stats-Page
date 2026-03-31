@@ -23,6 +23,8 @@ import sqlite3
 import backend.qa_export as qa_export
 import routers.health as health_router
 from backend.app.routes.admin_activity import create_admin_activity_router
+from backend.app.routes.admin_devices import create_admin_devices_router
+from backend.app.routes.admin_diagnostics import create_admin_diagnostics_router
 from backend.app.routes.auth import create_auth_router
 from backend.app.routes.hwid import create_hwid_router
 from backend.app.routes.static_pages import create_static_pages_router
@@ -622,48 +624,6 @@ def load_device_tokens():
         pass
     return {}
 
-
-@app.get("/admin/db-processlist")
-def admin_db_processlist(request: Request, limit: int = 100):
-    """Admin-only diagnostic: return SHOW FULL PROCESSLIST from MariaDB.
-
-    Useful to inspect long-running queries and locks without logging into the DB host.
-    Requires admin access (use admin token/password).
-    """
-    require_admin(request)
-    try:
-        conn = qa_export.get_mariadb_connection()
-        if not conn:
-            return JSONResponse(status_code=503, content={"status": "fail", "detail": "MariaDB connection failed"})
-        cur = conn.cursor()
-        cur.execute("SHOW FULL PROCESSLIST")
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        # Map rows to dicts (Id, User, Host, db, Command, Time, State, Info)
-        plist = []
-        for r in rows[:limit]:
-            try:
-                plist.append({
-                    "Id": r[0],
-                    "User": r[1],
-                    "Host": r[2],
-                    "db": r[3],
-                    "Command": r[4],
-                    "Time": r[5],
-                    "State": r[6],
-                    "Info": r[7],
-                })
-            except Exception:
-                plist.append({"raw": r})
-        return {"processlist": plist}
-    except Exception as e:
-        try:
-            conn.close()
-        except Exception:
-            pass
-        print(f"[Admin] db-processlist error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 def save_device_tokens(tokens):
     """Save device tokens to persistent storage."""
@@ -2635,6 +2595,21 @@ app.include_router(
         get_activity_writer=lambda: getattr(app.state, "activity_writer", None),
     )
 )
+app.include_router(
+    create_admin_devices_router(
+        require_admin=require_admin,
+        require_manager_or_admin=require_manager_or_admin,
+        load_device_tokens=load_device_tokens,
+        save_device_tokens=save_device_tokens,
+        get_last_server_error=lambda: LAST_SERVER_ERROR,
+    )
+)
+app.include_router(
+    create_admin_diagnostics_router(
+        require_admin=require_admin,
+        get_mariadb_connection=qa_export.get_mariadb_connection,
+    )
+)
 
 @app.post("/export/excel")
 async def export_excel(req: Request):
@@ -2717,127 +2692,6 @@ async def export_excel(req: Request):
             pass
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# Admin: list connected device tokens
-@app.get("/admin/connected-devices")
-async def admin_connected_devices(request: Request):
-    require_admin(request)
-    tokens = load_device_tokens()
-    devices = []
-    for t, info in tokens.items():
-        # Only include non-expired tokens
-        try:
-            expiry = datetime.fromisoformat(info.get('expiry'))
-        except Exception:
-            continue
-        if datetime.now() > expiry:
-            continue
-        devices.append({
-            'token': t,
-            'role': info.get('role'),
-            'name': info.get('name') or info.get('device_name') or None,
-            'created': info.get('created'),
-            'expiry': info.get('expiry'),
-            'user_agent': info.get('user_agent'),
-            'client_ip': info.get('last_client_ip') or info.get('client_ip'),
-            'client_ips': info.get('client_ips') or [],
-            'last_seen': info.get('last_seen'),
-            'locked': info.get('locked', False),
-        })
-    # Sort by last_seen desc
-    devices.sort(key=lambda d: d.get('last_seen') or '', reverse=True)
-    return {'devices': devices}
-
-
-@app.get('/admin/last-error')
-def admin_last_error(request: Request):
-    """Return the last server-side error captured (admin only)."""
-    require_admin(request)
-    try:
-        if LAST_SERVER_ERROR is None:
-            return {'found': False, 'message': 'No recent server error recorded'}
-        return {'found': True, 'error': LAST_SERVER_ERROR}
-    except Exception as e:
-        return {'found': True, 'error': {'error': str(e)}}
-
-
-@app.get('/manager/last-error')
-def manager_last_error(request: Request):
-    """Return the last server-side error captured (manager or admin)."""
-    require_manager_or_admin(request)
-    try:
-        if LAST_SERVER_ERROR is None:
-            return {'found': False, 'message': 'No recent server error recorded'}
-        return {'found': True, 'error': LAST_SERVER_ERROR}
-    except Exception as e:
-        return {'found': True, 'error': {'error': str(e)}}
-
-
-@app.post('/admin/revoke-device')
-async def admin_revoke_device(request: Request):
-    require_admin(request)
-    try:
-        body = await request.json()
-        token = body.get('token')
-        if not token:
-            raise HTTPException(status_code=400, detail='token required')
-        tokens = load_device_tokens()
-        if token in tokens:
-            del tokens[token]
-            save_device_tokens(tokens)
-        return {'revoked': True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post('/admin/lock-device')
-async def admin_lock_device(request: Request):
-    require_admin(request)
-    try:
-        body = await request.json()
-        token = body.get('token')
-        lock = bool(body.get('lock', True))
-        if not token:
-            raise HTTPException(status_code=400, detail='token required')
-        tokens = load_device_tokens()
-        if token not in tokens:
-            raise HTTPException(status_code=404, detail='token not found')
-        tokens[token]['locked'] = lock
-        save_device_tokens(tokens)
-        return {'token': token, 'locked': lock}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post('/admin/set-device-name')
-async def admin_set_device_name(request: Request):
-    """Set or clear a human-friendly name for a device token (admin only)."""
-    require_admin(request)
-    try:
-        body = {}
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
-        token = body.get('token')
-        name = body.get('name')
-        if not token:
-            raise HTTPException(status_code=400, detail='token required')
-        tokens = load_device_tokens()
-        if token not in tokens:
-            raise HTTPException(status_code=404, detail='token not found')
-        # allow clearing name by passing empty string or null
-        tokens[token]['name'] = name or None
-        save_device_tokens(tokens)
-        return {'token': token, 'name': tokens[token].get('name')}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/export/engineer-deepdive")
 async def export_engineer_deepdive(request: Request, period: str = "this_week"):
