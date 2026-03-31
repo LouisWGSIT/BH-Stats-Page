@@ -272,3 +272,31 @@ def test_erasure_insights_returns_expected_shape(client, app_module, monkeypatch
     body = r.json()
     assert "total" in body
     assert "avgPerDay" in body
+
+
+def test_qa_trends_endpoint_available(client):
+    r = client.get("/api/qa-trends?period=today", headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert "period" in body or "error" in body
+
+
+def test_qa_dashboard_endpoint_available(client):
+    r = client.get("/api/qa-dashboard?period=today", headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert "period" in body or "error" in body
+
+
+def test_metrics_summary_endpoint_available(client):
+    r = client.get("/metrics/summary", headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert isinstance(body, dict)
+
+
+def test_analytics_hourly_totals_endpoint_available(client):
+    r = client.get("/analytics/hourly-totals", headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert "hours" in body

@@ -32,6 +32,8 @@ from backend.app.routes.admin_maintenance import create_admin_maintenance_router
 from backend.app.routes.auth import create_auth_router
 from backend.app.routes.erasure_insights import create_erasure_insights_router
 from backend.app.routes.hwid import create_hwid_router
+from backend.app.routes.metrics_analytics import create_metrics_analytics_router
+from backend.app.routes.qa_insights import compute_qa_dashboard_data, create_qa_insights_router
 from backend.app.routes.static_pages import create_static_pages_router
 import logging
 from backend.logging_config import configure_logging
@@ -942,41 +944,6 @@ async def auth_middleware(request: Request, call_next):
         return FileResponse("frontend/pages/index.html")  # Will add login UI to index.html
     
     return await call_next(request)
-# New endpoint: Get total erasures for a device type and period
-@app.get("/metrics/total-by-type")
-async def get_total_by_type(type: str = "laptops_desktops", scope: str = "today"):
-    """Return the total erasures for a given device type and period (today, month, all)."""
-    from datetime import date
-    conn = db.sqlite3.connect(db.DB_PATH)
-    cursor = conn.cursor()
-    if scope == "month":
-        today = date.today()
-        year = today.year
-        month = today.month
-        first_day = f"{year:04d}-{month:02d}-01"
-        last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
-        where = "date >= ? AND date <= ? AND event = 'success' AND device_type = ?"
-        params = [first_day, last_day, type]
-    elif scope == "all":
-        where = "event = 'success' AND device_type = ?"
-        params = [type]
-    else:
-        key_col = "date"
-        key_val = date.today().isoformat()
-        where = f"{key_col} = ? AND event = 'success' AND device_type = ?"
-        params = [key_val, type]
-    cursor.execute(f"SELECT COUNT(1) FROM erasures WHERE {where}", params)
-    total = cursor.fetchone()[0]
-    conn.close()
-    return {"total": total, "type": type, "scope": scope}
-
-# --- ALL TIME TOTALS ENDPOINT ---
-@app.get("/metrics/all-time-totals")
-async def get_all_time_totals(group_by: str = None):
-    """Get all-time erasure totals. Optionally group by device_type or initials."""
-    result = db.get_all_time_totals(group_by=group_by)
-    return {"allTimeTotal": result} if not group_by else result
-
 # Initialize database tables on startup
 db.init_db()
 
@@ -989,18 +956,6 @@ BACKFILL_PROGRESS = {
     'last_updated': None,
     'errors': []
 }
-
-# For sparkline compatibility: hourly-totals endpoint
-@app.get("/analytics/hourly-totals")
-async def analytics_hourly_totals():
-    """Get hourly erasure totals for today (shift hours)"""
-    return {"hours": db.get_peak_hours()}
-
-# Place the endpoint here, after app is defined
-@app.get("/analytics/daily-totals")
-async def analytics_daily_totals():
-    return {"days": db.get_daily_totals()}
-
 
 # Ingestion endpoint for external erasure producers (secure)
 @app.post("/api/ingest/local-erasure")
@@ -1078,37 +1033,6 @@ async def ingest_local_erasure(request: Request):
 
     return JSONResponse(status_code=200, content={"ok": True, "inserted": True})
 
-
-@app.get("/metrics/monthly-momentum")
-async def get_monthly_momentum():
-    """Get weekly totals for the current month for monthly momentum chart"""
-    return db.get_monthly_momentum()
-
-
-# Endpoint: Mon-Fri daily erasure totals for current week
-@app.get("/analytics/weekly-daily-totals")
-async def analytics_weekly_daily_totals():
-    """Return Mon-Fri daily erasure totals for the current week (Monday to Friday)."""
-    from datetime import date, timedelta
-    import calendar
-    today = date.today()
-    # Find this week's Monday
-    monday = today - timedelta(days=today.weekday())
-    days = []
-    for i in range(5):  # Mon-Fri
-        d = monday + timedelta(days=i)
-        days.append(d)
-    # Query DB for each day
-    import database as db
-    result = []
-    for d in days:
-        stats = db.get_daily_stats(d.isoformat())
-        result.append({
-            "date": d.isoformat(),
-            "weekday": calendar.day_abbr[d.weekday()],
-            "count": stats.get("erased", 0)
-        })
-    return {"days": result}
 
 # Enable CORS for TV access from network (more restricted now with auth middleware)
 app.add_middleware(
@@ -1201,203 +1125,6 @@ async def erasure_hook(req: Request):
             db.mark_job_seen(job_id)
         stats = db.get_daily_stats()
         return {"status": "ok", "event_accepted": event, "count": stats["erased"]}
-
-@app.get("/metrics/today")
-async def get_metrics(req: Request):
-    cache_key = f"{req.url.path}" if not req.url.query else f"{req.url.path}?{req.url.query}"
-    cached = _get_cached_response(cache_key)
-    if cached is not None:
-        return cached
-    data = db.get_daily_stats()
-    return _set_cached_response(cache_key, data)
-
-@app.get("/metrics/yesterday")
-async def get_yesterday_metrics():
-    return db.get_daily_stats(db.get_yesterday_str())
-
-@app.get("/api/insights/qa")
-async def qa_insights(period: str = "this_week"):
-    """Return averages and trajectory data for QA totals (QA App + DE + Non-DE)."""
-    try:
-        import qa_export
-        cache_key = f"qa_insights:{period}"
-        cached = _get_cached_response(cache_key)
-        if cached is not None:
-            return cached
-        start_date, end_date, label = qa_export.get_week_dates(period)
-
-        qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
-        de_qa_data = qa_export.get_de_qa_comparison(start_date, end_date)
-        non_de_qa_data = qa_export.get_non_de_qa_comparison(start_date, end_date)
-
-        total_qa_app = sum(stats["total"] for name, stats in qa_data.items() if name.lower() != '(unassigned)') if qa_data else 0
-        total_de = sum(stats["total"] for name, stats in de_qa_data.items() if name.lower() != '(unassigned)') if de_qa_data else 0
-        total_non_de = sum(stats["total"] for name, stats in non_de_qa_data.items() if name.lower() != '(unassigned)') if non_de_qa_data else 0
-        combined_total = total_qa_app + total_de + total_non_de
-
-        day_count = max(1, (end_date - start_date).days + 1)
-        avg_per_day = round(combined_total / day_count, 1)
-
-        active_engineers = set()
-        for name, stats in (qa_data or {}).items():
-            if name.lower() != '(unassigned)' and stats.get("total", 0) > 0:
-                active_engineers.add(name)
-        for name, stats in (de_qa_data or {}).items():
-            if name.lower() != '(unassigned)' and stats.get("total", 0) > 0:
-                active_engineers.add(name)
-        for name, stats in (non_de_qa_data or {}).items():
-            if name.lower() != '(unassigned)' and stats.get("total", 0) > 0:
-                active_engineers.add(name)
-        active_count = len(active_engineers)
-        avg_per_engineer = round(combined_total / active_count, 1) if active_count else 0
-
-        projection = None
-        today = datetime.now().date()
-        if period == "this_month":
-            total_days = (today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-            total_days = total_days.day
-            days_elapsed = max(1, today.day)
-            pace = combined_total / days_elapsed
-            projection = round(pace * total_days)
-
-        # Rolling averages for last 30 days (QA only, no sorting)
-        rolling_7 = 0
-        rolling_30 = 0
-        trend_pct = 0
-        try:
-            end_rolling = datetime.now().date()
-            start_rolling = end_rolling - timedelta(days=29)
-            daily_totals = qa_export.get_qa_daily_totals_range(start_rolling, end_rolling)
-            # Use qaTotal (DE + Non-DE only, excludes sorting)
-            daily_values = [row.get("qaTotal", row.get("deQa", 0) + row.get("nonDeQa", 0)) for row in daily_totals]
-            if daily_values:
-                rolling_30 = round(sum(daily_values) / len(daily_values), 1)
-                last_7 = daily_values[-7:]
-                prev_7 = daily_values[-14:-7] if len(daily_values) >= 14 else []
-                rolling_7 = round(sum(last_7) / max(1, len(last_7)), 1)
-                if prev_7 and sum(prev_7) > 0:
-                    prev_avg = sum(prev_7) / len(prev_7)
-                    trend_pct = round(((rolling_7 - prev_avg) / prev_avg) * 100, 1)
-        except Exception as e:
-            print(f"QA rolling avg error: {e}")
-
-        # QA-only totals (DE + Non-DE, excludes sorting)
-        qa_only_total = total_de + total_non_de
-        qa_only_avg_per_day = round(qa_only_total / day_count, 1)
-        qa_only_avg_per_engineer = round(qa_only_total / active_count, 1) if active_count else 0
-
-        result = {
-            "period": label,
-            "dateRange": f"{start_date} to {end_date}",
-            "total": qa_only_total,  # QA only (DE + Non-DE, no sorting)
-            "combinedTotal": combined_total,  # Everything including sorting
-            "breakdown": {
-                "qaApp": total_qa_app,  # Sorting
-                "deQa": total_de,
-                "nonDeQa": total_non_de
-            },
-            "avgPerDay": qa_only_avg_per_day,
-            "rolling7DayAvg": rolling_7,
-            "rolling30DayAvg": rolling_30,
-            "trend7DayPct": trend_pct,
-            "activeEngineers": active_count,
-            "avgPerEngineer": qa_only_avg_per_engineer,
-            "projection": projection,
-        }
-        return _set_cached_response(cache_key, result)
-    except Exception as e:
-        print(f"QA insights error: {e}")
-        return {"error": "Failed to compute QA insights"}
-
-@app.get("/api/qa-trends")
-async def qa_trends(period: str = "this_week"):
-    """Return QA trend series for sparklines."""
-    try:
-        import qa_export
-        today = datetime.now().date()
-
-        cache_key = f"qa_trends:{period}"
-        cached = _get_cached_response(cache_key)
-        if cached is not None:
-            return cached
-
-        if period == "today":
-            hourly = qa_export.get_qa_hourly_totals(today)
-            result = {
-                "period": "Today",
-                "granularity": "hour",
-                "series": hourly
-            }
-            return _set_cached_response(cache_key, result)
-
-        if period == "all_time":
-            min_date, max_date = qa_export.get_qa_data_bounds()
-            if max_date:
-                end_date = max_date
-                start_date = max_date - timedelta(days=29)
-                label = "All Time (Last 30 Days)"
-            else:
-                start_date = today - timedelta(days=29)
-                end_date = today
-                label = "All Time (Last 30 Days)"
-        else:
-            start_date, end_date, label = qa_export.get_week_dates(period)
-
-        daily = qa_export.get_qa_daily_totals_range(start_date, end_date)
-        result = {
-            "period": label,
-            "granularity": "day",
-            "series": daily
-        }
-        return _set_cached_response(cache_key, result)
-    except Exception as e:
-        print(f"QA trends error: {e}")
-        return {"error": "Failed to compute QA trends"}
-
-@app.get("/api/insights/qa-engineers")
-async def qa_engineer_insights(period: str = "this_week", limit: int = 10):
-    """Return per-engineer averages and trends for QA totals."""
-    try:
-        import qa_export
-        cache_key = f"qa_engineers:{period}:{limit}"
-        cached = _get_cached_response(cache_key)
-        if cached is not None:
-            return cached
-        start_date, end_date, label = qa_export.get_week_dates(period)
-        day_count = max(1, (end_date - start_date).days + 1)
-
-        data = qa_export.get_qa_engineer_daily_totals_range(start_date, end_date)
-        prev_start = start_date - timedelta(days=day_count)
-        prev_end = start_date - timedelta(days=1)
-        prev_data = qa_export.get_qa_engineer_daily_totals_range(prev_start, prev_end)
-
-        results = []
-        for name, daily in data.items():
-            if name.lower() == '(unassigned)':
-                continue
-            total = sum(daily.values())
-            active_days = len([v for v in daily.values() if v > 0])
-            avg_per_day = round(total / day_count, 1)
-            avg_per_active_day = round(total / active_days, 1) if active_days else 0
-            prev_total = sum(prev_data.get(name, {}).values())
-            prev_avg = round(prev_total / day_count, 1)
-            trend_pct = 0
-            if prev_avg > 0:
-                trend_pct = round(((avg_per_day - prev_avg) / prev_avg) * 100, 1)
-            results.append({
-                "name": name,
-                "total": total,
-                "avgPerDay": avg_per_day,
-                "avgPerActiveDay": avg_per_active_day,
-                "trendPct": trend_pct
-            })
-
-        results.sort(key=lambda x: x["total"], reverse=True)
-        result = {"period": label, "data": results[:max(1, limit)]}
-        return _set_cached_response(cache_key, result)
-    except Exception as e:
-        print(f"QA engineer insights error: {e}")
-        return {"error": "Failed to compute QA engineer insights"}
 
 # New: detailed erasure webhook for richer dashboard (accept GET/POST, robust parsing)
 @app.api_route("/hooks/erasure-detail", methods=["GET", "POST"])
@@ -1558,145 +1285,6 @@ async def erasure_detail(req: Request):
 
     return {"status": "ok"}
 
-# Summary metrics powering the new dashboard
-@app.get("/metrics/summary")
-async def metrics_summary(req: Request, date: str = None, startDate: str = None, endDate: str = None):
-    """Get summary for a specific date (YYYY-MM-DD), date range, or today if not provided"""
-    # Only cache non-range (single-date or today) requests; range queries bypass cache
-    if startDate and endDate:
-        return db.get_summary_date_range(startDate, endDate)
-    cache_key = f"{req.url.path}" if not req.url.query else f"{req.url.path}?{req.url.query}"
-    cached = _get_cached_response(cache_key)
-    if cached is not None:
-        return cached
-    data = db.get_summary_today_month(date)
-    return _set_cached_response(cache_key, data)
-
-
-@app.get("/metrics/qa-summary")
-async def metrics_qa_summary(req: Request):
-    """Aggregated payload for the dashboard initial load.
-
-    Combines: summary, today, monthly momentum, by-type counts,
-    and top engineers plus a small QA series. Cached as a single
-    payload to reduce client round-trips on first render.
-    """
-    cache_key = f"{req.url.path}"
-    cached = _get_cached_response(cache_key)
-    if cached is not None:
-        return cached
-
-    result: Dict[str, object] = {}
-    try:
-        # Summary (today + month)
-        try:
-            result['summary'] = db.get_summary_today_month()
-        except Exception:
-            result['summary'] = {}
-
-        # Daily stats
-        try:
-            result['today'] = db.get_daily_stats()
-        except Exception:
-            result['today'] = {}
-
-        # Monthly momentum
-        try:
-            result['monthlyMomentum'] = db.get_monthly_momentum()
-        except Exception:
-            result['monthlyMomentum'] = {}
-
-        # By-type counts
-        try:
-            result['byType'] = db.get_counts_by_type_today()
-        except Exception:
-            result['byType'] = {}
-
-        # Leaderboard (top items)
-        try:
-            items = db.leaderboard(scope='today', limit=6)
-            result['engineersLeaderboard'] = {'items': items}
-        except Exception:
-            result['engineersLeaderboard'] = {'items': []}
-
-        # Small QA series for sparklines (last 7 days) if qa_export available
-        try:
-            import qa_export as _qa
-            end = datetime.now().date()
-            start = end - timedelta(days=7)
-            result['qaLast7'] = _qa.get_qa_daily_totals_range(start, end)
-        except Exception:
-            result['qaLast7'] = []
-
-    except Exception:
-        # In case of unexpected failure, return minimal payload
-        result = {
-            'summary': {},
-            'today': {},
-            'monthlyMomentum': {},
-            'byType': {},
-            'engineersLeaderboard': {'items': []},
-            'qaLast7': []
-        }
-
-    return _set_cached_response(cache_key, result)
-
-@app.get("/metrics/by-type")
-async def metrics_by_type(req: Request):
-    cache_key = f"{req.url.path}"
-    cached = _get_cached_response(cache_key)
-    if cached is not None:
-        return cached
-    data = db.get_counts_by_type_today()
-    return _set_cached_response(cache_key, data)
-
-@app.get("/metrics/errors")
-async def metrics_errors(req: Request):
-    cache_key = f"{req.url.path}"
-    cached = _get_cached_response(cache_key)
-    if cached is not None:
-        return cached
-    data = db.get_error_distribution_today()
-    return _set_cached_response(cache_key, data)
-
-@app.get("/metrics/engineers/top2")
-async def metrics_engineers_top(req: Request, scope: str = "today", type: str | None = None, limit: int = 3):
-    cache_key = f"{req.url.path}?scope={scope}&type={type}&limit={limit}"
-    cached = _get_cached_response(cache_key)
-    if cached is not None:
-        return cached
-    data = {"engineers": db.top_engineers(scope=scope, device_type=type, limit=limit)}
-    return _set_cached_response(cache_key, data)
-
-@app.get("/metrics/engineers/leaderboard")
-async def metrics_engineers_leaderboard(req: Request, scope: str = "today", limit: int = 6, date: str = None):
-    cache_key = f"{req.url.path}?scope={scope}&limit={limit}&date={date}"
-    cached = _get_cached_response(cache_key)
-    if cached is not None:
-        return cached
-    data = {"items": db.leaderboard(scope=scope, limit=limit, date_str=date)}
-    return _set_cached_response(cache_key, data)
-
-@app.get("/metrics/engineers/weekly-stats")
-async def metrics_engineers_weekly_stats(req: Request, startDate: str, endDate: str):
-    """Get weekly breakdown of erasures by engineer for a date range"""
-    cache_key = f"{req.url.path}?start={startDate}&end={endDate}"
-    cached = _get_cached_response(cache_key)
-    if cached is not None:
-        return cached
-    data = {"engineers": db.get_engineer_weekly_stats(startDate, endDate)}
-    return _set_cached_response(cache_key, data)
-
-@app.get("/metrics/month-comparison")
-async def metrics_month_comparison(req: Request, currentStart: str, currentEnd: str, previousStart: str, previousEnd: str):
-    """Get month-over-month comparison"""
-    cache_key = f"{req.url.path}?curStart={currentStart}&curEnd={currentEnd}&prevStart={previousStart}&prevEnd={previousEnd}"
-    cached = _get_cached_response(cache_key)
-    if cached is not None:
-        return cached
-    data = db.get_month_over_month_comparison(currentStart, currentEnd, previousStart, previousEnd)
-    return _set_cached_response(cache_key, data)
-
 def _extract_initials_from_obj(obj: Any):
     # Try common explicit keys first
     if isinstance(obj, dict):
@@ -1805,99 +1393,6 @@ async def engineer_erasure_hook(req: Request):
 
     return {"status": "ok", "engineer": initials, "count": engineer_count}
 
-@app.get("/metrics/top-engineers")
-async def get_top_engineers():
-    # Return top 3 engineers by erasure count
-    engineers = db.get_top_engineers(limit=3)
-    return {"engineers": engineers}
-
-@app.get("/metrics/engineers/top-by-type")
-async def get_top_engineers_by_type(type: str = "laptops_desktops", scope: str = "today", limit: int = 6):
-    engineers = db.top_engineers(scope=scope, device_type=type, limit=limit)
-    return {"engineers": engineers, "type": type}
-
-@app.get("/analytics/weekly-category-trends")
-async def get_weekly_category_trends():
-    """Get last 7 days of category trends for flip cards"""
-    trends = db.get_weekly_category_trends()
-    return {"trends": trends}
-
-@app.get("/analytics/weekly-engineer-stats")
-async def get_weekly_engineer_stats():
-    """Get weekly totals and consistency scores for engineers"""
-    stats = db.get_weekly_engineer_stats()
-    return {"stats": stats}
-
-@app.get("/analytics/peak-hours")
-async def get_peak_hours():
-    """Get hourly breakdown for today"""
-    hours = db.get_peak_hours()
-    return {"hours": hours}
-
-@app.get("/analytics/day-of-week-patterns")
-async def get_day_of_week_patterns():
-    """Get average erasures by day of week"""
-    patterns = db.get_day_of_week_patterns()
-    return {"patterns": patterns}
-
-@app.get("/competitions/speed-challenge")
-async def get_speed_challenge(window: str = "am"):
-    """Get speed challenge leaderboard and status for AM or PM"""
-    stats = db.get_speed_challenge_stats(window)
-    status = db.get_speed_challenge_status(window)
-    return {
-        "leaderboard": stats,
-        "status": status
-    }
-
-@app.get("/competitions/category-specialists")
-async def get_category_specialists():
-    """Get top 3 specialists for each equipment category"""
-    specialists = db.get_category_specialists()
-    return {"specialists": specialists}
-
-@app.get("/competitions/consistency")
-async def get_consistency():
-    """Get consistency rankings - engineers with steadiest pace"""
-    stats = db.get_consistency_stats()
-    return {"leaderboard": stats}
-
-@app.get("/metrics/records")
-async def get_records():
-    """Get historical records and milestones"""
-    records = db.get_records_and_milestones()
-    return records
-
-@app.get("/metrics/weekly")
-async def get_weekly():
-    """Get weekly statistics (past 7 days)"""
-    weekly = db.get_weekly_stats()
-    return weekly
-
-@app.get("/metrics/performance-trends")
-async def get_performance_trends(target: int = 500):
-    """Get performance trends: WoW, MoM, rolling averages"""
-    trends = db.get_performance_trends(target=target)
-    return trends
-
-@app.get("/metrics/target-achievement")
-async def get_target_achievement(target: int = 500):
-    """Get target achievement metrics: days hitting target, streaks, projections"""
-    achievement = db.get_target_achievement(target=target)
-    return achievement
-
-@app.get("/metrics/engineers/{initials}/kpis")
-async def get_engineer_kpis(initials: str):
-    """Get comprehensive KPI metrics for a specific engineer"""
-    kpis = db.get_individual_engineer_kpis(initials)
-    return kpis
-
-@app.get("/metrics/engineers/kpis/all")
-async def get_all_engineers_kpis():
-    """Get KPI metrics for all engineers"""
-    kpis = db.get_all_engineers_kpis()
-    return {"engineers": kpis}
-
 # ============= AUTH ENDPOINTS =============
 app.include_router(
     create_auth_router(
@@ -1972,6 +1467,19 @@ app.include_router(
 app.include_router(
     create_erasure_insights_router(
         db_module=db,
+    )
+)
+app.include_router(
+    create_qa_insights_router(
+        cache_get=_get_cached_response,
+        cache_set=_set_cached_response,
+    )
+)
+app.include_router(
+    create_metrics_analytics_router(
+        db_module=db,
+        cache_get=_get_cached_response,
+        cache_set=_set_cached_response,
     )
 )
 @app.get("/api/device-lookup/{stock_id}")
@@ -4152,8 +3660,8 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
         print(f"[Bottleneck-From-Dashboard] daily rows={len(daily_rows)}")
 
         # Get QA dashboard today to fetch per-engineer counts
-        print("[Bottleneck-From-Dashboard] calling get_qa_dashboard_data")
-        qa_dash = await get_qa_dashboard_data(period="today")
+        print("[Bottleneck-From-Dashboard] calling QA dashboard helper")
+        qa_dash = await compute_qa_dashboard_data("today", _get_cached_response, _set_cached_response)
         if isinstance(qa_dash, dict) and qa_dash.get('technicians'):
             print(f"[Bottleneck-From-Dashboard] qa_dash technicians={len(qa_dash.get('technicians', []))}")
 
@@ -4583,170 +4091,6 @@ async def get_bottleneck_details(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.get("/api/qa-dashboard")
-async def get_qa_dashboard_data(period: str = "this_week"):
-    """Get QA dashboard data for display (not export)"""
-    try:
-        import qa_export
-        from datetime import date, timedelta
-
-        cache_key = f"qa_dashboard:{period}"
-        cached = _get_cached_response(cache_key)
-        if cached is not None:
-            return cached
-        
-        # Get date range
-        start_date, end_date, period_label = qa_export.get_week_dates(period)
-        
-        # Get QA data (ITAD_QA_App), DE QA data, and Non-DE QA data
-        qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
-        de_qa_data = qa_export.get_de_qa_comparison(start_date, end_date)
-        non_de_qa_data = qa_export.get_non_de_qa_comparison(start_date, end_date)
-        
-        if not qa_data and not de_qa_data and not non_de_qa_data:
-            min_date, max_date = qa_export.get_qa_data_bounds()
-            result = {
-                "period": period_label,
-                "dateRange": f"{start_date} to {end_date}",
-                "technicians": [],
-                "summary": {
-                    "totalScans": 0,
-                    "deQaScans": 0,
-                    "nonDeQaScans": 0,
-                    "combinedScans": 0,
-                    "passRate": 0,
-                    "avgConsistency": 0,
-                    "topTechnician": "N/A"
-                },
-                "topPerformers": [],
-                "locations": [],
-                "dataBounds": {
-                    "minDate": str(min_date) if min_date else None,
-                    "maxDate": str(max_date) if max_date else None
-                }
-            }
-            return _set_cached_response(cache_key, result)
-        
-        # Calculate summary metrics (excluding unassigned)
-        total_scans = sum(stats['total'] for name, stats in qa_data.items() if name.lower() != '(unassigned)') if qa_data else 0
-        total_passed = sum(stats['successful'] for name, stats in qa_data.items() if name.lower() != '(unassigned)') if qa_data else 0
-        total_de_scans = sum(stats['total'] for name, stats in de_qa_data.items() if name.lower() != '(unassigned)') if de_qa_data else 0
-        total_non_de_scans = sum(stats['total'] for name, stats in non_de_qa_data.items() if name.lower() != '(unassigned)') if non_de_qa_data else 0
-        combined_scans = total_scans + total_de_scans + total_non_de_scans
-        overall_pass_rate = (total_passed / total_scans * 100) if total_scans > 0 else 0
-        
-        # Calculate consistency scores and build technician list
-        technicians = []
-        consistency_scores = []
-        
-        all_names = sorted(
-            set(qa_data.keys() if qa_data else [])
-            | set(de_qa_data.keys() if de_qa_data else [])
-            | set(non_de_qa_data.keys() if non_de_qa_data else [])
-        )
-
-        for tech_name in all_names:
-            stats = qa_data.get(tech_name, {'total': 0, 'successful': 0, 'daily': {}, 'pass_rate': 0.0})
-            de_stats = de_qa_data.get(tech_name, {'total': 0, 'daily': {}})
-            non_de_stats = non_de_qa_data.get(tech_name, {'total': 0, 'daily': {}})
-
-            qa_total = stats['total']
-            de_total = de_stats['total']
-            non_de_total = non_de_stats['total']
-            tech_combined_total = qa_total + de_total + non_de_total
-
-            # Calculate combined daily counts (QA app + DE QA + Non-DE QA)
-            combined_daily = {}
-            for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
-                qa_scans = stats['daily'].get(day, {}).get('scans', 0)
-                de_scans = de_stats['daily'].get(day, {}).get('scans', 0)
-                non_de_scans = non_de_stats['daily'].get(day, {}).get('scans', 0)
-                combined_scans_day = qa_scans + de_scans + non_de_scans
-                if combined_scans_day > 0:
-                    combined_daily[day] = {
-                        'scans': combined_scans_day,
-                        'passed': stats['daily'].get(day, {}).get('passed', 0)
-                    }
-
-            days_active = len([d for d in combined_daily if combined_daily[d]['scans'] > 0])
-            avg_per_day = tech_combined_total / max(1, days_active) if days_active > 0 else 0
-            
-            # Calculate consistency from combined daily totals
-            daily_counts = [float(combined_daily[day]['scans'])
-                           for day in combined_daily if combined_daily[day]['scans'] > 0]
-            
-            consistency = 100
-            if daily_counts and len(daily_counts) > 1:
-                avg = sum(daily_counts) / len(daily_counts)
-                if avg > 0:
-                    variance = sum((x - avg) ** 2 for x in daily_counts) / len(daily_counts)
-                    consistency = max(0, min(100, 100 - (variance / (avg + 1) * 10)))
-            
-            consistency_scores.append(consistency)
-            
-            # Reliability score
-            reliability = (stats['pass_rate'] * 0.6) + (consistency * 0.4) if qa_total > 0 else 0
-            
-            tech_data = {
-                "name": tech_name,
-                "qaScans": qa_total,
-                "deQaScans": de_total,
-                "nonDeQaScans": non_de_total,
-                "combinedScans": tech_combined_total,
-                "passRate": round(stats['pass_rate'], 1),
-                "avgPerDay": round(avg_per_day, 1),
-                "consistency": round(consistency, 1),
-                "reliability": round(reliability, 1),
-                "daysActive": days_active,
-                "daily": {}
-            }
-            
-            # Add daily breakdown
-            for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
-                if day in combined_daily:
-                    daily = combined_daily[day]
-                    pass_pct = (daily['passed'] / daily['scans'] * 100) if daily['scans'] > 0 else 0
-                    tech_data['daily'][day] = {
-                        "scans": daily['scans'],
-                        "passed": daily['passed'],
-                        "passRate": round(pass_pct, 1)
-                    }
-            
-            technicians.append(tech_data)
-        
-        # Get top performers
-        top_performers = sorted(technicians, key=lambda x: x['combinedScans'], reverse=True)[:5]
-        
-        avg_consistency = sum(consistency_scores) / len(consistency_scores) if consistency_scores else 0
-        
-        # Get all-time daily record
-        daily_record = qa_export.get_all_time_daily_record()
-        
-        result = {
-            "period": period_label,
-            "dateRange": f"{start_date.isoformat()} to {end_date.isoformat()}",
-            "technicians": technicians,
-            "summary": {
-                "totalScans": total_scans,
-                "deQaScans": total_de_scans,
-                "nonDeQaScans": total_non_de_scans,
-                "combinedScans": combined_scans,
-                "passRate": round(overall_pass_rate, 1),
-                "avgConsistency": round(avg_consistency, 1),
-                "topTechnician": top_performers[0]['name'] if top_performers else "N/A",
-                "techniciansCount": len(technicians),
-                "dailyRecord": daily_record
-            },
-            "topPerformers": top_performers
-        }
-        return _set_cached_response(cache_key, result)
-    
-    except Exception as e:
-        print(f"QA dashboard data error: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"error": str(e), "period": period}
 
 # ===== HWID Capture Endpoint =====
 
