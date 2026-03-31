@@ -1,71 +1,11 @@
-// --- SVG Sparkline Renderer (must be top-level for all uses) ---
-function renderSVGSparkline(svgElem, data) {
-  const width = 400;
-  const height = 48;
-  if (!svgElem) return;
-  svgElem.innerHTML = '';
-  if (!data || data.length < 1) return;
-  // If only one point or all values are the same, draw a flat line
-  const allSame = data.every(v => v === data[0]);
-  if (data.length === 1 || allSame) {
-    const y = height / 2;
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', `M0,${y} L${width},${y}`);
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', '#8cf04a');
-    path.setAttribute('stroke-width', '2');
-    svgElem.appendChild(path);
-    return;
-  }
-  // Find min/max for scaling
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  // Build path
-  const step = width / (data.length - 1);
-  let d = '';
-  data.forEach((val, i) => {
-    const x = i * step;
-    // Invert y (SVG origin is top-left)
-    const y = height - ((val - min) / range) * (height - 6) - 3;
-    d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2) + ' ';
-  });
-  // Draw filled area
-  let fillD = d + `L ${width},${height} L 0,${height} Z`;
-  const fill = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  fill.setAttribute('d', fillD);
-  fill.setAttribute('fill', 'rgba(140,240,74,0.15)');
-  svgElem.appendChild(fill);
-  // Draw line
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', d);
-  path.setAttribute('fill', 'none');
-  path.setAttribute('stroke', '#8cf04a');
-  path.setAttribute('stroke-width', '2');
-  path.setAttribute('stroke-linejoin', 'round');
-  svgElem.appendChild(path);
-}
 (async function () {
   // ==================== AUTHENTICATION ====================
-  
-  function setupAuthHeaders(token) {
-    // Store token globally and wrap fetch
-    window.__authToken = token;
-    const originalFetch = window.fetch;
-    
-    window.fetch = function(resource, config = {}) {
-      // Add auth header to all API requests
-      if (typeof resource === 'string' && (resource.startsWith('/') || resource.startsWith('http'))) {
-        config.headers = config.headers || {};
-        config.headers['Authorization'] = 'Bearer ' + window.__authToken;
-      }
-      return originalFetch.call(this, resource, config);
-    };
-  }
 
   async function checkAuth() {
     try {
-      const existingToken = sessionStorage.getItem('authToken') || localStorage.getItem('deviceToken');
+      const existingToken = (window.DashboardAuth && window.DashboardAuth.getExistingToken)
+        ? window.DashboardAuth.getExistingToken()
+        : (sessionStorage.getItem('authToken') || localStorage.getItem('deviceToken'));
       if (existingToken) {
         try {
           const statusRes = await fetch('/auth/status', {
@@ -77,7 +17,9 @@ function renderSVGSparkline(svgElem, data) {
               sessionStorage.setItem('userRole', statusData.role);
             }
             if (statusData.authenticated) {
-              setupAuthHeaders(existingToken);
+              if (window.DashboardAuth && window.DashboardAuth.setupAuthHeaders) {
+                window.DashboardAuth.setupAuthHeaders(existingToken);
+              }
               return true;
             }
           }
@@ -172,7 +114,9 @@ function renderSVGSparkline(svgElem, data) {
             sessionStorage.setItem('authToken', loginData.token);
             
             // Set auth header for future requests
-            setupAuthHeaders(loginData.token);
+            if (window.DashboardAuth && window.DashboardAuth.setupAuthHeaders) {
+              window.DashboardAuth.setupAuthHeaders(loginData.token);
+            }
             
             // Apply role permissions to UI
             applyRolePermissions();
@@ -232,7 +176,9 @@ function renderSVGSparkline(svgElem, data) {
               // Persist so refreshes keep the viewer logged in
               localStorage.setItem('deviceToken', data.device_token);
               sessionStorage.setItem('authToken', data.token || data.device_token);
-              setupAuthHeaders(data.token || data.device_token);
+              if (window.DashboardAuth && window.DashboardAuth.setupAuthHeaders) {
+                window.DashboardAuth.setupAuthHeaders(data.token || data.device_token);
+              }
             }
           } else {
             // Fall back to session-only viewer token (no API access)
@@ -261,7 +207,9 @@ function renderSVGSparkline(svgElem, data) {
         const token = sessionStorage.getItem('authToken');
         if (token) {
           clearInterval(checkInterval);
-          setupAuthHeaders(token);
+          if (window.DashboardAuth && window.DashboardAuth.setupAuthHeaders) {
+            window.DashboardAuth.setupAuthHeaders(token);
+          }
           resolve();
         }
       }, 100);

@@ -40,6 +40,20 @@ def create_static_pages_router(
             media_type="application/javascript",
         )
 
+    @router.get("/core/ui_utils.js", include_in_schema=False)
+    async def serve_ui_utils_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "ui_utils.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/auth.js", include_in_schema=False)
+    async def serve_auth_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "auth.js"),
+            media_type="application/javascript",
+        )
+
     @router.get("/styles.css", include_in_schema=False)
     async def serve_styles_css():
         return FileResponse(
