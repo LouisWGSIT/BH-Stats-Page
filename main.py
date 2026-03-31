@@ -9,8 +9,8 @@ import os
 from typing import Any, Dict
 from datetime import datetime, timedelta, date
 import asyncio
-import database as db
-import excel_export
+import backend.database as db
+import backend.excel_export as excel_export
 import ipaddress
 import json
 import hashlib
@@ -20,10 +20,10 @@ from time import time
 import zipfile
 import io
 import sqlite3
-import qa_export
+import backend.qa_export as qa_export
 import routers.health as health_router
 import logging
-from logging_config import configure_logging
+from backend.logging_config import configure_logging
 from collections import OrderedDict
 import threading
 from collections import deque
@@ -151,7 +151,7 @@ except Exception:
     pass
 
 from uuid import uuid4
-import request_context
+import backend.request_context as request_context
 
 # Middleware: add a request-id to each incoming HTTP request for log correlation
 @app.middleware("http")
@@ -1149,7 +1149,7 @@ async def auth_middleware(request: Request, call_next):
     
     # For page load, redirect to login
     if request.url.path == "/" or request.url.path == "/index.html":
-        return FileResponse("index.html")  # Will add login UI to index.html
+        return FileResponse("frontend/pages/index.html")  # Will add login UI to index.html
     
     return await call_next(request)
 # New endpoint: Get total erasures for a device type and period
@@ -6130,6 +6130,45 @@ async def get_qa_dashboard_data(period: str = "this_week"):
 # ===== HWID Capture Endpoint =====
 
 HWID_LOG_PATH = os.getenv("HWID_LOG_PATH", "logs/hwid_log.jsonl")
+
+FRONTEND_PAGES_DIR = os.path.join("frontend", "pages")
+FRONTEND_JS_DIR = os.path.join("frontend", "js")
+FRONTEND_CSS_DIR = os.path.join("frontend", "css")
+
+
+@app.get("/", include_in_schema=False)
+async def serve_index():
+    return FileResponse(os.path.join(FRONTEND_PAGES_DIR, "index.html"))
+
+
+@app.get("/index.html", include_in_schema=False)
+async def serve_index_html():
+    return FileResponse(os.path.join(FRONTEND_PAGES_DIR, "index.html"))
+
+
+@app.get("/admin.html", include_in_schema=False)
+async def serve_admin_html():
+    return FileResponse(os.path.join(FRONTEND_PAGES_DIR, "admin.html"))
+
+
+@app.get("/manager.html", include_in_schema=False)
+async def serve_manager_html():
+    return FileResponse(os.path.join(FRONTEND_PAGES_DIR, "manager.html"))
+
+
+@app.get("/qr-code-generator.html", include_in_schema=False)
+async def serve_qr_generator_html():
+    return FileResponse(os.path.join(FRONTEND_PAGES_DIR, "qr-code-generator.html"))
+
+
+@app.get("/app.js", include_in_schema=False)
+async def serve_app_js():
+    return FileResponse(os.path.join(FRONTEND_JS_DIR, "app.js"), media_type="application/javascript")
+
+
+@app.get("/styles.css", include_in_schema=False)
+async def serve_styles_css():
+    return FileResponse(os.path.join(FRONTEND_CSS_DIR, "styles.css"), media_type="text/css")
 
 @app.get("/hwid")
 async def hwid_status():

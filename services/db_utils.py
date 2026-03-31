@@ -4,7 +4,7 @@ import time
 import logging
 from contextlib import contextmanager
 import pymysql
-import request_context
+import backend.request_context as request_context
 
 logger = logging.getLogger("services.db_utils")
 

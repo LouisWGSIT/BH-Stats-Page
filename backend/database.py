@@ -1,0 +1,1742 @@
+def get_daily_totals() -> list:
+    """Return daily erasure totals for the current month as a list of {day, count}"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    today = date.today()
+    current_month = today.strftime('%Y-%m')
+    # Get all days in current month
+    cursor.execute("""
+        SELECT date, erased FROM daily_stats WHERE date LIKE ? ORDER BY date ASC
+    """, (f"{current_month}%",))
+    rows = cursor.fetchall()
+    # Map to {day, count}
+    result = []
+    for row in rows:
+        day = int(row[0].split('-')[2])
+        result.append({"day": day, "count": row[1]})
+    conn.close()
+    return result
+import sqlite3
+import json
+from datetime import datetime, date, timedelta
+from typing import List, Tuple, Dict
+from pathlib import Path
+import os
+from collections import defaultdict
+from contextlib import contextmanager
+
+
+# SQLite transaction helper to ensure commits/rollbacks and proper closing
+@contextmanager
+def sqlite_transaction(db_path=None, timeout=5.0):
+    """Context manager yielding a (conn, cursor) tuple.
+
+    Commits on success, rolls back on exception, and always closes connection.
+    """
+    path = db_path or DB_PATH
+    conn = sqlite3.connect(path, timeout=timeout)
+    cur = conn.cursor()
+    try:
+        yield conn, cur
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+# --- ALL TIME AGGREGATION ---
+def get_all_time_totals(group_by: str = None):
+    """
+    Return the total number of erasures across all time.
+    Optionally group by 'device_type' or 'initials'.
+    group_by: None | 'device_type' | 'initials'
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    if group_by == 'device_type':
+        cursor.execute("""
+            SELECT device_type, COUNT(1) FROM erasures WHERE event = 'success' GROUP BY device_type
+        """)
+        rows = cursor.fetchall()
+        result = {k or 'unknown': v for (k, v) in rows}
+    elif group_by == 'initials':
+        cursor.execute("""
+            SELECT initials, COUNT(1) FROM erasures WHERE event = 'success' AND initials IS NOT NULL GROUP BY initials
+        """)
+        rows = cursor.fetchall()
+        result = {k: v for (k, v) in rows}
+    else:
+        cursor.execute("SELECT COUNT(1) FROM erasures WHERE event = 'success'")
+        result = cursor.fetchone()[0]
+    conn.close()
+    return result
+
+def get_monthly_momentum() -> Dict:
+    """Return weekly totals for the current month for monthly momentum chart"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    today = date.today()
+    current_month = today.strftime('%Y-%m')
+    # Get all days in current month
+    cursor.execute("""
+        SELECT date, erased FROM daily_stats WHERE date LIKE ? ORDER BY date ASC
+    """, (f"{current_month}%",))
+    rows = cursor.fetchall()
+    # Group by week number
+    weekly_totals = defaultdict(int)
+    for row in rows:
+        week = datetime.strptime(row[0], '%Y-%m-%d').isocalendar()[1]
+        weekly_totals[week] += row[1]
+
+    # Find the first week number for this month
+    if rows:
+        first_week = datetime.strptime(rows[0][0], '%Y-%m-%d').isocalendar()[1]
+    else:
+        # fallback: get week number for the 1st of the month
+        first_week = date(today.year, today.month, 1).isocalendar()[1]
+
+    # Always return 4 weeks (pad with zeros if missing)
+    result = []
+    week_numbers = [first_week + i for i in range(4)]
+    for w in week_numbers:
+        result.append(weekly_totals.get(w, 0))
+    conn.close()
+    return {"weeklyTotals": result, "weeks": week_numbers}
+# --- SYNC FUNCTION: Populate engineer_stats_type from erasures ---
+def sync_engineer_stats_type_from_erasures(date_str: str = None):
+    """Populate engineer_stats_type from erasures for a date (or all recent dates if None)"""
+    synced_count = 0
+    # Use safe sqlite transaction context
+    with sqlite_transaction() as (conn, cursor):
+        if date_str:
+            cursor.execute("""
+                SELECT DISTINCT initials, device_type FROM erasures WHERE date = ? AND initials IS NOT NULL AND device_type IS NOT NULL
+            """, (date_str,))
+            records = [(date_str, row[0], row[1]) for row in cursor.fetchall()]
+        else:
+            cursor.execute("""
+                SELECT DISTINCT date, initials, device_type FROM erasures 
+                WHERE initials IS NOT NULL AND device_type IS NOT NULL AND date >= date('now', '-30 days')
+            """)
+            records = cursor.fetchall()
+
+        for record in records:
+            target_date, initials, device_type = record
+            # Count successful erasures for this date+engineer+device_type
+            cursor.execute("""
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ? AND initials = ? AND device_type = ? AND event = 'success'
+            """, (target_date, initials, device_type))
+            count = cursor.fetchone()[0]
+            # Insert or replace in engineer_stats_type
+            cursor.execute("""
+                INSERT OR REPLACE INTO engineer_stats_type (date, device_type, initials, count)
+                VALUES (?, ?, ?, ?)
+            """, (target_date, device_type, initials, count))
+            synced_count += 1
+
+    if synced_count > 0:
+        print(f"[DB Sync] Synced {synced_count} engineer_stats_type records")
+    return synced_count
+
+# Use env var for persistent disk path on Render, fall back to local for dev
+DB_PATH = os.getenv("STATS_DB_PATH", str(Path(__file__).parent / "warehouse_stats.db"))
+# Ensure parent directory exists (useful when mounting a persistent volume on Render)
+try:
+    db_dir = os.path.dirname(DB_PATH) or '.'
+    os.makedirs(db_dir, exist_ok=True)
+except Exception:
+    pass
+
+def init_db():
+    """Initialize database with required tables"""
+    with sqlite_transaction() as (conn, cursor):
+        # Daily stats table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS daily_stats (
+                date TEXT PRIMARY KEY,
+                booked_in INTEGER DEFAULT 0,
+                erased INTEGER DEFAULT 0,
+                qa INTEGER DEFAULT 0
+            )
+        """)
+
+        # Engineer stats table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS engineer_stats (
+                date TEXT,
+                initials TEXT,
+                count INTEGER DEFAULT 0,
+                PRIMARY KEY (date, initials)
+            )
+        """)
+
+        # Engineer stats by device type
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS engineer_stats_type (
+                date TEXT,
+                device_type TEXT,
+                initials TEXT,
+                count INTEGER DEFAULT 0,
+                PRIMARY KEY (date, device_type, initials)
+            )
+        """)
+
+        # Seen IDs table for deduplication
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS seen_ids (
+                date TEXT,
+                job_id TEXT,
+                PRIMARY KEY (date, job_id)
+            )
+        """)
+
+        # Detailed erasure events
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS erasures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT,
+                date TEXT,
+                month TEXT,
+                event TEXT,             -- success|failure|connected
+                device_type TEXT,       -- laptops_desktops|servers|loose_drives|macs|mobiles
+                initials TEXT,
+                duration_sec INTEGER,
+                error_type TEXT,
+                job_id TEXT,
+                manufacturer TEXT,      -- Device manufacturer (e.g., HP, Dell, Apple)
+                model TEXT,             -- Device model (e.g., EliteBook 840 G5)
+                system_serial TEXT,     -- System serial number
+                disk_serial TEXT,       -- Disk serial number
+                drive_size INTEGER,     -- Total drive capacity in GB
+                drive_count INTEGER,    -- Number of drives
+                drive_type TEXT         -- HDD, SSD, or NVMe
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_date ON erasures(date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_month ON erasures(month)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_type ON erasures(device_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_erasures_initials ON erasures(initials)")
+
+        # Live local erasure feed (Blancco / server messages) - used as early signal for awaiting QA
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS local_erasures (
+                stockid TEXT,
+                system_serial TEXT,
+                job_id TEXT,
+                ts TEXT NOT NULL,
+                warehouse TEXT,
+                source TEXT,
+                payload TEXT,
+                PRIMARY KEY (job_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_local_erasures_stockid ON local_erasures(stockid)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_local_erasures_ts ON local_erasures(ts)")
+
+        # Add new columns if they don't exist (migration)
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN manufacturer TEXT")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN model TEXT")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN system_serial TEXT")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN disk_serial TEXT")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN drive_size INTEGER")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN drive_count INTEGER")
+        except:
+            pass
+        try:
+            cursor.execute("ALTER TABLE erasures ADD COLUMN drive_type TEXT")
+        except:
+            pass
+
+        # Admin action history for undo support
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT,
+                from_initials TEXT,
+                to_initials TEXT,
+                created_at TEXT,
+                affected INTEGER DEFAULT 0
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_action_rows (
+                action_id INTEGER,
+                rowid INTEGER,
+                old_initials TEXT
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_action_rows_action ON admin_action_rows(action_id)")
+
+def get_today_str() -> str:
+    """Get today's date as string"""
+    return date.today().isoformat()
+
+def get_yesterday_str() -> str:
+    """Get yesterday's date as string (Friday if today is Monday)"""
+    from datetime import timedelta
+    today = date.today()
+    # If today is Monday (0), go back to Friday (3 days)
+    # Otherwise, go back 1 day
+    days_back = 3 if today.weekday() == 0 else 1
+    return (today - timedelta(days=days_back)).isoformat()
+
+def delete_event_by_job(job_id: str) -> int:
+    """Delete erasure events and seen_id by job_id. Returns rows deleted from erasures."""
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute("DELETE FROM erasures WHERE job_id = ?", (job_id,))
+        deleted = cursor.rowcount
+        cursor.execute("DELETE FROM seen_ids WHERE job_id = ?", (job_id,))
+    return deleted
+
+def get_daily_stats(date_str: str = None) -> Dict[str, int]:
+    """Get stats for a specific date (defaults to today)"""
+    if date_str is None:
+        date_str = get_today_str()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT booked_in, erased, qa FROM daily_stats WHERE date = ?",
+        (date_str,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return {"bookedIn": row[0], "erased": row[1], "qa": row[2]}
+    return {"bookedIn": 0, "erased": 0, "qa": 0}
+
+def increment_stat(stat_name: str, amount: int = 1, date_str: str = None):
+    """Increment a specific stat counter"""
+    if date_str is None:
+        date_str = get_today_str()
+    
+    # Map frontend names to DB columns
+    column_map = {"bookedIn": "booked_in", "erased": "erased", "qa": "qa"}
+    column = column_map.get(stat_name, stat_name)
+    
+    with sqlite_transaction() as (conn, cursor):
+        # Insert or update
+        cursor.execute(f"""
+            INSERT INTO daily_stats (date, {column})
+            VALUES (?, ?)
+            ON CONFLICT(date) DO UPDATE SET {column} = {column} + ?
+        """, (date_str, amount, amount))
+
+def is_job_seen(job_id: str, date_str: str = None) -> bool:
+    """Check if a job ID has been seen today"""
+    if date_str is None:
+        date_str = get_today_str()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT 1 FROM seen_ids WHERE date = ? AND job_id = ?",
+        (date_str, job_id)
+    )
+    result = cursor.fetchone() is not None
+    conn.close()
+    return result
+
+def mark_job_seen(job_id: str, date_str: str = None):
+    """Mark a job ID as seen"""
+    if date_str is None:
+        date_str = get_today_str()
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute(
+            "INSERT OR IGNORE INTO seen_ids (date, job_id) VALUES (?, ?)",
+            (date_str, job_id)
+        )
+
+def increment_engineer_count(initials: str, amount: int = 1, date_str: str = None):
+    """Increment engineer erasure count"""
+    if date_str is None:
+        date_str = get_today_str()
+    
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute("""
+            INSERT INTO engineer_stats (date, initials, count)
+            VALUES (?, ?, ?)
+            ON CONFLICT(date, initials) DO UPDATE SET count = count + ?
+        """, (date_str, initials, amount, amount))
+
+def increment_engineer_type_count(device_type: str, initials: str, amount: int = 1, date_str: str = None):
+    """Increment engineer erasure count for a specific device type"""
+    if date_str is None:
+        date_str = get_today_str()
+
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute("""
+            INSERT INTO engineer_stats_type (date, device_type, initials, count)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(date, device_type, initials) DO UPDATE SET count = count + ?
+        """, (date_str, device_type, initials, amount, amount))
+
+def add_erasure_event(*, event: str, device_type: str, initials: str = None, duration_sec: int = None,
+                      error_type: str = None, job_id: str = None, ts: str = None,
+                      manufacturer: str = None, model: str = None, system_serial: str = None,
+                      disk_serial: str = None, disk_capacity: str = None):
+    """Insert a detailed erasure event"""
+    from datetime import datetime
+    if ts is None:
+        ts = datetime.utcnow().isoformat()
+    d = ts[:10]
+    month = ts[:7]
+
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute(
+            """
+            INSERT INTO erasures (ts, date, month, event, device_type, initials, duration_sec, error_type, job_id,
+                         manufacturer, model, system_serial, disk_serial, drive_size, drive_count, drive_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (ts, d, month, event, device_type, (initials or None), duration_sec, (error_type or None), (job_id or None),
+             (manufacturer or None), (model or None), (system_serial or None), (disk_serial or None), (disk_capacity or None), None, None)
+        )
+
+def add_local_erasure(stockid: str = None, system_serial: str = None, job_id: str = None, ts: str = None,
+                      warehouse: str = None, source: str = 'local', payload: dict = None):
+    """Insert or update a local erasure (live Blancco/server message) into `local_erasures`.
+
+    Safe to call repeatedly; uses INSERT OR REPLACE keyed on job_id when available.
+    """
+    from datetime import datetime
+    if ts is None:
+        ts = datetime.utcnow().isoformat()
+    with sqlite_transaction() as (conn, cursor):
+        cursor.execute(
+            "INSERT OR REPLACE INTO local_erasures (stockid, system_serial, job_id, ts, warehouse, source, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                stockid,
+                system_serial,
+                job_id,
+                ts,
+                warehouse,
+                source,
+                json.dumps(payload) if payload is not None else None,
+            )
+        )
+
+def get_summary_today_month(date_str: str = None):
+    """Return totals for a specific date and its month, success rate and avg duration.
+    If date_str is None, uses today's date."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    target_date = date_str if date_str else get_today_str()
+    month = target_date[:7]
+
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE month = ?", (month,))
+    month_total = cursor.fetchone()[0] or 0
+
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date = ?", (target_date,))
+    today_total_all = cursor.fetchone()[0] or 0
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date = ? AND event = 'success'", (target_date,))
+    today_success = cursor.fetchone()[0] or 0
+    cursor.execute("SELECT AVG(duration_sec) FROM erasures WHERE date = ? AND duration_sec IS NOT NULL", (target_date,))
+    avg_dur = cursor.fetchone()[0]
+    conn.close()
+
+    success_rate = (today_success / today_total_all * 100.0) if today_total_all else 0.0
+    return {
+        "todayTotal": today_total_all,
+        "monthTotal": month_total,
+        "successRate": round(success_rate, 1),
+        "avgDurationSec": int(avg_dur) if avg_dur is not None else None
+    }
+
+def get_summary_date_range(start_date: str, end_date: str):
+    """Return totals for a date range (used for monthly reports)"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date >= ? AND date <= ?", (start_date, end_date))
+    total = cursor.fetchone()[0] or 0
+    
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date >= ? AND date <= ? AND event = 'success'", (start_date, end_date))
+    success = cursor.fetchone()[0] or 0
+    
+    cursor.execute("SELECT AVG(duration_sec) FROM erasures WHERE date >= ? AND date <= ? AND duration_sec IS NOT NULL", (start_date, end_date))
+    avg_dur = cursor.fetchone()[0]
+    
+    conn.close()
+    
+    success_rate = (success / total * 100.0) if total else 0.0
+    return {
+        "todayTotal": 0,  # Not applicable for date range
+        "monthTotal": total,
+        "successRate": round(success_rate, 1),
+        "avgDurationSec": int(avg_dur) if avg_dur is not None else None
+    }
+
+def get_month_over_month_comparison(current_start: str, current_end: str, previous_start: str, previous_end: str):
+    """Compare two months of data"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Current month totals
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date >= ? AND date <= ?", (current_start, current_end))
+    current_total = cursor.fetchone()[0] or 0
+    
+    # Previous month totals
+    cursor.execute("SELECT COUNT(1) FROM erasures WHERE date >= ? AND date <= ?", (previous_start, previous_end))
+    previous_total = cursor.fetchone()[0] or 0
+    
+    # Top engineers current month
+    cursor.execute("""
+        SELECT initials, COUNT(1) as total
+        FROM erasures 
+        WHERE date >= ? AND date <= ? AND initials IS NOT NULL
+        GROUP BY initials 
+        ORDER BY total DESC 
+        LIMIT 5
+    """, (current_start, current_end))
+    current_top = cursor.fetchall()
+    
+    # Top engineers previous month
+    cursor.execute("""
+        SELECT initials, COUNT(1) as total
+        FROM erasures 
+        WHERE date >= ? AND date <= ? AND initials IS NOT NULL
+        GROUP BY initials 
+        ORDER BY total DESC 
+        LIMIT 5
+    """, (previous_start, previous_end))
+    previous_top = cursor.fetchall()
+    
+    # Category breakdown current month
+    cursor.execute("""
+        SELECT device_type, COUNT(1) as total
+        FROM erasures 
+        WHERE date >= ? AND date <= ?
+        GROUP BY device_type
+    """, (current_start, current_end))
+    current_categories = {row[0] or 'Unknown': row[1] for row in cursor.fetchall()}
+    
+    # Category breakdown previous month
+    cursor.execute("""
+        SELECT device_type, COUNT(1) as total
+        FROM erasures 
+        WHERE date >= ? AND date <= ?
+        GROUP BY device_type
+    """, (previous_start, previous_end))
+    previous_categories = {row[0] or 'Unknown': row[1] for row in cursor.fetchall()}
+    
+    conn.close()
+    
+    # Calculate change
+    change = current_total - previous_total
+    change_percent = ((change / previous_total) * 100) if previous_total > 0 else 0
+    
+    return {
+        "current_month": {
+            "total": current_total,
+            "top_engineers": [{"initials": r[0], "erasures": r[1]} for r in current_top],
+            "categories": current_categories
+        },
+        "previous_month": {
+            "total": previous_total,
+            "top_engineers": [{"initials": r[0], "erasures": r[1]} for r in previous_top],
+            "categories": previous_categories
+        },
+        "comparison": {
+            "change": change,
+            "change_percent": round(change_percent, 1),
+            "trend": "Improving" if change > 0 else "Declining" if change < 0 else "Stable"
+        }
+    }
+
+def get_counts_by_type_today():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    today = get_today_str()
+    cursor.execute(
+        "SELECT device_type, COUNT(1) FROM erasures WHERE date = ? AND event = 'success' GROUP BY device_type",
+        (today,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return {k or "unknown": v for (k, v) in rows}
+
+def get_error_distribution_today():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    today = get_today_str()
+    cursor.execute(
+        "SELECT COALESCE(error_type, 'Other') AS et, COUNT(1) FROM erasures WHERE date = ? AND event = 'failure' GROUP BY et",
+        (today,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return {k: v for (k, v) in rows}
+
+def top_engineers(scope: str = 'today', device_type: str = None, limit: int = 3):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    if scope == 'month':
+        today = get_today_str()
+        year = int(today[:4])
+        month = int(today[5:7])
+        first_day = f"{year:04d}-{month:02d}-01"
+        last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
+        where = "date >= ? AND date <= ? AND event = 'success'"
+        params = [first_day, last_day]
+    elif scope == 'all':
+        where = "event = 'success'"
+        params = []
+    else:
+        key_col = 'date'
+        key_val = get_today_str()
+        where = f"{key_col} = ? AND event = 'success'"
+        params = [key_val]
+
+    if device_type:
+        where += " AND device_type = ?"
+        params.append(device_type)
+
+    cursor.execute(f"SELECT initials, COUNT(1) c FROM erasures WHERE {where} AND initials IS NOT NULL GROUP BY initials ORDER BY c DESC LIMIT ?", (*params, limit))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"initials": r[0], "count": r[1]} for r in rows]
+
+def leaderboard(scope: str = 'today', limit: int = 6, date_str: str = None):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    if date_str:
+        # Explicit date provided
+        key_col = 'date'
+        key_val = date_str
+    elif scope == 'this-month':
+        # Get first and last day of current month
+        today = get_today_str()
+        year = int(today[:4])
+        month = int(today[5:7])
+        first_day = f"{year:04d}-{month:02d}-01"
+        last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
+        # Use date range query
+        cursor.execute("""
+            SELECT initials,
+                   COUNT(1) AS total,
+                   MAX(ts) AS last_active
+            FROM erasures
+            WHERE date >= ? AND date <= ? AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY total DESC
+            LIMIT ?
+        """, (first_day, last_day, limit))
+    elif scope == 'last-month':
+        # Get first and last day of last month
+        today = get_today_str()
+        year = int(today[:4])
+        month = int(today[5:7]) - 1
+        if month < 1:
+            month = 12
+            year -= 1
+        first_day = f"{year:04d}-{month:02d}-01"
+        last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
+        # Use date range query
+        cursor.execute("""
+            SELECT initials,
+                   COUNT(1) AS total,
+                   MAX(ts) AS last_active
+            FROM erasures
+            WHERE date >= ? AND date <= ? AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY total DESC
+            LIMIT ?
+        """, (first_day, last_day, limit))
+    elif scope == 'month':
+        key_col = 'month'
+        key_val = get_today_str()[:7]
+        cursor.execute(f"""
+            SELECT initials,
+                   COUNT(1) AS total,
+                   MAX(ts) AS last_active
+            FROM erasures
+            WHERE {key_col} = ? AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY total DESC
+            LIMIT ?
+        """, (key_val, limit))
+    elif scope == 'yesterday':
+        key_col = 'date'
+        key_val = get_yesterday_str()  # Use helper that handles Monday->Friday
+        cursor.execute("""
+            SELECT initials,
+                   COUNT(1) AS total,
+                   MAX(ts) AS last_active
+            FROM erasures
+            WHERE date = ? AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY total DESC
+            LIMIT ?
+        """, (key_val, limit))
+    else:  # today
+        key_col = 'date'
+        key_val = get_today_str()
+        cursor.execute("""
+            SELECT initials,
+                   COUNT(1) AS total,
+                   MAX(ts) AS last_active
+            FROM erasures
+            WHERE date = ? AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY total DESC
+            LIMIT ?
+        """, (key_val, limit))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {
+            "initials": r[0],
+            "erasures": r[1],
+            "lastActive": r[2],
+        }
+        for r in rows
+    ]
+
+def get_engineer_weekly_stats(start_date: str, end_date: str):
+    """Get weekly breakdown of erasures by engineer for a date range"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get all engineers active in this date range with their primary device type
+    cursor.execute("""
+        SELECT DISTINCT 
+            initials,
+            device_type,
+            COUNT(1) as total_erasures
+        FROM erasures
+        WHERE date >= ? AND date <= ? AND initials IS NOT NULL
+        GROUP BY initials, device_type
+        ORDER BY total_erasures DESC
+    """, (start_date, end_date))
+    
+    engineers_data = cursor.fetchall()
+    
+    result = []
+    for eng_initials, device_type, total in engineers_data:
+        # Get week-by-week breakdown for this engineer
+        cursor.execute("""
+            SELECT 
+                strftime('%W', date) as week,
+                COUNT(1) as count
+            FROM erasures
+            WHERE date >= ? AND date <= ? AND initials = ?
+            GROUP BY week
+            ORDER BY week
+        """, (start_date, end_date, eng_initials))
+        
+        weekly_counts = cursor.fetchall()
+        week_dict = {int(week): count for week, count in weekly_counts}
+        
+        # Get all weeks in range
+        all_weeks = set()
+        for week, _ in weekly_counts:
+            all_weeks.add(int(week))
+        
+        result.append({
+            "initials": eng_initials,
+            "device_type": device_type or "Unknown",
+            "weekly_breakdown": week_dict,
+            "all_weeks": sorted(all_weeks),
+            "total": total
+        })
+    
+    conn.close()
+    return result
+
+
+def get_top_engineers(limit: int = 3, date_str: str = None) -> List[Dict[str, any]]:
+    """Get top engineers by erasure count"""
+    if date_str is None:
+        date_str = get_today_str()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT initials, count
+        FROM engineer_stats
+        WHERE date = ?
+        ORDER BY count DESC
+        LIMIT ?
+    """, (date_str, limit))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [{"initials": row[0], "count": row[1]} for row in rows]
+
+def get_top_engineers_by_type(device_type: str, limit: int = 3, date_str: str = None) -> List[Dict[str, any]]:
+    """Get top engineers for a given device type"""
+    if date_str is None:
+        date_str = get_today_str()
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT initials, count
+        FROM engineer_stats_type
+        WHERE date = ? AND device_type = ?
+        ORDER BY count DESC
+        LIMIT ?
+    """, (date_str, device_type, limit))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [{"initials": row[0], "count": row[1]} for row in rows]
+
+def get_weekly_category_trends() -> Dict[str, List[Dict]]:
+    """Get last 7 days of category data for trend analysis"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get last 7 days
+    cursor.execute("""
+        SELECT date, device_type, SUM(count) as total
+        FROM engineer_stats_type
+        WHERE date >= date('now', '-7 days')
+        GROUP BY date, device_type
+        ORDER BY date ASC
+    """)
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # Organize by category
+    trends = {}
+    for row in rows:
+        date_str, device_type, total = row
+        if device_type not in trends:
+            trends[device_type] = []
+        trends[device_type].append({"date": date_str, "count": total})
+    
+    return trends
+
+def get_weekly_engineer_stats() -> List[Dict]:
+    """Get weekly totals and consistency for engineers"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Compute current workweek (Monday -> Friday). On weekends return previous Mon–Fri
+    from datetime import date, timedelta
+    today = date.today()
+    # weekday(): Monday=0 .. Sunday=6
+    # Get this week's Monday
+    monday = today - timedelta(days=today.weekday())
+    # If today is Saturday (6) or Sunday (0 treated as end of week), use previous week
+    if today.weekday() >= 5:
+        monday = monday - timedelta(days=7)
+    friday = monday + timedelta(days=4)
+    start = monday.isoformat()
+    end = friday.isoformat()
+
+    # Query counts within the workweek range
+    cursor.execute("""
+        SELECT initials,
+               SUM(count) as weekly_total,
+               COUNT(DISTINCT date) as days_active
+        FROM engineer_stats
+        WHERE date BETWEEN ? AND ?
+        GROUP BY initials
+        ORDER BY weekly_total DESC
+    """, (start, end))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [
+        {
+            "initials": row[0],
+            "weeklyTotal": row[1] or 0,
+            "daysActive": row[2] or 0,
+            "consistency": round(((row[2] or 0) / 5.0) * 100, 1)  # % of Mon-Fri days active
+        }
+        for row in rows
+    ]
+
+def get_peak_hours() -> List[Dict]:
+    """Get hourly breakdown of erasures for today"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    today = get_today_str()
+    
+    # Extract hour from timestamp and count
+    cursor.execute("""
+        SELECT CAST(strftime('%H', ts) AS INTEGER) as hour,
+               COUNT(*) as count
+        FROM erasures
+        WHERE date(ts) = ?
+        GROUP BY hour
+        ORDER BY hour
+    """, (today,))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # Only return shift hours (8:00–15:00)
+    shift_hours = list(range(8, 16))
+    hourly_data = {i: 0 for i in shift_hours}
+    for row in rows:
+        if row[0] in hourly_data:
+            hourly_data[row[0]] = row[1]
+    return [{"hour": h, "count": hourly_data[h]} for h in shift_hours]
+
+def get_day_of_week_patterns() -> List[Dict]:
+    """Get average erasures by day of week over last 4 weeks"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get day of week (0=Sunday, 6=Saturday) and average counts
+    cursor.execute("""
+        SELECT CAST(strftime('%w', date) AS INTEGER) as dow,
+               AVG(erased) as avg_count
+        FROM daily_stats
+        WHERE date >= date('now', '-28 days')
+        GROUP BY dow
+        ORDER BY dow
+    """)
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    day_names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    
+    # Fill in missing days with 0
+    dow_data = {i: 0 for i in range(7)}
+    for row in rows:
+        dow_data[row[0]] = round(row[1], 1)
+    
+    return [{"day": day_names[i], "avgCount": dow_data[i]} for i in range(7)]
+
+
+def get_speed_challenge_stats(time_window: str = "am") -> List[Dict]:
+    """Get speed challenge stats for AM (8:00-12:00) or PM (13:30-15:45)"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    today = get_today_str()
+    
+    if time_window == "am":
+        start_hour, end_hour = 8, 12
+    else:  # pm
+        start_hour, end_hour = 13, 16
+    
+    cursor.execute("""
+        SELECT initials, COUNT(*) as count
+        FROM erasures
+        WHERE date = ? 
+          AND event = 'success'
+          AND initials IS NOT NULL
+          AND CAST(strftime('%H', ts) AS INTEGER) >= ?
+          AND CAST(strftime('%H', ts) AS INTEGER) < ?
+        GROUP BY initials
+        ORDER BY count DESC
+        LIMIT 5
+    """, (today, start_hour, end_hour))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [{"initials": row[0], "erasures": row[1]} for row in rows]
+
+
+def get_category_specialists(date_str: str = None) -> Dict[str, List[Dict]]:
+    """Get top 3 specialists for each device category from erasures table"""
+    if date_str is None:
+        date_str = get_today_str()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    categories = ["laptops_desktops", "servers", "macs", "mobiles"]
+    specialists = {}
+    
+    for category in categories:
+        cursor.execute("""
+            SELECT initials, COUNT(1) as total
+            FROM erasures
+            WHERE date = ? AND device_type = ? AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY total DESC
+            LIMIT 3
+        """, (date_str, category))
+        
+        rows = cursor.fetchall()
+        specialists[category] = [{"initials": row[0], "count": row[1]} for row in rows]
+    
+    conn.close()
+    return specialists
+
+
+def get_consistency_stats(date_str: str = None) -> List[Dict]:
+    """Get consistency rankings - steadiest pace"""
+    if date_str is None:
+        date_str = get_today_str()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT initials, ts
+        FROM erasures
+        WHERE date = ? AND event = 'success' AND initials IS NOT NULL
+        ORDER BY initials, ts
+    """, (date_str,))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    from collections import defaultdict
+    import statistics
+    
+    engineer_timestamps = defaultdict(list)
+    for initials, ts in rows:
+        try:
+            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            engineer_timestamps[initials].append(dt)
+        except:
+            continue
+    
+    consistency_scores = []
+    for initials, timestamps in engineer_timestamps.items():
+        if len(timestamps) < 3:
+            continue
+        
+        gaps = []
+        for i in range(1, len(timestamps)):
+            gap_seconds = (timestamps[i] - timestamps[i-1]).total_seconds()
+            gaps.append(gap_seconds / 60)
+        
+        if gaps:
+            avg_gap = statistics.mean(gaps)
+            std_dev = statistics.stdev(gaps) if len(gaps) > 1 else 0
+            consistency_scores.append({
+                "initials": initials,
+                "erasures": len(timestamps),
+                "avgGapMinutes": round(avg_gap, 1),
+                "consistencyScore": round(std_dev, 1)
+            })
+    
+    consistency_scores.sort(key=lambda x: x["consistencyScore"])
+    return consistency_scores[:5]
+
+
+def get_records_and_milestones() -> Dict:
+    """Get historical records and milestones"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT date, erased
+        FROM daily_stats
+        WHERE erased > 0
+        ORDER BY erased DESC
+        LIMIT 1
+    """)
+    best_day = cursor.fetchone()
+    
+    # Get top engineer all-time (total across all days) from raw erasure events
+    cursor.execute("""
+        SELECT initials, COUNT(1) AS total_count
+        FROM erasures
+        WHERE initials IS NOT NULL
+        GROUP BY initials
+        ORDER BY total_count DESC
+        LIMIT 1
+    """)
+    top_engineer = cursor.fetchone()
+    
+    target = 500
+    cursor.execute("""
+        SELECT date, erased
+        FROM daily_stats
+        WHERE date <= date('now')
+        ORDER BY date DESC
+        LIMIT 30
+    """)
+    recent_days = cursor.fetchall()
+    
+    streak = 0
+    for date_str, erased in recent_days:
+        if erased >= target:
+            streak += 1
+        else:
+            break
+    
+    # Overall erasures (all-time)
+    conn2 = sqlite3.connect(DB_PATH)
+    cursor2 = conn2.cursor()
+    cursor2.execute("SELECT COUNT(1) FROM erasures WHERE event = 'success'")
+    overall_erasures = cursor2.fetchone()[0]
+
+    # Most erased in 1 hour
+    cursor2.execute("""
+        SELECT date, strftime('%H', ts) as hour, COUNT(1) as count
+        FROM erasures
+        WHERE event = 'success'
+        GROUP BY date, hour
+        ORDER BY count DESC
+        LIMIT 1
+    """)
+    most_hour_row = cursor2.fetchone()
+    most_hour = {
+        "count": most_hour_row[2] if most_hour_row else 0,
+        "date": most_hour_row[0] if most_hour_row else None,
+        "hour": most_hour_row[1] if most_hour_row else None
+    }
+
+    # Most erased in 1 week
+    cursor2.execute("""
+        SELECT week, MAX(count) FROM (
+            SELECT strftime('%Y-%W', date) as week, COUNT(1) as count
+            FROM erasures
+            WHERE event = 'success'
+            GROUP BY week
+        )
+    """)
+    most_week_row = cursor2.fetchone()
+    most_week = {
+        "count": most_week_row[1] if most_week_row else 0,
+        "week": most_week_row[0] if most_week_row else None
+        # Optionally, you can add a representative date for the week
+    }
+
+    conn2.close()
+
+    conn.close()
+    return {
+        "bestDay": {
+            "date": best_day[0] if best_day else None,
+            "count": best_day[1] if best_day else 0
+        },
+        "topEngineer": {
+            "initials": top_engineer[0] if top_engineer else None,
+            "totalCount": top_engineer[1] if top_engineer else 0
+        },
+        "currentStreak": streak,
+        "overallErasures": overall_erasures,
+        "mostHour": most_hour,
+        "mostWeek": most_week
+    }
+
+
+def get_speed_challenge_status(time_window: str = "am") -> Dict:
+    """Get current status of speed challenge including time remaining"""
+    from datetime import time as dt_time
+    
+    now = datetime.now()
+    current_time = now.time()
+    
+    if time_window == "am":
+        start_time = dt_time(8, 0)
+        end_time = dt_time(12, 0)
+        window_name = "Morning Speed Challenge"
+    else:
+        start_time = dt_time(13, 30)
+        end_time = dt_time(15, 45)
+        window_name = "Afternoon Speed Challenge"
+    
+    is_active = start_time <= current_time < end_time
+    
+    time_remaining_minutes = 0
+    if is_active:
+        end_datetime = datetime.combine(now.date(), end_time)
+        time_remaining_minutes = int((end_datetime - now).total_seconds() / 60)
+    
+    return {
+        "window": time_window,
+        "name": window_name,
+        "isActive": is_active,
+        "timeRemainingMinutes": time_remaining_minutes,
+        "startTime": start_time.strftime("%H:%M"),
+        "endTime": end_time.strftime("%H:%M")
+    }
+
+
+def get_weekly_stats(date_str: str = None) -> Dict:
+    """Get statistics for the current week (past 7 days including today)"""
+    if date_str is None:
+        date_str = get_today_str()
+    
+    from datetime import timedelta, date as _date
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Compute Monday->Friday workweek. If today is Sat/Sun, return previous Mon->Fri
+    today = datetime.strptime(date_str, '%Y-%m-%d').date()
+    monday = today - timedelta(days=today.weekday())
+    if today.weekday() >= 5:
+        monday = monday - timedelta(days=7)
+    friday = monday + timedelta(days=4)
+    week_start = monday.strftime('%Y-%m-%d')
+    week_end = friday.strftime('%Y-%m-%d')
+
+    # Get all daily totals for the workweek (Mon-Fri)
+    cursor.execute("""
+        SELECT date, erased
+        FROM daily_stats
+        WHERE date >= ? AND date <= ?
+        ORDER BY date DESC
+    """, (week_start, week_end))
+
+    daily_totals = cursor.fetchall()
+
+    if not daily_totals:
+        conn.close()
+        return {
+            "weekTotal": 0,
+            "bestDayOfWeek": {"date": None, "count": 0},
+            "weekAverage": 0,
+            "daysActive": 0,
+            "weekStart": week_start,
+            "weekEnd": week_end
+        }
+
+    week_total = sum(total[1] for total in daily_totals)
+    best_day = max(daily_totals, key=lambda x: x[1])
+    days_active = len([t for t in daily_totals if t[1] > 0])
+    # Average across 5 workdays
+    week_average = round(week_total / 5) if len(daily_totals) > 0 else 0
+
+    conn.close()
+
+    return {
+        "weekTotal": week_total,
+        "bestDayOfWeek": {"date": best_day[0], "count": best_day[1]},
+        "weekAverage": week_average,
+        "daysActive": days_active,
+        "weekStart": week_start,
+        "weekEnd": week_end
+    }
+
+def get_performance_trends(target: int = 500) -> Dict:
+    """Get performance trends: WoW, MoM, rolling averages, and trend indicators"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    today = date.today()
+    
+    # Get current week total (last 7 days)
+    cursor.execute("""
+        SELECT COALESCE(SUM(erased), 0)
+        FROM daily_stats
+        WHERE date >= date('now', '-7 days')
+    """)
+    current_week_total = cursor.fetchone()[0]
+    
+    # Get previous week total (8-14 days ago)
+    cursor.execute("""
+        SELECT COALESCE(SUM(erased), 0)
+        FROM daily_stats
+        WHERE date >= date('now', '-14 days') AND date < date('now', '-7 days')
+    """)
+    previous_week_total = cursor.fetchone()[0]
+    
+    # Calculate WoW % change
+    wow_change = 0
+    if previous_week_total > 0:
+        wow_change = round(((current_week_total - previous_week_total) / previous_week_total) * 100, 1)
+    
+    # Get current month total
+    current_month = today.strftime('%Y-%m')
+    cursor.execute("""
+        SELECT COALESCE(SUM(erased), 0)
+        FROM daily_stats
+        WHERE date LIKE ?
+    """, (f"{current_month}%",))
+    current_month_total = cursor.fetchone()[0]
+    
+    # Get previous month total
+    from datetime import timedelta
+    first_of_month = today.replace(day=1)
+    last_month = first_of_month - timedelta(days=1)
+    previous_month = last_month.strftime('%Y-%m')
+    cursor.execute("""
+        SELECT COALESCE(SUM(erased), 0)
+        FROM daily_stats
+        WHERE date LIKE ?
+    """, (f"{previous_month}%",))
+    previous_month_total = cursor.fetchone()[0]
+    
+    # Calculate MoM % change
+    mom_change = 0
+    if previous_month_total > 0:
+        mom_change = round(((current_month_total - previous_month_total) / previous_month_total) * 100, 1)
+    
+    # Get rolling 7-day average
+    cursor.execute("""
+        SELECT COALESCE(AVG(erased), 0)
+        FROM daily_stats
+        WHERE date >= date('now', '-7 days')
+    """)
+    rolling_7day_avg = round(cursor.fetchone()[0], 1)
+    
+    # Determine trend indicator
+    trend = "STABLE"
+    if wow_change > 5:
+        trend = "IMPROVING"
+    elif wow_change < -5:
+        trend = "DECLINING"
+    
+    # Calculate vs target
+    vs_target_pct = round((rolling_7day_avg / target) * 100, 1) if target > 0 else 0
+    
+    conn.close()
+    
+    return {
+        "wowChange": wow_change,
+        "momChange": mom_change,
+        "rolling7DayAvg": rolling_7day_avg,
+        "trend": trend,
+        "vsTargetPct": vs_target_pct,
+        "currentWeekTotal": current_week_total,
+        "previousWeekTotal": previous_week_total,
+        "currentMonthTotal": current_month_total,
+        "previousMonthTotal": previous_month_total
+    }
+
+def get_target_achievement(target: int = 500) -> Dict:
+    """Get target achievement metrics: days hitting target, streaks, projections"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    today = date.today()
+    current_month = today.strftime('%Y-%m')
+    
+    # Get all days this month with their totals
+    cursor.execute("""
+        SELECT date, erased
+        FROM daily_stats
+        WHERE date LIKE ?
+        ORDER BY date
+    """, (f"{current_month}%",))
+    daily_totals = cursor.fetchall()
+    
+    # Days hitting target this month
+    days_hitting_target = len([d for d in daily_totals if d[1] >= target])
+    total_days_this_month = len(daily_totals)
+    hit_rate_pct = round((days_hitting_target / total_days_this_month) * 100, 1) if total_days_this_month > 0 else 0
+    
+    # Calculate current streak
+    current_streak = 0
+    streak_type = "above"
+    for date_str, total in reversed(daily_totals):
+        if total >= target:
+            current_streak += 1
+        else:
+            if current_streak == 0:
+                # We're in a below-target streak
+                streak_type = "below"
+                current_streak = 1
+            else:
+                break
+    
+    # Get month total and calculate projection
+    month_total = sum(d[1] for d in daily_totals)
+    days_in_month = (today.replace(month=today.month % 12 + 1, day=1) - timedelta(days=1)).day if today.month < 12 else 31
+    current_day = today.day
+    
+    daily_avg = round(month_total / current_day, 1) if current_day > 0 else 0
+    projected_month_total = round(daily_avg * days_in_month)
+    
+    # Calculate gap to monthly target
+    monthly_target = target * days_in_month
+    days_remaining = days_in_month - current_day
+    gap_to_target = monthly_target - month_total
+    daily_needed = round(gap_to_target / days_remaining, 1) if days_remaining > 0 else 0
+    
+    conn.close()
+    
+    return {
+        "daysHittingTarget": days_hitting_target,
+        "totalDaysThisMonth": total_days_this_month,
+        "hitRatePct": hit_rate_pct,
+        "currentStreak": current_streak,
+        "streakType": streak_type,
+        "projectedMonthTotal": projected_month_total,
+        "monthTotal": month_total,
+        "monthlyTarget": monthly_target,
+        "gapToTarget": gap_to_target,
+        "daysRemaining": days_remaining,
+        "dailyNeeded": daily_needed,
+        "daysInMonth": days_in_month
+    }
+
+def get_individual_engineer_kpis(initials: str) -> Dict:
+    """Get comprehensive KPI metrics for a specific engineer"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    today = date.today()
+    current_month = today.strftime('%Y-%m')
+    
+    # Get 7-day average
+    cursor.execute("""
+        SELECT COALESCE(AVG(count), 0)
+        FROM engineer_stats
+        WHERE initials = ? AND date >= date('now', '-7 days')
+    """, (initials,))
+    avg_7day = round(cursor.fetchone()[0], 1)
+    
+    # Get 30-day average
+    cursor.execute("""
+        SELECT COALESCE(AVG(count), 0)
+        FROM engineer_stats
+        WHERE initials = ? AND date >= date('now', '-30 days')
+    """, (initials,))
+    avg_30day = round(cursor.fetchone()[0], 1)
+    
+    # Get previous 7-day average (8-14 days ago) for trend calculation
+    cursor.execute("""
+        SELECT COALESCE(AVG(count), 0)
+        FROM engineer_stats
+        WHERE initials = ? AND date >= date('now', '-14 days') AND date < date('now', '-7 days')
+    """, (initials,))
+    prev_7day = round(cursor.fetchone()[0], 1)
+    
+    # Calculate trend
+    trend = "STABLE"
+    trend_pct = 0
+    if prev_7day > 0:
+        trend_pct = round(((avg_7day - prev_7day) / prev_7day) * 100, 1)
+        if trend_pct > 10:
+            trend = "IMPROVING"
+        elif trend_pct < -10:
+            trend = "DECLINING"
+    
+    # Get personal best (highest single day)
+    cursor.execute("""
+        SELECT date, count
+        FROM engineer_stats
+        WHERE initials = ?
+        ORDER BY count DESC
+        LIMIT 1
+    """, (initials,))
+    best_day = cursor.fetchone()
+    personal_best = best_day[1] if best_day else 0
+    best_date = best_day[0] if best_day else None
+    
+    # Get days active this month
+    cursor.execute("""
+        SELECT COUNT(DISTINCT date)
+        FROM engineer_stats
+        WHERE initials = ? AND date LIKE ?
+    """, (initials, f"{current_month}%"))
+    days_active_month = cursor.fetchone()[0]
+    
+    # Calculate consistency score (standard deviation of last 30 days - lower is better)
+    cursor.execute("""
+        SELECT count
+        FROM engineer_stats
+        WHERE initials = ? AND date >= date('now', '-30 days')
+    """, (initials,))
+    daily_counts = [row[0] for row in cursor.fetchall()]
+    
+    consistency_score = 0
+    if len(daily_counts) > 1:
+        mean = sum(daily_counts) / len(daily_counts)
+        variance = sum((x - mean) ** 2 for x in daily_counts) / len(daily_counts)
+        consistency_score = round(variance ** 0.5, 1)  # Standard deviation
+    
+    # Get breakdown by device type (last 30 days)
+    cursor.execute("""
+        SELECT device_type, SUM(count) as total, 
+               ROUND(AVG(count), 1) as avg_per_day
+        FROM engineer_stats_type
+        WHERE initials = ? AND date >= date('now', '-30 days')
+        GROUP BY device_type
+        ORDER BY total DESC
+    """, (initials,))
+    device_breakdown = [
+        {
+            "deviceType": row[0],
+            "total": row[1],
+            "avgPerDay": row[2]
+        }
+        for row in cursor.fetchall()
+    ]
+    
+    conn.close()
+    
+    return {
+        "initials": initials,
+        "avg7Day": avg_7day,
+        "avg30Day": avg_30day,
+        "trend": trend,
+        "trendPct": trend_pct,
+        "personalBest": personal_best,
+        "bestDate": best_date,
+        "daysActiveMonth": days_active_month,
+        "consistencyScore": consistency_score,
+        "deviceBreakdown": device_breakdown
+    }
+
+def get_all_engineers_kpis() -> List[Dict]:
+    """Get KPI metrics for all engineers (for CSV export)"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get list of all engineers with activity in last 30 days
+    cursor.execute("""
+        SELECT DISTINCT initials
+        FROM engineer_stats
+        WHERE date >= date('now', '-30 days') AND initials IS NOT NULL
+    """)
+    engineers = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    
+    return [get_individual_engineer_kpis(eng) for eng in engineers]
+
+# ===== Power BI Integration Functions =====
+def get_stats_range(start_date: str, end_date: str) -> List[Dict]:
+    """Get daily stats for a date range in Power BI-friendly format.
+    
+    Combines daily_stats table with live erasures data to ensure
+    today's data is included even if not yet in daily_stats.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get from daily_stats table
+    cursor.execute("""
+        SELECT date, booked_in, erased, qa
+        FROM daily_stats
+        WHERE date >= ? AND date <= ?
+        ORDER BY date
+    """, (start_date, end_date))
+    
+    rows = cursor.fetchall()
+    
+    result = [
+        {
+            "date": row[0],
+            "booked_in": row[1],
+            "erased": row[2],
+            "qa": row[3]
+        }
+        for row in rows
+    ]
+    
+    # Refresh today's row from live erasures data (daily_stats can lag)
+    today_str = date.today().isoformat()
+    existing_dates = {row["date"] for row in result}
+    
+    if start_date <= today_str <= end_date:
+        # Get today's count from erasures table directly
+        cursor.execute("""
+            SELECT COUNT(1) FROM erasures
+            WHERE date = ? AND event = 'success'
+        """, (today_str,))
+        erased_today = cursor.fetchone()[0] or 0
+
+        # Get booked_in and qa from daily_stats if exists, else 0
+        cursor.execute("""
+            SELECT booked_in, qa FROM daily_stats WHERE date = ?
+        """, (today_str,))
+        row = cursor.fetchone()
+        booked_in_today = row[0] if row else 0
+        qa_today = row[1] if row else 0
+
+        if today_str in existing_dates:
+            for item in result:
+                if item["date"] == today_str:
+                    item["booked_in"] = booked_in_today
+                    item["erased"] = erased_today
+                    item["qa"] = qa_today
+                    break
+        elif erased_today > 0 or booked_in_today > 0 or qa_today > 0:
+            result.append({
+                "date": today_str,
+                "booked_in": booked_in_today,
+                "erased": erased_today,
+                "qa": qa_today
+            })
+            result.sort(key=lambda x: x["date"])
+    
+    conn.close()
+    
+    return result
+
+def get_erasure_events_range(start_date: str, end_date: str, device_type: str = None) -> List[Dict]:
+    """Get detailed erasure events for a date range in Power BI-friendly format"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    if device_type:
+        cursor.execute("""
+            SELECT ts, date, month, event, device_type, initials, duration_sec, error_type, job_id
+            FROM erasures
+            WHERE date >= ? AND date <= ? AND device_type = ?
+            ORDER BY ts DESC
+        """, (start_date, end_date, device_type.lower()))
+    else:
+        cursor.execute("""
+            SELECT ts, date, month, event, device_type, initials, duration_sec, error_type, job_id
+            FROM erasures
+            WHERE date >= ? AND date <= ?
+            ORDER BY ts DESC
+        """, (start_date, end_date))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [
+        {
+            "timestamp": row[0],
+            "date": row[1],
+            "month": row[2],
+            "event": row[3],
+            "device_type": row[4],
+            "initials": row[5],
+            "duration_seconds": row[6],
+            "error_type": row[7],
+            "job_id": row[8]
+        }
+        for row in rows
+    ]
+
+def get_engineer_stats_range(start_date: str, end_date: str) -> List[Dict]:
+    """Get engineer stats for a date range in Power BI-friendly format.
+    
+    Combines engineer_stats table with live erasures data to ensure
+    today's data is included even if not yet synced.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get from engineer_stats table
+    cursor.execute("""
+        SELECT date, initials, count
+        FROM engineer_stats
+        WHERE date >= ? AND date <= ?
+        ORDER BY date DESC, count DESC
+    """, (start_date, end_date))
+    
+    rows = cursor.fetchall()
+    
+    result = [
+        {
+            "date": row[0],
+            "initials": row[1],
+            "count": row[2]
+        }
+        for row in rows
+    ]
+    
+    # Refresh today's rows from live erasures data (engineer_stats can lag)
+    today_str = date.today().isoformat()
+    if start_date <= today_str <= end_date:
+        # Remove any stale rows for today
+        result = [row for row in result if row["date"] != today_str]
+
+        # Get today's counts directly from erasures table
+        cursor.execute("""
+            SELECT initials, COUNT(1) as cnt
+            FROM erasures
+            WHERE date = ? AND event = 'success' AND initials IS NOT NULL
+            GROUP BY initials
+            ORDER BY cnt DESC
+        """, (today_str,))
+
+        today_rows = cursor.fetchall()
+        for row in today_rows:
+            result.append({
+                "date": today_str,
+                "initials": row[0],
+                "count": row[1]
+            })
+    
+    conn.close()
+    
+    return result
+
+def sync_engineer_stats_from_erasures(date_str: str = None):
+    """
+    Populate engineer_stats table from erasures table.
+    If date_str is provided, sync only that date.
+    If None, sync all dates from the last 30 days.
+    """
+    synced_count = 0
+    with sqlite_transaction() as (conn, cursor):
+        if date_str:
+            # Just one specific date
+            cursor.execute("""
+                SELECT DISTINCT initials 
+                FROM erasures 
+                WHERE date = ? AND initials IS NOT NULL
+            """, (date_str,))
+            records = [(date_str, row[0]) for row in cursor.fetchall()]
+        else:
+            # All recent dates with data (last 30 days)
+            cursor.execute("""
+                SELECT DISTINCT date, initials 
+                FROM erasures 
+                WHERE initials IS NOT NULL 
+                AND date >= date('now', '-30 days')
+            """)
+            records = cursor.fetchall()
+
+        for record in records:
+            if date_str:
+                target_date = record[0]
+                initials = record[1]
+            else:
+                target_date, initials = record
+
+            # Count successful erasures for this date+engineer
+            cursor.execute("""
+                SELECT COUNT(1) 
+                FROM erasures 
+                WHERE date = ? AND initials = ? AND event = 'success'
+            """, (target_date, initials))
+
+            count = cursor.fetchone()[0]
+
+            # Insert or replace in engineer_stats
+            cursor.execute("""
+                INSERT OR REPLACE INTO engineer_stats (date, initials, count)
+                VALUES (?, ?, ?)
+            """, (target_date, initials, count))
+            synced_count += 1
+    
+    if synced_count > 0:
+        print(f"[DB Sync] Synced {synced_count} engineer_stats records")
+    
+    return synced_count
+
+# Initialize DB only when run as a script (do not run on import)
+if __name__ == '__main__':
+    init_db()

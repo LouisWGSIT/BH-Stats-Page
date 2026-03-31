@@ -1,4 +1,2 @@
-from contextvars import ContextVar
-
-# Context variable to hold the current request id for logging correlation
-request_id = ContextVar('request_id', default=None)
+"""Compatibility shim: module moved to backend.request_context."""
+from backend.request_context import *  # noqa: F401,F403
