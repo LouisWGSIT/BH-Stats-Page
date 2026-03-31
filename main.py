@@ -23,8 +23,10 @@ import sqlite3
 import backend.qa_export as qa_export
 import routers.health as health_router
 from backend.app.routes.admin_activity import create_admin_activity_router
+from backend.app.routes.admin_backfill import create_admin_backfill_router
 from backend.app.routes.admin_devices import create_admin_devices_router
 from backend.app.routes.admin_diagnostics import create_admin_diagnostics_router
+from backend.app.routes.admin_exports import create_admin_exports_router
 from backend.app.routes.admin_initials import create_admin_initials_router
 from backend.app.routes.admin_maintenance import create_admin_maintenance_router
 from backend.app.routes.auth import create_auth_router
@@ -262,7 +264,6 @@ DASHBOARD_PUBLIC = os.getenv("DASHBOARD_PUBLIC", "false").lower() in ("1", "true
 # Device token storage (persistent across redeployments)
 DEVICE_TOKENS_FILE = "device_tokens.json"
 DEVICE_TOKENS_DB = os.getenv("DEVICE_TOKENS_DB", "").strip()
-POWERBI_API_KEY_FILE = os.path.join("config", "powerbi_api_key.txt")
 DEVICE_TOKEN_EXPIRY_DAYS = 7  # Remember device for 7 days
 
 QA_CACHE_TTL_SECONDS = float(os.getenv("QA_CACHE_TTL_SECONDS", "60"))
@@ -690,31 +691,6 @@ def save_device_tokens(tokens):
     except Exception as e:
         print(f"Error saving device tokens: {e}")
 
-def get_powerbi_api_key() -> str:
-    """Load or create a Power BI API key for service refreshes."""
-    env_key = os.getenv("POWERBI_API_KEY", "").strip()
-    if env_key:
-        return env_key
-
-    try:
-        if os.path.exists(POWERBI_API_KEY_FILE):
-            with open(POWERBI_API_KEY_FILE, "r") as f:
-                file_key = f.read().strip()
-            if file_key:
-                return file_key
-    except Exception as e:
-        print(f"Error reading Power BI API key file: {e}")
-
-    new_key = secrets.token_urlsafe(32)
-    try:
-        os.makedirs(os.path.dirname(POWERBI_API_KEY_FILE) or ".", exist_ok=True)
-        with open(POWERBI_API_KEY_FILE, "w") as f:
-            f.write(new_key)
-    except Exception as e:
-        print(f"Error saving Power BI API key file: {e}")
-    print("Power BI API key generated. Set POWERBI_API_KEY to override.")
-    return new_key
-
 def generate_device_token(user_agent: str, client_ip: str) -> str:
     """Generate a unique device token based on device fingerprint."""
     # Create fingerprint from user agent + IP
@@ -885,15 +861,6 @@ async def auth_middleware(request: Request, call_next):
         else:
             return await call_next(request)
 
-    # Allow Power BI API access via static API key
-    if request.url.path.startswith("/api/powerbi") and POWERBI_API_KEY:
-        auth_header = request.headers.get("Authorization", "")
-        header_key = request.headers.get("x-api-key") or request.headers.get("X-API-Key")
-        query_key = request.query_params.get("api_key")
-        bearer_key = auth_header[7:] if auth_header.startswith("Bearer ") else ""
-        if header_key == POWERBI_API_KEY or query_key == POWERBI_API_KEY or bearer_key == POWERBI_API_KEY:
-            return await call_next(request)
-    
     # Check for valid device token (remembered device)
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -1111,127 +1078,10 @@ async def ingest_local_erasure(request: Request):
     return JSONResponse(status_code=200, content={"ok": True, "inserted": True})
 
 
-@app.post("/admin/backfill-local-erasures")
-async def admin_backfill_local_erasures(request: Request):
-    """Admin-only: run a backfill from `erasures` -> `local_erasures`.
-
-    Query params (optional): `days` (default 7), `limit` (default 5000), `dry_run` (true/false)
-    Requires admin auth (admin password/token).
-    """
-    require_admin(request)
-    from urllib.parse import parse_qs
-    params = dict(request.query_params)
-    try:
-        days = int(params.get('days', 7))
-    except Exception:
-        days = 7
-    try:
-        limit = int(params.get('limit', 5000))
-    except Exception:
-        limit = 5000
-    dry_run = str(params.get('dry_run', 'false')).lower() in ('1','true','yes')
-
-    import sqlite3, os
-    from datetime import datetime, timedelta
-    try:
-        from database import DB_PATH, add_local_erasure
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"detail": f"DB helper import failed: {e}"})
-
-    if not os.path.exists(DB_PATH):
-        return JSONResponse(status_code=500, content={"detail": f"DB not found at {DB_PATH}"})
-
-    # Prevent concurrent backfills
-    if BACKFILL_PROGRESS.get('running'):
-        return JSONResponse(status_code=409, content={"detail": "Backfill already running"})
-
-    now = datetime.utcnow()
-    start = (now - timedelta(days=days)).isoformat()
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    q = (
-        "SELECT id, job_id, system_serial, ts, device_type, initials FROM erasures "
-        "WHERE event = 'success' AND ts >= ? ORDER BY ts ASC LIMIT ?"
-    )
-    try:
-        cur.execute(q, (start, limit))
-        rows = cur.fetchall()
-    except Exception as e:
-        cur.close(); conn.close()
-        return JSONResponse(status_code=500, content={"detail": f"query failed: {e}"})
-
-    inserted = 0
-    errors = []
-
-    # Initialize progress
-    try:
-        BACKFILL_PROGRESS['running'] = True
-        BACKFILL_PROGRESS['total'] = len(rows)
-        BACKFILL_PROGRESS['processed'] = 0
-        BACKFILL_PROGRESS['percent'] = 0
-        BACKFILL_PROGRESS['last_updated'] = datetime.utcnow().isoformat()
-        BACKFILL_PROGRESS['errors'] = []
-    except Exception:
-        pass
-
-    for idx, r in enumerate(rows):
-        eid, job_id, system_serial, ts, device_type, initials = r
-        jid = job_id if job_id else f"erasures-backfill-{eid}"
-        payload = {"source": "erasures-backfill", "device_type": device_type, "initials": initials}
-        if dry_run:
-            # update processed count for dry run visibility
-            try:
-                BACKFILL_PROGRESS['processed'] = idx + 1
-                BACKFILL_PROGRESS['percent'] = int((BACKFILL_PROGRESS['processed'] / (BACKFILL_PROGRESS['total'] or 1)) * 100)
-                BACKFILL_PROGRESS['last_updated'] = datetime.utcnow().isoformat()
-            except Exception:
-                pass
-            continue
-        try:
-            add_local_erasure(stockid=None, system_serial=system_serial, job_id=jid, ts=ts, warehouse=None, source="erasures-backfill", payload=payload)
-            inserted += 1
-        except Exception as e:
-            errors.append(str(e))
-            try:
-                BACKFILL_PROGRESS['errors'].append(str(e))
-            except Exception:
-                pass
-        finally:
-            try:
-                BACKFILL_PROGRESS['processed'] = idx + 1
-                BACKFILL_PROGRESS['percent'] = int((BACKFILL_PROGRESS['processed'] / (BACKFILL_PROGRESS['total'] or 1)) * 100)
-                BACKFILL_PROGRESS['last_updated'] = datetime.utcnow().isoformat()
-            except Exception:
-                pass
-
-    cur.close(); conn.close()
-    # Mark finished
-    try:
-        BACKFILL_PROGRESS['running'] = False
-        BACKFILL_PROGRESS['last_updated'] = datetime.utcnow().isoformat()
-    except Exception:
-        pass
-
-    return JSONResponse(status_code=200, content={"rows_considered": len(rows), "inserted": inserted, "errors": errors, "dry_run": dry_run})
-
 @app.get("/metrics/monthly-momentum")
 async def get_monthly_momentum():
     """Get weekly totals for the current month for monthly momentum chart"""
     return db.get_monthly_momentum()
-
-
-@app.get("/admin/backfill-status")
-def admin_backfill_status(request: Request):
-    """Return current backfill status. Accessible to manager or admin."""
-    try:
-        require_manager_or_admin(request)
-    except Exception:
-        raise
-    # Return a shallow copy to avoid external mutation
-    try:
-        return dict(BACKFILL_PROGRESS)
-    except Exception:
-        return BACKFILL_PROGRESS
 
 
 # Endpoint: Mon-Fri daily erasure totals for current week
@@ -1269,7 +1119,6 @@ app.add_middleware(
 )
 
 WEBHOOK_API_KEY = os.getenv("WEBHOOK_API_KEY", "6LVepDbZkbMwA66Gpl9bWherzT5wKfOl")
-POWERBI_API_KEY = get_powerbi_api_key()
 
 # Background task for daily reset
 async def check_daily_reset():
@@ -1366,127 +1215,6 @@ async def get_yesterday_metrics():
     return db.get_daily_stats(db.get_yesterday_str())
 
 # ===== Power BI Integration Endpoints =====
-@app.get("/api/powerbi/daily-stats")
-async def powerbi_daily_stats(start_date: str = None, end_date: str = None):
-    """
-    Power BI endpoint: Returns daily stats in a table format
-    Parameters:
-    - start_date: YYYY-MM-DD (optional, defaults to 30 days ago)
-    - end_date: YYYY-MM-DD (optional, defaults to today)
-    """
-    from datetime import datetime, timedelta
-    
-    if not end_date:
-        end_date = datetime.now().date().isoformat()
-    if not start_date:
-        start_date = (datetime.now().date() - timedelta(days=30)).isoformat()
-    
-    data = db.get_stats_range(start_date, end_date)
-    qa_data = []
-    try:
-        import qa_export
-        qa_data = qa_export.get_qa_daily_totals_range(
-            datetime.fromisoformat(start_date).date(),
-            datetime.fromisoformat(end_date).date()
-        )
-    except Exception as e:
-        print(f"Power BI QA daily merge error: {e}")
-
-    qa_by_date = {row.get("date"): row for row in qa_data}
-    for row in data:
-        qa_row = qa_by_date.get(row.get("date"), {})
-        row["qaApp"] = qa_row.get("qaApp", 0)  # Sorting scans
-        row["deQa"] = qa_row.get("deQa", 0)
-        row["nonDeQa"] = qa_row.get("nonDeQa", 0)
-        row["qaTotal"] = qa_row.get("qaTotal", 0)  # QA only (DE + Non-DE, no sorting)
-
-    return {"data": data}
-
-@app.get("/api/powerbi/erasure-events")
-async def powerbi_erasure_events(start_date: str = None, end_date: str = None, device_type: str = None):
-    """
-    Power BI endpoint: Returns detailed erasure events
-    Parameters:
-    - start_date: YYYY-MM-DD (optional)
-    - end_date: YYYY-MM-DD (optional)
-    - device_type: filter by device type (optional)
-    """
-    from datetime import datetime, timedelta
-    
-    if not end_date:
-        end_date = datetime.now().date().isoformat()
-    if not start_date:
-        start_date = (datetime.now().date() - timedelta(days=30)).isoformat()
-    
-    events = db.get_erasure_events_range(start_date, end_date, device_type)
-    return {"data": events}
-
-@app.get("/api/powerbi/engineer-stats")
-async def powerbi_engineer_stats(start_date: str = None, end_date: str = None):
-    """
-    Power BI endpoint: Returns engineer statistics
-    Parameters:
-    - start_date: YYYY-MM-DD (optional)
-    - end_date: YYYY-MM-DD (optional)
-    """
-    from datetime import datetime, timedelta
-    
-    if not end_date:
-        end_date = datetime.now().date().isoformat()
-    if not start_date:
-        start_date = (datetime.now().date() - timedelta(days=30)).isoformat()
-    
-    stats = db.get_engineer_stats_range(start_date, end_date)
-    return {"data": stats}
-
-@app.get("/api/powerbi/qa-daily")
-async def powerbi_qa_daily(start_date: str = None, end_date: str = None):
-    """
-    Power BI endpoint: Returns QA daily totals
-    Parameters:
-    - start_date: YYYY-MM-DD (optional, defaults to 30 days ago)
-    - end_date: YYYY-MM-DD (optional, defaults to today)
-    """
-    from datetime import datetime, timedelta
-    import qa_export
-
-    end = datetime.now().date() if not end_date else datetime.fromisoformat(end_date).date()
-    start = (end - timedelta(days=30)) if not start_date else datetime.fromisoformat(start_date).date()
-    daily = qa_export.get_qa_daily_totals_range(start, end)
-    return {"data": daily}
-
-@app.get("/api/powerbi/device-history")
-async def powerbi_device_history(start_date: str = None, end_date: str = None):
-    """
-    Power BI endpoint: Returns device history (erasure + sorting)
-    Parameters:
-    - start_date: YYYY-MM-DD (optional, defaults to 30 days ago)
-    - end_date: YYYY-MM-DD (optional, defaults to today)
-    """
-    from datetime import datetime, timedelta
-    import qa_export
-
-    end = datetime.now().date() if not end_date else datetime.fromisoformat(end_date).date()
-    start = (end - timedelta(days=30)) if not start_date else datetime.fromisoformat(start_date).date()
-    history = qa_export.get_device_history_range(start, end)
-    return {"data": history}
-
-@app.get("/api/powerbi/qa-engineer")
-async def powerbi_qa_engineer(start_date: str = None, end_date: str = None):
-    """
-    Power BI endpoint: Returns per-engineer QA daily breakdown
-    Parameters:
-    - start_date: YYYY-MM-DD (optional, defaults to 30 days ago)
-    - end_date: YYYY-MM-DD (optional, defaults to today)
-    """
-    from datetime import datetime, timedelta
-    import qa_export
-
-    end = datetime.now().date() if not end_date else datetime.fromisoformat(end_date).date()
-    start = (end - timedelta(days=30)) if not start_date else datetime.fromisoformat(start_date).date()
-    data = qa_export.get_qa_engineer_daily_breakdown_range(start, end)
-    return {"data": data}
-
 def _get_period_range(period: str):
     """Return (start_date, end_date, label) for a period string."""
     today = datetime.now().date()
@@ -2386,151 +2114,25 @@ app.include_router(
         take_tracemalloc_snapshot=take_tracemalloc_snapshot,
     )
 )
-
-@app.post("/export/excel")
-async def export_excel(req: Request):
-    """Generate multi-sheet Excel export of warehouse stats (manager only)"""
-    require_manager_or_admin(req)
-    
-    try:
-        body = await req.json()
-        sheets_data = body.get("sheetsData", {})
-        import logging
-        logger = logging.getLogger("export")
-        try:
-            # Log memory before heavy export
-            rss_before = None
-            try:
-                if psutil:
-                    rss_before = psutil.Process().memory_info().rss
-                else:
-                    try:
-                        import resource
-                        rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
-                    except Exception:
-                        rss_before = None
-            except Exception:
-                rss_before = None
-            logger.info("Excel export start: sheets=%d rss_before=%s", len(sheets_data), str(rss_before))
-        except Exception:
-            pass
-
-        # Save workbook directly to a temp file to avoid keeping large BytesIO in memory
-        fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
-        os.close(fd)
-        try:
-            excel_export.create_excel_report(sheets_data, output_path=tmp_path)
-        except Exception:
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
-            raise
-
-        # Log RSS after export and optionally take snapshot
-        try:
-            rss_after = None
-            if psutil:
-                rss_after = psutil.Process().memory_info().rss
-            else:
-                try:
-                    import resource
-                    rss_after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
-                except Exception:
-                    rss_after = None
-            logger.info("Excel export written to %s rss_after=%s", tmp_path, str(rss_after))
-            try:
-                if rss_after and TRACE_SNAPSHOT_THRESHOLD_MB and (rss_after > TRACE_SNAPSHOT_THRESHOLD_MB * 1024 * 1024):
-                    snap_path = take_tracemalloc_snapshot("export_threshold", {"sheets": len(sheets_data), "rss_after": rss_after})
-                    if snap_path:
-                        logger.warning("Tracemalloc snapshot written to %s due to export RSS %s", snap_path, rss_after)
-            except Exception:
-                pass
-        except Exception:
-            pass
-
-        filename = "warehouse-stats.xlsx"
-        return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=filename, background=BackgroundTask(lambda: os.remove(tmp_path)))
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback as _tb
-        print(f"Excel export error: {e}")
-        try:
-            global LAST_SERVER_ERROR
-            LAST_SERVER_ERROR = {
-                'ts': datetime.utcnow().isoformat(),
-                'path': '/export/excel',
-                'error': str(e),
-                'trace': _tb.format_exc()
-            }
-        except Exception:
-            pass
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/export/engineer-deepdive")
-async def export_engineer_deepdive(request: Request, period: str = "this_week"):
-    """Generate engineer deep-dive Excel export for a specific period (manager only)"""
-    require_manager_or_admin(request)
-    
-    try:
-        import engineer_export
-        period = period.replace("-", "_")
-        
-        # Ensure database schema is up-to-date
-        db.init_db()
-        
-        # Validate period
-        valid_periods = [
-            "this_week",
-            "last_week",
-            "this_month",
-            "last_month",
-            "this_year",
-            "last_year",
-            "last_year_h1",
-            "last_year_h2",
-            "last_available",
-        ]
-        if period not in valid_periods:
-            raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}")
-        
-        # Generate the analysis
-        sheets_data = engineer_export.generate_engineer_deepdive_export(period)
-        
-        # Create Excel file on disk to avoid large memory use
-        fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
-        os.close(fd)
-        try:
-            excel_export.create_excel_report(sheets_data, output_path=tmp_path)
-        except Exception:
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
-            raise
-
-        period_label = period.replace("_", "-")
-        filename = f"engineer-deepdive-{period_label}.xlsx"
-        return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=filename, background=BackgroundTask(lambda: os.remove(tmp_path)))
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback as _tb
-        print(f"Engineer deep-dive export error: {e}")
-        try:
-            global LAST_SERVER_ERROR
-            LAST_SERVER_ERROR = {
-                'ts': datetime.utcnow().isoformat(),
-                'path': '/export/engineer-deepdive',
-                'error': str(e),
-                'trace': _tb.format_exc()
-            }
-        except Exception:
-            pass
-        raise HTTPException(status_code=500, detail=str(e))
-
+app.include_router(
+    create_admin_backfill_router(
+        require_admin=require_admin,
+        require_manager_or_admin=require_manager_or_admin,
+        db_module=db,
+        progress_state=BACKFILL_PROGRESS,
+    )
+)
+app.include_router(
+    create_admin_exports_router(
+        require_manager_or_admin=require_manager_or_admin,
+        db_module=db,
+        excel_export_module=excel_export,
+        psutil_module=psutil,
+        trace_snapshot_threshold_mb=TRACE_SNAPSHOT_THRESHOLD_MB,
+        take_tracemalloc_snapshot=take_tracemalloc_snapshot,
+        set_last_server_error=lambda payload: globals().__setitem__("LAST_SERVER_ERROR", payload),
+    )
+)
 @app.get("/api/device-lookup/{stock_id}")
 async def device_lookup(stock_id: str, request: Request):
     """Search for a device across all data sources to trace its journey (manager only)"""
@@ -4691,11 +4293,22 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
     try:
 
         # Get merged daily stats (includes erased, qaApp, deQa, nonDeQa, qaTotal)
-        print("[Bottleneck-From-Dashboard] calling powerbi_daily_stats")
-        daily_resp = await powerbi_daily_stats(start_date=target_date, end_date=target_date)
-        daily_rows = daily_resp.get("data", []) if isinstance(daily_resp, dict) else []
+        print("[Bottleneck-From-Dashboard] loading daily stats directly")
+        daily_rows = db.get_stats_range(target_date, target_date)
+        try:
+            _d = _date.fromisoformat(target_date)
+            qa_daily = qa_export.get_qa_daily_totals_range(_d, _d)
+            qa_by_date = {row.get("date"): row for row in (qa_daily or [])}
+            for row in daily_rows:
+                qa_row = qa_by_date.get(row.get("date"), {})
+                row["qaApp"] = qa_row.get("qaApp", 0)
+                row["deQa"] = qa_row.get("deQa", 0)
+                row["nonDeQa"] = qa_row.get("nonDeQa", 0)
+                row["qaTotal"] = qa_row.get("qaTotal", 0)
+        except Exception:
+            pass
         daily = daily_rows[0] if daily_rows else {}
-        print(f"[Bottleneck-From-Dashboard] powerbi_daily_stats rows={len(daily_rows)}")
+        print(f"[Bottleneck-From-Dashboard] daily rows={len(daily_rows)}")
 
         # Get QA dashboard today to fetch per-engineer counts
         print("[Bottleneck-From-Dashboard] calling get_qa_dashboard_data")
@@ -4742,9 +4355,8 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
                     break
 
         # Get erasure events for the day and aggregate by initials
-        print("[Bottleneck-From-Dashboard] calling powerbi_erasure_events")
-        erasures_resp = await powerbi_erasure_events(start_date=target_date, end_date=target_date)
-        erasures = erasures_resp.get("data", []) if isinstance(erasures_resp, dict) else []
+        print("[Bottleneck-From-Dashboard] loading erasure events directly")
+        erasures = db.get_erasure_events_range(target_date, target_date, None)
         print(f"[Bottleneck-From-Dashboard] erasures rows={len(erasures)}")
         erasure_by_initials = {}
         for ev in erasures:
@@ -4754,9 +4366,9 @@ async def get_bottleneck_from_dashboard(date: str = None, qa_user: str = None):
             erasure_by_initials[init] = erasure_by_initials.get(init, 0) + 1
 
         # Find a sample pallet-scan by Owen in device history (stage == 'Sorting')
-        print("[Bottleneck-From-Dashboard] calling powerbi_device_history")
-        device_hist = await powerbi_device_history(start_date=target_date, end_date=target_date)
-        hist_rows = device_hist.get("data", []) if isinstance(device_hist, dict) else []
+        print("[Bottleneck-From-Dashboard] loading device history directly")
+        _d = _date.fromisoformat(target_date)
+        hist_rows = qa_export.get_device_history_range(_d, _d)
         print(f"[Bottleneck-From-Dashboard] device_history rows={len(hist_rows)}")
         owen_pallet_sample = None
         for row in hist_rows:
@@ -5130,149 +4742,6 @@ async def get_bottleneck_details(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.get("/export/qa-stats")
-async def export_qa_stats(
-    request: Request, 
-    period: str = "this_week",
-    start_year: int = None,
-    start_month: int = None,
-    end_year: int = None,
-    end_month: int = None
-):
-    """Generate QA stats Excel export for a specific period from MariaDB (manager only)"""
-    require_manager_or_admin(request)
-    
-    try:
-        import qa_export
-        period = period.replace("-", "_")
-        
-        # Ensure database schema is up-to-date
-        db.init_db()
-        
-        # Validate period
-        valid_periods = [
-            "this_week",
-            "last_week",
-            "this_month",
-            "last_month",
-            "this_year",
-            "last_year",
-            "last_year_h1",
-            "last_year_h2",
-            "last_available",
-            "custom_range",
-        ]
-        if period not in valid_periods:
-            print(f"QA export invalid period: {period}")
-            raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {', '.join(valid_periods)}")
-        
-        # Validate custom range parameters if specified
-        if period == "custom_range":
-            if not all([start_year, start_month, end_year, end_month]):
-                raise HTTPException(status_code=400, detail="Custom range requires start_year, start_month, end_year, end_month")
-            if start_month < 1 or start_month > 12 or end_month < 1 or end_month > 12:
-                raise HTTPException(status_code=400, detail="Month must be between 1 and 12")
-        
-        # For long periods (month+), use chunked export to avoid memory issues
-        long_periods = ["this_month", "last_month", "this_year", "last_year", "last_year_h1", "last_year_h2", "custom_range"]
-        
-        if period in long_periods:
-            # Generate chunked exports (weekly files in a ZIP)
-            chunks = qa_export.generate_qa_engineer_export_chunked(
-                period, 
-                start_year=start_year, 
-                start_month=start_month, 
-                end_year=end_year, 
-                end_month=end_month
-            )
-            
-            # If only one chunk, just return it directly
-            if len(chunks) == 1:
-                suffix, sheets_data = chunks[0]
-                # write single chunk to temp file
-                fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
-                os.close(fd)
-                try:
-                    excel_export.create_excel_report(sheets_data, output_path=tmp_path)
-                except Exception:
-                    try:
-                        os.unlink(tmp_path)
-                    except Exception:
-                        pass
-                    raise
-                period_label = period.replace("_", "-")
-                filename = f"qa-engineer-stats-{period_label}.xlsx"
-                return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=filename, background=BackgroundTask(lambda: os.remove(tmp_path)))
-            
-            # Multiple chunks - create ZIP file
-            # Create a temporary zip file and add each chunk file to it (avoid building all files in memory)
-            period_label = period.replace("_", "-")
-            fd_zip, tmp_zip_path = tempfile.mkstemp(suffix=".zip")
-            os.close(fd_zip)
-            try:
-                with zipfile.ZipFile(tmp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    for suffix, sheets_data in chunks:
-                        fd, tmp_xlsx = tempfile.mkstemp(suffix=".xlsx")
-                        os.close(fd)
-                        try:
-                            excel_export.create_excel_report(sheets_data, output_path=tmp_xlsx)
-                            excel_filename = f"qa-engineer-stats-{period_label}{suffix}.xlsx"
-                            zip_file.write(tmp_xlsx, arcname=excel_filename)
-                        finally:
-                            try:
-                                os.remove(tmp_xlsx)
-                            except Exception:
-                                pass
-                zip_filename = f"qa-engineer-stats-{period_label}-weekly.zip"
-                return FileResponse(tmp_zip_path, media_type="application/zip", filename=zip_filename, background=BackgroundTask(lambda: os.remove(tmp_zip_path)))
-            except Exception:
-                try:
-                    os.remove(tmp_zip_path)
-                except Exception:
-                    pass
-                raise
-        
-        # Short periods - single file export
-        sheets_data = qa_export.generate_qa_engineer_export(
-            period, 
-            start_year=start_year, 
-            start_month=start_month, 
-            end_year=end_year, 
-            end_month=end_month
-        )
-        
-        # Create Excel file on disk to avoid large memory use
-        fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
-        os.close(fd)
-        try:
-            excel_export.create_excel_report(sheets_data, output_path=tmp_path)
-        except Exception:
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
-            raise
-
-        period_label = period.replace("_", "-")
-        filename = f"qa-engineer-stats-{period_label}.xlsx"
-        return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=filename, background=BackgroundTask(lambda: os.remove(tmp_path)))
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback as _tb
-        print(f"QA stats export error: {e}")
-        try:
-            global LAST_SERVER_ERROR
-            LAST_SERVER_ERROR = {
-                'ts': datetime.utcnow().isoformat(),
-                'path': '/export/qa-stats',
-                'error': str(e),
-                'trace': _tb.format_exc()
-            }
-        except Exception:
-            pass
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/qa-dashboard")
 async def get_qa_dashboard_data(period: str = "this_week"):

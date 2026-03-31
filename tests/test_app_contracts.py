@@ -234,3 +234,23 @@ def test_admin_delete_event_requires_job_id(client):
 def test_admin_memory_snapshot_requires_admin(client):
     r = client.post("/admin/memory-snapshot", json={"reason": "test"})
     assert r.status_code == 401
+
+
+def test_export_excel_requires_manager_or_admin(client):
+    r = client.post("/export/excel", json={"sheetsData": {}})
+    assert r.status_code == 401
+
+
+def test_export_qa_stats_rejects_invalid_period_for_manager(client):
+    r = client.get("/export/qa-stats?period=not_a_period", headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 400
+
+
+def test_powerbi_endpoints_removed(client):
+    r = client.get("/api/powerbi/engineer-stats", headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 404
+
+
+def test_backfill_status_requires_manager_or_admin(client):
+    r = client.get("/admin/backfill-status")
+    assert r.status_code in (401, 403)
