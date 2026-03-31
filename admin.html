@@ -485,6 +485,7 @@
                     <div style="display:flex;align-items:center;gap:12px;">
                         <div style="font-size:13px;color:#666;">Memory (RSS):</div>
                         <div id="memoryValue" style="font-weight:800;color:#0a84ff;">-</div>
+                        <div id="memoryWarnBadge" style="display:none;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#ffe8cc;color:#b45309;border:1px solid #f59e0b;">⚠ High memory</div>
                         <div id="memorySparkline" style="flex:1;min-width:180px;max-width:420px;height:36px;"></div>
                     </div>
                     <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
@@ -1351,6 +1352,44 @@
 
         // -------- Dashboard Activity (admin) --------
         let _activityAutoTimer = null;
+        let _activityRecentEvents = [];
+        const MEMORY_LIMIT_BYTES = 512 * 1024 * 1024;
+        const MEMORY_WARN_BYTES = Math.floor(MEMORY_LIMIT_BYTES * 0.8);
+
+        function toUtcMillis(ts) {
+            if (!ts) return null;
+            const hasZone = /([zZ]|[+-]\d{2}:\d{2}|[+-]\d{4})$/.test(ts);
+            const normalized = hasZone ? ts : `${ts}Z`;
+            const ms = Date.parse(normalized);
+            return Number.isFinite(ms) ? ms : null;
+        }
+
+        function formatBytesWithMb(bytes) {
+            const b = Number(bytes || 0);
+            const mb = b / (1024 * 1024);
+            return `${b.toLocaleString()} (${mb.toFixed(1)} MB)`;
+        }
+
+        function updateMemoryWarningBadge(bytes) {
+            const badge = document.getElementById('memoryWarnBadge');
+            if (!badge) return;
+            const rss = Number(bytes || 0);
+            if (!rss) {
+                badge.style.display = 'none';
+                return;
+            }
+            const pct = (rss / MEMORY_LIMIT_BYTES) * 100;
+            if (rss >= MEMORY_WARN_BYTES) {
+                badge.style.display = 'inline-block';
+                badge.textContent = `⚠ ${pct.toFixed(0)}% of 512MB`;
+                badge.style.background = '#fee2e2';
+                badge.style.color = '#991b1b';
+                badge.style.borderColor = '#ef4444';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
         async function fetchAdminActivity() {
             const summaryEl = document.getElementById('activitySummary');
             const container = document.getElementById('activityContainer');
@@ -1362,6 +1401,7 @@
                 const res = await fetch('/admin/activity', { headers: getAuthHeaders(false) });
                 if (!res.ok) throw new Error('Failed to fetch activity');
                 const data = await res.json();
+                _activityRecentEvents = Array.isArray(data.recent) ? data.recent : [];
                 summaryEl.style.display = 'block';
                 summaryEl.innerHTML = `<strong>Events (24h):</strong> ${data.counts.total_events} — <strong>Exports:</strong> ${data.counts.exports} — <strong>Device searches:</strong> ${data.counts.device_searches} — <strong>Fix initials:</strong> ${data.counts.fix_initials} — <strong>Unique IPs:</strong> ${data.counts.unique_client_ips}`;
                 // Connected devices summary
@@ -1436,22 +1476,25 @@
                 memPanel.style.display = 'block';
                 if (!series.length) {
                     memVal.textContent = '-';
+                    updateMemoryWarningBadge(0);
                     renderInlineSparkline(spark, []);
-                    updateMemoryChart([]);
+                    updateMemoryChart([], _activityRecentEvents, bucket);
                     return;
                 }
                 const last = series[series.length-1].v || 0;
-                memVal.textContent = last.toLocaleString();
+                memVal.textContent = formatBytesWithMb(last);
+                updateMemoryWarningBadge(last);
                 renderInlineSparkline(spark, series.map(s => s.v));
                 // Ensure Chart.js loaded and update Chart.js chart
                 try { await ensureChartLoaded(); } catch (e) { console.warn('Chart load failed', e); }
-                updateMemoryChart(series);
+                updateMemoryChart(series, _activityRecentEvents, bucket);
             } catch (e) {
                 memPanel.style.display = 'block';
                 memVal.textContent = '-';
+                updateMemoryWarningBadge(0);
                 renderInlineSparkline(spark, []);
                 try { await ensureChartLoaded(); } catch (ee) { /* ignore */ }
-                updateMemoryChart([]);
+                updateMemoryChart([], _activityRecentEvents, bucket);
             }
         }
 
@@ -1470,6 +1513,15 @@
                         backgroundColor: 'rgba(10,132,255,0.08)',
                         tension: 0.2,
                         pointRadius: 0
+                    }, {
+                        label: 'Memory jump markers',
+                        data: [],
+                        showLine: false,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#ef4444',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 1
                     }]
                 },
                 options: {
@@ -1485,21 +1537,76 @@
                             title: { display: false }
                         }
                     },
-                    plugins: { legend: { display: false } }
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    if (context.datasetIndex === 1) {
+                                        const meta = context.dataset.markerMeta && context.dataset.markerMeta[context.dataIndex];
+                                        if (meta) {
+                                            const mb = (meta.delta / (1024 * 1024)).toFixed(1);
+                                            return `Jump +${mb} MB near ${meta.path || 'unknown event'}`;
+                                        }
+                                    }
+                                    const value = Number(context.parsed.y || 0);
+                                    return formatBytesWithMb(value);
+                                }
+                            }
+                        }
+                    }
                 }
             };
             memoryChart = new Chart(ctx.getContext('2d'), config);
             return memoryChart;
         }
 
-        function updateMemoryChart(series) {
+        function updateMemoryChart(series, recentEvents = [], bucketSeconds = 10) {
             try {
                 const chart = initMemoryChart();
                 if (!chart) return;
                 const labels = series.map(s => s.ts);
                 const data = series.map(s => s.v);
+                const labelMs = series.map(s => toUtcMillis(s.ts));
+                const markerData = Array(series.length).fill(null);
+                const markerMeta = Array(series.length).fill(null);
+
+                for (let i = 1; i < series.length; i++) {
+                    const prev = Number(series[i - 1].v || 0);
+                    const curr = Number(series[i].v || 0);
+                    const delta = curr - prev;
+                    const jumpThreshold = Math.max(2 * 1024 * 1024, Math.floor(prev * 0.02)); // >=2MB and meaningful
+                    if (delta < jumpThreshold) continue;
+
+                    const startMs = labelMs[i - 1];
+                    const endMs = labelMs[i];
+                    if (!startMs || !endMs) continue;
+                    const windowEnd = endMs + (bucketSeconds * 1000);
+
+                    let nearest = null;
+                    let nearestDist = Number.POSITIVE_INFINITY;
+                    for (const ev of recentEvents || []) {
+                        const evPath = ev && ev.path ? String(ev.path) : '';
+                        const evTs = toUtcMillis(ev && ev.ts ? ev.ts : null);
+                        if (!evTs || !evPath) continue;
+                        if (evTs < startMs || evTs > windowEnd) continue;
+                        const dist = Math.abs(endMs - evTs);
+                        if (dist < nearestDist) {
+                            nearestDist = dist;
+                            nearest = { path: evPath, ts: ev.ts, delta };
+                        }
+                    }
+
+                    if (nearest) {
+                        markerData[i] = curr;
+                        markerMeta[i] = nearest;
+                    }
+                }
+
                 chart.data.labels = labels;
                 chart.data.datasets[0].data = data;
+                chart.data.datasets[1].data = markerData;
+                chart.data.datasets[1].markerMeta = markerMeta;
                 chart.update();
             } catch (e) { console.warn('updateMemoryChart failed', e); }
         }
