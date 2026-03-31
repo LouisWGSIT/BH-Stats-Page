@@ -254,3 +254,21 @@ def test_powerbi_endpoints_removed(client):
 def test_backfill_status_requires_manager_or_admin(client):
     r = client.get("/admin/backfill-status")
     assert r.status_code in (401, 403)
+
+
+def test_erasure_insights_returns_expected_shape(client, app_module, monkeypatch):
+    monkeypatch.setattr(
+        app_module.db,
+        "get_stats_range",
+        lambda *_args, **_kwargs: [{"date": "2026-01-01", "erased": 5}],
+    )
+    monkeypatch.setattr(
+        app_module.db,
+        "get_engineer_stats_range",
+        lambda *_args, **_kwargs: [{"date": "2026-01-01", "initials": "AA", "count": 5}],
+    )
+    r = client.get("/api/insights/erasure?period=today", headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert "total" in body
+    assert "avgPerDay" in body
