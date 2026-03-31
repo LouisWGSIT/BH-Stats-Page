@@ -184,3 +184,53 @@ def test_admin_db_processlist_handles_db_unavailable(client, app_module, monkeyp
     assert r.status_code == 503
     body = r.json()
     assert body["status"] == "fail"
+
+
+def test_admin_initials_list_requires_admin(client):
+    r = client.get("/admin/initials-list")
+    assert r.status_code == 401
+
+
+def test_admin_fix_and_undo_initials_flow(client, app_module):
+    with app_module.db.sqlite_transaction() as (_, cur):
+        cur.execute("DELETE FROM erasures")
+        cur.execute("DELETE FROM admin_action_rows")
+        cur.execute("DELETE FROM admin_actions")
+        cur.execute(
+            "INSERT INTO erasures (ts, initials, event, date, month) VALUES (?, ?, ?, ?, ?)",
+            ("2026-01-01T00:00:00", "AA", "success", "2026-01-01", "2026-01"),
+        )
+        cur.execute(
+            "INSERT INTO erasures (ts, initials, event, date, month) VALUES (?, ?, ?, ?, ?)",
+            ("2026-01-01T00:01:00", "AA", "success", "2026-01-01", "2026-01"),
+        )
+
+    fix_resp = client.post(
+        "/admin/fix-initials",
+        headers={"Authorization": "Bearer test-admin-pass"},
+        json={"from": "AA", "to": "BB", "limit": 1},
+    )
+    assert fix_resp.status_code == 200
+    fix_body = fix_resp.json()
+    assert fix_body["status"] == "ok"
+    assert fix_body["affected_records"] == 1
+    assert fix_body["available_records"] == 2
+
+    undo_resp = client.post(
+        "/admin/undo-last-initials",
+        headers={"Authorization": "Bearer test-admin-pass"},
+    )
+    assert undo_resp.status_code == 200
+    undo_body = undo_resp.json()
+    assert undo_body["status"] == "ok"
+    assert undo_body["undone"] == 1
+
+
+def test_admin_delete_event_requires_job_id(client):
+    r = client.post("/admin/delete-event", headers={"Authorization": "Bearer test-admin-pass"}, json={})
+    assert r.status_code == 400
+
+
+def test_admin_memory_snapshot_requires_admin(client):
+    r = client.post("/admin/memory-snapshot", json={"reason": "test"})
+    assert r.status_code == 401
