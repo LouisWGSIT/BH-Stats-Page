@@ -15,8 +15,8 @@ DB_FETCH_LOG_ROWS = int(os.getenv('DB_FETCH_LOG_ROWS', '5000'))
 DB_BATCH_LOG_EVERY = int(os.getenv('DB_BATCH_LOG_EVERY', '10'))
 
 # MariaDB Connection Config - read from environment for security
-MARIADB_HOST = os.getenv("MARIADB_HOST", "77.68.90.229")
-MARIADB_USER = os.getenv("MARIADB_USER", "louiswhitehouse")
+MARIADB_HOST = os.getenv("MARIADB_HOST", "")
+MARIADB_USER = os.getenv("MARIADB_USER", "")
 MARIADB_PASSWORD = os.getenv("MARIADB_PASSWORD", "")
 MARIADB_DB = os.getenv("MARIADB_DB", "")
 MARIADB_PORT = int(os.getenv("MARIADB_PORT", "3306"))

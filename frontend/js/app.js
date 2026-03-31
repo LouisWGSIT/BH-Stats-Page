@@ -3991,12 +3991,11 @@ function renderSVGSparkline(svgElem, data) {
     showExportLoading();
 
     try {
-      // Fetch with authentication header
-      const response = await fetch(exportUrl, {
-        headers: {
-          'Authorization': 'Bearer Gr33n5af3!'
-        }
-      });
+      // Reuse active auth token when available; do not hardcode credentials.
+      const existingToken = sessionStorage.getItem('authToken') || localStorage.getItem('deviceToken');
+      const response = await fetch(exportUrl, existingToken ? {
+        headers: { 'Authorization': 'Bearer ' + existingToken }
+      } : {});
 
       if (!response.ok) {
         throw new Error(`Export failed: ${response.statusText}`);

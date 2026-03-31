@@ -25,6 +25,11 @@ venv/
 logs/*.jsonl
 warehouse_stats.db
 device_tokens.json
+*.db
+*.sqlite
+logs/*.sqlite
+scripts/inspect_output.json
+scripts/inspect_summary.json
 .pytest_cache/
 .pytest_tmp/
 tests/__pycache__/

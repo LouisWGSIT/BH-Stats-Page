@@ -217,8 +217,8 @@ LOCAL_NETWORKS = [
 ]
 
 # Manager and admin passwords for external access (set via environment or use defaults)
-MANAGER_PASSWORD = os.getenv("DASHBOARD_MANAGER_PASSWORD", "Gr33n5af3!")
-ADMIN_PASSWORD = os.getenv("DASHBOARD_ADMIN_PASSWORD", "P!nkarrow")
+MANAGER_PASSWORD = os.getenv("DASHBOARD_MANAGER_PASSWORD", "")
+ADMIN_PASSWORD = os.getenv("DASHBOARD_ADMIN_PASSWORD", "")
 
 # If set to a truthy value, allow read-only public GET access to dashboard metrics
 # Use only for short-lived public tests (e.g., Lighthouse). Defaults to false.
@@ -853,7 +853,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-WEBHOOK_API_KEY = os.getenv("WEBHOOK_API_KEY", "6LVepDbZkbMwA66Gpl9bWherzT5wKfOl")
+WEBHOOK_API_KEY = os.getenv("WEBHOOK_API_KEY", "")
 
 @app.on_event("startup")
 async def startup_event():
