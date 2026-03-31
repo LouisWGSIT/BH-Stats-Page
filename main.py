@@ -70,9 +70,7 @@ def take_tracemalloc_snapshot(reason: str = "threshold", meta: dict | None = Non
             if meta:
                 f.write(f"Meta: {json.dumps(meta)}\n")
             try:
-                rss = None
-                if psutil:
-                    rss = psutil.Process().memory_info().rss
+                rss = get_process_rss_bytes()
                 f.write(f"Process RSS: {rss}\n\n")
             except Exception:
                 pass
@@ -182,12 +180,7 @@ async def add_request_id_middleware(request: Request, call_next):
             if do_record:
                 dur = int((time() - start_ts) * 1000)
                 client_ip = get_client_ip(request) if 'get_client_ip' in globals() else (request.client.host if request.client else '0.0.0.0')
-                rss = None
-                try:
-                    if psutil:
-                        rss = psutil.Process().memory_info().rss
-                except Exception:
-                    rss = None
+                rss = get_process_rss_bytes()
                 record_activity({
                     'ts': datetime.utcnow().isoformat(),
                     'request_id': rid,
@@ -352,6 +345,36 @@ async def memory_watchdog():
 # Activity log (in-memory ring buffer). Each entry: {ts, path, method, role, client_ip, note, rss}
 ACTIVITY_LOG = deque(maxlen=5000)
 
+def get_process_rss_bytes() -> int | None:
+    """Best-effort process RSS in bytes, even when psutil is unavailable."""
+    try:
+        if psutil:
+            return psutil.Process().memory_info().rss
+    except Exception:
+        pass
+
+    # Linux /proc fallback (current RSS)
+    try:
+        with open('/proc/self/status', 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                if line.startswith('VmRSS:'):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        return int(parts[1]) * 1024
+    except Exception:
+        pass
+
+    # Linux/macOS fallback via resource (often high-water mark)
+    try:
+        import resource
+        rss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        # Heuristic: Linux values are typically in KiB range
+        return rss * 1024 if rss < (10**10) else rss
+    except Exception:
+        pass
+
+    return None
+
 def record_activity(entry: dict):
     try:
         # Ensure timestamp in ISO
@@ -382,6 +405,10 @@ ACTIVITY_EXCLUDE_PREFIXES = [
     '/health',
     '/static'
 ]
+ACTIVITY_EXCLUDE_EXACT = {
+    '/admin/activity',
+    '/admin/activity/memory-series',
+}
 
 def should_record_request(request: Request) -> bool:
     """Return True if the request should be recorded in activity log.
@@ -394,6 +421,11 @@ def should_record_request(request: Request) -> bool:
     try:
         path = request.url.path or ''
         method = request.method or 'GET'
+
+        # Skip noisy admin self-observability refresh endpoints.
+        # These are user-triggered diagnostics and can flood the table.
+        if path in ACTIVITY_EXCLUDE_EXACT:
+            return False
 
         # Always record exports and important admin/device actions
         if '/export' in path or '/api/device-lookup' in path or path.startswith('/admin'):

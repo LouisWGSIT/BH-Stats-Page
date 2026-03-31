@@ -434,6 +434,10 @@
                 </div>
                 <button onclick="fixInitials()" id="fixBtn">Fix Initials</button>
                 <button onclick="undoLastInitials()" id="undoFixBtn" style="margin-left:10px;">Undo Last Transfer</button>
+                <div id="initialsSummaryContainer" class="stats" style="margin-top: 16px;">
+                    <h3 style="margin-bottom: 8px;">Current Initials Snapshot</h3>
+                    <div id="initialsSummaryContent" style="color:#777;font-size:13px;">Loading initials...</div>
+                </div>
                 <div id="fixResult" class="result"></div>
                 <div id="undoFixResult" class="result"></div>
             </div>
@@ -907,7 +911,7 @@
             if (!ok) return;
             applyRoleVisibility();
             if (userRole === 'admin') {
-                populateFromDropdown();
+                refreshInitialsDropdowns();
                 loadConnectedDevices();
                 // Load activity and enable auto-poll checkbox wiring
                 try { fetchAdminActivity(); } catch (e) { /* ignore */ }
@@ -973,9 +977,36 @@
                         hint.textContent = count ? `Max available: ${count}` : '';
                     }
                 };
+                return initials;
             } catch (error) {
                 console.error('Error loading initials dropdown:', error);
+                return [];
             }
+        }
+
+        function renderInitialsSummary(initials) {
+            const content = document.getElementById('initialsSummaryContent');
+            if (!content) return;
+            if (!initials || initials.length === 0) {
+                content.innerHTML = '<p style="color:#999;">No initials data available.</p>';
+                return;
+            }
+
+            let html = '<div class="stats-grid">';
+            initials.forEach(item => {
+                const raw = item.initials;
+                const isEmpty = raw === '(unassigned)' || !raw || String(raw).trim() === '';
+                const displayName = isEmpty ? '(No Initials)' : raw;
+                const bgColor = isEmpty ? 'border-left-color: #ff6b6b;' : '';
+                html += `
+                    <div class="stat-card" style="${bgColor}">
+                        <div class="stat-value">${item.count}</div>
+                        <div class="stat-label">${displayName}</div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            content.innerHTML = html;
         }
 
         async function refreshInitialsDropdowns() {
@@ -985,9 +1016,14 @@
                     btn.disabled = true;
                     btn.textContent = '⟳';
                 }
-                await populateFromDropdown();
+                const initials = await populateFromDropdown();
+                renderInitialsSummary(initials);
             } catch (error) {
                 console.error('Error refreshing initials dropdowns:', error);
+                const content = document.getElementById('initialsSummaryContent');
+                if (content) {
+                    content.innerHTML = `<p style="color:#c00;">Error refreshing initials: ${error.message}</p>`;
+                }
             } finally {
                 if (btn) {
                     btn.disabled = false;
