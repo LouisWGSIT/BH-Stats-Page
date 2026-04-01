@@ -152,42 +152,37 @@
         };
     const { reportTitle, reportSubtitle } = titles;
     
-    let csvRows;
-    if (csvHelpers.buildCsvRows) {
-      csvRows = await csvHelpers.buildCsvRows({
-        reportTitle,
-        reportSubtitle,
-        time,
-        target,
-        isMonthlyReport,
-        isWeeklyReport,
-        isThisMonth,
-        isLastMonth,
-        isThisWeek,
-        isLastWeek,
-        dateRangeStr,
-        targetDate,
-        daysInMonth,
-        daysRemaining,
-        monthTotal,
-        todayTotal,
-        dailyAvg,
-        projectedTotal,
-        progressPercent,
-        statusIndicator,
-        monthProgressPercent,
-        allEngineersRows,
-        engineerKPIs,
-        categoryRows,
-        categoryTopPerformers,
-      });
-    } else {
-      csvRows = [
-        [reportTitle],
-        [reportSubtitle],
-        ['Generated:', new Date().toLocaleDateString('en-GB')],
-      ];
+    if (!csvHelpers.buildCsvRows) {
+      throw new Error('CSV export unavailable: ExportCsvHelpers.buildCsvRows is not loaded');
     }
+
+    const csvRows = await csvHelpers.buildCsvRows({
+      reportTitle,
+      reportSubtitle,
+      time,
+      target,
+      isMonthlyReport,
+      isWeeklyReport,
+      isThisMonth,
+      isLastMonth,
+      isThisWeek,
+      isLastWeek,
+      dateRangeStr,
+      targetDate,
+      daysInMonth,
+      daysRemaining,
+      monthTotal,
+      todayTotal,
+      dailyAvg,
+      projectedTotal,
+      progressPercent,
+      statusIndicator,
+      monthProgressPercent,
+      allEngineersRows,
+      engineerKPIs,
+      categoryRows,
+      categoryTopPerformers,
+    });
 
     return csvRows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
   }

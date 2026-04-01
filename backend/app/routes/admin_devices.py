@@ -37,7 +37,6 @@ def create_admin_devices_router(
                     "client_ip": info.get("last_client_ip") or info.get("client_ip"),
                     "client_ips": info.get("client_ips") or [],
                     "last_seen": info.get("last_seen"),
-                    "locked": info.get("locked", False),
                 }
             )
         devices.sort(key=lambda d: d.get("last_seen") or "", reverse=True)
@@ -78,26 +77,6 @@ def create_admin_devices_router(
                 del tokens[token]
                 save_device_tokens(tokens)
             return {"revoked": True}
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-
-    @router.post("/admin/lock-device")
-    async def admin_lock_device(request: Request):
-        require_admin(request)
-        try:
-            body = await request.json()
-            token = body.get("token")
-            lock = bool(body.get("lock", True))
-            if not token:
-                raise HTTPException(status_code=400, detail="token required")
-            tokens = load_device_tokens()
-            if token not in tokens:
-                raise HTTPException(status_code=404, detail="token not found")
-            tokens[token]["locked"] = lock
-            save_device_tokens(tokens)
-            return {"token": token, "locked": lock}
         except HTTPException:
             raise
         except Exception as exc:

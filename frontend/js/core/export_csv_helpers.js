@@ -380,7 +380,7 @@
         const lead = parseInt(allEngineersRows[0][2]);
         const second = parseInt(allEngineersRows[1][2]);
         const gap = lead - second;
-        const gapPercent = Math.round((gap / second) * 100);
+        const gapPercent = second > 0 ? Math.round((gap / second) * 100) : 100;
         csv.push([]);
         csv.push(['RACE ANALYSIS']);
         csv.push(['Leader', allEngineersRows[0][1]]);

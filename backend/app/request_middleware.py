@@ -45,6 +45,7 @@ def create_request_id_middleware(
                             'path': request.url.path,
                             'method': request.method,
                             'client_ip': client_ip,
+                            'user_agent': (request.headers.get('User-Agent') or '')[:256],
                             'status_code': getattr(response, 'status_code', None),
                             'duration_ms': dur,
                             'rss': rss,

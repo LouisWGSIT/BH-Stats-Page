@@ -143,6 +143,40 @@ def test_external_tv_user_agent_with_saved_viewer_token_can_refresh(client, app_
     assert r.status_code == 200
 
 
+def test_legacy_locked_field_does_not_block_token_auth(client, app_module):
+    token = "tv-legacy-locked-token"
+    app_module.save_device_tokens(
+        {
+            token: {
+                "expiry": "2099-01-01T00:00:00",
+                "role": "viewer",
+                "locked": True,
+                "user_agent": "silk",
+                "client_ip": "82.163.130.162",
+            }
+        }
+    )
+
+    r = client.get(
+        "/metrics/summary",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Forwarded-For": "82.163.130.162",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 9; AFTSS) AppleWebKit/537.36 (KHTML, like Gecko) Silk/138.13.4",
+        },
+    )
+    assert r.status_code == 200
+
+
+def test_admin_lock_device_route_removed(client):
+    r = client.post(
+        "/admin/lock-device",
+        headers={"Authorization": "Bearer test-admin-pass"},
+        json={"token": "abc", "lock": True},
+    )
+    assert r.status_code in (404, 405)
+
+
 def test_ephemeral_viewer_token_rejected_for_external_ip(client):
     r = client.post(
         "/auth/ephemeral-viewer",
@@ -184,6 +218,20 @@ def test_static_routes_still_serve_assets(client):
     r_export_csv_helpers = client.get("/core/export_csv_helpers.js")
     assert r_export_csv_helpers.status_code == 200
     assert "application/javascript" in r_export_csv_helpers.headers.get("content-type", "")
+
+
+def test_export_manager_contains_explicit_missing_helper_error(client):
+    r = client.get("/core/export_manager.js")
+    assert r.status_code == 200
+    text = r.text
+    assert "CSV export unavailable: ExportCsvHelpers.buildCsvRows is not loaded" in text
+
+
+def test_export_csv_helpers_race_analysis_is_zero_safe(client):
+    r = client.get("/core/export_csv_helpers.js")
+    assert r.status_code == 200
+    text = r.text
+    assert "const gapPercent = second > 0 ? Math.round((gap / second) * 100) : 100;" in text
 
 
 def test_core_routed_endpoints_still_resolve(client):
@@ -281,6 +329,43 @@ def test_admin_db_processlist_handles_db_unavailable(client, app_module, monkeyp
     assert r.status_code == 503
     body = r.json()
     assert body["status"] == "fail"
+
+
+def test_admin_network_access_requires_admin(client):
+    r = client.get("/admin/network-access")
+    assert r.status_code == 401
+
+
+def test_admin_network_access_returns_trust_and_policy_details(client):
+    r = client.get(
+        "/admin/network-access",
+        headers={
+            "Authorization": "Bearer test-admin-pass",
+            "X-Forwarded-For": "82.163.130.162",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 9; AFTSS) AppleWebKit/537.36 (KHTML, like Gecko) Silk/138.13.4",
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert "client_ip" in body
+    assert "client_ips" in body
+    assert "trusted_network_match" in body
+    assert "trusted_viewer_networks" in body
+    assert "viewer_policy" in body
+    assert body["viewer_policy"]["trusted_network_auto_allow"] is True
+
+
+def test_admin_external_access_attempts_requires_admin(client):
+    r = client.get("/admin/external-access-attempts")
+    assert r.status_code == 401
+
+
+def test_admin_external_access_attempts_returns_shape(client):
+    r = client.get("/admin/external-access-attempts", headers={"Authorization": "Bearer test-admin-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert "attempts" in body
+    assert "total" in body
 
 
 def test_admin_initials_list_requires_admin(client):

@@ -82,8 +82,6 @@ def is_device_token_valid(*, token: str, load_tokens, save_tokens) -> bool:
     tokens = load_tokens()
     if token in tokens:
         entry = tokens[token]
-        if entry.get('locked'):
-            return False
         try:
             expiry = datetime.fromisoformat(entry['expiry'])
         except Exception:
@@ -213,6 +211,8 @@ async def auth_middleware(
         return await call_next(request)
 
     if is_local_network_fn(client_ip):
+        # Intentional policy: trusted network viewers can access non-admin routes
+        # even if a remembered device token is missing.
         if not request.url.path.startswith("/admin"):
             return await call_next(request)
 

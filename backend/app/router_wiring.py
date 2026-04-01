@@ -28,6 +28,7 @@ def register_routes(
     get_client_ip,
     get_client_ips,
     is_local_network,
+    local_networks,
     is_device_token_valid,
     load_device_tokens,
     save_device_tokens,
@@ -92,6 +93,12 @@ def register_routes(
         create_admin_diagnostics_router(
             require_admin=require_admin,
             get_mariadb_connection=qa_export_module.get_mariadb_connection,
+            get_client_ip=get_client_ip,
+            get_client_ips=get_client_ips,
+            is_local_network=is_local_network,
+            is_device_token_valid=is_device_token_valid,
+            trusted_viewer_networks=local_networks,
+            activity_log=activity_log,
         )
     )
     app.include_router(

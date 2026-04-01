@@ -85,7 +85,6 @@ def create_auth_router(
                         "role": "viewer",
                         "ephemeral": True,
                         "fingerprint": fingerprint,
-                        "locked": False,
                     }
                     save_device_tokens(tokens)
         except Exception:
@@ -126,7 +125,6 @@ def create_auth_router(
                     "client_ips": [client_ip],
                     "last_client_ip": client_ip,
                     "last_seen": datetime.now().isoformat(),
-                    "locked": False,
                     "role": "admin",
                 }
                 save_device_tokens(tokens)
@@ -153,7 +151,6 @@ def create_auth_router(
                     "client_ips": [client_ip],
                     "last_client_ip": client_ip,
                     "last_seen": datetime.now().isoformat(),
-                    "locked": False,
                     "role": "manager",
                 }
                 save_device_tokens(tokens)
@@ -204,7 +201,6 @@ def create_auth_router(
                 "last_seen": datetime.now().isoformat(),
                 "role": "viewer",
                 "ephemeral": True,
-                "locked": False,
                 "name": name,
             }
             save_device_tokens(tokens)

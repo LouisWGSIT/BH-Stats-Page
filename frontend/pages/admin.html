@@ -438,6 +438,12 @@
                     <h3>Active Sessions</h3>
                     <div id="devicesContent"></div>
                 </div>
+
+                <div id="externalAttemptsContainer" class="stats" style="display: none; margin-top: 20px;">
+                    <h3>External Access Attempts (Denied)</h3>
+                    <button onclick="loadExternalAttempts()" style="margin-bottom:10px;">🔄 Refresh Attempts</button>
+                    <div id="externalAttemptsContent"></div>
+                </div>
             </div>
 
             <!-- Section 7: Dashboard Activity (last 24 hours) -->
@@ -822,6 +828,7 @@
             if (userRole === 'admin') {
                 refreshInitialsDropdowns();
                 loadConnectedDevices();
+                loadExternalAttempts();
                 // Load activity and enable auto-poll checkbox wiring
                 try { fetchAdminActivity(); } catch (e) { /* ignore */ }
                 try { setupActivityAutoPoll(); } catch (e) { /* ignore */ }
@@ -1227,20 +1234,18 @@
                     let html = '<div class="devices-row">';
                     devices.forEach(device => {
                         const tokenSuffix = device.token ? device.token.slice(-8) : 'unknown';
-                        const locked = device.locked ? true : false;
                         const displayName = device.name ? (device.name + ' (' + (device.role || 'viewer') + ')') : ((device.role || 'unknown') + ' (' + tokenSuffix + ')');
                         html += `
                             <div class="device-card">
                                 <div style="display:flex;justify-content:space-between;align-items:center;">
                                     <div style="font-weight:700;color:#222;">${displayName}</div>
-                                    <div style="font-size:12px;color:${locked ? '#c00' : '#0a84ff'};font-weight:700;">${locked ? 'Locked' : 'Active'}</div>
+                                    <div style="font-size:12px;color:#0a84ff;font-weight:700;">Active</div>
                                 </div>
                                 <div class="device-meta">IP: ${device.client_ip || 'n/a'}</div>
                                 <div class="device-meta">UA: ${device.user_agent || 'n/a'}</div>
                                 <div class="device-meta">Expiry: ${device.expiry || 'n/a'}</div>
                                 <div class="device-actions">
                                     <button onclick="revokeDevice('${device.token}')">Revoke</button>
-                                    <button onclick="toggleLockDevice('${device.token}', ${locked ? 'false' : 'true'})">${locked ? 'Unlock' : 'Lock'}</button>
                                     <button onclick="setDeviceNamePrompt('${device.token}')">Rename</button>
                                 </div>
                             </div>
@@ -1253,6 +1258,45 @@
                 container.style.display = 'block';
             } catch (error) {
                 content.innerHTML = '<p style="color: #c00;">Error loading devices: ' + error.message + '</p>';
+                container.style.display = 'block';
+            }
+        }
+
+        async function loadExternalAttempts() {
+            const container = document.getElementById('externalAttemptsContainer');
+            const content = document.getElementById('externalAttemptsContent');
+            if (!container || !content) return;
+
+            try {
+                const response = await fetch('/admin/external-access-attempts?limit=100', {
+                    headers: getAuthHeaders(false)
+                });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || 'Failed to load attempts');
+                }
+                const data = await response.json();
+                const attempts = data.attempts || [];
+
+                if (!attempts.length) {
+                    content.innerHTML = '<p style="color:#999;">No denied external attempts recorded in current activity window.</p>';
+                } else {
+                    let html = '<table class="table" style="width:100%;"><thead><tr><th>IP</th><th>User Agent</th><th>Attempts</th><th>Last Path</th><th>Last Seen</th></tr></thead><tbody>';
+                    attempts.forEach((item) => {
+                        html += `<tr>
+                            <td style="font-size:12px;">${item.client_ip || ''}</td>
+                            <td style="font-size:12px;max-width:420px;word-break:break-word;">${item.user_agent || ''}</td>
+                            <td style="font-size:12px;">${item.attempts || 0}</td>
+                            <td style="font-size:12px;">${item.last_path || ''}</td>
+                            <td style="font-size:12px;">${formatActivityTimeUk(item.last_seen)}</td>
+                        </tr>`;
+                    });
+                    html += '</tbody></table>';
+                    content.innerHTML = html;
+                }
+                container.style.display = 'block';
+            } catch (error) {
+                content.innerHTML = '<p style="color:#c00;">Error loading external attempts: ' + error.message + '</p>';
                 container.style.display = 'block';
             }
         }
@@ -1594,25 +1638,6 @@
                 loadConnectedDevices();
             } catch (error) {
                 alert('Failed to revoke device: ' + error.message);
-            }
-        }
-
-        async function toggleLockDevice(token, lock) {
-            const action = lock ? 'Lock' : 'Unlock';
-            if (!confirm(`${action} this device token?`)) return;
-            try {
-                const response = await fetch('/admin/lock-device', {
-                    method: 'POST',
-                    headers: getAuthHeaders(true),
-                    body: JSON.stringify({ token, lock })
-                });
-                if (!response.ok) {
-                    const data = await response.json();
-                    throw new Error(data.detail || 'Failed to change lock state');
-                }
-                loadConnectedDevices();
-            } catch (error) {
-                alert('Failed to change lock state: ' + error.message);
             }
         }
 

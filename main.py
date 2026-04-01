@@ -301,6 +301,7 @@ router_wiring.register_routes(
     get_client_ip=get_client_ip,
     get_client_ips=get_client_ips,
     is_local_network=is_local_network,
+    local_networks=LOCAL_NETWORKS,
     is_device_token_valid=is_device_token_valid,
     load_device_tokens=load_device_tokens,
     save_device_tokens=save_device_tokens,
