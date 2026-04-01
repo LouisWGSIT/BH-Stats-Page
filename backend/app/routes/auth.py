@@ -31,8 +31,8 @@ def create_auth_router(
         is_tv_browser = "silk" in user_agent or "firetv" in user_agent or "aftt" in user_agent
 
         is_local = is_local_network(client_ip)
-        is_authenticated = is_local or is_tv_browser
-        role = "viewer" if (is_local or is_tv_browser) else None
+        is_authenticated = is_local
+        role = "viewer" if is_local else None
 
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
@@ -96,10 +96,8 @@ def create_auth_router(
             "role": role,
             "client_ip": client_ip,
             "is_tv_browser": is_tv_browser,
-            "access_type": "tv-browser" if is_tv_browser else ("local" if is_local else "external"),
-            "message": "TV browser auto-allowed"
-            if is_tv_browser
-            else ("Local network access granted automatically" if is_local else "External access requires password"),
+            "access_type": "local" if is_local else "external",
+            "message": "Local network access granted automatically" if is_local else "External access requires password",
         }
 
     @router.post("/auth/login")
@@ -183,6 +181,8 @@ def create_auth_router(
         """Create a short-lived viewer token for login modal dismiss flow."""
         try:
             client_ip = get_client_ip(request)
+            if not is_local_network(client_ip):
+                raise HTTPException(status_code=403, detail="Viewer token issuance is restricted to trusted networks")
             ua = request.headers.get("User-Agent", "Unknown")[:512]
             name = None
             try:
@@ -215,6 +215,8 @@ def create_auth_router(
                 "name": name,
                 "message": "Viewer token issued",
             }
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
 

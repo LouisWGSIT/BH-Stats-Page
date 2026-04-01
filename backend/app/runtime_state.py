@@ -4,11 +4,27 @@ from typing import Dict, Tuple
 
 
 def build_local_networks():
-    return [
+    networks = [
         ipaddress.ip_network("192.168.0.0/16"),
         ipaddress.ip_network("10.0.0.0/8"),
         ipaddress.ip_network("172.16.0.0/12"),
     ]
+
+    # Optional public egress CIDRs/IPs that should be treated as trusted viewer networks
+    # in hosted environments where private LAN ranges are not visible server-side.
+    extra_cidrs = os.getenv("TRUSTED_VIEWER_CIDRS", "").strip()
+    if extra_cidrs:
+        for cidr in extra_cidrs.split(","):
+            value = cidr.strip()
+            if not value:
+                continue
+            try:
+                networks.append(ipaddress.ip_network(value, strict=False))
+            except ValueError:
+                # Ignore invalid entries so one typo does not break app startup.
+                continue
+
+    return networks
 
 
 def get_manager_password() -> str:

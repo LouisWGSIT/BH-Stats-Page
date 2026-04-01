@@ -93,6 +93,65 @@ def test_auth_status_with_manager_bearer(client):
     assert body["role"] == "manager"
 
 
+def test_auth_status_external_tv_user_agent_not_auto_authenticated(client):
+    r = client.get(
+        "/auth/status",
+        headers={
+            "X-Forwarded-For": "82.163.130.162",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 9; AFTSS) AppleWebKit/537.36 (KHTML, like Gecko) Silk/138.13.4",
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["authenticated"] is False
+    assert body["role"] is None
+    assert body["access_type"] == "external"
+
+
+def test_external_tv_user_agent_without_token_cannot_read_metrics(client):
+    r = client.get(
+        "/metrics/summary",
+        headers={
+            "X-Forwarded-For": "82.163.130.162",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 9; AFTSS) AppleWebKit/537.36 (KHTML, like Gecko) Silk/138.13.4",
+        },
+    )
+    assert r.status_code == 401
+
+
+def test_external_tv_user_agent_with_saved_viewer_token_can_refresh(client, app_module):
+    token = "tv-saved-token"
+    app_module.save_device_tokens(
+        {
+            token: {
+                "expiry": "2099-01-01T00:00:00",
+                "role": "viewer",
+                "user_agent": "silk",
+                "client_ip": "82.163.130.162",
+            }
+        }
+    )
+
+    r = client.get(
+        "/metrics/summary",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Forwarded-For": "82.163.130.162",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 9; AFTSS) AppleWebKit/537.36 (KHTML, like Gecko) Silk/138.13.4",
+        },
+    )
+    assert r.status_code == 200
+
+
+def test_ephemeral_viewer_token_rejected_for_external_ip(client):
+    r = client.post(
+        "/auth/ephemeral-viewer",
+        headers={"X-Forwarded-For": "82.163.130.162"},
+        json={"name": "TV"},
+    )
+    assert r.status_code == 403
+
+
 def test_static_routes_still_serve_assets(client):
     r_index = client.get("/")
     assert r_index.status_code == 200

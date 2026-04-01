@@ -202,8 +202,6 @@ async def auth_middleware(
     get_client_ips_fn,
 ):
     client_ip = get_client_ip_fn(request)
-    user_agent = request.headers.get("User-Agent", "").lower()
-    is_tv_browser = "silk" in user_agent or "firetv" in user_agent or "aftt" in user_agent
 
     if request.url.path.startswith(("/styles.css", "/assets/", "/vendor/")):
         return await call_next(request)
@@ -212,10 +210,6 @@ async def auth_middleware(
         return await call_next(request)
 
     if request.url.path.startswith("/auth/"):
-        return await call_next(request)
-
-    if is_tv_browser:
-        print(f"TV browser detected (User-Agent: {user_agent[:50]}...) - auto-allowing access")
         return await call_next(request)
 
     if is_local_network_fn(client_ip):
