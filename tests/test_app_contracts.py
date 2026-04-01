@@ -114,6 +114,10 @@ def test_static_routes_still_serve_assets(client):
     assert r_dashboard_switcher.status_code == 200
     assert "application/javascript" in r_dashboard_switcher.headers.get("content-type", "")
 
+    r_export_manager = client.get("/core/export_manager.js")
+    assert r_export_manager.status_code == 200
+    assert "application/javascript" in r_export_manager.headers.get("content-type", "")
+
 
 def test_admin_activity_requires_admin(client):
     r = client.get("/admin/activity")

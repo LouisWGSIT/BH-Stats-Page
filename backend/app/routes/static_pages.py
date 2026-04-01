@@ -61,6 +61,13 @@ def create_static_pages_router(
             media_type="application/javascript",
         )
 
+    @router.get("/core/export_manager.js", include_in_schema=False)
+    async def serve_export_manager_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "export_manager.js"),
+            media_type="application/javascript",
+        )
+
     @router.get("/erasure/category_cards.js", include_in_schema=False)
     async def serve_erasure_category_cards_js():
         return FileResponse(
