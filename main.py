@@ -5,6 +5,7 @@ import tempfile
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
+from contextlib import asynccontextmanager
 import os
 from typing import Any, Dict
 from datetime import datetime, timedelta, date, UTC
@@ -106,7 +107,58 @@ def take_tracemalloc_snapshot(reason: str = "threshold", meta: dict | None = Non
 
 # Configure root logger to emit structured JSON logs (includes request_id)
 configure_logging(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")))
-app = FastAPI(title="Warehouse Stats Service")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    activity_logging.start_activity_writer(
+        app,
+        db_path=os.getenv('ACTIVITY_DB_PATH', 'logs/activity.sqlite'),
+    )
+
+    sync_engineer_stats_on_startup(db_module=db)
+
+    background_tasks = []
+    background_tasks.append(asyncio.create_task(check_daily_reset()))
+
+    try:
+        background_tasks.append(
+            asyncio.create_task(
+                warm_cache_on_startup(
+                    db_module=db,
+                    qa_export_module=qa_export,
+                    cache_set=_set_cached_response,
+                )
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        background_tasks.append(
+            asyncio.create_task(
+                memory_watchdog(
+                    psutil_module=psutil,
+                    cache_clear=QA_CACHE.clear,
+                    take_tracemalloc_snapshot=take_tracemalloc_snapshot,
+                )
+            )
+        )
+    except Exception:
+        pass
+
+    app.state.background_tasks = background_tasks
+    try:
+        yield
+    finally:
+        for task in background_tasks:
+            task.cancel()
+        if background_tasks:
+            await asyncio.gather(*background_tasks, return_exceptions=True)
+        activity_logging.stop_activity_writer(app)
+
+
+app = FastAPI(title="Warehouse Stats Service", lifespan=lifespan)
 app.include_router(health_router.router)
 # Enable GZip compression for responses over a threshold to reduce payload sizes
 app.add_middleware(GZipMiddleware, minimum_size=500)
@@ -256,19 +308,6 @@ def record_activity(entry: dict):
 def should_record_request(request: Request) -> bool:
     return activity_logging.should_record_request(request)
 
-
-@app.on_event('startup')
-def _start_activity_writer():
-    activity_logging.start_activity_writer(
-        app,
-        db_path=os.getenv('ACTIVITY_DB_PATH', 'logs/activity.sqlite'),
-    )
-
-
-@app.on_event('shutdown')
-def _stop_activity_writer():
-    activity_logging.stop_activity_writer(app)
-
 def load_device_tokens():
     return auth_utils.load_device_tokens(
         db_module=db,
@@ -366,35 +405,6 @@ app.add_middleware(
 )
 
 WEBHOOK_API_KEY = os.getenv("WEBHOOK_API_KEY", "")
-
-@app.on_event("startup")
-async def startup_event():
-    """Start the background reset task and sync engineer stats"""
-    sync_engineer_stats_on_startup(db_module=db)
-    asyncio.create_task(check_daily_reset())
-    # Warm commonly used dashboard caches to avoid slow cold-start requests
-    try:
-        asyncio.create_task(
-            warm_cache_on_startup(
-                db_module=db,
-                qa_export_module=qa_export,
-                cache_set=_set_cached_response,
-            )
-        )
-    except Exception:
-        pass
-
-    # Start memory watchdog to clear cache if RSS grows too large
-    try:
-        asyncio.create_task(
-            memory_watchdog(
-                psutil_module=psutil,
-                cache_clear=QA_CACHE.clear,
-                take_tracemalloc_snapshot=take_tracemalloc_snapshot,
-            )
-        )
-    except Exception:
-        pass
 
 # ============= AUTH ENDPOINTS =============
 app.include_router(
