@@ -102,6 +102,18 @@ def test_static_routes_still_serve_assets(client):
     assert r_config.status_code == 200
     assert "application/json" in r_config.headers.get("content-type", "")
 
+    r_category_cards = client.get("/erasure/category_cards.js")
+    assert r_category_cards.status_code == 200
+    assert "application/javascript" in r_category_cards.headers.get("content-type", "")
+
+    r_qa_dashboard = client.get("/qa/qa_dashboard.js")
+    assert r_qa_dashboard.status_code == 200
+    assert "application/javascript" in r_qa_dashboard.headers.get("content-type", "")
+
+    r_dashboard_switcher = client.get("/core/dashboard_switcher.js")
+    assert r_dashboard_switcher.status_code == 200
+    assert "application/javascript" in r_dashboard_switcher.headers.get("content-type", "")
+
 
 def test_admin_activity_requires_admin(client):
     r = client.get("/admin/activity")

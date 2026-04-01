@@ -54,10 +54,24 @@ def create_static_pages_router(
             media_type="application/javascript",
         )
 
+    @router.get("/core/dashboard_switcher.js", include_in_schema=False)
+    async def serve_dashboard_switcher_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "dashboard_switcher.js"),
+            media_type="application/javascript",
+        )
+
     @router.get("/erasure/category_cards.js", include_in_schema=False)
     async def serve_erasure_category_cards_js():
         return FileResponse(
             os.path.join(frontend_js_dir, "erasure", "category_cards.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/qa/qa_dashboard.js", include_in_schema=False)
+    async def serve_qa_dashboard_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "qa", "qa_dashboard.js"),
             media_type="application/javascript",
         )
 
