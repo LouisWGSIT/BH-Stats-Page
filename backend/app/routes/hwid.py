@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -34,7 +34,7 @@ def create_hwid_router(*, webhook_api_key: str, hwid_log_path: str) -> APIRouter
             raise HTTPException(status_code=400, detail="Invalid JSON body")
 
         record = {
-            "received_at": datetime.utcnow().isoformat() + "Z",
+            "received_at": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
             "source_ip": req.client.host if req.client else "unknown",
             **payload,
         }

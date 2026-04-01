@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Callable
 
 from fastapi import APIRouter, HTTPException, Request
@@ -29,7 +29,7 @@ def create_admin_activity_router(
     def admin_activity(request: Request):
         """Return recent dashboard activity for last 24 hours."""
         require_admin(request)
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         cutoff = now - timedelta(hours=24)
 
         recent = []
@@ -112,7 +112,7 @@ def create_admin_activity_router(
         """Return downsampled RSS memory samples for a lookback period."""
         require_admin(request)
         try:
-            now = datetime.utcnow()
+            now = datetime.now(UTC).replace(tzinfo=None)
             cutoff = now - timedelta(minutes=minutes)
             writer = get_activity_writer()
             rows = []
@@ -154,7 +154,7 @@ def create_admin_activity_router(
             for key in sorted(buckets.keys()):
                 bucket = buckets[key]
                 avg = int(bucket["sum"] / bucket["count"]) if bucket["count"] else 0
-                ts = datetime.utcfromtimestamp(key * bucket_seconds).isoformat()
+                ts = datetime.fromtimestamp(key * bucket_seconds, UTC).replace(tzinfo=None).isoformat()
                 series.append({"ts": ts, "rss": avg})
 
             return {"series": series, "bucket_seconds": bucket_seconds}

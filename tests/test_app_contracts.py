@@ -1,5 +1,5 @@
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, UTC
 
 
 def test_health_liveness(client):
@@ -131,7 +131,7 @@ def test_admin_activity_requires_admin(client):
 def test_admin_activity_returns_recent_events(client, app_module):
     app_module.ACTIVITY_LOG.append(
         {
-            "ts": datetime.utcnow().isoformat(),
+            "ts": datetime.now(UTC).replace(tzinfo=None).isoformat(),
             "path": "/hooks/erasure-detail",
             "method": "POST",
             "client_ip": "127.0.0.1",
@@ -150,7 +150,7 @@ def test_admin_activity_returns_recent_events(client, app_module):
 def test_admin_activity_memory_series_shape(client, app_module):
     app_module.ACTIVITY_LOG.append(
         {
-            "ts": datetime.utcnow().isoformat(),
+            "ts": datetime.now(UTC).replace(tzinfo=None).isoformat(),
             "path": "/app.js",
             "method": "GET",
             "client_ip": "127.0.0.1",
