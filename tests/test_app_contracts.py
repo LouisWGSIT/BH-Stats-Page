@@ -211,6 +211,26 @@ def test_static_routes_still_serve_assets(client):
     assert r_auth_ui.status_code == 200
     assert "application/javascript" in r_auth_ui.headers.get("content-type", "")
 
+    r_qa_adapter = client.get("/core/qa_adapter.js")
+    assert r_qa_adapter.status_code == 200
+    assert "application/javascript" in r_qa_adapter.headers.get("content-type", "")
+
+    r_display_keepalive = client.get("/core/display_keepalive.js")
+    assert r_display_keepalive.status_code == 200
+    assert "application/javascript" in r_display_keepalive.headers.get("content-type", "")
+
+    r_adaptive_poll = client.get("/core/adaptive_poll.js")
+    assert r_adaptive_poll.status_code == 200
+    assert "application/javascript" in r_adaptive_poll.headers.get("content-type", "")
+
+    r_aggregated_refresh = client.get("/core/aggregated_refresh.js")
+    assert r_aggregated_refresh.status_code == 200
+    assert "application/javascript" in r_aggregated_refresh.headers.get("content-type", "")
+
+    r_flip_cards_updater = client.get("/core/flip_cards_updater.js")
+    assert r_flip_cards_updater.status_code == 200
+    assert "application/javascript" in r_flip_cards_updater.headers.get("content-type", "")
+
     r_export_manager = client.get("/core/export_manager.js")
     assert r_export_manager.status_code == 200
     assert "application/javascript" in r_export_manager.headers.get("content-type", "")

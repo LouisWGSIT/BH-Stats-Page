@@ -47,6 +47,41 @@ def create_static_pages_router(
             media_type="application/javascript",
         )
 
+    @router.get("/core/display_keepalive.js", include_in_schema=False)
+    async def serve_display_keepalive_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "display_keepalive.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/adaptive_poll.js", include_in_schema=False)
+    async def serve_adaptive_poll_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "adaptive_poll.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/aggregated_refresh.js", include_in_schema=False)
+    async def serve_aggregated_refresh_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "aggregated_refresh.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/qa_adapter.js", include_in_schema=False)
+    async def serve_qa_adapter_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "qa_adapter.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/flip_cards_updater.js", include_in_schema=False)
+    async def serve_flip_cards_updater_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "flip_cards_updater.js"),
+            media_type="application/javascript",
+        )
+
     @router.get("/core/auth.js", include_in_schema=False)
     async def serve_auth_js():
         return FileResponse(

@@ -28,460 +28,6 @@
     }
   }
 
-  // Call on load
-  refreshAllTimeTotals();
-
-  // ==================== CHART PLUGINS ====================
-
-  // Depth/gloss plugin to give donuts a subtle 3D feel (optimized for TV performance)
-  const donutDepthPlugin = {
-    id: 'donutDepth',
-    afterDatasetsDraw(chart) {
-      const meta = chart.getDatasetMeta(0);
-      const arc = meta?.data?.[0];
-      if (!arc) return;
-
-      const { ctx } = chart;
-      const { x, y, innerRadius, outerRadius } = arc;
-      
-      // Validate that values are finite before drawing
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(innerRadius) || !Number.isFinite(outerRadius)) {
-        return;
-      }
-
-      const ringThickness = outerRadius - innerRadius;
-      if (ringThickness <= 0) return;
-
-      // Simplified shadow - just the bottom part for subtle depth
-      ctx.save();
-      ctx.globalCompositeOperation = 'destination-over';
-      try {
-        const shadowGrad = ctx.createRadialGradient(
-          x,
-          y + ringThickness * 0.5,
-          outerRadius * 0.7,
-          x,
-          y + ringThickness * 0.5,
-          outerRadius + 8
-        );
-        shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.1)');
-        shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = shadowGrad;
-        ctx.beginPath();
-        ctx.arc(x, y, outerRadius + 6, 0, Math.PI * 2);
-        ctx.fill();
-      } catch (e) {
-        // Silently fail - not critical
-      }
-      ctx.restore();
-
-      // Very subtle top gloss - simplified
-      ctx.save();
-      try {
-        const shineGrad = ctx.createLinearGradient(x, y - outerRadius, x, y - innerRadius);
-        shineGrad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
-        shineGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctx.fillStyle = shineGrad;
-        ctx.beginPath();
-        ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
-        ctx.arc(x, y, innerRadius, 0, Math.PI * 2, true);
-        ctx.closePath();
-        ctx.fill();
-      } catch (e) {
-        // Silently fail - not critical
-      }
-      ctx.restore();
-    },
-  };
-
-  Chart.register(donutDepthPlugin);
-
-  function donut(canvasId) {
-    const ctxEl = document.getElementById(canvasId);
-    const primary = getComputedStyle(document.documentElement)
-      .getPropertyValue('--ring-primary').trim();
-    const secondary = getComputedStyle(document.documentElement)
-      .getPropertyValue('--ring-secondary').trim();
-
-    const chart = new Chart(ctxEl, {
-      type: 'doughnut',
-      data: {
-        labels: ['Value', 'Remaining'],
-        datasets: [{
-          data: [0, 0],
-          backgroundColor: [secondary, primary],
-          borderWidth: 0,
-          borderRadius: 0,
-          hoverOffset: 8
-        }]
-      },
-      options: {
-        responsive: true,
-        cutout: '68%',
-        animation: { duration: 400 },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            enabled: true,
-            callbacks: {
-              label: function(ctx) {
-                return ctx.label + ': ' + ctx.raw;
-              }
-            }
-          }
-        }
-      }
-    });
-    
-    return chart;
-  }
-
-  // Apply theme variables
-  const root = document.documentElement;
-  root.style.setProperty('--bg', cfg.theme.bg);
-  root.style.setProperty('--text', cfg.theme.text);
-  root.style.setProperty('--muted', cfg.theme.muted);
-  root.style.setProperty('--ring-primary', cfg.theme.ringPrimary);
-  root.style.setProperty('--ring-secondary', cfg.theme.ringSecondary);
-
-  // Targets
-  document.getElementById('erasedTarget').textContent = cfg.targets.erased;
-  if (cfg.targets.month) {
-    const mt = document.getElementById('monthTarget');
-    if (mt) mt.textContent = cfg.targets.month;
-  }
-
-  // Charts
-  const totalTodayChart = donut('chartTotalToday');
-  const monthChart = donut('chartMonthToday');
-
-  const categories = [
-    { key: 'laptops_desktops', label: 'Laptops/Desktops', countId: 'countLD', listId: 'topLD' },
-    { key: 'servers', label: 'Servers', countId: 'countServers', listId: 'topServers' },
-    { key: 'macs', label: 'Macs', countId: 'countMacs', listId: 'topMacs' },
-    { key: 'mobiles', label: 'Mobiles', countId: 'countMobiles', listId: 'topMobiles' },
-  ];
-
-  const SHIFT_HOURS = 8; // Standard shift duration (08:00-16:00)
-
-  // Track leaderboard state for Greenie commentary
-  let leaderboardState = { leader: null, gap: null };
-
-  // Track race data for winner announcement
-  let raceData = { engineer1: null, engineer2: null, engineer3: null, firstFinisher: null, winnerAnnounced: false };
-  
-  // Track speed challenges
-  let speedChallengeData = {
-    am: { lastWinner: null, isFinished: false, wasActive: false },
-    pm: { lastWinner: null, isFinished: false, wasActive: false },
-  };
-
-  function triggerGreenie(quote) {
-    const container = document.getElementById('greenieContainer');
-    const quoteEl = document.getElementById('greenieQuote');
-    const wrapper = container.querySelector('.greenie-wrapper');
-
-    // Set the custom quote directly
-    if (quoteEl && quote) {
-      quoteEl.textContent = quote;
-    }
-
-    // Remove exit animation class if present
-    wrapper.classList.remove('exit');
-
-    // Show Greenie
-    container.classList.remove('hidden');
-    greenieState.lastShowTime = Date.now();
-
-    // Auto-hide after 14 seconds total (2s in + 10s display + 2s out)
-    setTimeout(() => {
-      wrapper.classList.add('exit');
-      setTimeout(() => {
-        container.classList.add('hidden');
-        wrapper.classList.remove('exit');
-      }, 2000);
-    }, 10000);
-  }
-
-  function animateNumberUpdate(elementId) {
-    const el = document.getElementById(elementId);
-    if (!el) return;
-    el.classList.add('pulse-update');
-    setTimeout(() => el.classList.remove('pulse-update'), 1000);
-  }
-
-  function triggerRaceConfetti() {
-    // Check if someone has crossed the finish line
-    const racePositions = ['racePos1', 'racePos2', 'racePos3', 'racePos4', 'racePos5'].map(id => {
-      const el = document.getElementById(id);
-      return el ? parseInt(el.style.bottom) || 0 : -9999;
-    });
-    
-    const maxPosition = Math.max(...racePositions);
-    if (maxPosition >= 85) { // Near finish line (90% height)
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
-      return true;
-    }
-    return false;
-  }
-
-  // Greenie state
-  let greenieState = {
-    currentStats: { todayTotal: 0, monthTotal: 0, byType: {} },
-    lastQuotes: [],
-    lastShowTime: 0,
-  };
-
-  // Wake helpers to keep Fire Stick screen alive
-  let wakeLock = null;
-  let audioCtx = null;
-  let silentOsc = null;
-  let keepAliveVideo = null;
-
-  const greenieQuotes = {
-    praise: [
-      (eng) => `${eng}, you're crushing it! Keep up the amazing work! 💪`,
-      (eng) => `${eng}, you're the star of the show today! ⭐`,
-      (eng) => `Way to go ${eng}! You're on fire! 🔥`,
-      (eng) => `${eng}, absolutely dominating the leaderboard! 👑`,
-    ],
-    targetProgress: [
-      (diff) => `We're only ${diff} erasures away from today's target! Push push push! 🎯`,
-      (diff) => `${diff} more erasures to hit today's goal! We've got this! 💪`,
-      (diff) => `Just ${diff} erasures left to smash today's target! 🚀`,
-      (diff) => `Target incoming! Only ${diff} to go! 🎉`,
-    ],
-    categoryWins: [
-      (cat) => `${cat} erasures are looking absolutely stellar today! 🌟`,
-      (cat) => `${cat} team, you're absolutely crushing it! Keep that momentum! 🚀`,
-      (cat) => `Outstanding work on the ${cat}! That's what I like to see! 💯`,
-    ],
-    motivation: [
-      `Data erasure heroes, that's what you all are! 🦸‍♀️`,
-      `Every erasure counts! Keep up the fantastic work! ✨`,
-      `You're doing amazing work protecting data today! 🛡️`,
-      `This team is unstoppable! Let's keep rolling! 🎯`,
-      `Making a real difference one erasure at a time! 👍`,
-      `The warehouse is looking spotless thanks to you! ✨`,
-    ],
-  };
-
-  function getGreenieQuote() {
-    // Update current stats for dynamic quotes
-    const todayTotal = parseInt(document.getElementById('totalTodayValue').textContent) || 0;
-    const target = parseInt(document.getElementById('erasedTarget').textContent) || 500;
-    const leaderboardBody = document.getElementById('leaderboardBody');
-    const topEngineer = leaderboardBody?.querySelector('tr')?.textContent || '';
-    
-    greenieState.currentStats = {
-      todayTotal,
-      target,
-      diff: Math.max(0, target - todayTotal),
-    };
-
-    // Get random quote category
-    const quoteCategories = ['praise', 'targetProgress', 'categoryWins', 'motivation'];
-    let selectedCategory;
-    let quote;
-    let attempts = 0;
-
-    // Try to avoid repeating the same category/type
-    do {
-      selectedCategory = quoteCategories[Math.floor(Math.random() * quoteCategories.length)];
-      const quoteList = greenieQuotes[selectedCategory];
-      
-      if (selectedCategory === 'praise') {
-        // Get top engineer initials
-        const initials = topEngineer.split('\n')[0] || 'Team';
-        quote = quoteList[Math.floor(Math.random() * quoteList.length)](initials);
-      } else if (selectedCategory === 'targetProgress') {
-        quote = quoteList[Math.floor(Math.random() * quoteList.length)](greenieState.currentStats.diff);
-      } else if (selectedCategory === 'categoryWins') {
-        const categoryList = ['Laptops/Desktops', 'Servers', 'Macs', 'Mobiles'];
-        const category = categoryList[Math.floor(Math.random() * categoryList.length)];
-        quote = quoteList[Math.floor(Math.random() * quoteList.length)](category);
-      } else {
-        quote = quoteList[Math.floor(Math.random() * quoteList.length)];
-      }
-
-      attempts++;
-    } while (greenieState.lastQuotes.includes(quote) && attempts < 5);
-
-    // Track quote to avoid repeats
-    greenieState.lastQuotes.push(quote);
-    if (greenieState.lastQuotes.length > 8) {
-      greenieState.lastQuotes.shift();
-    }
-
-    return quote;
-  }
-
-  function showGreenie() {
-    const container = document.getElementById('greenieContainer');
-    const quoteEl = document.getElementById('greenieQuote');
-    const wrapper = container.querySelector('.greenie-wrapper');
-
-    // Get quote and display
-    const quote = getGreenieQuote();
-    quoteEl.textContent = quote;
-
-    // Remove exit animation class if present
-    wrapper.classList.remove('exit');
-
-    // Show Greenie
-    container.classList.remove('hidden');
-    greenieState.lastShowTime = Date.now();
-
-    // Auto-hide after 14 seconds total (2s in + 10s display + 2s out)
-    setTimeout(() => {
-      wrapper.classList.add('exit');
-      setTimeout(() => {
-        container.classList.add('hidden');
-        wrapper.classList.remove('exit');
-      }, 2000);
-    }, 10000);
-  }
-
-  function checkGreenieTime() {
-    const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-
-    // Only show between 8:00 and 16:00
-    if (hours < 8 || hours >= 16) return;
-
-    // Check if 15 minutes have passed since last show
-    const timeSinceLastShow = Date.now() - greenieState.lastShowTime;
-    const fifteenMinutes = 15 * 60 * 1000;
-
-    if (timeSinceLastShow >= fifteenMinutes) {
-      // Only show at specific times to avoid random triggers: :00, :15, :30, :45
-      if (minutes === 0 || minutes === 15 || minutes === 30 || minutes === 45) {
-        showGreenie();
-      }
-    }
-  }
-
-  async function refreshSummary() {
-    try {
-      const res = await fetch('/metrics/summary');
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-
-      const todayTotal = data.todayTotal || 0;
-      const monthTotal = data.monthTotal || 0;
-      
-      // Animate number updates
-      const todayEl = document.getElementById('totalTodayValue');
-      const monthEl = document.getElementById('monthTotalValue');
-      if (todayEl) {
-        const oldValue = parseInt(todayEl.textContent) || 0;
-        if (oldValue !== todayTotal) {
-          todayEl.classList.add('count-animating');
-          setTimeout(() => todayEl.classList.remove('count-animating'), 500);
-        }
-        todayEl.textContent = todayTotal;
-        animateNumberUpdate('totalTodayValue');
-      }
-      if (monthEl) {
-        const oldValue = parseInt(monthEl.textContent) || 0;
-        if (oldValue !== monthTotal) {
-          monthEl.classList.add('count-animating');
-          setTimeout(() => monthEl.classList.remove('count-animating'), 500);
-        }
-        monthEl.textContent = monthTotal;
-        animateNumberUpdate('monthTotalValue');
-      }
-
-      updateDonut(totalTodayChart, todayTotal, cfg.targets.erased);
-      updateDonut(monthChart, monthTotal, cfg.targets.month || 10000);
-
-      const lastUpdated = Date.now();
-      document.getElementById('last-updated').textContent = 'Last updated: ' + new Date(lastUpdated).toLocaleTimeString();
-      document.getElementById('stale-indicator').classList.add('hidden');
-      
-      // Keep screen alive by logging activity
-      keepScreenAlive();
-    } catch (err) {
-      console.error('Summary refresh error:', err);
-      document.getElementById('stale-indicator').classList.remove('hidden');
-    }
-  }
-
-  // Make truncateInitials available globally
-  function truncateInitials(name) {
-    if (!name) return '';
-    return name.length > 4 ? name.slice(0, 4) + '…' : name;
-  }
-
-  function renderTopList(listId, engineers) {
-    const el = document.getElementById(listId);
-    el.innerHTML = '';
-    if (engineers && engineers.length > 0) {
-      engineers.forEach((eng) => {
-        const name = truncateInitials((eng.initials || '').toString().trim());
-        if (!name) return;
-        const li = document.createElement('li');
-        const avatar = getAvatarDataUri(name);
-        li.innerHTML = `
-          <span class="engineer-chip">
-            <span class="engineer-avatar" style="background-image: url(${avatar})"></span>
-            <span class="engineer-name">${name}</span>
-          </span>
-          <span class="value">${eng.count}</span>`;
-        el.appendChild(li);
-      });
-    } else {
-      // Show "No data yet" message
-      const li = document.createElement('li');
-      li.style.color = 'var(--muted)';
-      li.style.textAlign = 'center';
-      li.style.padding = '12px 0';
-      li.textContent = 'No data yet';
-      el.appendChild(li);
-    }
-  }
-
-  async function refreshTopByType(type, listId) {
-    try {
-      const res = await fetch(`/metrics/engineers/top-by-type?type=${encodeURIComponent(type)}`);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      renderTopList(listId, data.engineers);
-    } catch (err) {
-      console.error('Top-by-type refresh error:', type, err);
-    }
-  }
-
-  function refreshAllTopLists() {
-    categories.forEach(c => refreshTopByType(c.key, c.listId));
-  }
-
-  async function refreshByTypeCounts() {
-    try {
-      const res = await fetch('/metrics/by-type');
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const counts = {
-          laptops_desktops: data.laptops_desktops || 0,
-          servers: data.servers || 0,
-          macs: data.macs || 0,
-          mobiles: data.mobiles || 0,
-      };
-      categories.forEach(c => {
-        const el = document.getElementById(c.countId);
-        if (el) el.textContent = counts[c.key] || 0;
-      });
-      renderBars(counts);
-    } catch (err) {
-      console.error('By-type refresh error:', err);
-    }
-  }
-
   async function refreshSpeedChallenge(window, listId, statusId) {
     try {
       const res = await fetch(`/competitions/speed-challenge?window=${window}`);
@@ -1025,110 +571,6 @@
       setTimeout(() => container.classList.remove('pulse-update'), 600);
     }
   }
-
-  async function requestWakeLock() {
-    if (!('wakeLock' in navigator)) return;
-    try {
-      wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release', () => { wakeLock = null; });
-    } catch (err) {
-      console.warn('Wake lock request failed', err);
-    }
-  }
-
-  function ensureSilentAudio() {
-    // Very quiet oscillator to count as activity and keep Fire Stick awake
-    try {
-      if (silentOsc && audioCtx && audioCtx.state !== 'closed') {
-        if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
-        return;
-      }
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      audioCtx = new Ctx();
-      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      gain.gain.value = 0.0001;
-      osc.connect(gain).connect(audioCtx.destination);
-      osc.start();
-      silentOsc = osc;
-    } catch (err) {
-      console.warn('Silent audio keep-alive failed', err);
-    }
-  }
-
-  function startKeepAliveVideo() {
-    // Hidden muted looping video to keep media session active on devices that permit autoplay
-    try {
-      if (keepAliveVideo && keepAliveVideo.readyState > 0) {
-        keepAliveVideo.play().catch(() => {});
-        return;
-      }
-      const vid = document.createElement('video');
-      vid.muted = true;
-      vid.loop = true;
-      vid.playsInline = true;
-      vid.autoplay = true;
-      vid.setAttribute('playsinline', '');
-      vid.style.position = 'fixed';
-      vid.style.width = '1px';
-      vid.style.height = '1px';
-      vid.style.opacity = '0.001';
-      vid.style.bottom = '0';
-      vid.style.left = '0';
-      vid.style.pointerEvents = 'none';
-      // 1s silent WebM
-      vid.src = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC9+BBQvWBAULpgQRC8YEEQvGBAAAB9uWdlYm0BVmVyc2lvbj4xAAAAAAoAAABHYXZrVjkAAAAAAAAD6aNjYWI9AAAZY2FkYwEAAAAAAAAAAAAAAAAAAAAAAAACdC9hAAAAAAACAAEAAQAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
-      document.body.appendChild(vid);
-      keepAliveVideo = vid;
-      vid.play().catch(() => {});
-    } catch (err) {
-      console.warn('Keep-alive video failed', err);
-    }
-  }
-
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      requestWakeLock();
-      ensureSilentAudio();
-      startKeepAliveVideo();
-    }
-  });
-
-  function keepScreenAlive() {
-    if (document.hidden) return;
-    requestWakeLock();
-    ensureSilentAudio();
-    startKeepAliveVideo();
-    document.body.style.opacity = '0.999';
-    setTimeout(() => { document.body.style.opacity = '1'; }, 80);
-  }
-  
-  // Keep screen alive every 2 minutes to avoid Fire Stick sleep
-  setInterval(keepScreenAlive, 2 * 60 * 1000);
-
-  // First shot on load
-  keepScreenAlive();
-
-  // Auto-reload page at 2 AM daily to clear cache and keep memory clean (off-hours)
-  function scheduleNightlyReload() {
-    const now = new Date();
-    let reloadTime = new Date();
-    reloadTime.setHours(2, 0, 0, 0); // 2 AM
-    
-    // If 2 AM has passed today, schedule for tomorrow
-    if (now > reloadTime) {
-      reloadTime.setDate(reloadTime.getDate() + 1);
-    }
-    
-    const msUntilReload = reloadTime - now;
-    setTimeout(() => {
-      location.reload();
-      scheduleNightlyReload(); // Reschedule for next day
-    }, msUntilReload);
-  }
-  scheduleNightlyReload();
 
   function formatDuration(sec) {
     if (sec == null || isNaN(sec)) return '--:--';
@@ -2071,6 +1513,43 @@
     if (targetEl) targetEl.textContent = target;
   }
 
+  const flipCardsUpdaterApi = (window.FlipCardsUpdater && typeof window.FlipCardsUpdater.init === 'function')
+    ? window.FlipCardsUpdater.init({
+        cfg,
+        categories,
+        leaderboardState,
+        triggerGreenie,
+        getEngineerColor,
+        getAvatarDataUri,
+        renderSVGSparkline,
+        animateNumberUpdate,
+      })
+    : null;
+
+  if (flipCardsUpdaterApi) {
+    updateRecordsMilestones = function () {
+      return flipCardsUpdaterApi.updateRecordsMilestones();
+    };
+    updateWeeklyRecords = function () {
+      return flipCardsUpdaterApi.updateWeeklyRecords();
+    };
+    updateTodayStats = function () {
+      return flipCardsUpdaterApi.updateTodayStats();
+    };
+    updateMonthlyProgress = function () {
+      return flipCardsUpdaterApi.updateMonthlyProgress();
+    };
+    updateRaceUpdates = function () {
+      return flipCardsUpdaterApi.updateRaceUpdates();
+    };
+    updateCategoryChampions = function () {
+      return flipCardsUpdaterApi.updateCategoryChampions();
+    };
+    updateTargetTracker = function () {
+      return flipCardsUpdaterApi.updateTargetTracker();
+    };
+  }
+
   async function createMonthlyMomentumChart() {
     const canvas = document.getElementById('chartMonthlyMomentum');
     if (!canvas) return;
@@ -2346,57 +1825,25 @@
       }
     });
   }, 500);
-  // Periodic competition refresh (adaptive: respects Page Visibility and viewer role)
-  function createAdaptivePoll(fn, baseIntervalMs, opts = {}) {
-    const viewerMultiplier = opts.viewerMultiplier || 6;
-    const hiddenMultiplier = opts.hiddenMultiplier || 5;
-    let timer = null;
-    let stopped = false;
 
-    function roleIsViewer() {
-      return (sessionStorage.getItem('userRole') || 'viewer') === 'viewer';
-    }
+  const createAdaptivePoll = (window.AdaptivePoll && typeof window.AdaptivePoll.create === 'function')
+    ? window.AdaptivePoll.create
+    : null;
 
-    function effectiveInterval() {
-      let iv = baseIntervalMs * (roleIsViewer() ? viewerMultiplier : 1);
-      if (document.hidden) iv = Math.max(iv, baseIntervalMs * hiddenMultiplier);
-      return iv;
-    }
-
-    async function tick() {
-      if (stopped) return;
-      try { await fn(); } catch (e) { console.warn('Adaptive poll error', e); }
-      schedule();
-    }
-
-    function schedule() {
-      clearTimeout(timer);
-      if (stopped) return;
-      timer = setTimeout(tick, effectiveInterval());
-    }
-
-    // Visibility-aware adjustments
-    document.addEventListener('visibilitychange', () => {
-      clearTimeout(timer);
-      if (!stopped) schedule();
-    });
-
-    // Start immediately
-    schedule();
-
-    return {
-      stop() { stopped = true; clearTimeout(timer); },
-      start() { if (stopped) { stopped = false; schedule(); } }
-    };
+  if (!createAdaptivePoll) {
+    console.error('AdaptivePoll module is not loaded; adaptive refresh loops are disabled.');
   }
 
+  // Periodic competition refresh (adaptive: respects Page Visibility and viewer role)
   // Use adaptive poll for competitions so leaving a tab open won't hammer the server
-  createAdaptivePoll(async () => {
-    refreshSpeedChallenge('am', 'speedAmList', 'speedAmStatus');
-    refreshSpeedChallenge('pm', 'speedPmList', 'speedPmStatus');
-    refreshCategorySpecialists();
-    refreshConsistency();
-  }, cfg.refreshSeconds * 1000, { viewerMultiplier: 6, hiddenMultiplier: 10 });
+  if (createAdaptivePoll) {
+    createAdaptivePoll(async () => {
+      refreshSpeedChallenge('am', 'speedAmList', 'speedAmStatus');
+      refreshSpeedChallenge('pm', 'speedPmList', 'speedPmStatus');
+      refreshCategorySpecialists();
+      refreshConsistency();
+    }, cfg.refreshSeconds * 1000, { viewerMultiplier: 6, hiddenMultiplier: 10 });
+  }
 
   // Initial competition data load
   refreshSpeedChallenge('am', 'speedAmList', 'speedAmStatus');
@@ -2405,32 +1852,34 @@
   refreshConsistency();
 
   // Refresh analytics every 5 minutes (adaptive)
-  createAdaptivePoll(async () => {
-    await initializeAnalytics();
-  }, 300000, { viewerMultiplier: 4, hiddenMultiplier: 8 });
+  if (createAdaptivePoll) {
+    createAdaptivePoll(async () => {
+      await initializeAnalytics();
+    }, 300000, { viewerMultiplier: 4, hiddenMultiplier: 8 });
+  }
 
   // ==================== DASHBOARD SWITCHING ====================
   
   let currentDashboard = 0;
 
-  // Helper function to escape HTML
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  const qaDashboardApi = (window.QADashboard && typeof window.QADashboard.init === 'function')
-    ? window.QADashboard.init({
-        escapeHtml,
+  const qaAdapterApi = (window.QaAdapter && typeof window.QaAdapter.init === 'function')
+    ? window.QaAdapter.init({
         getAvatarDataUri,
         renderSVGSparkline,
       })
     : null;
 
+  const escapeHtml = (qaAdapterApi && typeof qaAdapterApi.escapeHtml === 'function')
+    ? qaAdapterApi.escapeHtml
+    : function (text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      };
+
   async function loadQADashboard(period = 'this_week') {
-    if (!qaDashboardApi || typeof qaDashboardApi.load !== 'function') return;
-    return qaDashboardApi.load(period);
+    if (!qaAdapterApi || typeof qaAdapterApi.load !== 'function') return;
+    return qaAdapterApi.load(period);
   }
   
   if (window.DashboardSwitcher && typeof window.DashboardSwitcher.init === 'function') {
@@ -2464,97 +1913,39 @@
   // Download button removed from dashboard - exports available via manager.html
 
   // ==================== INITIALIZATION ====================
+  const aggregatedRefreshApi = (window.AggregatedRefresh && typeof window.AggregatedRefresh.init === 'function')
+    ? window.AggregatedRefresh.init({
+        cfg,
+        categories,
+        animateNumberUpdate,
+        updateDonut,
+        totalTodayChart,
+        monthChart,
+        renderBars,
+        getEngineerColor,
+        getAvatarDataUri,
+        formatTimeAgo,
+        updateRace,
+        renderSVGSparkline,
+        keepScreenAlive,
+        refreshSummary,
+        refreshAllTopLists,
+        refreshByTypeCounts,
+        refreshLeaderboard,
+      })
+    : null;
+
   // Kick off refresh loops (after all functions are defined)
   async function refreshAggregated() {
-    try {
-      const res = await fetch('/metrics/qa-summary');
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-
-      // Summary
-      const summary = data.summary || {};
-      const todayTotal = (summary.todayTotal != null) ? summary.todayTotal : (data.today && data.today.erased) || 0;
-      const monthTotal = (summary.monthTotal != null) ? summary.monthTotal : (summary.monthTotal) || 0;
-
-      const todayEl = document.getElementById('totalTodayValue');
-      const monthEl = document.getElementById('monthTotalValue');
-      if (todayEl) { todayEl.textContent = todayTotal; animateNumberUpdate('totalTodayValue'); }
-      if (monthEl) { monthEl.textContent = monthTotal; animateNumberUpdate('monthTotalValue'); }
-      updateDonut(totalTodayChart, todayTotal, cfg.targets.erased);
-      updateDonut(monthChart, monthTotal, cfg.targets.month || 10000);
-
-      // By-type counts
-      const byType = data.byType || {};
-      const counts = {
-        laptops_desktops: byType.laptops_desktops || 0,
-        servers: byType.servers || 0,
-        macs: byType.macs || 0,
-        mobiles: byType.mobiles || 0,
-      };
-      categories.forEach(c => {
-        const el = document.getElementById(c.countId);
-        if (el) el.textContent = counts[c.key] || 0;
-      });
-      renderBars(counts);
-
-      // Leaderboard
-      const lb = (data.engineersLeaderboard && data.engineersLeaderboard.items) || [];
-      const body = document.getElementById('leaderboardBody');
-      if (body) {
-        body.innerHTML = '';
-        const fragment = document.createDocumentFragment();
-        (lb || []).slice(0,5).forEach((row, idx) => {
-          const tr = document.createElement('tr');
-          const color = getEngineerColor(row.initials || '');
-          const avatar = getAvatarDataUri(row.initials || '');
-          const lastActive = formatTimeAgo(row.lastActive);
-          if (idx === 0) tr.classList.add('leader');
-          tr.innerHTML = `
-            <td>
-              <span class="engineer-avatar" style="background-image: url(${avatar}); border-color: ${color}"></span>
-              <span class="engineer-name">${row.initials || ''}</span>
-            </td>
-            <td class="value-strong">${row.erasures || 0}</td>
-            <td class="time-ago">${lastActive}</td>
-          `;
-          fragment.appendChild(tr);
-        });
-        body.appendChild(fragment);
-        // Update race positions
-        updateRace(lb || []);
-      }
-
-      // QA sparkline
-      if (data.qaLast7 && Array.isArray(data.qaLast7)) {
-        // find sparkline element and render if present
-        const spark = document.getElementById('qaSparkline');
-        if (spark) {
-          const series = data.qaLast7.map(r => r.qaTotal || r.deQa + (r.nonDeQa || 0) || 0);
-          renderSVGSparkline(spark, series);
-        }
-      }
-
-      // Update last-updated display
-      try {
-        const lastUpdated = Date.now();
-        const lastEl = document.getElementById('last-updated');
-        if (lastEl) lastEl.textContent = 'Last updated: ' + new Date(lastUpdated).toLocaleTimeString();
-        const stale = document.getElementById('stale-indicator');
-        if (stale) stale.classList.add('hidden');
-      } catch (e) {
-        // ignore
-      }
-
-      // Keep screen alive by logging activity
-      keepScreenAlive();
-    } catch (err) {
-      console.error('Aggregated refresh error:', err);
-      // fallback to individual refreshes if aggregated fails
-      try { refreshSummary(); } catch(e){}
-      try { refreshAllTopLists(); } catch(e){}
-      try { refreshByTypeCounts(); } catch(e){}
-      try { refreshLeaderboard(); } catch(e){}
+    if (!aggregatedRefreshApi || typeof aggregatedRefreshApi.refresh !== 'function') {
+      console.error('AggregatedRefresh module is not loaded; falling back to discrete refresh functions.');
+      try { refreshSummary(); } catch (e) {}
+      try { refreshAllTopLists(); } catch (e) {}
+      try { refreshByTypeCounts(); } catch (e) {}
+      try { refreshLeaderboard(); } catch (e) {}
+      return;
     }
+    return aggregatedRefreshApi.refresh();
   }
 
   // Kick off using aggregated payload
