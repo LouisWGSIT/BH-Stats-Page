@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from starlette.background import BackgroundTask
 import tempfile
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
@@ -13,8 +12,6 @@ import asyncio
 import backend.database as db
 import backend.excel_export as excel_export
 import json
-import httpx  # For making API calls to Blancco
-from time import time
 import zipfile
 import io
 import backend.qa_export as qa_export
@@ -22,6 +19,10 @@ import routers.health as health_router
 from backend.app import auth_utils
 from backend.app import activity_logging
 from backend.app import runtime_state
+from backend.app import router_wiring
+from backend.app import blancco_client
+from backend.app import auth_bindings as auth_bindings_module
+from backend.app import request_middleware
 from backend.app.routes.admin_activity import create_admin_activity_router
 from backend.app.routes.admin_backfill import create_admin_backfill_router
 from backend.app.routes.admin_devices import create_admin_devices_router
@@ -171,90 +172,17 @@ except Exception:
     # If the module or dependencies aren't available at runtime, skip router
     pass
 
-from uuid import uuid4
 import backend.request_context as request_context
 
-# Middleware: add a request-id to each incoming HTTP request for log correlation
-@app.middleware("http")
-async def add_request_id_middleware(request: Request, call_next):
-    rid = uuid4().hex
-    # store in contextvar for other modules (e.g., DB logging) to read
-    request_context.request_id.set(rid)
-    start_ts = time()
-    try:
-        response = await call_next(request)
-        response.headers['X-Request-ID'] = rid
-        return response
-    finally:
-        # clear contextvar to avoid leaking across requests in long-lived tasks
-        request_context.request_id.set(None)
-        # Record activity for diagnostic purposes (keep lightweight)
-        try:
-            # Only record requests that pass the should_record_request filter
-            do_record = True
-            try:
-                if not should_record_request(request):
-                    do_record = False
-            except Exception:
-                do_record = True
-
-            if do_record:
-                dur = int((time() - start_ts) * 1000)
-                client_ip = get_client_ip(request) if 'get_client_ip' in globals() else (request.client.host if request.client else '0.0.0.0')
-                rss = get_process_rss_bytes()
-                record_activity({
-                    'ts': datetime.now(UTC).replace(tzinfo=None).isoformat(),
-                    'request_id': rid,
-                    'path': request.url.path,
-                    'method': request.method,
-                    'client_ip': client_ip,
-                    'status_code': getattr(response, 'status_code', None),
-                    'duration_ms': dur,
-                    'rss': rss
-                })
-        except Exception:
-            pass
-
 # ============= BLANCCO API CONFIG =============
-BLANCCO_API_URL = os.getenv("BLANCCO_API_URL", "")  # Set this if Blancco has an API
-BLANCCO_API_KEY = os.getenv("BLANCCO_API_KEY", "")
-QA_CONFIRMED_SCORE = int(os.getenv("QA_CONFIRMED_SCORE", "95"))
+BLANCCO_API_URL, BLANCCO_API_KEY, QA_CONFIRMED_SCORE = blancco_client.get_config()
 
 async def fetch_blancco_device_details(job_id: str):
-    """
-    Fetch device details from Blancco API using job ID.
-    Returns dict with manufacturer, model, drive info, or None if unavailable.
-    """
-    if not BLANCCO_API_URL or not job_id:
-        return None
-    
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            headers = {}
-            if BLANCCO_API_KEY:
-                headers["Authorization"] = f"Bearer {BLANCCO_API_KEY}"
-            
-            # Adjust this endpoint to match Blancco's actual API
-            response = await client.get(
-                f"{BLANCCO_API_URL}/reports/{job_id}",
-                headers=headers
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                # Extract hardware details from Blancco response
-                # Adjust field names based on actual Blancco API response
-                return {
-                    "manufacturer": data.get("hardware", {}).get("manufacturer"),
-                    "model": data.get("hardware", {}).get("model"),
-                    "drive_size": data.get("storage", {}).get("totalCapacity"),
-                    "drive_count": data.get("storage", {}).get("driveCount"),
-                    "drive_type": data.get("storage", {}).get("type")
-                }
-    except Exception as e:
-        print(f"[BLANCCO API] Failed to fetch device details for job {job_id}: {e}")
-    
-    return None
+    return await blancco_client.fetch_device_details(
+        job_id,
+        api_url=BLANCCO_API_URL,
+        api_key=BLANCCO_API_KEY,
+    )
 
 # ============= SECURITY CONFIG =============
 LOCAL_NETWORKS = runtime_state.build_local_networks()
@@ -293,81 +221,42 @@ def record_activity(entry: dict):
 
 def should_record_request(request: Request) -> bool:
     return activity_logging.should_record_request(request)
+auth_binding_funcs = auth_bindings_module.create_auth_bindings(
+    auth_utils=auth_utils,
+    db_module=db,
+    device_tokens_db=DEVICE_TOKENS_DB,
+    device_tokens_file=DEVICE_TOKENS_FILE,
+    local_networks=LOCAL_NETWORKS,
+    admin_password=ADMIN_PASSWORD,
+    manager_password=MANAGER_PASSWORD,
+    dashboard_public=DASHBOARD_PUBLIC,
+)
 
-def load_device_tokens():
-    return auth_utils.load_device_tokens(
-        db_module=db,
-        device_tokens_db=DEVICE_TOKENS_DB,
-        device_tokens_file=DEVICE_TOKENS_FILE,
-    )
+load_device_tokens = auth_binding_funcs["load_device_tokens"]
+save_device_tokens = auth_binding_funcs["save_device_tokens"]
+generate_device_token = auth_binding_funcs["generate_device_token"]
+is_device_token_valid = auth_binding_funcs["is_device_token_valid"]
+touch_device_token = auth_binding_funcs["touch_device_token"]
+is_local_network = auth_binding_funcs["is_local_network"]
+get_client_ip = auth_binding_funcs["get_client_ip"]
+get_client_ips = auth_binding_funcs["get_client_ips"]
+get_role_from_request = auth_binding_funcs["get_role_from_request"]
+require_manager_or_admin = auth_binding_funcs["require_manager_or_admin"]
+require_admin = auth_binding_funcs["require_admin"]
 
+add_request_id_middleware = request_middleware.create_request_id_middleware(
+    request_context_module=request_context,
+    should_record_request=should_record_request,
+    get_client_ip=get_client_ip,
+    get_process_rss_bytes=get_process_rss_bytes,
+    record_activity=record_activity,
+)
 
-def save_device_tokens(tokens):
-    return auth_utils.save_device_tokens(
-        tokens=tokens,
-        db_module=db,
-        device_tokens_db=DEVICE_TOKENS_DB,
-        device_tokens_file=DEVICE_TOKENS_FILE,
-    )
-
-def generate_device_token(user_agent: str, client_ip: str) -> str:
-    return auth_utils.generate_device_token(user_agent, client_ip)
-
-def is_device_token_valid(token: str) -> bool:
-    return auth_utils.is_device_token_valid(
-        token=token,
-        load_tokens=load_device_tokens,
-        save_tokens=save_device_tokens,
-    )
-
-def touch_device_token(token: str, client_ips: list | None = None, user_agent: str | None = None):
-    return auth_utils.touch_device_token(
-        token=token,
-        load_tokens=load_device_tokens,
-        save_tokens=save_device_tokens,
-        client_ips=client_ips,
-        user_agent=user_agent,
-    )
-
-def is_local_network(client_ip: str) -> bool:
-    return auth_utils.is_local_network(client_ip=client_ip, local_networks=LOCAL_NETWORKS)
-
-def get_client_ip(request: Request) -> str:
-    return auth_utils.get_client_ip(request)
-
-def get_client_ips(request: Request) -> list:
-    return auth_utils.get_client_ips(request)
-
-def get_role_from_request(request: Request) -> str | None:
-    return auth_utils.get_role_from_request(
-        request=request,
-        admin_password=ADMIN_PASSWORD,
-        manager_password=MANAGER_PASSWORD,
-        is_token_valid=is_device_token_valid,
-        load_tokens=load_device_tokens,
-    )
-
-def require_manager_or_admin(request: Request):
-    return auth_utils.require_manager_or_admin(request=request, get_role=get_role_from_request)
-
-def require_admin(request: Request):
-    return auth_utils.require_admin(request=request, get_role=get_role_from_request)
+app.middleware("http")(add_request_id_middleware)
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    return await auth_utils.auth_middleware(
-        request=request,
-        call_next=call_next,
-        dashboard_public=DASHBOARD_PUBLIC,
-        admin_password=ADMIN_PASSWORD,
-        manager_password=MANAGER_PASSWORD,
-        is_local_network_fn=is_local_network,
-        is_token_valid_fn=is_device_token_valid,
-        load_tokens_fn=load_device_tokens,
-        touch_token_fn=touch_device_token,
-        get_client_ip_fn=get_client_ip,
-        get_client_ips_fn=get_client_ips,
-    )
+    return await auth_binding_funcs["auth_middleware"](request, call_next)
 # Initialize database tables on startup
 db.init_db()
 
@@ -385,146 +274,59 @@ app.add_middleware(
 
 WEBHOOK_API_KEY = runtime_state.get_webhook_api_key()
 
-# ============= AUTH ENDPOINTS =============
-app.include_router(
-    create_auth_router(
-        admin_password=ADMIN_PASSWORD,
-        manager_password=MANAGER_PASSWORD,
-        device_token_expiry_days=DEVICE_TOKEN_EXPIRY_DAYS,
-        get_client_ip=get_client_ip,
-        get_client_ips=get_client_ips,
-        is_local_network=is_local_network,
-        is_device_token_valid=is_device_token_valid,
-        load_device_tokens=load_device_tokens,
-        save_device_tokens=save_device_tokens,
-        touch_device_token=touch_device_token,
-        generate_device_token=generate_device_token,
-    )
-)
-app.include_router(
-    create_admin_activity_router(
-        require_admin=require_admin,
-        load_device_tokens=load_device_tokens,
-        activity_log=ACTIVITY_LOG,
-        get_activity_writer=lambda: getattr(app.state, "activity_writer", None),
-    )
-)
-app.include_router(
-    create_admin_devices_router(
-        require_admin=require_admin,
-        require_manager_or_admin=require_manager_or_admin,
-        load_device_tokens=load_device_tokens,
-        save_device_tokens=save_device_tokens,
-        get_last_server_error=lambda: LAST_SERVER_ERROR,
-    )
-)
-app.include_router(
-    create_admin_diagnostics_router(
-        require_admin=require_admin,
-        get_mariadb_connection=qa_export.get_mariadb_connection,
-    )
-)
-app.include_router(
-    create_admin_initials_router(
-        require_admin=require_admin,
-        db_module=db,
-    )
-)
-app.include_router(
-    create_admin_maintenance_router(
-        require_admin=require_admin,
-        db_module=db,
-        take_tracemalloc_snapshot=take_tracemalloc_snapshot,
-    )
-)
-app.include_router(
-    create_admin_backfill_router(
-        require_admin=require_admin,
-        require_manager_or_admin=require_manager_or_admin,
-        db_module=db,
-        progress_state=BACKFILL_PROGRESS,
-    )
-)
-app.include_router(
-    create_admin_exports_router(
-        require_manager_or_admin=require_manager_or_admin,
-        db_module=db,
-        excel_export_module=excel_export,
-        psutil_module=psutil,
-        trace_snapshot_threshold_mb=TRACE_SNAPSHOT_THRESHOLD_MB,
-        take_tracemalloc_snapshot=take_tracemalloc_snapshot,
-        set_last_server_error=lambda payload: globals().__setitem__("LAST_SERVER_ERROR", payload),
-    )
-)
-app.include_router(
-    create_erasure_insights_router(
-        db_module=db,
-    )
-)
-app.include_router(
-    create_qa_insights_router(
-        cache_get=_get_cached_response,
-        cache_set=_set_cached_response,
-    )
-)
-app.include_router(
-    create_metrics_analytics_router(
-        db_module=db,
-        cache_get=_get_cached_response,
-        cache_set=_set_cached_response,
-    )
-)
-app.include_router(
-    create_webhooks_router(
-        db_module=db,
-        webhook_api_key=WEBHOOK_API_KEY,
-    )
-)
-app.include_router(
-    create_device_lookup_router(
-        db_module=db,
-        qa_export_module=qa_export,
-        require_manager_or_admin=require_manager_or_admin,
-        get_role_from_request=get_role_from_request,
-        ttl_cache_cls=TTLCache,
-    )
-)
-app.include_router(
-    create_bottleneck_router(
-        db_module=db,
-        qa_export_module=qa_export,
-        require_manager_or_admin=require_manager_or_admin,
-        compute_qa_dashboard_data=compute_qa_dashboard_data,
-        cache_get=_get_cached_response,
-        cache_set=_set_cached_response,
-        ttl_cache_cls=TTLCache,
-        backfill_progress=BACKFILL_PROGRESS,
-    )
-)
-
-# ===== HWID Capture Endpoint =====
-
 HWID_LOG_PATH = runtime_state.get_hwid_log_path()
-
 FRONTEND_PAGES_DIR, FRONTEND_JS_DIR, FRONTEND_CSS_DIR = runtime_state.get_frontend_paths()
 
-app.include_router(
-    create_static_pages_router(
-        frontend_pages_dir=FRONTEND_PAGES_DIR,
-        frontend_js_dir=FRONTEND_JS_DIR,
-        frontend_css_dir=FRONTEND_CSS_DIR,
-        config_json_path=os.path.join("config", "config.json"),
-    )
+router_wiring.register_routes(
+    app,
+    create_auth_router=create_auth_router,
+    create_admin_activity_router=create_admin_activity_router,
+    create_admin_devices_router=create_admin_devices_router,
+    create_admin_diagnostics_router=create_admin_diagnostics_router,
+    create_admin_initials_router=create_admin_initials_router,
+    create_admin_maintenance_router=create_admin_maintenance_router,
+    create_admin_backfill_router=create_admin_backfill_router,
+    create_admin_exports_router=create_admin_exports_router,
+    create_erasure_insights_router=create_erasure_insights_router,
+    create_qa_insights_router=create_qa_insights_router,
+    create_metrics_analytics_router=create_metrics_analytics_router,
+    create_webhooks_router=create_webhooks_router,
+    create_device_lookup_router=create_device_lookup_router,
+    create_bottleneck_router=create_bottleneck_router,
+    create_static_pages_router=create_static_pages_router,
+    create_hwid_router=create_hwid_router,
+    admin_password=ADMIN_PASSWORD,
+    manager_password=MANAGER_PASSWORD,
+    device_token_expiry_days=DEVICE_TOKEN_EXPIRY_DAYS,
+    get_client_ip=get_client_ip,
+    get_client_ips=get_client_ips,
+    is_local_network=is_local_network,
+    is_device_token_valid=is_device_token_valid,
+    load_device_tokens=load_device_tokens,
+    save_device_tokens=save_device_tokens,
+    get_last_server_error=lambda: LAST_SERVER_ERROR,
+    touch_device_token=touch_device_token,
+    generate_device_token=generate_device_token,
+    require_admin=require_admin,
+    require_manager_or_admin=require_manager_or_admin,
+    activity_log=ACTIVITY_LOG,
+    db_module=db,
+    qa_export_module=qa_export,
+    excel_export_module=excel_export,
+    psutil_module=psutil,
+    trace_snapshot_threshold_mb=TRACE_SNAPSHOT_THRESHOLD_MB,
+    take_tracemalloc_snapshot=take_tracemalloc_snapshot,
+    set_last_server_error=lambda payload: globals().__setitem__("LAST_SERVER_ERROR", payload),
+    cache_get=_get_cached_response,
+    cache_set=_set_cached_response,
+    webhook_api_key=WEBHOOK_API_KEY,
+    hwid_log_path=HWID_LOG_PATH,
+    get_role_from_request=get_role_from_request,
+    ttl_cache_cls=TTLCache,
+    compute_qa_dashboard_data=compute_qa_dashboard_data,
+    backfill_progress=BACKFILL_PROGRESS,
+    frontend_pages_dir=FRONTEND_PAGES_DIR,
+    frontend_js_dir=FRONTEND_JS_DIR,
+    frontend_css_dir=FRONTEND_CSS_DIR,
 )
-
-app.include_router(
-    create_hwid_router(
-        webhook_api_key=WEBHOOK_API_KEY,
-        hwid_log_path=HWID_LOG_PATH,
-    )
-)
-
-
-# Serve static files (HTML, CSS, JS)
-app.mount("/", StaticFiles(directory=".", html=True), name="static")
 

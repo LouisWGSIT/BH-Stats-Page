@@ -123,6 +123,20 @@ def test_static_routes_still_serve_assets(client):
     assert "application/javascript" in r_export_manager.headers.get("content-type", "")
 
 
+def test_core_routed_endpoints_still_resolve(client):
+    r_auth_status = client.get("/auth/status")
+    assert r_auth_status.status_code == 200
+
+    r_analytics_overview = client.get("/analytics/overview")
+    assert r_analytics_overview.status_code in (200, 401)
+
+    r_metrics_today = client.get("/metrics/today")
+    assert r_metrics_today.status_code in (200, 401)
+
+    r_export_excel = client.post("/export/excel", json={"sheetsData": {}})
+    assert r_export_excel.status_code in (400, 401)
+
+
 def test_admin_activity_requires_admin(client):
     r = client.get("/admin/activity")
     assert r.status_code == 401
