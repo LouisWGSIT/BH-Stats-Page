@@ -21,8 +21,6 @@ def create_bottleneck_router(*, db_module, qa_export_module, require_manager_or_
         - Roller station breakdown by workflow stage
         - Engineers with unpalleted devices assigned to them
         """
-        import qa_export
-    
         def normalize_destination(value: object) -> str:
             if value is None:
                 return ""
@@ -170,7 +168,7 @@ def create_bottleneck_router(*, db_module, qa_export_module, require_manager_or_
                             from os import getenv
                             if str(getenv('AUTO_BACKFILL', '')).lower() in ('1', 'true', 'yes'):
                                 # backfill from erasures (recent events)
-                                from database import DB_PATH, add_local_erasure
+                                from backend.database import DB_PATH, add_local_erasure
                                 conn2 = sqlite3.connect(DB_PATH)
                                 cur2 = conn2.cursor()
                                 days_back = int(getenv('AUTO_BACKFILL_DAYS', '7'))
@@ -626,7 +624,6 @@ def create_bottleneck_router(*, db_module, qa_export_module, require_manager_or_
         page_size = max(1, min(int(page_size or limit or 20), 500))
         days = max(1, min(int(days or 7), 90))
         
-        import qa_export
         from datetime import datetime
         
         try:

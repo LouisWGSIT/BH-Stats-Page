@@ -40,7 +40,6 @@ def create_device_lookup_router(*, db_module, qa_export_module, require_manager_
                 audit_days = int(request.query_params.get('audit_days', '30'))
             except Exception:
                 audit_days = 30
-            import qa_export
             conn = qa_export.get_mariadb_connection()
             if not conn:
                 raise HTTPException(status_code=500, detail="Database connection failed")

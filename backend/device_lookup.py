@@ -84,7 +84,7 @@ def normalize_loc(name: str) -> str:
 
 # Robust imports: prefer absolute imports when module is executed as top-level
 try:
-    import qa_export as _qa_export_mod
+    import backend.qa_export as _qa_export_mod
     get_mariadb_connection = _qa_export_mod.get_mariadb_connection
     _parse_timestamp = _qa_export_mod._parse_timestamp
 except Exception:
@@ -97,7 +97,7 @@ except Exception:
 
 # Import local SQLite helpers (module is `database.py` in this repo)
 try:
-    import database as db
+    import backend.database as db
 except Exception:
     try:
         from . import database as db

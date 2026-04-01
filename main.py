@@ -12,7 +12,6 @@ from datetime import datetime, timedelta, date, UTC
 import asyncio
 import backend.database as db
 import backend.excel_export as excel_export
-import ipaddress
 import json
 import httpx  # For making API calls to Blancco
 from time import time
@@ -22,6 +21,7 @@ import backend.qa_export as qa_export
 import routers.health as health_router
 from backend.app import auth_utils
 from backend.app import activity_logging
+from backend.app import runtime_state
 from backend.app.routes.admin_activity import create_admin_activity_router
 from backend.app.routes.admin_backfill import create_admin_backfill_router
 from backend.app.routes.admin_devices import create_admin_devices_router
@@ -165,7 +165,7 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Export job routes (enqueue / status) - optional Redis/RQ integration
 try:
-    import export_jobs
+    import backend.export_jobs as export_jobs
     app.include_router(export_jobs.router)
 except Exception:
     # If the module or dependencies aren't available at runtime, skip router
@@ -257,36 +257,22 @@ async def fetch_blancco_device_details(job_id: str):
     return None
 
 # ============= SECURITY CONFIG =============
-# Local network subnet(s) that don't require auth (e.g., 192.168.x.x, 10.x.x.x)
-LOCAL_NETWORKS = [
-    ipaddress.ip_network("192.168.0.0/16"),   # 192.168.x.x
-    ipaddress.ip_network("10.0.0.0/8"),       # 10.x.x.x
-    ipaddress.ip_network("172.16.0.0/12"),    # 172.16.x.x
-]
-
-# Manager and admin passwords for external access (set via environment or use defaults)
-MANAGER_PASSWORD = os.getenv("DASHBOARD_MANAGER_PASSWORD", "")
-ADMIN_PASSWORD = os.getenv("DASHBOARD_ADMIN_PASSWORD", "")
-
-# If set to a truthy value, allow read-only public GET access to dashboard metrics
-# Use only for short-lived public tests (e.g., Lighthouse). Defaults to false.
-DASHBOARD_PUBLIC = os.getenv("DASHBOARD_PUBLIC", "false").lower() in ("1", "true", "yes")
+LOCAL_NETWORKS = runtime_state.build_local_networks()
+MANAGER_PASSWORD = runtime_state.get_manager_password()
+ADMIN_PASSWORD = runtime_state.get_admin_password()
+DASHBOARD_PUBLIC = runtime_state.get_dashboard_public_flag()
 
 # Device token storage (persistent across redeployments)
-DEVICE_TOKENS_FILE = "device_tokens.json"
-DEVICE_TOKENS_DB = os.getenv("DEVICE_TOKENS_DB", "").strip()
-DEVICE_TOKEN_EXPIRY_DAYS = 7  # Remember device for 7 days
+DEVICE_TOKENS_FILE, DEVICE_TOKENS_DB, DEVICE_TOKEN_EXPIRY_DAYS = runtime_state.get_device_token_settings()
 
-QA_CACHE_TTL_SECONDS = float(os.getenv("QA_CACHE_TTL_SECONDS", "60"))
 # Bounded TTL cache for QA/dashboard responses
-QA_CACHE = TTLCache(maxsize=int(os.getenv("QA_CACHE_MAXSIZE", "256")), ttl=QA_CACHE_TTL_SECONDS)
+QA_CACHE = runtime_state.create_qa_cache(TTLCache)
 
 def _get_cached_response(cache_key: str):
-    return QA_CACHE.get(cache_key)
+    return runtime_state.cache_get(QA_CACHE, cache_key)
 
 def _set_cached_response(cache_key: str, data: Dict[str, object]):
-    QA_CACHE.set(cache_key, data)
-    return data
+    return runtime_state.cache_set(QA_CACHE, cache_key, data)
 
 
 # Activity log (in-memory ring buffer). Each entry: {ts, path, method, role, client_ip, note, rss}
@@ -386,14 +372,7 @@ async def auth_middleware(request: Request, call_next):
 db.init_db()
 
 # Backfill progress status (shared in-memory)
-BACKFILL_PROGRESS = {
-    'running': False,
-    'total': 0,
-    'processed': 0,
-    'percent': 0,
-    'last_updated': None,
-    'errors': []
-}
+BACKFILL_PROGRESS = runtime_state.initial_backfill_progress()
 
 # Enable CORS for TV access from network (more restricted now with auth middleware)
 app.add_middleware(
@@ -404,7 +383,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-WEBHOOK_API_KEY = os.getenv("WEBHOOK_API_KEY", "")
+WEBHOOK_API_KEY = runtime_state.get_webhook_api_key()
 
 # ============= AUTH ENDPOINTS =============
 app.include_router(
@@ -525,11 +504,9 @@ app.include_router(
 
 # ===== HWID Capture Endpoint =====
 
-HWID_LOG_PATH = os.getenv("HWID_LOG_PATH", "logs/hwid_log.jsonl")
+HWID_LOG_PATH = runtime_state.get_hwid_log_path()
 
-FRONTEND_PAGES_DIR = os.path.join("frontend", "pages")
-FRONTEND_JS_DIR = os.path.join("frontend", "js")
-FRONTEND_CSS_DIR = os.path.join("frontend", "css")
+FRONTEND_PAGES_DIR, FRONTEND_JS_DIR, FRONTEND_CSS_DIR = runtime_state.get_frontend_paths()
 
 app.include_router(
     create_static_pages_router(
