@@ -122,6 +122,10 @@ def test_static_routes_still_serve_assets(client):
     assert r_export_manager.status_code == 200
     assert "application/javascript" in r_export_manager.headers.get("content-type", "")
 
+    r_export_csv_helpers = client.get("/core/export_csv_helpers.js")
+    assert r_export_csv_helpers.status_code == 200
+    assert "application/javascript" in r_export_csv_helpers.headers.get("content-type", "")
+
 
 def test_core_routed_endpoints_still_resolve(client):
     r_auth_status = client.get("/auth/status")
