@@ -22,6 +22,7 @@ import io
 import sqlite3
 import backend.qa_export as qa_export
 import routers.health as health_router
+from backend.app import auth_utils
 from backend.app.routes.admin_activity import create_admin_activity_router
 from backend.app.routes.admin_backfill import create_admin_backfill_router
 from backend.app.routes.admin_devices import create_admin_devices_router
@@ -484,353 +485,79 @@ def _stop_activity_writer():
         pass
 
 def load_device_tokens():
-    """Load device tokens from persistent storage."""
-    # Prefer SQLite-backed storage if configured (set DEVICE_TOKENS_DB env var)
-    if DEVICE_TOKENS_DB:
-        try:
-            result = {}
-            with db.sqlite_transaction(DEVICE_TOKENS_DB, timeout=2) as (conn, cur):
-                cur.execute("CREATE TABLE IF NOT EXISTS device_tokens (token TEXT PRIMARY KEY, data TEXT)")
-                cur.execute("SELECT data FROM device_tokens")
-                rows = cur.fetchall()
-                for (d,) in rows:
-                    try:
-                        parsed = json.loads(d)
-                        token_key = parsed.get('token') or parsed.get('device_token')
-                        if token_key:
-                            # remove embedded token key to avoid duplication
-                            parsed.pop('token', None)
-                            parsed.pop('device_token', None)
-                            result[token_key] = parsed
-                    except Exception:
-                        continue
-            return result
-        except Exception as e:
-            print(f"Error loading device tokens from DB ({DEVICE_TOKENS_DB}): {e}")
-
-    # Fallback to JSON file
-    try:
-        if os.path.exists(DEVICE_TOKENS_FILE):
-            with open(DEVICE_TOKENS_FILE, 'r') as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {}
+    return auth_utils.load_device_tokens(
+        db_module=db,
+        device_tokens_db=DEVICE_TOKENS_DB,
+        device_tokens_file=DEVICE_TOKENS_FILE,
+    )
 
 
 def save_device_tokens(tokens):
-    """Save device tokens to persistent storage."""
-    # If configured, save to SQLite DB for persistence across deploys (set DEVICE_TOKENS_DB env var)
-    if DEVICE_TOKENS_DB:
-        try:
-            with db.sqlite_transaction(DEVICE_TOKENS_DB, timeout=2) as (conn, cur):
-                cur.execute("CREATE TABLE IF NOT EXISTS device_tokens (token TEXT PRIMARY KEY, data TEXT)")
-                # Upsert each token as JSON blob
-                for token, info in tokens.items():
-                    try:
-                        payload = json.dumps({**info, 'token': token})
-                        cur.execute("INSERT OR REPLACE INTO device_tokens(token, data) VALUES (?, ?)", (token, payload))
-                    except Exception:
-                        continue
-                # Remove rows not present in tokens dict
-                try:
-                    cur.execute("SELECT token FROM device_tokens")
-                    existing = [r[0] for r in cur.fetchall()]
-                    for e in existing:
-                        if e not in tokens:
-                            cur.execute("DELETE FROM device_tokens WHERE token = ?", (e,))
-                except Exception:
-                    pass
-            return
-        except Exception as e:
-            print(f"Error saving device tokens to DB ({DEVICE_TOKENS_DB}): {e}")
-
-    # Fallback to JSON file
-    try:
-
-
-        # Admin: trigger sync to populate engineer_stats_type (category trends)
-        @app.post("/admin/sync-engineer-stats-type")
-        async def admin_sync_engineer_stats_type(req: Request):
-            """Trigger a DB sync to populate `engineer_stats_type` from `erasures`.
-            Optional JSON body or query param `date` (YYYY-MM-DD) to sync a single date.
-            Requires admin access.
-            """
-            require_admin(req)
-
-            body = {}
-            try:
-                body = await req.json()
-            except Exception:
-                body = {}
-
-            date_param = None
-            if isinstance(body, dict):
-                date_param = body.get('date')
-            if not date_param:
-                date_param = req.query_params.get('date')
-
-            try:
-                synced = db.sync_engineer_stats_type_from_erasures(date_param) if date_param else db.sync_engineer_stats_type_from_erasures()
-                return {"status": "ok", "synced_records": synced, "date": date_param}
-            except Exception as e:
-                print(f"[ADMIN] sync error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
-        with open(DEVICE_TOKENS_FILE, 'w') as f:
-            json.dump(tokens, f)
-    except Exception as e:
-        print(f"Error saving device tokens: {e}")
+    return auth_utils.save_device_tokens(
+        tokens=tokens,
+        db_module=db,
+        device_tokens_db=DEVICE_TOKENS_DB,
+        device_tokens_file=DEVICE_TOKENS_FILE,
+    )
 
 def generate_device_token(user_agent: str, client_ip: str) -> str:
-    """Generate a unique device token based on device fingerprint."""
-    # Create fingerprint from user agent + IP
-    fingerprint = f"{user_agent}:{client_ip}"
-    # Add randomness to make it more secure
-    token = secrets.token_urlsafe(32) + ":" + hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
-    return token
+    return auth_utils.generate_device_token(user_agent, client_ip)
 
 def is_device_token_valid(token: str) -> bool:
-    """Check if a device token is valid and not expired."""
-    tokens = load_device_tokens()
-    if token in tokens:
-        entry = tokens[token]
-        # Respect explicit lock flag: locked tokens are invalid for automatic login
-        if entry.get('locked'):
-            return False
-        try:
-            expiry = datetime.fromisoformat(entry['expiry'])
-        except Exception:
-            # Malformed expiry, treat as invalid
-            try:
-                del tokens[token]
-                save_device_tokens(tokens)
-            except Exception:
-                pass
-            return False
-        if datetime.now() < expiry:
-            return True
-        else:
-            # Token expired, remove it
-            try:
-                del tokens[token]
-                save_device_tokens(tokens)
-            except Exception:
-                pass
-    return False
+    return auth_utils.is_device_token_valid(
+        token=token,
+        load_tokens=load_device_tokens,
+        save_tokens=save_device_tokens,
+    )
 
 def touch_device_token(token: str, client_ips: list | None = None, user_agent: str | None = None):
-    """Update metadata for a device token when it is used (last_seen, last_client_ip, client_ips).
-
-    This helps the admin panel display current connections and allows locking/revoking.
-    """
-    if not token:
-        return
-    tokens = load_device_tokens()
-    if token not in tokens:
-        return
-    entry = tokens[token]
-    entry['last_seen'] = datetime.now().isoformat()
-    if user_agent:
-        entry['user_agent'] = user_agent
-    if client_ips:
-        # store last_client_ip and accumulate a small history
-        try:
-            # preserve existing client_ips list
-            existing = entry.get('client_ips') or []
-            for ip in client_ips:
-                if ip not in existing:
-                    existing.append(ip)
-            entry['client_ips'] = existing[-10:]
-            entry['last_client_ip'] = client_ips[-1]
-        except Exception:
-            pass
-    try:
-        tokens[token] = entry
-        save_device_tokens(tokens)
-    except Exception:
-        pass
+    return auth_utils.touch_device_token(
+        token=token,
+        load_tokens=load_device_tokens,
+        save_tokens=save_device_tokens,
+        client_ips=client_ips,
+        user_agent=user_agent,
+    )
 
 def is_local_network(client_ip: str) -> bool:
-    """Check if client IP is on local network (no auth needed)."""
-    try:
-        # Accept either a single IP string or an iterable of IPs
-        ips = client_ip if isinstance(client_ip, (list, tuple)) else [client_ip]
-        for ip_str in ips:
-            try:
-                ip = ipaddress.ip_address(ip_str)
-                if any(ip in network for network in LOCAL_NETWORKS):
-                    return True
-            except ValueError:
-                continue
-    except Exception:
-        pass
-    return False
+    return auth_utils.is_local_network(client_ip=client_ip, local_networks=LOCAL_NETWORKS)
 
 def get_client_ip(request: Request) -> str:
-    """Get real client IP from X-Forwarded-For header or request client."""
-    # Keep for compatibility: return the first IP in X-Forwarded-For (original behaviour)
-    forwarded_for = request.headers.get("X-Forwarded-For", "") or request.headers.get("x-forwarded-for", "")
-    if forwarded_for:
-        # Return the full list (comma-separated) as a list when needed elsewhere
-        # Historically callers expected a single IP string; keep returning the first for backwards compatibility
-        return forwarded_for.split(",")[0].strip()
-    return request.client.host if request.client else "0.0.0.0"
+    return auth_utils.get_client_ip(request)
 
 def get_client_ips(request: Request) -> list:
-    """Return a list of client IPs from X-Forwarded-For or request.client.host.
-
-    Some reverse proxies append multiple IPs; check all entries to detect a private/local client IP.
-    """
-    forwarded_for = request.headers.get("X-Forwarded-For", "") or request.headers.get("x-forwarded-for", "")
-    if forwarded_for:
-        return [p.strip() for p in forwarded_for.split(",") if p.strip()]
-    if request.client and getattr(request.client, 'host', None):
-        return [request.client.host]
-    return ["0.0.0.0"]
+    return auth_utils.get_client_ips(request)
 
 def get_role_from_request(request: Request) -> str | None:
-    """Resolve role from request auth header or device token."""
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-        if token == ADMIN_PASSWORD:
-            return "admin"
-        if token == MANAGER_PASSWORD:
-            return "manager"
-        if is_device_token_valid(token):
-            tokens = load_device_tokens()
-            return tokens.get(token, {}).get("role")
-    return None
+    return auth_utils.get_role_from_request(
+        request=request,
+        admin_password=ADMIN_PASSWORD,
+        manager_password=MANAGER_PASSWORD,
+        is_token_valid=is_device_token_valid,
+        load_tokens=load_device_tokens,
+    )
 
 def require_manager_or_admin(request: Request):
-    role = get_role_from_request(request)
-    if role not in ("manager", "admin"):
-        raise HTTPException(status_code=403, detail="Manager access required for exports")
+    return auth_utils.require_manager_or_admin(request=request, get_role=get_role_from_request)
 
 def require_admin(request: Request):
-    role = get_role_from_request(request)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    return auth_utils.require_admin(request=request, get_role=get_role_from_request)
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    """
-    Middleware to check authentication on API calls and page access.
-    Local network = automatic access.
-    External = requires password.
-    """
-    # Get real client IP from X-Forwarded-For header (set by reverse proxies like Render)
-    client_ip = get_client_ip(request)
-    
-    # Get user agent to detect TV browsers (FireStick Silk)
-    user_agent = request.headers.get("User-Agent", "").lower()
-    is_tv_browser = "silk" in user_agent or "firetv" in user_agent or "aftt" in user_agent
-    
-    # Allow static assets without auth
-    if request.url.path.startswith(("/styles.css", "/assets/", "/vendor/")):
-        return await call_next(request)
-
-    # Allow admin page to load (it will prompt for admin password)
-    if request.url.path == "/admin.html":
-        return await call_next(request)
-    
-    # Allow auth endpoints without prior auth
-    if request.url.path.startswith("/auth/"):
-        return await call_next(request)
-    
-    # Auto-allow TV browsers (FireStick Silk) - they're physically in the office
-    if is_tv_browser:
-        print(f"TV browser detected (User-Agent: {user_agent[:50]}...) - auto-allowing access")
-        return await call_next(request)
-    
-    # Check if local network (viewer access)
-    if is_local_network(client_ip):
-        # Admin paths still require admin password/token
-        if request.url.path.startswith("/admin"):
-            pass
-        else:
-            return await call_next(request)
-
-    # Check for valid device token (remembered device)
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-        if is_device_token_valid(token):
-            tokens = load_device_tokens()
-            role = tokens.get(token, {}).get("role")
-            # update last_seen and client_ips for admin visibility
-            try:
-                ua = request.headers.get('User-Agent', '')
-                touch_device_token(token, get_client_ips(request), ua)
-            except Exception:
-                pass
-            if request.url.path.startswith("/admin") and role != "admin":
-                return JSONResponse(status_code=403, content={"detail": "Admin access required."})
-            return await call_next(request)
-
-    # Public read-only toggle: allow GETs to metrics/analytics when DASHBOARD_PUBLIC is enabled
-    try:
-        if DASHBOARD_PUBLIC and request.method == "GET" and request.url.path.startswith(("/metrics", "/analytics")):
-            return await call_next(request)
-    except Exception:
-        pass
-
-    # Allow ingestion key to authenticate ingestion endpoints before the final API block
-    try:
-        from os import getenv
-        ingest_key = getenv('INGESTION_KEY')
-        if ingest_key and request.url.path.startswith('/api/ingest'):
-            auth_header = request.headers.get('Authorization', '')
-            bearer_key = auth_header[7:] if auth_header.startswith('Bearer ') else None
-            header_key = request.headers.get('X-INGESTION-KEY') or request.headers.get('x-ingestion-key')
-            if bearer_key == ingest_key or header_key == ingest_key:
-                return await call_next(request)
-    except Exception:
-        pass
-    
-    # External access: check for password
-    # Check Authorization header with password
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-        if token == ADMIN_PASSWORD:
-            return await call_next(request)
-        if token == MANAGER_PASSWORD:
-            if request.url.path.startswith("/admin"):
-                return JSONResponse(status_code=403, content={"detail": "Admin access required."})
-            return await call_next(request)
-    
-    # Check query parameter (for page loads)
-    if request.query_params.get("auth") in (ADMIN_PASSWORD, MANAGER_PASSWORD):
-        if request.query_params.get("auth") == MANAGER_PASSWORD and request.url.path.startswith("/admin"):
-            return JSONResponse(status_code=403, content={"detail": "Admin access required."})
-        return await call_next(request)
-    
-    # Check Basic Auth format
-    if auth_header.startswith("Basic "):
-        import base64
-        try:
-            decoded = base64.b64decode(auth_header[6:]).decode()
-            if ":" in decoded:
-                _, password = decoded.split(":", 1)
-                if password == ADMIN_PASSWORD:
-                    return await call_next(request)
-                if password == MANAGER_PASSWORD and not request.url.path.startswith("/admin"):
-                    return await call_next(request)
-        except:
-            pass
-    
-    # For API requests, return 401
-    if request.url.path.startswith("/metrics") or request.url.path.startswith("/analytics") or request.url.path.startswith("/competitions") or request.url.path.startswith("/export") or request.url.path.startswith("/api") or request.url.path.startswith("/admin"):
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Unauthorized. External access requires password."}
-        )
-    
-    # For page load, redirect to login
-    if request.url.path == "/" or request.url.path == "/index.html":
-        return FileResponse("frontend/pages/index.html")  # Will add login UI to index.html
-    
-    return await call_next(request)
+    return await auth_utils.auth_middleware(
+        request=request,
+        call_next=call_next,
+        dashboard_public=DASHBOARD_PUBLIC,
+        admin_password=ADMIN_PASSWORD,
+        manager_password=MANAGER_PASSWORD,
+        is_local_network_fn=is_local_network,
+        is_token_valid_fn=is_device_token_valid,
+        load_tokens_fn=load_device_tokens,
+        touch_token_fn=touch_device_token,
+        get_client_ip_fn=get_client_ip,
+        get_client_ips_fn=get_client_ips,
+    )
 # Initialize database tables on startup
 db.init_db()
 

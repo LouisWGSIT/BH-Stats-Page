@@ -54,6 +54,13 @@ def create_static_pages_router(
             media_type="application/javascript",
         )
 
+    @router.get("/core/auth_ui.js", include_in_schema=False)
+    async def serve_auth_ui_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "auth_ui.js"),
+            media_type="application/javascript",
+        )
+
     @router.get("/core/dashboard_switcher.js", include_in_schema=False)
     async def serve_dashboard_switcher_js():
         return FileResponse(

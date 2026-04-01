@@ -20,6 +20,21 @@ except ImportError:
     IMAGE_SUPPORT = False
     print("Warning: Image support not available in openpyxl")
 
+
+def _resolve_logo_path() -> str | None:
+    """Return the first existing logo path from known deployment locations."""
+    module_dir = os.path.dirname(__file__)
+    repo_root = os.path.abspath(os.path.join(module_dir, os.pardir))
+    candidates = [
+        os.path.join(module_dir, "assets", "logo_gsit_ss.png"),
+        os.path.join(repo_root, "assets", "logo_gsit_ss.png"),
+        os.path.join(os.getcwd(), "assets", "logo_gsit_ss.png"),
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
 def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | None = None) -> BytesIO | None:
     """
     Create a multi-sheet Excel workbook from sheets_data dict.
@@ -106,14 +121,14 @@ def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | N
         bottom=Side(style='thin')
     )
     
-    # Check if logo exists
-    logo_path = os.path.join(os.path.dirname(__file__), 'assets', 'logo_gsit_ss.png')
-    has_logo = IMAGE_SUPPORT and os.path.exists(logo_path)
+    # Logo is optional; resolve it from likely deployment paths.
+    logo_path = _resolve_logo_path()
+    has_logo = IMAGE_SUPPORT and bool(logo_path)
     
     if not IMAGE_SUPPORT:
         logger.warning("PIL/Pillow not installed - images disabled")
-    if not os.path.exists(logo_path):
-        logger.warning("Logo file not found at %s", logo_path)
+    if IMAGE_SUPPORT and not logo_path:
+        logger.info("Logo file not found in expected paths; continuing without logo")
     
     # Create sheets
     first_sheet_processed = False
