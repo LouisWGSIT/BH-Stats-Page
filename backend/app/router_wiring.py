@@ -17,6 +17,7 @@ def register_routes(
     create_erasure_insights_router,
     create_qa_insights_router,
     create_metrics_analytics_router,
+    create_overall_stats_router,
     create_webhooks_router,
     create_device_lookup_router,
     create_bottleneck_router,
@@ -149,6 +150,11 @@ def register_routes(
             db_module=db_module,
             cache_get=cache_get,
             cache_set=cache_set,
+        )
+    )
+    app.include_router(
+        create_overall_stats_router(
+            qa_export_module=qa_export_module,
         )
     )
     app.include_router(

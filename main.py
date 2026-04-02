@@ -36,6 +36,7 @@ from backend.app.routes.device_lookup import create_device_lookup_router
 from backend.app.routes.erasure_insights import create_erasure_insights_router
 from backend.app.routes.hwid import create_hwid_router
 from backend.app.routes.metrics_analytics import create_metrics_analytics_router
+from backend.app.routes.overall_stats import create_overall_stats_router
 from backend.app.routes.qa_insights import compute_qa_dashboard_data, create_qa_insights_router
 from backend.app.routes.static_pages import create_static_pages_router
 from backend.app.routes.webhooks import create_webhooks_router
@@ -290,6 +291,7 @@ router_wiring.register_routes(
     create_erasure_insights_router=create_erasure_insights_router,
     create_qa_insights_router=create_qa_insights_router,
     create_metrics_analytics_router=create_metrics_analytics_router,
+    create_overall_stats_router=create_overall_stats_router,
     create_webhooks_router=create_webhooks_router,
     create_device_lookup_router=create_device_lookup_router,
     create_bottleneck_router=create_bottleneck_router,

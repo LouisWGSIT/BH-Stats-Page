@@ -117,6 +117,13 @@ def create_static_pages_router(
             media_type="application/javascript",
         )
 
+    @router.get("/core/overall_stats_dashboard.js", include_in_schema=False)
+    async def serve_overall_stats_dashboard_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "overall_stats_dashboard.js"),
+            media_type="application/javascript",
+        )
+
     @router.get("/core/qa_trend_panel.js", include_in_schema=False)
     async def serve_qa_trend_panel_js():
         return FileResponse(

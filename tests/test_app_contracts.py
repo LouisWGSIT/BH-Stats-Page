@@ -251,6 +251,10 @@ def test_static_routes_still_serve_assets(client):
     assert r_race_leaderboard.status_code == 200
     assert "window.RaceLeaderboard" in r_race_leaderboard.text
 
+    r_overall_stats_dashboard = client.get("/core/overall_stats_dashboard.js")
+    assert r_overall_stats_dashboard.status_code == 200
+    assert "window.OverallStatsDashboard" in r_overall_stats_dashboard.text
+
     r_qa_trend_panel = client.get("/core/qa_trend_panel.js")
     assert r_qa_trend_panel.status_code == 200
     assert "window.QATrendPanel" in r_qa_trend_panel.text
@@ -307,6 +311,26 @@ def test_core_routed_endpoints_still_resolve(client):
 
     r_analytics_overview = client.get("/analytics/overview")
     assert r_analytics_overview.status_code in (200, 401)
+
+
+def test_overall_goods_in_endpoint_returns_contract_shape(client):
+    r = client.get('/overall/goods-in')
+    assert r.status_code == 200
+    body = r.json()
+    assert body['sectionKey'] == 'goods_in'
+    assert 'targetQueue' in body
+    assert 'currentQueue' in body
+    assert 'subMetrics' in body
+    assert isinstance(body['subMetrics'], list)
+
+
+def test_overall_sections_endpoint_returns_list(client):
+    r = client.get('/overall/sections')
+    assert r.status_code == 200
+    body = r.json()
+    assert 'sections' in body
+    assert isinstance(body['sections'], list)
+    assert len(body['sections']) >= 1
 
     r_metrics_today = client.get("/metrics/today")
     assert r_metrics_today.status_code in (200, 401)

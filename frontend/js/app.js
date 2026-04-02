@@ -1032,10 +1032,20 @@
     if (!qaAdapterApi || typeof qaAdapterApi.load !== 'function') return;
     return qaAdapterApi.load(period);
   }
+
+  const overallStatsApi = (window.OverallStatsDashboard && typeof window.OverallStatsDashboard.init === 'function')
+    ? window.OverallStatsDashboard.init()
+    : null;
+
+  function loadOverallDashboard() {
+    if (!overallStatsApi || typeof overallStatsApi.load !== 'function') return;
+    return overallStatsApi.load();
+  }
   
   if (window.DashboardSwitcher && typeof window.DashboardSwitcher.init === 'function') {
     window.DashboardSwitcher.init({
       loadQADashboard,
+      loadOverallDashboard,
       setCurrentDashboard: (index) => {
         currentDashboard = index;
       },
