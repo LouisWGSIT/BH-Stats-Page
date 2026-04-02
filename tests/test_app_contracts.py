@@ -247,6 +247,10 @@ def test_static_routes_still_serve_assets(client):
     assert r_qa_trend_panel.status_code == 200
     assert "window.QATrendPanel" in r_qa_trend_panel.text
 
+    r_qa_metrics_rotator = client.get("/core/qa_metrics_rotator.js")
+    assert r_qa_metrics_rotator.status_code == 200
+    assert "window.QAMetricsRotator" in r_qa_metrics_rotator.text
+
     r_export_manager = client.get("/core/export_manager.js")
     assert r_export_manager.status_code == 200
     assert "application/javascript" in r_export_manager.headers.get("content-type", "")

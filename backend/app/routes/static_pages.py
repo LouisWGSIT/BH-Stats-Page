@@ -110,6 +110,13 @@ def create_static_pages_router(
             media_type="application/javascript",
         )
 
+    @router.get("/core/qa_metrics_rotator.js", include_in_schema=False)
+    async def serve_qa_metrics_rotator_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "qa_metrics_rotator.js"),
+            media_type="application/javascript",
+        )
+
     @router.get("/core/flip_rotator_lifecycle.js", include_in_schema=False)
     async def serve_flip_rotator_lifecycle_js():
         return FileResponse(
