@@ -28,129 +28,33 @@
     }
   }
 
-  async function refreshSpeedChallenge(window, listId, statusId) {
-    try {
-      const res = await fetch(`/competitions/speed-challenge?window=${window}`);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const list = document.getElementById(listId);
-      const statusEl = document.getElementById(statusId);
-      
-      // Get tracker for this window
-      const tracker = speedChallengeData[window];
-      if (!tracker) return;
+  const competitionAnnouncementsApi = (window.CompetitionAnnouncements && typeof window.CompetitionAnnouncements.init === 'function')
+    ? window.CompetitionAnnouncements.init({
+        getSpeedChallengeData: () => speedChallengeData,
+        getRaceData: () => raceData,
+        escapeHtml: (text) => escapeHtml(text),
+      })
+    : null;
 
-      if (statusEl && data.status) {
-        const st = data.status;
-        const liveBadge = st.isActive ? 'LIVE · ' : '';
-        const remaining = st.isActive ? `${st.timeRemainingMinutes} mins left` : `${st.startTime} - ${st.endTime}`;
-        statusEl.textContent = `${liveBadge}${st.name} (${remaining})`;
-        
-        // Check if challenge just finished (was active, now isn't)
-        if (tracker.wasActive && !st.isActive && !tracker.isFinished) {
-          tracker.isFinished = true;
-          // Announce the winner after a short delay to let data settle
-          setTimeout(() => {
-            const firstPlace = (data.leaderboard || [])[0];
-            if (firstPlace && firstPlace.initials) {
-              const announcementType = window === 'am' 
-                ? announcementTypes.SPEED_CHALLENGE_AM 
-                : announcementTypes.SPEED_CHALLENGE_PM;
-              showAnnouncement(announcementType, {
-                initials: firstPlace.initials,
-                erasures: firstPlace.erasures || 0,
-              });
-            }
-          }, 500);
-        }
-        
-        // Track if active for next check
-        tracker.wasActive = st.isActive;
-        
-        // Reset finished flag when challenge becomes active again (next day)
-        if (st.isActive && tracker.isFinished) {
-          tracker.isFinished = false;
-        }
-      }
-
-      if (!list) return;
-      list.innerHTML = '';
-      const fragment = document.createDocumentFragment();
-      (data.leaderboard || []).forEach((row, idx) => {
-        const li = document.createElement('li');
-        li.innerHTML = `
-          <span class="speed-rank">${idx + 1}.</span>
-          <span class="speed-name">${row.initials || '—'}</span>
-          <span class="speed-count">${row.erasures || 0}</span>
-        `;
-        fragment.appendChild(li);
-      });
-      list.appendChild(fragment);
-    } catch (err) {
-      console.error('Speed challenge fetch error:', err);
+  async function refreshSpeedChallenge(windowName, listId, statusId) {
+    if (!competitionAnnouncementsApi || typeof competitionAnnouncementsApi.refreshSpeedChallenge !== 'function') {
+      return;
     }
+    return competitionAnnouncementsApi.refreshSpeedChallenge(windowName, listId, statusId);
   }
 
   async function refreshCategorySpecialists() {
-    try {
-      const res = await fetch('/competitions/category-specialists');
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const map = {
-        laptops_desktops: 'specLD',
-        servers: 'specServers',
-        macs: 'specMacs',
-        mobiles: 'specMobiles'
-      };
-      Object.entries(map).forEach(([key, listId]) => {
-        const list = document.getElementById(listId);
-        if (!list) return;
-        list.innerHTML = '';
-        const rows = (data.specialists && data.specialists[key]) || [];
-        const fragment = document.createDocumentFragment();
-        rows.forEach((row, idx) => {
-          const li = document.createElement('li');
-          const trophyClass = idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze';
-          li.innerHTML = `
-            <span class="speed-rank">${idx + 1}.</span>
-            <span class="speed-name">${row.initials || '—'}</span>
-            <span class="speed-count">${row.count || 0}</span>
-            <span class="trophy ${trophyClass}"></span>
-          `;
-          fragment.appendChild(li);
-        });
-        list.appendChild(fragment);
-      });
-    } catch (err) {
-      console.error('Category specialists fetch error:', err);
+    if (!competitionAnnouncementsApi || typeof competitionAnnouncementsApi.refreshCategorySpecialists !== 'function') {
+      return;
     }
+    return competitionAnnouncementsApi.refreshCategorySpecialists();
   }
 
   async function refreshConsistency() {
-    try {
-      const res = await fetch('/competitions/consistency');
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const list = document.getElementById('consistencyList');
-      if (!list) return;
-      list.innerHTML = '';
-      const fragment = document.createDocumentFragment();
-      (data.leaderboard || []).forEach((row, idx) => {
-        const li = document.createElement('li');
-        li.innerHTML = `
-          <span class="speed-rank">${idx + 1}.</span>
-          <span class="speed-name">${row.initials || '—'}</span>
-          <div class="consistency-stats">
-            <span class="speed-count">${row.erasures || 0} erasures</span>
-            <span class="gap">avg time between actions: ${row.avgGapMinutes || 0} min • consistency (lower is steadier): ${row.consistencyScore || 0}</span>
-          </div>
-        `;
-        fragment.appendChild(li);
-      });
-      list.appendChild(fragment);
-    } catch (err) {
-      console.error('Consistency fetch error:', err);
+    if (!competitionAnnouncementsApi || typeof competitionAnnouncementsApi.refreshConsistency !== 'function') {
+      return;
     }
+    return competitionAnnouncementsApi.refreshConsistency();
   }
 
   async function refreshLeaderboard() {
@@ -267,271 +171,17 @@
   }
 
   function checkAndTriggerWinner() {
-    const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-
-    // Trigger at 15:58
-    if (hours === 15 && minutes === 58 && !raceData.winnerAnnounced) {
-      announceWinner();
+    if (!competitionAnnouncementsApi || typeof competitionAnnouncementsApi.checkAndTriggerWinner !== 'function') {
+      return;
     }
-
-    // Reset flag at midnight for next day
-    if (hours === 0 && minutes === 0) {
-      raceData.winnerAnnounced = false;
-      raceData.firstFinisher = null;
-    }
-  }
-
-  // Enhanced announcement system
-  const announcementTypes = {
-    DAILY_SUMMARY: 'daily-summary',
-    DAILY_RACE_WINNER: 'daily-race-winner',
-    SPEED_CHALLENGE_AM: 'speed-challenge-am',
-    SPEED_CHALLENGE_PM: 'speed-challenge-pm',
-    CATEGORY_SPECIALIST: 'category-specialist',
-    CONSISTENCY_KING: 'consistency-king',
-    TOP_PERFORMER: 'top-performer',
-  };
-
-  const announcementMessages = {
-    'daily-summary': (summary) => ({
-      title: summary.title || '🏆 End of Day Awards',
-      subtitle: summary.subtitle || '',
-      duration: 600000, // 10 minutes
-      emoji: '🏆🎉',
-    }),
-    'daily-race-winner': (winner) => ({
-      title: `🏆 ${winner.initials} WINS THE DAILY RACE! 🏆`,
-      subtitle: `Finished with ${winner.erasures} erasures today`,
-      duration: 600000, // 10 minutes - display until they leave warehouse
-      emoji: '🏁🎉',
-    }),
-    'speed-challenge-am': (winner) => ({
-      title: `⚡ ${winner.initials} CRUSHES THE AM SPEED CHALLENGE! ⚡`,
-      subtitle: `${winner.erasures} erasures in record time`,
-      duration: 60000, // 1 minute
-      emoji: '🏃💨',
-    }),
-    'speed-challenge-pm': (winner) => ({
-      title: `🌙 ${winner.initials} DOMINATES THE PM SPEED CHALLENGE! 🌙`,
-      subtitle: `${winner.erasures} erasures in the afternoon blitz`,
-      duration: 60000, // 1 minute
-      emoji: '🌟⚡',
-    }),
-    'category-specialist': (specialist) => ({
-      title: `🎯 ${specialist.initials} IS THE ${specialist.category} SPECIALIST! 🎯`,
-      subtitle: `Master of ${specialist.category} erasures`,
-      duration: 7000,
-      emoji: '👑✨',
-    }),
-    'consistency-king': (winner) => ({
-      title: `🎪 ${winner.initials} IS TODAY'S CONSISTENCY KING/QUEEN! 🎪`,
-      subtitle: `${winner.erasures} erasures with flawless pacing`,
-      duration: 7000,
-      emoji: '⏱️💯',
-    }),
-    'top-performer': (winner) => ({
-      title: `⭐ ALL HAIL ${winner.initials}, TOP PERFORMER! ⭐`,
-      subtitle: `${winner.erasures} erasures and counting`,
-      duration: 7000,
-      emoji: '👏🔥',
-    }),
-  };
-
-  async function safeFetchJson(url) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) return null;
-      return await res.json();
-    } catch (err) {
-      return null;
-    }
-  }
-
-  async function buildDailySummary() {
-    const [leaderboardData, speedAmData, speedPmData, consistencyData, specialistsData] = await Promise.all([
-      safeFetchJson('/metrics/engineers/leaderboard?scope=today&limit=1'),
-      safeFetchJson('/competitions/speed-challenge?window=am'),
-      safeFetchJson('/competitions/speed-challenge?window=pm'),
-      safeFetchJson('/competitions/consistency'),
-      safeFetchJson('/competitions/category-specialists'),
-    ]);
-
-    const items = [];
-
-    const raceWinner = (leaderboardData && leaderboardData.items && leaderboardData.items[0]) || raceData.engineer1;
-    if (raceWinner) {
-      items.push({
-        icon: '🏁',
-        label: 'Daily Race',
-        winner: raceWinner.initials || '—',
-        value: `${raceWinner.erasures || 0} erasures`,
-      });
-    }
-
-    const amWinner = speedAmData && speedAmData.leaderboard && speedAmData.leaderboard[0];
-    if (amWinner) {
-      items.push({
-        icon: '⚡',
-        label: 'Speed Challenge (AM)',
-        winner: amWinner.initials || '—',
-        value: `${amWinner.erasures || 0} erasures`,
-      });
-    }
-
-    const pmWinner = speedPmData && speedPmData.leaderboard && speedPmData.leaderboard[0];
-    if (pmWinner) {
-      items.push({
-        icon: '🌙',
-        label: 'Speed Challenge (PM)',
-        winner: pmWinner.initials || '—',
-        value: `${pmWinner.erasures || 0} erasures`,
-      });
-    }
-
-    const consistencyWinner = consistencyData && consistencyData.leaderboard && consistencyData.leaderboard[0];
-    if (consistencyWinner) {
-      items.push({
-        icon: '⏱️',
-        label: 'Consistency King/Queen',
-        winner: consistencyWinner.initials || '—',
-        value: `${consistencyWinner.erasures || 0} erasures`,
-      });
-    }
-
-    const specialists = (specialistsData && specialistsData.specialists) || {};
-    const specialistLabels = {
-      laptops_desktops: 'Laptops/Desktops Specialist',
-      servers: 'Servers Specialist',
-      macs: 'Macs Specialist',
-      mobiles: 'Mobiles Specialist',
-    };
-    Object.entries(specialistLabels).forEach(([key, label]) => {
-      const row = (specialists[key] || [])[0];
-      if (row) {
-        items.push({
-          icon: '🎯',
-          label,
-          winner: row.initials || '—',
-          value: `${row.count || 0} erasures`,
-        });
-      }
-    });
-
-    if (items.length === 0) {
-      items.push({
-        icon: 'ℹ️',
-        label: 'No results yet',
-        winner: '—',
-        value: 'Waiting for data',
-      });
-    }
-
-    const todayLabel = new Date().toLocaleDateString(undefined, {
-      weekday: 'long',
-      month: 'short',
-      day: 'numeric',
-    });
-
-    return {
-      title: '🏆 End of Day Awards',
-      subtitle: `${todayLabel} • Winners`,
-      items,
-    };
-  }
-
-  function showAnnouncement(type, data) {
-    const config = announcementMessages[type];
-    if (!config) return;
-
-    const message = config(data);
-    const modal = document.getElementById('winnerModal');
-    const winnerText = document.getElementById('winnerText');
-    const winnerSubtext = document.getElementById('winnerSubtext');
-    const summaryContainer = document.getElementById('announcementSummary');
-    const summaryTitle = document.getElementById('summaryTitle');
-    const summarySubtitle = document.getElementById('summarySubtitle');
-    const summaryGrid = document.getElementById('summaryGrid');
-
-    if (type === announcementTypes.DAILY_SUMMARY && summaryContainer) {
-      if (winnerText) winnerText.style.display = 'none';
-      if (winnerSubtext) winnerSubtext.style.display = 'none';
-      summaryContainer.classList.remove('hidden');
-      if (summaryTitle) summaryTitle.textContent = data.title || message.title;
-      if (summarySubtitle) summarySubtitle.textContent = data.subtitle || message.subtitle || '';
-      if (summaryGrid) {
-        summaryGrid.innerHTML = (data.items || []).map(item => `
-          <div class="summary-item">
-            <div class="summary-item-left">
-              <span class="summary-icon">${item.icon || '🏆'}</span>
-              <div>
-                <div class="summary-label">${escapeHtml(item.label || '')}</div>
-                <div class="summary-winner">${escapeHtml(item.winner || '—')}</div>
-              </div>
-            </div>
-            <div class="summary-value">${escapeHtml(item.value || '')}</div>
-          </div>
-        `).join('');
-      }
-    } else {
-      if (summaryContainer) summaryContainer.classList.add('hidden');
-      if (winnerText) {
-        winnerText.style.display = '';
-        winnerText.textContent = message.title;
-      }
-      if (winnerSubtext) {
-        winnerSubtext.style.display = '';
-        winnerSubtext.textContent = message.subtitle;
-      }
-    }
-
-    modal.classList.remove('hidden');
-
-    // Trigger confetti for more impressive effect
-    triggerConfetti();
-
-    // Hide modal after configured duration
-    setTimeout(() => {
-      modal.classList.add('hidden');
-    }, message.duration);
+    return competitionAnnouncementsApi.checkAndTriggerWinner();
   }
 
   async function announceWinner() {
-    if (raceData.winnerAnnounced) return;
-    raceData.winnerAnnounced = true;
-    const summary = await buildDailySummary();
-    showAnnouncement(announcementTypes.DAILY_SUMMARY, summary);
-  }
-
-  function triggerConfetti() {
-    if (typeof confetti === 'undefined') {
-      console.warn('Confetti library not loaded');
+    if (!competitionAnnouncementsApi || typeof competitionAnnouncementsApi.announceWinner !== 'function') {
       return;
     }
-
-    const confettiColors = [
-      '#ff1ea3', // pink
-      '#8cf04a', // green
-      '#00d4ff', // cyan
-      '#ffcc00', // yellow
-    ];
-
-    const defaults = {
-      origin: { y: 0.3 },
-      zIndex: 10000,
-      disableForReducedMotion: true,
-    };
-
-    // Single optimized burst for TV performance
-    confetti({
-      ...defaults,
-      particleCount: 50, // Reduced from 100
-      spread: 90,
-      startVelocity: 40,
-      colors: confettiColors,
-      ticks: 120, // Limit animation duration
-    });
+    return competitionAnnouncementsApi.announceWinner();
   }
 
   function renderBars(counts) {
@@ -812,239 +462,48 @@
   }
 
   // ==================== ANALYTICS & FLIP CARDS ====================
-  
-  let analyticsCharts = {};
+  const analyticsChartsApi = (window.AnalyticsCharts && typeof window.AnalyticsCharts.init === 'function')
+    ? window.AnalyticsCharts.init({
+        cfg,
+        getAvatarDataUri,
+        truncateInitials,
+      })
+    : null;
 
   async function fetchAnalytics() {
-    try {
-      const [categoryTrends, engineerStats, peakHours, dayPatterns] = await Promise.all([
-        fetch('/analytics/weekly-category-trends').then(r => r.json()),
-        fetch('/analytics/weekly-engineer-stats').then(r => r.json()),
-        fetch('/analytics/peak-hours').then(r => r.json()),
-        fetch('/analytics/day-of-week-patterns').then(r => r.json())
-      ]);
-
-      return { categoryTrends, engineerStats, peakHours, dayPatterns };
-    } catch (error) {
-      console.error('Failed to fetch analytics:', error);
-      return null;
-    }
+    if (!analyticsChartsApi || typeof analyticsChartsApi.fetchAnalytics !== 'function') return null;
+    return analyticsChartsApi.fetchAnalytics();
   }
 
   function createPeakHoursChart(data) {
-    const canvas = document.getElementById('chartPeakHours');
-    if (!canvas) return;
-
-    if (analyticsCharts.peakHours) {
-      analyticsCharts.peakHours.destroy();
+    if (analyticsChartsApi && typeof analyticsChartsApi.createPeakHoursChart === 'function') {
+      return analyticsChartsApi.createPeakHoursChart(data);
     }
-
-    const ctx = canvas.getContext('2d');
-    analyticsCharts.peakHours = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: data.hours.map(h => `${h.hour}:00`),
-        datasets: [{
-          label: 'Erasures',
-          data: data.hours.map(h => h.count),
-          backgroundColor: cfg.theme.ringPrimary,
-          borderRadius: 4,
-          borderSkipped: false
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          title: {
-            display: true,
-            text: 'Hourly Activity',
-            color: cfg.theme.text,
-            font: { size: 14 }
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            grid: { color: 'rgba(255,255,255,0.05)' },
-            ticks: { color: cfg.theme.muted, font: { size: 10 } }
-          },
-          x: {
-            grid: { display: false },
-            ticks: { color: cfg.theme.muted, font: { size: 9 }, maxRotation: 0 }
-          }
-        }
-      }
-    });
   }
 
   function createDayOfWeekChart(data) {
-    const canvas = document.getElementById('chartDayOfWeek');
-    if (!canvas) return;
-
-    if (analyticsCharts.dayOfWeek) {
-      analyticsCharts.dayOfWeek.destroy();
+    if (analyticsChartsApi && typeof analyticsChartsApi.createDayOfWeekChart === 'function') {
+      return analyticsChartsApi.createDayOfWeekChart(data);
     }
-
-    const ctx = canvas.getContext('2d');
-    analyticsCharts.dayOfWeek = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: data.patterns.map(p => p.day),
-        datasets: [{
-          label: 'Avg Erasures',
-          data: data.patterns.map(p => p.avgCount),
-          backgroundColor: cfg.theme.ringSecondary,
-          borderRadius: 4,
-          borderSkipped: false
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          title: {
-            display: true,
-            text: 'Average by Day (Last 4 Weeks)',
-            color: cfg.theme.text,
-            font: { size: 14 }
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            grid: { color: 'rgba(255,255,255,0.05)' },
-            ticks: { color: cfg.theme.muted }
-          },
-          x: {
-            grid: { display: false },
-            ticks: { color: cfg.theme.muted }
-          }
-        }
-      }
-    });
   }
 
   function createWeeklyCategoryTrendsChart(data) {
-    const canvas = document.getElementById('chartWeeklyCategoryTrends');
-    if (!canvas) return;
-
-    if (analyticsCharts.categoryTrends) {
-      analyticsCharts.categoryTrends.destroy();
+    if (analyticsChartsApi && typeof analyticsChartsApi.createWeeklyCategoryTrendsChart === 'function') {
+      return analyticsChartsApi.createWeeklyCategoryTrendsChart(data);
     }
-
-
-    const trends = data.trends;
-    // Get today's date in YYYY-MM-DD
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
-
-    // Get live stat card values for each category
-    const liveValues = {
-      laptops_desktops: parseInt(document.getElementById('countLD')?.textContent) || 0,
-      servers: parseInt(document.getElementById('countServers')?.textContent) || 0,
-      macs: parseInt(document.getElementById('countMacs')?.textContent) || 0,
-      mobiles: parseInt(document.getElementById('countMobiles')?.textContent) || 0,
-    };
-
-    // Build all unique dates, and ensure today is included
-    let allDates = [...new Set(
-      Object.values(trends).flatMap(arr => arr.map(d => d.date))
-    )];
-    if (!allDates.includes(todayStr)) allDates.push(todayStr);
-    allDates = allDates.sort();
-
-    const datasets = Object.keys(trends).map((category, idx) => {
-      const colorMap = {
-        'laptops_desktops': '#4caf50', // green
-        'servers': '#ffeb3b', // yellow
-        'macs': '#2196f3', // blue
-        'mobiles': '#ff1ea3' // pink
-      };
-      // Build data array, replacing or appending today's value with live stat card value
-      const dataArr = allDates.map(date => {
-        if (date === todayStr) {
-          return liveValues[category] || 0;
-        }
-        const entry = trends[category].find(d => d.date === date);
-        return entry ? entry.count : 0;
-      });
-      return {
-        label: category.replace('_', ' / ').toUpperCase(),
-        data: dataArr,
-        borderColor: colorMap[category] || cfg.theme.ringPrimary,
-        backgroundColor: colorMap[category] || cfg.theme.ringPrimary,
-        tension: 0.3,
-        borderWidth: 2,
-        fill: false
-      };
-    });
-
-    const ctx = canvas.getContext('2d');
-    analyticsCharts.categoryTrends = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: allDates.map(d => new Date(d).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })),
-        datasets: datasets
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            display: true,
-            position: 'top',
-            labels: { color: cfg.theme.text, font: { size: 11 } }
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            grid: { color: 'rgba(255,255,255,0.05)' },
-            ticks: { color: cfg.theme.muted }
-          },
-          x: {
-            grid: { display: false },
-            ticks: { color: cfg.theme.muted, font: { size: 10 } }
-          }
-        }
-      }
-    });
   }
 
   function updateWeeklyLeaderboard(data) {
-    const tbody = document.getElementById('weeklyLeaderboardBody');
-    if (!tbody) return;
-
-    tbody.innerHTML = data.stats.slice(0, 10).map(eng => {
-      const avatar = getAvatarDataUri(eng.initials || '');
-      const displayInitials = truncateInitials(eng.initials || '');
-      return `
-      <tr>
-        <td>
-          <span class="engineer-avatar" style="background-image: url(${avatar})"></span>
-          <span class="engineer-name">${displayInitials}</span>
-        </td>
-        <td>${eng.weeklyTotal}</td>
-        <td>${eng.daysActive}/5</td>
-        <td>${eng.consistency}%</td>
-      </tr>`;
-    }).join('');
+    if (analyticsChartsApi && typeof analyticsChartsApi.updateWeeklyLeaderboard === 'function') {
+      return analyticsChartsApi.updateWeeklyLeaderboard(data);
+    }
   }
 
   async function initializeAnalytics() {
-    const analytics = await fetchAnalytics();
-    if (!analytics) {
-      console.warn('Analytics data unavailable, skipping chart setup');
+    if (!analyticsChartsApi || typeof analyticsChartsApi.initializeAnalytics !== 'function') {
       return;
     }
-
-    createPeakHoursChart(analytics.peakHours);
-    createDayOfWeekChart(analytics.dayPatterns);
-    createWeeklyCategoryTrendsChart(analytics.categoryTrends);
-    updateWeeklyLeaderboard(analytics.engineerStats);
+    return analyticsChartsApi.initializeAnalytics();
   }
 
   // ==================== NEW FLIP CARDS DATA ====================
@@ -1550,262 +1009,47 @@
     };
   }
 
+  const monthlyMomentumChartApi = (window.MonthlyMomentumChart && typeof window.MonthlyMomentumChart.init === 'function')
+    ? window.MonthlyMomentumChart.init({
+        cfg,
+        analyticsCharts,
+      })
+    : null;
+
   async function createMonthlyMomentumChart() {
-    const canvas = document.getElementById('chartMonthlyMomentum');
-    if (!canvas) return;
-
-    if (analyticsCharts.monthlyMomentum) {
-      analyticsCharts.monthlyMomentum.destroy();
+    if (!monthlyMomentumChartApi || typeof monthlyMomentumChartApi.createMonthlyMomentumChart !== 'function') {
+      return;
     }
-
-    // Fetch real monthly data from API
-    let weeklyData = [0, 0, 0, 0];
-    try {
-      const response = await fetch('/metrics/monthly-momentum');
-      const data = await response.json();
-      if (data && data.weeklyTotals) {
-        weeklyData = data.weeklyTotals;
-      }
-    } catch (error) {
-      console.warn('Failed to fetch monthly momentum:', error);
-      // No fallback: leave chart empty if backend fails
-    }
-    
-    const ctx = canvas.getContext('2d');
-    analyticsCharts.monthlyMomentum = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-        datasets: [{
-          label: 'Weekly Total',
-          data: weeklyData,
-          backgroundColor: cfg.theme.ringSecondary,
-          borderRadius: 6,
-          borderSkipped: false
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          title: {
-            display: true,
-            text: 'Week-by-Week Progress',
-            color: cfg.theme.text,
-            font: { size: 14 }
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            grid: { color: 'rgba(255,255,255,0.05)' },
-            ticks: { color: cfg.theme.muted }
-          },
-          x: {
-            grid: { display: false },
-            ticks: { color: cfg.theme.muted }
-          }
-        }
-      }
-    });
+    return monthlyMomentumChartApi.createMonthlyMomentumChart();
   }
 
-  // Flip card logic with staggered timing
-  // Track flip card intervals/timeouts so we can clean them up (prevents stacking on re-init)
-  const flipIntervals = new Map();
-  const flipTimeouts = new Map();
+  // Flip/rotator lifecycle delegated to core module.
+  const flipRotatorLifecycleApi = (window.FlipRotatorLifecycle && typeof window.FlipRotatorLifecycle.init === 'function')
+    ? window.FlipRotatorLifecycle.init()
+    : null;
 
   function cleanupFlipCards() {
-    flipIntervals.forEach(id => clearInterval(id));
-    flipTimeouts.forEach(t => {
-      if (Array.isArray(t)) {
-        t.forEach(x => clearTimeout(x));
-      } else {
-        clearTimeout(t);
-      }
-    });
-    flipIntervals.clear();
-    flipTimeouts.clear();
-    // Reset flip classes to safe state
-    const flipCards = document.querySelectorAll('.flip-card');
-    flipCards.forEach(card => {
-      card.classList.remove('flipped', 'about-to-flip');
-    });
+    if (flipRotatorLifecycleApi && typeof flipRotatorLifecycleApi.cleanupFlipCards === 'function') {
+      return flipRotatorLifecycleApi.cleanupFlipCards();
+    }
   }
 
   function setupFlipCards() {
-    // Clear any previous flip timers before setting new ones
-    cleanupFlipCards();
-    const flipCards = document.querySelectorAll('.flip-card');
-    if (flipCards.length === 0) return;
-
-    // Increase flip interval so cards rotate less often on PCs
-    const FLIP_INTERVAL = 60000; // 60s between flips
-    const FLIP_HOLD = 20000; // 20s hold before flipping back
-    const PRE_FLIP_INDICATOR_TIME = 500; // Show indicator before flip
-
-    flipCards.forEach((card, index) => {
-      const inner = card.querySelector('.flip-card-inner');
-      let isFlipping = false;
-      
-      function performFlip() {
-        if (isFlipping) return;
-        
-        // Add pre-flip indicator
-        card.classList.add('about-to-flip');
-        
-        setTimeout(() => {
-          card.classList.remove('about-to-flip');
-          isFlipping = true;
-          card.classList.toggle('flipped');
-        }, PRE_FLIP_INDICATOR_TIME);
-      }
-      
-      // Listen for transition end to know when flip completes
-      if (inner) {
-        inner.addEventListener('transitionend', (e) => {
-          if (e.propertyName === 'transform') {
-            isFlipping = false;
-          }
-        });
-      }
-      
-        // Initial flip after a brief stagger
-        const startTimeout = setTimeout(() => {
-          performFlip();
-
-          // Flip back after hold (wait for flip to complete + hold time)
-          const holdTimeout = setTimeout(() => {
-            performFlip();
-          }, FLIP_HOLD);
-
-          // Setup recurring flips after initial cycle
-          const recurringSetupTimeout = setTimeout(() => {
-            const intervalId = setInterval(() => {
-              performFlip();
-              setTimeout(performFlip, FLIP_HOLD);
-            }, FLIP_INTERVAL);
-            flipIntervals.set(index, intervalId);
-          }, FLIP_HOLD);
-
-          // Track timeouts so we can clear them if needed
-          flipTimeouts.set(index, [startTimeout, holdTimeout, recurringSetupTimeout]);
-        }, 2000 + index * 300);
-        // Also track the initial stagger timeout in case cleanup runs before it fires
-        if (!flipTimeouts.has(index)) flipTimeouts.set(index, startTimeout);
-    });
+    if (flipRotatorLifecycleApi && typeof flipRotatorLifecycleApi.setupFlipCards === 'function') {
+      return flipRotatorLifecycleApi.setupFlipCards();
+    }
   }
 
-  // Rotate multi-panel cards in place (bottom row)
-  const rotatorIntervals = new Map();
-  const rotatorTimeouts = new Map();
-  
   function cleanupRotatorCards() {
-    // Clear all intervals and timeouts
-    rotatorIntervals.forEach(id => clearInterval(id));
-    rotatorTimeouts.forEach(id => clearTimeout(id));
-    rotatorIntervals.clear();
-    rotatorTimeouts.clear();
+    if (flipRotatorLifecycleApi && typeof flipRotatorLifecycleApi.cleanupRotatorCards === 'function') {
+      return flipRotatorLifecycleApi.cleanupRotatorCards();
+    }
   }
-  
+
   function setupRotatorCards() {
-    const cards = document.querySelectorAll('.rotator-card');
-    if (!cards.length) return;
-
-    // Clean up before setting up new ones
-    cleanupRotatorCards();
-
-    cards.forEach((card, cardIdx) => {
-      // Clear any existing interval/timeout for this card
-      if (rotatorIntervals.has(cardIdx)) {
-        clearInterval(rotatorIntervals.get(cardIdx));
-        rotatorIntervals.delete(cardIdx);
-      }
-      if (rotatorTimeouts.has(cardIdx)) {
-        clearTimeout(rotatorTimeouts.get(cardIdx));
-        rotatorTimeouts.delete(cardIdx);
-      }
-      
-      const panels = Array.from(card.querySelectorAll('.panel'));
-      if (panels.length <= 1) return;
-
-      // Reset panel states to avoid stacking/overlap
-      panels.forEach(panel => {
-        panel.classList.remove('active', 'entering', 'exiting', 'about-to-rotate');
-      });
-
-      let index = 0;
-      let isTransitioning = false;
-      const interval = parseInt(card.dataset.interval, 10) || 14000;
-      const PRE_ROTATE_INDICATOR_TIME = 400;
-
-      function showPanel(nextIndex) {
-        if (isTransitioning) {
-          console.warn('Rotator card transition already in progress, skipping');
-          return;
-        }
-        
-        const currentIndex = panels.findIndex(p => p.classList.contains('active'));
-        if (currentIndex === -1) {
-          // First time setup - ensure only one active
-          panels.forEach(panel => panel.classList.remove('active', 'entering', 'exiting', 'about-to-rotate'));
-          panels[nextIndex].classList.add('active');
-          return;
-        }
-        
-        // Add pre-rotation indicator to current panel
-        panels[currentIndex].classList.add('about-to-rotate');
-        
-        setTimeout(() => {
-          isTransitioning = true;
-          
-          panels.forEach(panel => {
-            panel.classList.remove('entering', 'exiting', 'about-to-rotate');
-          });
-
-          panels[currentIndex].classList.remove('active');
-          panels[currentIndex].classList.add('exiting');
-
-          const nextPanel = panels[nextIndex];
-          nextPanel.classList.add('entering');
-          nextPanel.classList.add('active');
-          
-          // Force repaint on TV browsers for better animation reliability
-          void nextPanel.offsetHeight;
-          
-          // Wait for transition to complete before allowing next transition
-          setTimeout(() => {
-            panels[currentIndex].classList.remove('exiting');
-            nextPanel.classList.remove('entering');
-            isTransitioning = false;
-          }, 1200);
-          
-          // Safety timeout to reset isTransitioning if something goes wrong
-          setTimeout(() => {
-            if (isTransitioning) {
-              console.warn('Rotator card transition took too long, resetting');
-              isTransitioning = false;
-            }
-          }, 3000);
-        }, PRE_ROTATE_INDICATOR_TIME);
-      }
-
-      // Ensure the first panel is visible
-      showPanel(index);
-
-      // Begin rotation after a short delay to stagger with flip-cards
-      const startTimeout = setTimeout(() => {
-        const intervalId = setInterval(() => {
-          index = (index + 1) % panels.length;
-          showPanel(index);
-        }, interval);
-        
-        // Store interval ID so we can clear it later if needed
-        rotatorIntervals.set(cardIdx, intervalId);
-      }, 3000);
-      rotatorTimeouts.set(cardIdx, startTimeout);
-    });
+    if (flipRotatorLifecycleApi && typeof flipRotatorLifecycleApi.setupRotatorCards === 'function') {
+      return flipRotatorLifecycleApi.setupRotatorCards();
+    }
   }
 
   // Initialize analytics and flip on first load

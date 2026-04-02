@@ -82,6 +82,41 @@ def create_static_pages_router(
             media_type="application/javascript",
         )
 
+    @router.get("/core/analytics_charts.js", include_in_schema=False)
+    async def serve_analytics_charts_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "analytics_charts.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/monthly_momentum_chart.js", include_in_schema=False)
+    async def serve_monthly_momentum_chart_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "monthly_momentum_chart.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/competition_announcements.js", include_in_schema=False)
+    async def serve_competition_announcements_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "competition_announcements.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/qa_trend_panel.js", include_in_schema=False)
+    async def serve_qa_trend_panel_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "qa_trend_panel.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/flip_rotator_lifecycle.js", include_in_schema=False)
+    async def serve_flip_rotator_lifecycle_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "flip_rotator_lifecycle.js"),
+            media_type="application/javascript",
+        )
+
     @router.get("/core/auth.js", include_in_schema=False)
     async def serve_auth_js():
         return FileResponse(

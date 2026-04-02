@@ -231,6 +231,22 @@ def test_static_routes_still_serve_assets(client):
     assert r_flip_cards_updater.status_code == 200
     assert "application/javascript" in r_flip_cards_updater.headers.get("content-type", "")
 
+    r_analytics_charts = client.get("/core/analytics_charts.js")
+    assert r_analytics_charts.status_code == 200
+    assert "application/javascript" in r_analytics_charts.headers.get("content-type", "")
+
+    r_monthly_momentum_chart = client.get("/core/monthly_momentum_chart.js")
+    assert r_monthly_momentum_chart.status_code == 200
+    assert "window.MonthlyMomentumChart" in r_monthly_momentum_chart.text
+
+    r_competition_announcements = client.get("/core/competition_announcements.js")
+    assert r_competition_announcements.status_code == 200
+    assert "window.CompetitionAnnouncements" in r_competition_announcements.text
+
+    r_qa_trend_panel = client.get("/core/qa_trend_panel.js")
+    assert r_qa_trend_panel.status_code == 200
+    assert "window.QATrendPanel" in r_qa_trend_panel.text
+
     r_export_manager = client.get("/core/export_manager.js")
     assert r_export_manager.status_code == 200
     assert "application/javascript" in r_export_manager.headers.get("content-type", "")
@@ -239,6 +255,9 @@ def test_static_routes_still_serve_assets(client):
     assert r_export_csv_helpers.status_code == 200
     assert "application/javascript" in r_export_csv_helpers.headers.get("content-type", "")
 
+    r_flip_rotator_lifecycle = client.get("/core/flip_rotator_lifecycle.js")
+    assert r_flip_rotator_lifecycle.status_code == 200
+    assert "window.FlipRotatorLifecycle" in r_flip_rotator_lifecycle.text
 
 def test_export_manager_contains_explicit_missing_helper_error(client):
     r = client.get("/core/export_manager.js")
