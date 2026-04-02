@@ -10,21 +10,15 @@
   const cfg = await fetch('/config.json').then(r => r.json());
 
   // ==================== ALL TIME TOTALS ====================
+  const allTimeTotalsApi = (window.AllTimeTotals && typeof window.AllTimeTotals.init === 'function')
+    ? window.AllTimeTotals.init({
+        animateNumberUpdate,
+      })
+    : null;
+
   async function refreshAllTimeTotals() {
-    try {
-      const res = await fetch('/metrics/all-time-totals');
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const allTime = data.allTimeTotal || 0;
-      // Update All Time card value
-      const allTimeEl = document.getElementById('allTimeValue');
-      if (allTimeEl) {
-        allTimeEl.textContent = allTime;
-        animateNumberUpdate('allTimeValue');
-      }
-      // (Removed global pip update. Pip is now updated per card/period in renderTopListWithLabel)
-    } catch (err) {
-      console.error('All Time totals fetch error:', err);
+    if (allTimeTotalsApi && typeof allTimeTotalsApi.refreshAllTimeTotals === 'function') {
+      return allTimeTotalsApi.refreshAllTimeTotals();
     }
   }
 
@@ -57,117 +51,30 @@
     return competitionAnnouncementsApi.refreshConsistency();
   }
 
-  async function refreshLeaderboard() {
-    try {
-      const res = await fetch('/metrics/engineers/leaderboard?scope=today&limit=5');
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const body = document.getElementById('leaderboardBody');
-      body.innerHTML = '';
-      const fragment = document.createDocumentFragment();
-      // Display all top engineers in the leaderboard table (up to 5 to match race lanes)
-      (data.items || []).slice(0, 5).forEach((row, idx) => {
-        const tr = document.createElement('tr');
-        const color = getEngineerColor(row.initials || '');
-        const avatar = getAvatarDataUri(row.initials || '');
-        const lastActive = formatTimeAgo(row.lastActive);
-        if (idx === 0) tr.classList.add('leader');
-        tr.innerHTML = `
-          <td>
-            <span class="engineer-avatar" style="background-image: url(${avatar}); border-color: ${color}"></span>
-            <span class="engineer-name">${row.initials || ''}</span>
-          </td>
-          <td class="value-strong">${row.erasures || 0}</td>
-          <td class="time-ago">${lastActive}</td>
-        `;
-        fragment.appendChild(tr);
-      });
-      body.appendChild(fragment);
+  const raceLeaderboardApi = (window.RaceLeaderboard && typeof window.RaceLeaderboard.init === 'function')
+    ? window.RaceLeaderboard.init({
+        getEngineerColor,
+        getAvatarDataUri,
+        formatTimeAgo,
+        getRaceData: () => raceData,
+        announceWinner,
+        triggerRaceConfetti,
+        triggerGreenie,
+      })
+    : null;
 
-      // Update race positions with all top 5 engineers
-      updateRace(data.items || []);
-    } catch (err) {
-      console.error('Leaderboard refresh error:', err);
+  async function refreshLeaderboard() {
+    if (!raceLeaderboardApi || typeof raceLeaderboardApi.refreshLeaderboard !== 'function') {
+      return;
     }
+    return raceLeaderboardApi.refreshLeaderboard();
   }
 
   function updateRace(leaderboardData) {
-    const topEngineers = leaderboardData.slice(0, 5);
-    const maxErasures = topEngineers.length > 0 ? topEngineers[0].erasures || 1 : 1;
-
-    // Update all 5 lanes
-    for (let i = 1; i <= 5; i++) {
-      const carEl = document.getElementById(`racePos${i}`);
-      const trailEl = document.getElementById(`trail${i}`);
-      const labelEl = document.getElementById(`driver${i}`);
-      
-      if (!carEl || !trailEl || !labelEl) continue;
-      
-      const engineer = topEngineers[i - 1];
-      
-      if (engineer) {
-        const erasures = engineer.erasures || 0;
-        let percentage = Math.min((erasures / maxErasures) * 100, 100);
-        
-        // Cap at 80% so car doesn't go past finish line until 15:58
-        percentage = Math.min(percentage, 80);
-        
-        // Only update if value actually changed to reduce DOM thrashing
-        if (carEl.style.bottom !== `${percentage}%`) {
-          carEl.style.bottom = `${percentage}%`;
-        }
-        
-        // Update trail height from bottom to current car position
-        if (trailEl.style.height !== `${percentage}%`) {
-          trailEl.style.height = `${percentage}%`;
-        }
-        
-        // Color trail to match engineer color - use solid color instead of gradient for TV performance
-        const engineerColor = getEngineerColor(engineer.initials || '');
-        if (trailEl.style.background !== engineerColor) {
-          trailEl.style.background = engineerColor;
-        }
-        
-        // Update label with engineer initials
-        if (labelEl.textContent !== engineer.initials) {
-          labelEl.textContent = `${engineer.initials || '?'}`;
-        }
-        if (labelEl.style.color !== engineerColor) {
-          labelEl.style.color = engineerColor;
-        }
-
-        // Check if car has finished (reached top/100%)
-        // Only trigger finish message at 15:58 when race officially ends
-        if (erasures >= maxErasures && !engineer.finished) {
-          const now = new Date();
-          const hours = now.getHours();
-          const minutes = now.getMinutes();
-          
-          // Only at 15:58 does the race officially finish
-          if (hours === 15 && minutes === 58) {
-            engineer.finished = true;
-            triggerRaceConfetti();
-            triggerGreenie(`🏁 ${engineer.initials} CROSSES THE FINISH LINE! What a performance! 🎉`);
-            
-            // Trigger winner announcement if this is the first to finish
-            if (!raceData.firstFinisher) {
-              raceData.firstFinisher = engineer;
-              announceWinner();
-            }
-          }
-        }
-      } else {
-        // No engineer data for this lane - reset it
-        carEl.style.bottom = '0%';
-        trailEl.style.height = '0%';
-        labelEl.textContent = '—';
-        labelEl.style.color = 'var(--muted)';
-      }
+    if (!raceLeaderboardApi || typeof raceLeaderboardApi.updateRace !== 'function') {
+      return;
     }
-
-    raceData.engineer1 = topEngineers[0] || null;
-    raceData.engineer2 = topEngineers[1] || null;
-    raceData.engineer3 = topEngineers[2] || null;
+    return raceLeaderboardApi.updateRace(leaderboardData);
   }
 
   function checkAndTriggerWinner() {

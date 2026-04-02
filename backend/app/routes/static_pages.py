@@ -103,6 +103,20 @@ def create_static_pages_router(
             media_type="application/javascript",
         )
 
+    @router.get("/core/all_time_totals.js", include_in_schema=False)
+    async def serve_all_time_totals_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "all_time_totals.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/race_leaderboard.js", include_in_schema=False)
+    async def serve_race_leaderboard_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "race_leaderboard.js"),
+            media_type="application/javascript",
+        )
+
     @router.get("/core/qa_trend_panel.js", include_in_schema=False)
     async def serve_qa_trend_panel_js():
         return FileResponse(
@@ -114,6 +128,34 @@ def create_static_pages_router(
     async def serve_qa_metrics_rotator_js():
         return FileResponse(
             os.path.join(frontend_js_dir, "core", "qa_metrics_rotator.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/qa_cards_renderer.js", include_in_schema=False)
+    async def serve_qa_cards_renderer_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "qa_cards_renderer.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/qa_card_rotator.js", include_in_schema=False)
+    async def serve_qa_card_rotator_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "qa_card_rotator.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/qa_dashboard_ui.js", include_in_schema=False)
+    async def serve_qa_dashboard_ui_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "qa_dashboard_ui.js"),
+            media_type="application/javascript",
+        )
+
+    @router.get("/core/qa_data_loader.js", include_in_schema=False)
+    async def serve_qa_data_loader_js():
+        return FileResponse(
+            os.path.join(frontend_js_dir, "core", "qa_data_loader.js"),
             media_type="application/javascript",
         )
 

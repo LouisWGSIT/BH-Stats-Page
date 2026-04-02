@@ -243,6 +243,14 @@ def test_static_routes_still_serve_assets(client):
     assert r_competition_announcements.status_code == 200
     assert "window.CompetitionAnnouncements" in r_competition_announcements.text
 
+    r_all_time_totals = client.get("/core/all_time_totals.js")
+    assert r_all_time_totals.status_code == 200
+    assert "window.AllTimeTotals" in r_all_time_totals.text
+
+    r_race_leaderboard = client.get("/core/race_leaderboard.js")
+    assert r_race_leaderboard.status_code == 200
+    assert "window.RaceLeaderboard" in r_race_leaderboard.text
+
     r_qa_trend_panel = client.get("/core/qa_trend_panel.js")
     assert r_qa_trend_panel.status_code == 200
     assert "window.QATrendPanel" in r_qa_trend_panel.text
@@ -250,6 +258,22 @@ def test_static_routes_still_serve_assets(client):
     r_qa_metrics_rotator = client.get("/core/qa_metrics_rotator.js")
     assert r_qa_metrics_rotator.status_code == 200
     assert "window.QAMetricsRotator" in r_qa_metrics_rotator.text
+
+    r_qa_cards_renderer = client.get("/core/qa_cards_renderer.js")
+    assert r_qa_cards_renderer.status_code == 200
+    assert "window.QACardsRenderer" in r_qa_cards_renderer.text
+
+    r_qa_card_rotator = client.get("/core/qa_card_rotator.js")
+    assert r_qa_card_rotator.status_code == 200
+    assert "window.QACardRotator" in r_qa_card_rotator.text
+
+    r_qa_dashboard_ui = client.get("/core/qa_dashboard_ui.js")
+    assert r_qa_dashboard_ui.status_code == 200
+    assert "window.QADashboardUI" in r_qa_dashboard_ui.text
+
+    r_qa_data_loader = client.get("/core/qa_data_loader.js")
+    assert r_qa_data_loader.status_code == 200
+    assert "window.QADataLoader" in r_qa_data_loader.text
 
     r_export_manager = client.get("/core/export_manager.js")
     assert r_export_manager.status_code == 200
