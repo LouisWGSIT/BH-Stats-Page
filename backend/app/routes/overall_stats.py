@@ -25,6 +25,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         qa_compare_lookback_days = max(1, int(os.getenv("OVERALL_QA_COMPARE_LOOKBACK_DAYS", "30")))
     except Exception:
         qa_compare_lookback_days = 30
+    qa_include_audit_master = os.getenv("OVERALL_QA_INCLUDE_AUDIT_MASTER", "false").lower() in ("1", "true", "yes")
 
     def _run_query_variants(cur, queries: list[str]) -> int:
         last_error = None
@@ -72,12 +73,18 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             "lookbackDays": qa_compare_lookback_days,
         }
         try:
+            def _norm_key(v):
+                if v is None:
+                    return ""
+                return re.sub(r"[^A-Za-z0-9]", "", str(v)).upper()
+
             start_dt = datetime.now(UTC) - timedelta(days=qa_compare_lookback_days)
             start_iso = start_dt.isoformat()
 
             conn_sqlite = sqlite3.connect(db_module.DB_PATH)
             cur_sqlite = conn_sqlite.cursor()
             try:
+                # Source 1: local live erasure feed
                 cur_sqlite.execute(
                     """
                     SELECT
@@ -90,6 +97,22 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     (start_iso,),
                 )
                 erasure_rows = cur_sqlite.fetchall() or []
+
+                # Source 2: detailed erasure hook table (where most Blancco payloads land)
+                cur_sqlite.execute(
+                    """
+                    SELECT
+                        NULLIF(TRIM(system_serial), '') AS key_id,
+                        MAX(ts) AS last_erasure_ts
+                    FROM erasures
+                    WHERE ts >= ?
+                      AND event = 'success'
+                      AND NULLIF(TRIM(system_serial), '') IS NOT NULL
+                    GROUP BY NULLIF(TRIM(system_serial), '')
+                    """,
+                    (start_iso,),
+                )
+                erasure_rows.extend(cur_sqlite.fetchall() or [])
             finally:
                 cur_sqlite.close()
                 conn_sqlite.close()
@@ -98,10 +121,17 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 return result
 
             key_to_erasure = {}
+            key_to_erasure_norm = {}
             for row in erasure_rows:
                 if not row or not row[0]:
                     continue
-                key_to_erasure[str(row[0])] = _parse_ts(row[1])
+                key = str(row[0])
+                ts_val = _parse_ts(row[1])
+                if key not in key_to_erasure or (ts_val and key_to_erasure.get(key) and ts_val > key_to_erasure.get(key)):
+                    key_to_erasure[key] = ts_val
+                nkey = _norm_key(key)
+                if nkey and (nkey not in key_to_erasure_norm or (ts_val and key_to_erasure_norm.get(nkey) and ts_val > key_to_erasure_norm.get(nkey))):
+                    key_to_erasure_norm[nkey] = ts_val
 
             keys = list(key_to_erasure.keys())
             if not keys:
@@ -131,31 +161,46 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     asset_rows = cur.fetchall() or []
 
                     key_to_stockid = {}
+                    key_to_stockid_norm = {}
                     for ar in asset_rows:
                         stockid = str(ar[0]) if ar and ar[0] is not None else None
                         serial = str(ar[1]) if ar and len(ar) > 1 and ar[1] is not None else None
                         if stockid:
                             key_to_stockid[stockid] = stockid
+                            n_stock = _norm_key(stockid)
+                            if n_stock:
+                                key_to_stockid_norm[n_stock] = stockid
                         if serial:
                             key_to_stockid[serial] = stockid or serial
+                            n_ser = _norm_key(serial)
+                            if n_ser:
+                                key_to_stockid_norm[n_ser] = stockid or serial
 
                     canonical = list({key_to_stockid[k] for k in batch if k in key_to_stockid and key_to_stockid[k]})
                     qa_map = {}
                     if canonical:
                         q_place = ",".join(["%s"] * len(canonical))
-                        q_qa = (
-                            f"SELECT stockid, MAX(added_date) as last_qa FROM ("
-                            f"SELECT stockid, added_date FROM ITAD_QA_App WHERE stockid IN ({q_place}) UNION ALL "
-                            f"SELECT stockid, added_date FROM audit_master WHERE stockid IN ({q_place})"
-                            f") x GROUP BY stockid"
-                        )
-                        cur.execute(q_qa, tuple(canonical) + tuple(canonical))
+                        if qa_include_audit_master:
+                            q_qa = (
+                                f"SELECT stockid, MAX(added_date) as last_qa FROM ("
+                                f"SELECT stockid, added_date FROM ITAD_QA_App WHERE stockid IN ({q_place}) UNION ALL "
+                                f"SELECT stockid, added_date FROM audit_master WHERE stockid IN ({q_place})"
+                                f") x GROUP BY stockid"
+                            )
+                            params = tuple(canonical) + tuple(canonical)
+                        else:
+                            q_qa = (
+                                f"SELECT stockid, MAX(added_date) as last_qa "
+                                f"FROM ITAD_QA_App WHERE stockid IN ({q_place}) GROUP BY stockid"
+                            )
+                            params = tuple(canonical)
+                        cur.execute(q_qa, params)
                         qa_rows = cur.fetchall() or []
                         qa_map = {str(r[0]): _parse_ts(r[1]) for r in qa_rows if r and r[0]}
 
                     for key in batch:
-                        er_ts = key_to_erasure.get(key)
-                        sid = key_to_stockid.get(key)
+                        er_ts = key_to_erasure.get(key) or key_to_erasure_norm.get(_norm_key(key))
+                        sid = key_to_stockid.get(key) or key_to_stockid_norm.get(_norm_key(key))
                         considered += 1
                         if not sid:
                             awaiting += 1
@@ -184,6 +229,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     "considered": int(considered),
                     "samples": samples if include_samples else [],
                     "source": "local_erasures_vs_mariadb",
+                    "includeAuditMaster": qa_include_audit_master,
                 })
                 return result
             finally:

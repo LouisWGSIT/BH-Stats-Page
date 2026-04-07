@@ -279,6 +279,32 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             disk_serial=disk_serial,
             disk_capacity=disk_capacity,
         )
+        # Keep local erasure feed in sync with detailed erasure hook so downstream
+        # "awaiting QA" comparators always have a recent erasure timestamp to compare.
+        try:
+            stockid = _clean_placeholder(
+                payload.get("stockid")
+                or payload.get("stock_id")
+                or payload.get("assetTag")
+            )
+            db_module.add_local_erasure(
+                stockid=stockid,
+                system_serial=system_serial,
+                job_id=job_id,
+                ts=ts,
+                warehouse=_clean_placeholder(payload.get("warehouse")),
+                source="erasure-detail",
+                payload={
+                    "event": event,
+                    "device_type": device_type,
+                    "initials": initials,
+                    "job_id": job_id,
+                    "stockid": stockid,
+                    "system_serial": system_serial,
+                },
+            )
+        except Exception:
+            pass
         try:
             dbg = db_module.get_summary_today_month()
             print(
