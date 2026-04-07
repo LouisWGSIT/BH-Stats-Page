@@ -114,6 +114,24 @@
       return Math.round(base - trendPenalty + trendBonus);
     }
 
+    const sectionEngineerSeeds = {
+      goods_in: ['AB', 'KH', 'LM'],
+      ia: ['SV', 'JR', 'PM'],
+      erasure: ['MS', 'MO', 'JD'],
+      qa: ['LL', 'KW', 'OJ'],
+      sorting: ['BB', 'OW', 'LW'],
+    };
+
+    function getEngineersForSection(section) {
+      const seed = sectionEngineerSeeds[section.key] || ['TM', 'AA', 'BB'];
+      const base = efficiencyScore(section);
+      return seed.map((initials, idx) => ({
+        initials,
+        section: section.name,
+        score: Math.max(0, base - (idx * 5) + (idx === 0 ? 4 : 0)),
+      }));
+    }
+
     function renderSections(sections) {
       const grid = document.getElementById('overallSectionGrid');
       if (!grid) return;
@@ -199,6 +217,7 @@
       const watchCount = statuses.filter((s) => s.status.key === 'amber').length;
       const strugglingCount = statuses.filter((s) => s.status.key === 'red').length;
       const healthPct = Math.round((healthyCount / Math.max(statuses.length, 1)) * 100);
+      const objectiveMet = healthyCount >= 4;
 
       missionEl.innerHTML = `
         <div class="overall-mission-progress">
@@ -207,6 +226,9 @@
             <strong>${healthyCount}/${statuses.length} sections healthy</strong>
           </div>
           <div class="mission-track"><div class="mission-fill" style="width:${healthPct}%"></div></div>
+        </div>
+        <div class="mission-objective ${objectiveMet ? 'is-good' : 'is-watch'}">
+          ${objectiveMet ? 'Objective met: operational flow stable' : 'Objective: get 4+ sections healthy'}
         </div>
         <div class="overall-mission-list">
           <div class="mission-item">
@@ -222,34 +244,44 @@
             <strong class="is-risk">${strugglingCount}</strong>
           </div>
         </div>
+        <div class="mission-legend">
+          <span><i class="dot good"></i> At/under target</span>
+          <span><i class="dot watch"></i> 100-120% target</span>
+          <span><i class="dot risk"></i> 120%+ target</span>
+        </div>
       `;
     }
 
     function renderSpotlight(sections) {
       const spotlightEl = document.getElementById('overallSpotlight');
       if (!spotlightEl) return;
-      const ranked = sections
-        .map((s) => ({ ...s, score: efficiencyScore(s) }))
+      const rankedEngineers = sections
+        .flatMap((section) => getEngineersForSection(section))
         .sort((a, b) => b.score - a.score);
-      const winner = ranked[0];
-      const runnerUp = ranked[1];
-      if (!winner) {
+      if (!rankedEngineers.length) {
         spotlightEl.innerHTML = '<p class="overall-empty">Waiting for section data...</p>';
         return;
       }
 
+      const topBySection = sections.map((section) => getEngineersForSection(section)[0]).filter(Boolean);
+      const topOverall = rankedEngineers[0];
+
       spotlightEl.innerHTML = `
-        <div class="spotlight-main">
-          <div class="spotlight-badge">Most Efficient Section</div>
-          <div class="spotlight-name">${winner.name}</div>
-          <div class="spotlight-owner">${winner.owner}</div>
-          <div class="spotlight-score">Efficiency Score ${winner.score}</div>
+        <div class="spotlight-main spotlight-main-compact">
+          <div class="spotlight-badge">Top Efficiency Right Now</div>
+          <div class="spotlight-name">${topOverall.initials}</div>
+          <div class="spotlight-owner">${topOverall.section}</div>
+          <div class="spotlight-score">Efficiency Score ${topOverall.score}</div>
         </div>
-        ${runnerUp ? `
-          <div class="spotlight-runner">
-            Next up: <strong>${runnerUp.name}</strong> (${runnerUp.score})
-          </div>
-        ` : ''}
+        <div class="spotlight-grid">
+          ${topBySection.map((eng) => `
+            <div class="spotlight-chip">
+              <span class="chip-section">${eng.section}</span>
+              <strong>${eng.initials}</strong>
+              <span class="chip-score">${eng.score}</span>
+            </div>
+          `).join('')}
+        </div>
       `;
     }
 
@@ -264,6 +296,7 @@
           <span class="lane-name">${lane.name}</span>
           <div class="lane-track">
             <div class="lane-fill" style="width:${lane.progress}%"></div>
+            <img class="lane-car" src="assets/F1Car.png" alt="" style="left:calc(${lane.progress}% - 10px)" />
           </div>
           <span class="lane-value">${lane.progress}%</span>
         </div>

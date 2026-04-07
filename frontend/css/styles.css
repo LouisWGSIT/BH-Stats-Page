@@ -3270,40 +3270,41 @@ main.layout {
   display: flex;
   justify-content: space-between;
   align-items: stretch;
-  gap: 16px;
-  min-height: 118px;
+  gap: 12px;
+  min-height: 0;
 }
 
 .overall-top-grid {
   display: grid;
   grid-template-columns: 1.25fr 1fr 1fr;
   gap: 8px;
-  min-height: 118px;
+  align-items: stretch;
 }
 
 .overall-top-card {
   align-items: stretch;
   text-align: left;
-  padding: 12px;
+  padding: 10px;
+  min-height: 0;
 }
 
 .overall-top-card h3 {
-  margin: 0 0 8px 0;
-  font-size: 34px;
+  margin: 0 0 6px 0;
+  font-size: 18px;
   font-weight: 800;
   letter-spacing: 0.4px;
   text-align: center;
 }
 
 .overall-summary-left h2 {
-  margin: 0 0 8px 0;
-  font-size: 24px;
+  margin: 0 0 6px 0;
+  font-size: 18px;
 }
 
 .overall-summary-left p {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .overall-summary-right {
@@ -3331,15 +3332,15 @@ main.layout {
 }
 
 .overall-kpi strong {
-  font-size: 22px;
+  font-size: 16px;
 }
 
 .overall-section-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
   flex: 0 0 auto;
-  grid-auto-rows: minmax(300px, auto);
+  grid-auto-rows: minmax(280px, auto);
   min-height: 0;
 }
 
@@ -3401,7 +3402,7 @@ main.layout {
 
 .overall-card-top h3 {
   margin: 0;
-  font-size: 32px;
+  font-size: 18px;
 }
 
 .overall-status-pill {
@@ -3447,7 +3448,7 @@ main.layout {
 }
 
 .overall-metric-block strong {
-  font-size: 34px;
+  font-size: 16px;
 }
 
 .overall-metadata-row {
@@ -3494,7 +3495,7 @@ main.layout {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
-  min-height: 90px;
+  min-height: 86px;
   align-items: stretch;
 }
 
@@ -3682,7 +3683,7 @@ main.layout {
 }
 
 .spotlight-name {
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 800;
   margin-top: 4px;
   color: var(--ring-secondary);
@@ -3707,6 +3708,43 @@ main.layout {
   color: #b5c4d8;
 }
 
+.spotlight-main-compact {
+  padding: 8px;
+}
+
+.spotlight-grid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.spotlight-chip {
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.chip-section {
+  font-size: 10px;
+  color: #9fb3c8;
+}
+
+.spotlight-chip strong {
+  font-size: 14px;
+  color: #ffffff;
+}
+
+.chip-score {
+  font-size: 11px;
+  color: var(--ring-secondary);
+}
+
 .overall-race-lane {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr) 46px;
@@ -3726,10 +3764,11 @@ main.layout {
 }
 
 .lane-track {
-  height: 8px;
+  height: 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
 }
 
 .lane-fill {
@@ -3743,6 +3782,16 @@ main.layout {
   text-align: right;
   color: #d8e3ef;
   font-weight: 700;
+}
+
+.lane-car {
+  position: absolute;
+  top: -8px;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
 }
 
 .overall-challenge-main {
@@ -3778,6 +3827,50 @@ main.layout {
   font-size: 12px;
 }
 
+.mission-objective {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mission-objective.is-good {
+  background: rgba(77, 217, 126, 0.16);
+  color: #9df3bf;
+}
+
+.mission-objective.is-watch {
+  background: rgba(255, 184, 61, 0.16);
+  color: #ffd27a;
+}
+
+.mission-legend {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 10px;
+  color: #9fb3c8;
+}
+
+.mission-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mission-legend .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.mission-legend .dot.good { background: #8cf04a; }
+.mission-legend .dot.watch { background: #ffd27a; }
+.mission-legend .dot.risk { background: #ff8f8f; }
+
 @media (max-width: 1400px) {
   .overall-top-grid {
     grid-template-columns: 1fr;
@@ -3788,6 +3881,10 @@ main.layout {
   }
 
   .overall-trend-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .spotlight-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
