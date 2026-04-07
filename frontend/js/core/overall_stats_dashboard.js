@@ -9,10 +9,10 @@
         current: 128,
         trend: 14,
         owner: 'Inbound Team',
-        queueLabel: 'Totes Delivered',
+        queueLabel: 'Totes Received',
         subMetrics: [
-          { label: 'Delivered This Morning', value: 128 },
-          { label: 'Checked In', value: 92 },
+          { label: 'Received Today', value: 128 },
+          { label: 'Booked In Today', value: 92 },
           { label: 'Awaiting IA', value: 36 },
         ],
       },
@@ -313,7 +313,7 @@
         const status = getStatus(section.current, section.target).key;
         const gap = section.current - section.target;
         return `
-          <article class="card overall-trend-card status-${status}">
+          <article class="overall-trend-card status-${status}">
             <div class="overall-trend-head">
               <span>${section.name}</span>
               <strong>${section.current}/${section.target}</strong>

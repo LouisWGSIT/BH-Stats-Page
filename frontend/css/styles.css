@@ -3497,14 +3497,18 @@ main.layout {
   gap: 8px;
   min-height: 86px;
   align-items: stretch;
+  margin-top: 0;
 }
 
 .overall-trend-card {
-  padding: 8px;
-  align-items: stretch;
-  text-align: left;
-  justify-content: flex-start;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+  min-width: 0;
 }
 
 .overall-trend-head {
@@ -3792,6 +3796,8 @@ main.layout {
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+  transform: rotate(90deg);
+  transform-origin: center;
 }
 
 .overall-challenge-main {
@@ -3936,6 +3942,18 @@ main.layout {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 104px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.overall-submetrics::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overall-submetrics::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
 }
 
 .overall-submetric-row {
