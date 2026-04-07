@@ -3348,6 +3348,31 @@ main.layout {
   gap: 8px;
 }
 
+.overall-pill-stack {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.overall-source-pill {
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.overall-source-pill.live {
+  background: rgba(61, 203, 124, 0.22);
+  color: #96efbb;
+}
+
+.overall-source-pill.mock {
+  background: rgba(140, 157, 177, 0.24);
+  color: #d0dbe7;
+}
+
 .overall-card-top h3 {
   margin: 0;
   font-size: 18px;

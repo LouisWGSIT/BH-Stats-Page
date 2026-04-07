@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+import os
 
 from fastapi import APIRouter
 
@@ -6,6 +7,19 @@ from fastapi import APIRouter
 def create_overall_stats_router(*, qa_export_module):
     router = APIRouter()
     qa_export = qa_export_module
+
+    goods_in_queries = {
+        "delivered": os.getenv("OVERALL_GOODS_IN_DELIVERED_QUERY", "").strip(),
+        "checked_in": os.getenv("OVERALL_GOODS_IN_CHECKED_IN_QUERY", "").strip(),
+        "awaiting_ia": os.getenv("OVERALL_GOODS_IN_AWAITING_IA_QUERY", "").strip(),
+    }
+
+    def _run_scalar_query(cur, query: str) -> int:
+        cur.execute(query)
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            return 0
+        return int(row[0])
 
     def _mock_goods_in_payload(now_iso: str) -> dict:
         return {
@@ -36,25 +50,35 @@ def create_overall_stats_router(*, qa_export_module):
                 return mock
             cur = conn.cursor()
             try:
-                # This query pattern matches existing bottleneck logic and is safe to fail back.
-                cur.execute(
+                delivered_query = goods_in_queries["delivered"] or (
                     """
                     SELECT COUNT(DISTINCT pallet_id)
                     FROM Stockbypallet
                     WHERE received_date >= CURDATE()
                     """
                 )
-                row = cur.fetchone()
-                delivered = int(row[0]) if row and row[0] is not None else 0
+                delivered = _run_scalar_query(cur, delivered_query)
+
+                if goods_in_queries["checked_in"]:
+                    checked_in = _run_scalar_query(cur, goods_in_queries["checked_in"])
+                else:
+                    checked_in = max(0, int(round(delivered * 0.72)))
+
+                if goods_in_queries["awaiting_ia"]:
+                    awaiting_ia = _run_scalar_query(cur, goods_in_queries["awaiting_ia"])
+                else:
+                    awaiting_ia = max(0, delivered - checked_in)
             finally:
                 cur.close()
                 conn.close()
 
-            checked_in = max(0, int(round(delivered * 0.72)))
-            awaiting_ia = max(0, delivered - checked_in)
             trend = 0
             if delivered > 0:
                 trend = int(round(((awaiting_ia - (mock["subMetrics"][2]["value"])) / max(1, delivered)) * 100))
+
+            source = "mariadb:Stockbypallet"
+            if goods_in_queries["delivered"] or goods_in_queries["checked_in"] or goods_in_queries["awaiting_ia"]:
+                source = "mariadb:custom-overall-goods-in-queries"
 
             return {
                 "sectionKey": "goods_in",
@@ -71,7 +95,7 @@ def create_overall_stats_router(*, qa_export_module):
                 ],
                 "updatedAt": now_iso,
                 "isLive": True,
-                "source": "mariadb:Stockbypallet",
+                "source": source,
             }
         except Exception:
             return mock

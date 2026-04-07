@@ -51,3 +51,4 @@ Give line managers a morning-ready view to place staff based on bottleneck press
 - Create endpoint contract implementation for `GET /overall/goods-in`.
 - Wire frontend to consume live Goods In payload while other sections remain mock.
 - Validate refresh behavior and stale-state fallback for source outages.
+- Use detailed onboarding checklist: `docs/GOODS_IN_DB_ONBOARDING_CHECKLIST.md`.

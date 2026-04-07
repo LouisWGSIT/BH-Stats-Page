@@ -104,6 +104,8 @@
         const status = getStatus(section.current, section.target);
         const gap = section.current - section.target;
         const trendClass = section.trend > 0 ? 'is-up' : section.trend < 0 ? 'is-down' : 'is-flat';
+        const sourceLabel = section.isLive ? 'Live' : 'Mock';
+        const sourceClass = section.isLive ? 'live' : 'mock';
         const detailRows = (section.subMetrics || [])
           .map((row) => `
             <div class="overall-submetric-row">
@@ -116,7 +118,10 @@
           <article class="overall-section-card status-${status.key}">
             <div class="overall-card-top">
               <h3>${section.name}</h3>
-              <span class="overall-status-pill ${status.key}">${status.label}</span>
+              <div class="overall-pill-stack">
+                <span class="overall-source-pill ${sourceClass}">${sourceLabel}</span>
+                <span class="overall-status-pill ${status.key}">${status.label}</span>
+              </div>
             </div>
             <div class="overall-metric-row">
               <div class="overall-metric-block">
@@ -201,6 +206,7 @@
         queueLabel: section.queueLabel || 'Queue',
         subMetrics: section.subMetrics || [],
         isLive: section.isLive === true,
+        source: section.source || 'mock',
       };
     }
 

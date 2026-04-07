@@ -80,6 +80,12 @@ Goods In-specific response:
 }
 ```
 
+Implementation note:
+- Endpoint implementation supports optional SQL override env vars for fast onboarding:
+  - `OVERALL_GOODS_IN_DELIVERED_QUERY`
+  - `OVERALL_GOODS_IN_CHECKED_IN_QUERY`
+  - `OVERALL_GOODS_IN_AWAITING_IA_QUERY`
+
 ## Phase 3 - IA Contract
 Required sub-metrics for IA:
 - Awaiting IA
