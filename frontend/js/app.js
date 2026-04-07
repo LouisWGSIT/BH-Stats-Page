@@ -8,6 +8,10 @@
 
   // Now proceed with dashboard initialization
   const cfg = await fetch('/config.json').then(r => r.json());
+  const theme = cfg.theme || {};
+  const targets = cfg.targets || {};
+  const dailyErasureTarget = parseInt(targets.erased, 10) || 500;
+  const monthlyErasureTarget = parseInt(targets.month, 10) || 10000;
   const SHIFT_START = 8;
   const SHIFT_END = 16;
   const SHIFT_HOURS = SHIFT_END - SHIFT_START;
@@ -159,8 +163,17 @@
     });
   }
 
-  const totalTodayChart = createDonutChart('chartTotalToday', '#ff1ea3');
-  const monthChart = createDonutChart('chartMonthToday', '#8cf04a');
+  function initializeTargetLabels() {
+    const erasedTargetEl = document.getElementById('erasedTarget');
+    const monthTargetEl = document.getElementById('monthTarget');
+    if (erasedTargetEl) erasedTargetEl.textContent = String(dailyErasureTarget);
+    if (monthTargetEl) monthTargetEl.textContent = String(monthlyErasureTarget);
+  }
+
+  initializeTargetLabels();
+
+  const totalTodayChart = createDonutChart('chartTotalToday', theme.ringPrimary || '#ff1ea3');
+  const monthChart = createDonutChart('chartMonthToday', theme.ringSecondary || '#8cf04a');
 
   async function refreshSummary() {}
   async function refreshAllTopLists() {}
@@ -321,6 +334,7 @@
   }
 
   function updateDonut(chart, value, target) {
+    if (!chart) return;
     const remaining = Math.max(target - value, 0);
     chart.data.datasets[0].data = [value, remaining];
     chart.canvas.dataset.target = target;
@@ -779,7 +793,7 @@
     const monthTotal = parseInt(document.getElementById('monthTotalValue')?.textContent) || 0;
     const today = new Date().getDate();
     const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-    const targetMonthly = parseInt(cfg.targets.month);
+    const targetMonthly = monthlyErasureTarget;
     const dailyAvg = Math.round(monthTotal / today);
     const projectedTotal = Math.round(dailyAvg * daysInMonth);
     const paceEl = document.getElementById('monthPaceStatus');
@@ -996,7 +1010,7 @@
   function updateTargetTracker() {
 
     const todayTotal = parseInt(document.getElementById('totalTodayValue')?.textContent) || 0;
-    const target = parseInt(cfg.targets.erased) || 500;
+    const target = dailyErasureTarget;
     const percentage = target > 0 ? Math.min((todayTotal / target) * 100, 100) : 0;
 
     // Shift hours: 8:00–16:00 (8 hours)
