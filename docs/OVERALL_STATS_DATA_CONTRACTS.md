@@ -104,6 +104,42 @@ Required sub-metrics:
 - `trendPctHour` may be negative, zero, or positive.
 - Missing section payload should not break the page; frontend should render fallback state.
 
+## MariaDB Header Notes (From Live Schema Review - April 7, 2026)
+These are the key headers confirmed from `ITAD_asset_info` screenshots and should be preferred in future query wiring:
+
+- Identity/matching:
+  - `stockid`
+  - `serialnumber` (primary serial column for matching; prefer this over `system_serial`)
+  - `assetnumber`
+  - `last_update`
+
+- Erasure state fields:
+  - `de_complete`
+  - `de_status`
+  - `de_confirmation`
+  - `de_diag_type`
+  - `de_erasure_type`
+
+- QA attribution fields (important):
+  - `de_completed_by`
+  - `de_completed_date`
+  - Note: these are QA-related in current process and should **not** be treated as "erasure completed by/date".
+
+- Goods In / lifecycle related:
+  - `received_date`
+  - `bookedin_date`
+  - `condition`
+  - `post_item_assessment_condition`
+  - `warehouse`
+
+- Other observed workflow fields:
+  - `breakfix_status`
+  - `quarantine_reason`
+  - `quarantine_status`
+  - `sla_onhold_reason`
+  - `sla_complete_date`
+  - `sla_result`
+
 ## Frontend Mapping
 Current visual loader:
 - `frontend/js/core/overall_stats_dashboard.js`

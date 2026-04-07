@@ -152,13 +152,22 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     batch = keys[i:i + batch_size]
                     placeholders = ",".join(["%s"] * len(batch))
 
-                    q_asset = (
+                    # Most environments store asset serials in `serialnumber`.
+                    # Keep a fallback for legacy schemas using `system_serial`.
+                    q_asset_primary = (
+                        f"SELECT stockid, serialnumber FROM ITAD_asset_info "
+                        f"WHERE stockid IN ({placeholders}) OR serialnumber IN ({placeholders})"
+                    )
+                    q_asset_fallback = (
                         f"SELECT stockid, system_serial FROM ITAD_asset_info "
                         f"WHERE stockid IN ({placeholders}) OR system_serial IN ({placeholders})"
                     )
-                    asset_rows = cur.execute(q_asset, tuple(batch) + tuple(batch)) or None
-                    # mysql cursor execute returns None; fetch afterward
-                    asset_rows = cur.fetchall() or []
+                    try:
+                        cur.execute(q_asset_primary, tuple(batch) + tuple(batch))
+                        asset_rows = cur.fetchall() or []
+                    except Exception:
+                        cur.execute(q_asset_fallback, tuple(batch) + tuple(batch))
+                        asset_rows = cur.fetchall() or []
 
                     key_to_stockid = {}
                     key_to_stockid_norm = {}

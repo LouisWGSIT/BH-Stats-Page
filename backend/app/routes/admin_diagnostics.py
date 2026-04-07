@@ -225,10 +225,18 @@ def create_admin_diagnostics_router(
                 try:
                     vals = list(key_norms.values())
                     placeholders = ",".join(["%s"] * len(vals))
-                    mcur.execute(
-                        f"SELECT stockid, system_serial FROM ITAD_asset_info WHERE stockid IN ({placeholders}) OR system_serial IN ({placeholders})",
-                        tuple(vals) + tuple(vals),
+                    q_asset_primary = (
+                        f"SELECT stockid, serialnumber FROM ITAD_asset_info "
+                        f"WHERE stockid IN ({placeholders}) OR serialnumber IN ({placeholders})"
                     )
+                    q_asset_fallback = (
+                        f"SELECT stockid, system_serial FROM ITAD_asset_info "
+                        f"WHERE stockid IN ({placeholders}) OR system_serial IN ({placeholders})"
+                    )
+                    try:
+                        mcur.execute(q_asset_primary, tuple(vals) + tuple(vals))
+                    except Exception:
+                        mcur.execute(q_asset_fallback, tuple(vals) + tuple(vals))
                     for ar in mcur.fetchall() or []:
                         sid = str(ar[0]) if ar and ar[0] is not None else None
                         serial = str(ar[1]) if ar and len(ar) > 1 and ar[1] is not None else None
