@@ -9,6 +9,54 @@
   // Now proceed with dashboard initialization
   const cfg = await fetch('/config.json').then(r => r.json());
 
+  function animateNumberUpdate(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    const rawText = (el.textContent || '').trim();
+    const numericText = rawText.replace(/,/g, '');
+    const isPlainInteger = /^-?\d+$/.test(numericText);
+
+    // Always trigger a lightweight visual pulse even for non-numeric labels.
+    el.classList.remove('count-animating');
+    void el.offsetWidth;
+    el.classList.add('count-animating');
+
+    if (!isPlainInteger) {
+      return;
+    }
+
+    const currentValue = parseInt(numericText, 10);
+    const prevAttr = el.getAttribute('data-prev-value');
+    const previousValue = prevAttr == null ? currentValue : parseInt(prevAttr, 10);
+
+    if (Number.isNaN(previousValue) || previousValue === currentValue) {
+      el.setAttribute('data-prev-value', String(currentValue));
+      return;
+    }
+
+    const startTs = performance.now();
+    const duration = 450;
+    const start = previousValue;
+    const delta = currentValue - previousValue;
+
+    function frame(now) {
+      const progress = Math.min((now - startTs) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const value = Math.round(start + delta * eased);
+      el.textContent = value.toLocaleString();
+
+      if (progress < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        el.textContent = currentValue.toLocaleString();
+        el.setAttribute('data-prev-value', String(currentValue));
+      }
+    }
+
+    requestAnimationFrame(frame);
+  }
+
   // ==================== ALL TIME TOTALS ====================
   const allTimeTotalsApi = (window.AllTimeTotals && typeof window.AllTimeTotals.init === 'function')
     ? window.AllTimeTotals.init({
