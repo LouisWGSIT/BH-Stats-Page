@@ -574,6 +574,8 @@
   }
 
   // ==================== ANALYTICS & FLIP CARDS ====================
+  const analyticsCharts = {};
+
   const analyticsChartsApi = (window.AnalyticsCharts && typeof window.AnalyticsCharts.init === 'function')
     ? window.AnalyticsCharts.init({
         cfg,
@@ -1354,4 +1356,3 @@
   }
 
 })();
-
