@@ -1,11 +1,12 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import os
 import re
+import sqlite3
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 
-def create_overall_stats_router(*, qa_export_module):
+def create_overall_stats_router(*, qa_export_module, db_module, require_manager_or_admin):
     router = APIRouter()
     qa_export = qa_export_module
 
@@ -20,6 +21,10 @@ def create_overall_stats_router(*, qa_export_module):
         goods_in_lookback_days = max(1, int(os.getenv("OVERALL_GOODS_IN_LOOKBACK_DAYS", "90")))
     except Exception:
         goods_in_lookback_days = 90
+    try:
+        qa_compare_lookback_days = max(1, int(os.getenv("OVERALL_QA_COMPARE_LOOKBACK_DAYS", "30")))
+    except Exception:
+        qa_compare_lookback_days = 30
 
     def _run_query_variants(cur, queries: list[str]) -> int:
         last_error = None
@@ -38,6 +43,154 @@ def create_overall_stats_router(*, qa_export_module):
         if not row or row[0] is None:
             return 0
         return int(row[0])
+
+    def _parse_ts(value):
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        s = str(value).strip()
+        if not s:
+            return None
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S.%f"):
+            try:
+                return datetime.strptime(s, fmt)
+            except Exception:
+                continue
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    def _compute_db_awaiting_qa(*, include_samples: bool = False, sample_limit: int = 25) -> dict:
+        result = {
+            "dbAwaitingQa": 0,
+            "completedAfterErasure": 0,
+            "considered": 0,
+            "samples": [],
+            "source": "mock",
+            "lookbackDays": qa_compare_lookback_days,
+        }
+        try:
+            start_dt = datetime.now(UTC) - timedelta(days=qa_compare_lookback_days)
+            start_iso = start_dt.isoformat()
+
+            conn_sqlite = sqlite3.connect(db_module.DB_PATH)
+            cur_sqlite = conn_sqlite.cursor()
+            try:
+                cur_sqlite.execute(
+                    """
+                    SELECT
+                        COALESCE(NULLIF(TRIM(stockid), ''), NULLIF(TRIM(system_serial), '')) AS key_id,
+                        MAX(ts) AS last_erasure_ts
+                    FROM local_erasures
+                    WHERE ts >= ?
+                    GROUP BY COALESCE(NULLIF(TRIM(stockid), ''), NULLIF(TRIM(system_serial), ''))
+                    """,
+                    (start_iso,),
+                )
+                erasure_rows = cur_sqlite.fetchall() or []
+            finally:
+                cur_sqlite.close()
+                conn_sqlite.close()
+
+            if not erasure_rows:
+                return result
+
+            key_to_erasure = {}
+            for row in erasure_rows:
+                if not row or not row[0]:
+                    continue
+                key_to_erasure[str(row[0])] = _parse_ts(row[1])
+
+            keys = list(key_to_erasure.keys())
+            if not keys:
+                return result
+
+            conn = qa_export.get_mariadb_connection()
+            if not conn:
+                return result
+            cur = conn.cursor()
+            try:
+                awaiting = 0
+                completed = 0
+                considered = 0
+                samples = []
+                batch_size = 500
+
+                for i in range(0, len(keys), batch_size):
+                    batch = keys[i:i + batch_size]
+                    placeholders = ",".join(["%s"] * len(batch))
+
+                    q_asset = (
+                        f"SELECT stockid, system_serial FROM ITAD_asset_info "
+                        f"WHERE stockid IN ({placeholders}) OR system_serial IN ({placeholders})"
+                    )
+                    asset_rows = cur.execute(q_asset, tuple(batch) + tuple(batch)) or None
+                    # mysql cursor execute returns None; fetch afterward
+                    asset_rows = cur.fetchall() or []
+
+                    key_to_stockid = {}
+                    for ar in asset_rows:
+                        stockid = str(ar[0]) if ar and ar[0] is not None else None
+                        serial = str(ar[1]) if ar and len(ar) > 1 and ar[1] is not None else None
+                        if stockid:
+                            key_to_stockid[stockid] = stockid
+                        if serial:
+                            key_to_stockid[serial] = stockid or serial
+
+                    canonical = list({key_to_stockid[k] for k in batch if k in key_to_stockid and key_to_stockid[k]})
+                    qa_map = {}
+                    if canonical:
+                        q_place = ",".join(["%s"] * len(canonical))
+                        q_qa = (
+                            f"SELECT stockid, MAX(added_date) as last_qa FROM ("
+                            f"SELECT stockid, added_date FROM ITAD_QA_App WHERE stockid IN ({q_place}) UNION ALL "
+                            f"SELECT stockid, added_date FROM audit_master WHERE stockid IN ({q_place})"
+                            f") x GROUP BY stockid"
+                        )
+                        cur.execute(q_qa, tuple(canonical) + tuple(canonical))
+                        qa_rows = cur.fetchall() or []
+                        qa_map = {str(r[0]): _parse_ts(r[1]) for r in qa_rows if r and r[0]}
+
+                    for key in batch:
+                        er_ts = key_to_erasure.get(key)
+                        sid = key_to_stockid.get(key)
+                        considered += 1
+                        if not sid:
+                            awaiting += 1
+                            if include_samples and len(samples) < sample_limit:
+                                samples.append({"key": key, "stockid": None, "reason": "missing_in_asset_info", "erasureTs": str(er_ts) if er_ts else None, "qaTs": None})
+                            continue
+
+                        qa_ts = qa_map.get(sid)
+                        if not qa_ts:
+                            awaiting += 1
+                            if include_samples and len(samples) < sample_limit:
+                                samples.append({"key": key, "stockid": sid, "reason": "no_qa_or_audit_after_erasure", "erasureTs": str(er_ts) if er_ts else None, "qaTs": None})
+                            continue
+
+                        if er_ts and qa_ts < er_ts:
+                            awaiting += 1
+                            if include_samples and len(samples) < sample_limit:
+                                samples.append({"key": key, "stockid": sid, "reason": "qa_before_latest_erasure", "erasureTs": str(er_ts), "qaTs": str(qa_ts)})
+                            continue
+
+                        completed += 1
+
+                result.update({
+                    "dbAwaitingQa": int(awaiting),
+                    "completedAfterErasure": int(completed),
+                    "considered": int(considered),
+                    "samples": samples if include_samples else [],
+                    "source": "local_erasures_vs_mariadb",
+                })
+                return result
+            finally:
+                cur.close()
+                conn.close()
+        except Exception:
+            return result
 
     def _mock_goods_in_payload(now_iso: str) -> dict:
         return {
@@ -229,20 +382,48 @@ def create_overall_stats_router(*, qa_export_module):
                 ],
             }
         if section_key == "qa":
+            qa_live = _compute_db_awaiting_qa(include_samples=False)
+            db_awaiting = int(qa_live.get("dbAwaitingQa", 44))
+            completed_today = 0
+            non_db_awaiting = 23
+            source = qa_live.get("source", "mock")
+            is_live = source != "mock"
+            try:
+                conn = qa_export.get_mariadb_connection()
+                if conn:
+                    cur = conn.cursor()
+                    try:
+                        cur.execute(
+                            """
+                            SELECT COUNT(DISTINCT stockid)
+                            FROM ITAD_QA_App
+                            WHERE DATE(added_date) = CURDATE()
+                            """
+                        )
+                        row = cur.fetchone()
+                        completed_today = int(row[0]) if row and row[0] is not None else 0
+                    finally:
+                        cur.close()
+                        conn.close()
+            except Exception:
+                completed_today = 71
+
             return {
                 **base,
                 "sectionKey": "qa",
                 "sectionName": "QA",
                 "targetQueue": 95,
-                "currentQueue": 67,
+                "currentQueue": db_awaiting + non_db_awaiting,
                 "trendPctHour": -8,
                 "owner": "QA Team",
                 "queueLabel": "Items Awaiting QA",
                 "subMetrics": [
-                    {"label": "DB Awaiting QA", "value": 44},
-                    {"label": "Non-DB Awaiting QA", "value": 23},
-                    {"label": "Completed QA Today", "value": 71},
+                    {"label": "DB Awaiting QA", "value": db_awaiting},
+                    {"label": "Non-DB Awaiting QA", "value": non_db_awaiting},
+                    {"label": "Completed QA Today", "value": completed_today},
                 ],
+                "isLive": is_live,
+                "source": source,
             }
         return {
             **base,
@@ -274,5 +455,10 @@ def create_overall_stats_router(*, qa_export_module):
             _build_non_goods_mock("sorting"),
         ]
         return {"sections": sections}
+
+    @router.get("/overall/qa-awaiting-diagnostics")
+    async def overall_qa_awaiting_diagnostics(request: Request):
+        require_manager_or_admin(request)
+        return _compute_db_awaiting_qa(include_samples=True, sample_limit=50)
 
     return router

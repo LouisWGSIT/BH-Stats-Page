@@ -155,6 +155,8 @@ def register_routes(
     app.include_router(
         create_overall_stats_router(
             qa_export_module=qa_export_module,
+            db_module=db_module,
+            require_manager_or_admin=require_manager_or_admin,
         )
     )
     app.include_router(
