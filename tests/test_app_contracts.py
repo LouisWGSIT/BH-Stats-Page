@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime, UTC
+from datetime import date
 
 
 def test_health_liveness(client):
@@ -337,6 +338,85 @@ def test_overall_sections_endpoint_returns_list(client):
 
     r_export_excel = client.post("/export/excel", json={"sheetsData": {}})
     assert r_export_excel.status_code in (400, 401)
+
+
+def test_erasure_metrics_qa_summary_contract_shape(client):
+    r = client.get("/metrics/qa-summary", headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert "summary" in body
+    assert "today" in body
+    assert "monthlyMomentum" in body
+    assert "byType" in body
+    assert "engineersLeaderboard" in body
+    assert isinstance(body["engineersLeaderboard"], dict)
+    assert "items" in body["engineersLeaderboard"]
+    assert isinstance(body["engineersLeaderboard"]["items"], list)
+
+
+def test_qa_dashboard_contract_shape_with_stubbed_source_data(client, monkeypatch):
+    import backend.app.routes.qa_insights as qa_insights_module
+
+    monkeypatch.setattr(
+        qa_insights_module.qa_export,
+        "get_week_dates",
+        lambda period: (date(2026, 4, 6), date(2026, 4, 10), "This Week"),
+    )
+    monkeypatch.setattr(
+        qa_insights_module.qa_export,
+        "get_weekly_qa_comparison",
+        lambda start, end: {
+            "Louise L": {
+                "total": 50,
+                "successful": 45,
+                "pass_rate": 90.0,
+                "daily": {"Monday": {"scans": 20, "passed": 18}},
+            }
+        },
+    )
+    monkeypatch.setattr(
+        qa_insights_module.qa_export,
+        "get_de_qa_comparison",
+        lambda start, end: {"Louise L": {"total": 30, "daily": {"Monday": {"scans": 12}}}},
+    )
+    monkeypatch.setattr(
+        qa_insights_module.qa_export,
+        "get_non_de_qa_comparison",
+        lambda start, end: {"Louise L": {"total": 20, "daily": {"Monday": {"scans": 8}}}},
+    )
+    monkeypatch.setattr(qa_insights_module.qa_export, "get_all_time_daily_record", lambda: 351)
+
+    r = client.get("/api/qa-dashboard?period=this_week", headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 200
+    body = r.json()
+
+    assert body["period"] == "This Week"
+    assert "technicians" in body
+    assert isinstance(body["technicians"], list)
+    assert len(body["technicians"]) >= 1
+
+    assert "summary" in body
+    summary = body["summary"]
+    for key in ("totalScans", "deQaScans", "nonDeQaScans", "combinedScans", "passRate", "topTechnician"):
+        assert key in summary
+
+
+def test_dashboard_view_isolation_contracts(client):
+    r_switcher = client.get("/core/dashboard_switcher.js")
+    assert r_switcher.status_code == 200
+    switcher_js = r_switcher.text
+    assert "view.hidden = !isActive;" in switcher_js
+    assert "view.setAttribute('aria-hidden', isActive ? 'false' : 'true');" in switcher_js
+    assert "view.style.display = isActive ? displayMode : 'none';" in switcher_js
+
+    r_styles = client.get("/styles.css")
+    assert r_styles.status_code == 200
+    css = r_styles.text
+    assert "main.layout {" in css
+    assert "display: none !important;" in css
+    assert "#erasureStatsView.is-active," in css
+    assert "#qaStatsView.is-active," in css
+    assert "#overallStatsView.is-active {" in css
 
 
 def test_admin_activity_requires_admin(client):

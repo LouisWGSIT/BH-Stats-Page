@@ -2455,16 +2455,19 @@ body {
   flex-direction: column;
 }
 
-.qa-stats-view.is-active {
+/* Hard layout isolation: only one dashboard view can be in flow at a time. */
+main.layout {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#erasureStatsView.is-active,
+#qaStatsView.is-active,
+#overallStatsView.is-active {
   display: flex !important;
-}
-
-#erasureStatsView.is-active {
-  display: flex;
-}
-
-#erasureStatsView {
-  display: none;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .qa-placeholder {

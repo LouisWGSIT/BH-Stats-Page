@@ -34,7 +34,6 @@
       const qaView = document.getElementById('qaStatsView');
       const overallView = document.getElementById('overallStatsView');
       const titleElem = document.getElementById('dashboardTitle');
-      const supportsGrid = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('display', 'grid');
       const isInitialRestore = !!opts.isInitialRestore;
 
       if (index < 0 || index >= dashboards.length) {
@@ -44,31 +43,23 @@
       setDashboard(index);
       const dashboard = dashboards[index];
 
-      if (erasureView) {
-        erasureView.style.removeProperty('display');
-      }
-      if (qaView) {
-        qaView.style.removeProperty('display');
-      }
-      if (overallView) {
-        overallView.style.removeProperty('display');
+      function applyViewState(view, isActive, displayMode) {
+        if (!view) return;
+        view.classList.toggle('is-active', isActive);
+        view.hidden = !isActive;
+        view.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+        view.style.display = isActive ? displayMode : 'none';
       }
 
       if (dashboard === 'erasure') {
-        erasureView.classList.add('is-active');
-        qaView.classList.remove('is-active');
-        if (overallView) overallView.classList.remove('is-active');
-        erasureView.style.display = 'flex';
-        qaView.style.display = 'none';
-        if (overallView) overallView.style.display = 'none';
+        applyViewState(erasureView, true, 'flex');
+        applyViewState(qaView, false, 'none');
+        applyViewState(overallView, false, 'none');
         if (titleElem) titleElem.textContent = dashboardTitles.erasure;
       } else if (dashboard === 'qa') {
-        erasureView.classList.remove('is-active');
-        qaView.classList.add('is-active');
-        if (overallView) overallView.classList.remove('is-active');
-        erasureView.style.display = 'none';
-        qaView.style.display = supportsGrid ? 'grid' : 'block';
-        if (overallView) overallView.style.display = 'none';
+        applyViewState(erasureView, false, 'none');
+        applyViewState(qaView, true, 'flex');
+        applyViewState(overallView, false, 'none');
 
         if (titleElem) titleElem.textContent = dashboardTitles.qa;
         const performersGrid = document.getElementById('qaTopPerformersGrid');
@@ -101,13 +92,9 @@
           qaViewEl.addEventListener('click', oneTimeLoad);
         }
       } else if (dashboard === 'overall') {
-        erasureView.classList.remove('is-active');
-        qaView.classList.remove('is-active');
-        if (overallView) overallView.classList.add('is-active');
-
-        erasureView.style.display = 'none';
-        qaView.style.display = 'none';
-        if (overallView) overallView.style.display = 'flex';
+        applyViewState(erasureView, false, 'none');
+        applyViewState(qaView, false, 'none');
+        applyViewState(overallView, true, 'flex');
 
         if (titleElem) titleElem.textContent = dashboardTitles.overall;
         if (typeof loadOverallDashboard === 'function') {
