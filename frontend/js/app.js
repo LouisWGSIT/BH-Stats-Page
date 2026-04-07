@@ -8,6 +8,163 @@
 
   // Now proceed with dashboard initialization
   const cfg = await fetch('/config.json').then(r => r.json());
+  const SHIFT_START = 8;
+  const SHIFT_END = 16;
+  const SHIFT_HOURS = SHIFT_END - SHIFT_START;
+
+  const categories = [
+    { key: 'laptops_desktops', label: 'Laptops/Desktops', listId: 'topLD', countId: 'countLD' },
+    { key: 'servers', label: 'Servers', listId: 'topServers', countId: 'countServers' },
+    { key: 'macs', label: 'Macs', listId: 'topMacs', countId: 'countMacs' },
+    { key: 'mobiles', label: 'Mobiles', listId: 'topMobiles', countId: 'countMobiles' },
+  ];
+
+  const speedChallengeData = {
+    am: { wasActive: false, isFinished: false },
+    pm: { wasActive: false, isFinished: false },
+  };
+
+  const raceData = {
+    winnerAnnounced: false,
+    firstFinisher: null,
+    engineer1: null,
+    engineer2: null,
+    engineer3: null,
+  };
+
+  const leaderboardState = {
+    leader: null,
+    gap: null,
+    lastRaceSize: 0,
+    lastLeaderCount: 0,
+  };
+
+  const keepAliveApi = (window.DisplayKeepAlive && typeof window.DisplayKeepAlive.init === 'function')
+    ? window.DisplayKeepAlive.init()
+    : null;
+
+  function keepScreenAlive() {
+    if (keepAliveApi && typeof keepAliveApi.ping === 'function') {
+      keepAliveApi.ping();
+    }
+  }
+
+  function truncateInitials(initials) {
+    const value = (initials || '').toString().trim();
+    if (!value) return '—';
+    return value.length > 12 ? `${value.slice(0, 12)}...` : value;
+  }
+
+  function renderTopList(listId, engineers) {
+    const listEl = document.getElementById(listId);
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    const rows = Array.isArray(engineers) ? engineers : [];
+    if (rows.length === 0) {
+      listEl.innerHTML = '<li><span class="no-data">No data yet</span></li>';
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    rows.forEach((row) => {
+      const name = truncateInitials((row.initials || '').toString().trim());
+      const value = row.count ?? row.erasures ?? 0;
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span class="engineer-chip">
+          <span class="engineer-avatar" style="background-image: url(${getAvatarDataUri(name)})"></span>
+          <span class="engineer-name">${name}</span>
+        </span>
+        <span class="value">${value}</span>
+      `;
+      fragment.appendChild(li);
+    });
+    listEl.appendChild(fragment);
+  }
+
+  let greenieHideTimer = null;
+  let lastGreeniePulse = '';
+
+  function triggerGreenie(message) {
+    const container = document.getElementById('greenieContainer');
+    const wrapper = container ? container.querySelector('.greenie-wrapper') : null;
+    const quote = document.getElementById('greenieQuote');
+    if (!container || !wrapper || !quote) return;
+
+    quote.textContent = message || 'Keep pushing, team.';
+    container.classList.remove('hidden');
+    wrapper.classList.remove('exit');
+    void wrapper.offsetWidth;
+
+    if (greenieHideTimer) {
+      clearTimeout(greenieHideTimer);
+      greenieHideTimer = null;
+    }
+
+    greenieHideTimer = setTimeout(() => {
+      wrapper.classList.add('exit');
+      setTimeout(() => {
+        container.classList.add('hidden');
+        wrapper.classList.remove('exit');
+      }, 1900);
+    }, 7000);
+  }
+
+  function checkGreenieTime() {
+    const now = new Date();
+    if (now.getMinutes() !== 0) return;
+    const pulseKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
+    if (pulseKey === lastGreeniePulse) return;
+    lastGreeniePulse = pulseKey;
+    triggerGreenie('Hourly check-in: keep the momentum rolling.');
+  }
+
+  function triggerRaceConfetti() {
+    if (typeof confetti === 'undefined') return;
+    const palette = ['#ff1ea3', '#8cf04a', '#00d4ff', '#ffcc00'];
+    confetti({
+      particleCount: 50,
+      spread: 80,
+      startVelocity: 38,
+      origin: { y: 0.35 },
+      colors: palette,
+      zIndex: 10000,
+      disableForReducedMotion: true,
+    });
+  }
+
+  function createDonutChart(canvasId, color) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof Chart === 'undefined') return null;
+    const ctx = canvas.getContext('2d');
+    return new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Value', 'Remaining'],
+        datasets: [{
+          data: [0, 1],
+          backgroundColor: [color, 'rgba(255,255,255,0.08)'],
+          borderWidth: 0,
+          hoverOffset: 0,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '72%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: false },
+        },
+      },
+    });
+  }
+
+  const totalTodayChart = createDonutChart('chartTotalToday', '#ff1ea3');
+  const monthChart = createDonutChart('chartMonthToday', '#8cf04a');
+
+  async function refreshSummary() {}
+  async function refreshAllTopLists() {}
+  async function refreshByTypeCounts() {}
 
   function animateNumberUpdate(elementId) {
     const el = document.getElementById(elementId);
@@ -1197,5 +1354,4 @@
   }
 
 })();
-
 
