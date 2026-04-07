@@ -278,8 +278,8 @@
   --bg: #0a2a4a;
   --text: #ffffff;
   --muted: #b8c2cc;
-  --ring-primary: #2196f3;   /* blue */
-  --ring-secondary: #ff9800; /* orange */
+  --ring-primary: #ff1ea3;   /* pink */
+  --ring-secondary: #8cf04a; /* green */
   --card-bg: linear-gradient(145deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.38));
   --card-border: 1px solid rgba(255, 255, 255, 0.1);
   --card-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
