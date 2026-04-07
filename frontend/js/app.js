@@ -139,6 +139,9 @@
   function createDonutChart(canvasId) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || typeof Chart === 'undefined') return null;
+    // Force square render buffer to prevent stretched/squashed donuts.
+    canvas.width = 140;
+    canvas.height = 140;
     const ctx = canvas.getContext('2d');
     return new Chart(ctx, {
       type: 'doughnut',
@@ -155,9 +158,10 @@
         }],
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '72%',
+        responsive: false,
+        maintainAspectRatio: true,
+        aspectRatio: 1,
+        cutout: '58%',
         plugins: {
           legend: { display: false },
           tooltip: { enabled: false },
