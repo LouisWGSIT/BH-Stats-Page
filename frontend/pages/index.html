@@ -732,7 +732,8 @@
 
     <!-- Overall Stats View (Hidden by default) -->
     <main class="layout overall-stats-view" id="overallStatsView">
-      <section class="card overall-summary-card">
+      <section class="overall-top-grid">
+        <article class="card overall-summary-card">
         <div class="overall-summary-left">
           <h2>Overall Operations Snapshot</h2>
           <p id="overallSummaryText">Loading overview...</p>
@@ -751,13 +752,30 @@
             <strong id="overallLastUpdate">—</strong>
           </div>
         </div>
+        </article>
+        <article class="card overall-top-card overall-spotlight-card">
+          <h3>Spotlight</h3>
+          <div id="overallSpotlight"></div>
+        </article>
+        <article class="card overall-top-card overall-mission-card">
+          <h3>Mission Board</h3>
+          <div id="overallMissionBoard"></div>
+        </article>
       </section>
 
       <section class="overall-section-grid" id="overallSectionGrid"></section>
 
-      <section class="card overall-huddle-card">
-        <h3>Morning Huddle Talk Points</h3>
-        <ul id="overallTalkPoints"></ul>
+      <section class="overall-trend-grid" id="overallTrendGrid"></section>
+
+      <section class="overall-bottom-grid">
+        <article class="card overall-visual-card overall-race-card">
+          <h3>Operations Race Track</h3>
+          <div id="overallRaceTrack"></div>
+        </article>
+        <article class="card overall-visual-card overall-challenge-card">
+          <h3>Challenge</h3>
+          <div id="overallChallengeCard"></div>
+        </article>
       </section>
     </main>
   </div>

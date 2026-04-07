@@ -97,6 +97,23 @@
       return `${section.name} stable; can lend support if needed.`;
     }
 
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function progressToTarget(section) {
+      if (!section.target || section.target <= 0) return 0;
+      const raw = (section.target / Math.max(section.current, 1)) * 100;
+      return clamp(Math.round(raw), 0, 100);
+    }
+
+    function efficiencyScore(section) {
+      const base = progressToTarget(section);
+      const trendPenalty = section.trend > 0 ? section.trend : 0;
+      const trendBonus = section.trend < 0 ? Math.abs(section.trend) * 1.5 : 0;
+      return Math.round(base - trendPenalty + trendBonus);
+    }
+
     function renderSections(sections) {
       const grid = document.getElementById('overallSectionGrid');
       if (!grid) return;
@@ -154,7 +171,6 @@
       const bottleneckEl = document.getElementById('overallBottleneck');
       const redCountEl = document.getElementById('overallRedCount');
       const lastUpdateEl = document.getElementById('overallLastUpdate');
-      const talkPointsEl = document.getElementById('overallTalkPoints');
 
       const withStatus = sections.map((s) => ({ ...s, status: getStatus(s.current, s.target) }));
       const red = withStatus.filter((s) => s.status.key === 'red');
@@ -172,16 +188,164 @@
       if (bottleneckEl) bottleneckEl.textContent = bottleneck ? bottleneck.name : 'None';
       if (redCountEl) redCountEl.textContent = String(red.length);
       if (lastUpdateEl) lastUpdateEl.textContent = new Date().toLocaleTimeString();
+    }
 
-      if (talkPointsEl) {
-        const points = [];
-        if (red.length) {
-          points.push(`Immediate support: ${red.map((r) => r.name).join(', ')}`);
-        }
-        points.push(`Largest pressure: ${bottleneck.name} (+${bottleneck.current - bottleneck.target})`);
-        points.push('Recheck in 45 mins after reassignment.');
-        talkPointsEl.innerHTML = points.map((p) => `<li>${p}</li>`).join('');
+    function renderMissionBoard(sections) {
+      const missionEl = document.getElementById('overallMissionBoard');
+      if (!missionEl) return;
+
+      const statuses = sections.map((s) => ({ ...s, status: getStatus(s.current, s.target) }));
+      const healthyCount = statuses.filter((s) => s.status.key === 'green').length;
+      const watchCount = statuses.filter((s) => s.status.key === 'amber').length;
+      const strugglingCount = statuses.filter((s) => s.status.key === 'red').length;
+      const healthPct = Math.round((healthyCount / Math.max(statuses.length, 1)) * 100);
+
+      missionEl.innerHTML = `
+        <div class="overall-mission-progress">
+          <div class="mission-head">
+            <span>Shift Objective</span>
+            <strong>${healthyCount}/${statuses.length} sections healthy</strong>
+          </div>
+          <div class="mission-track"><div class="mission-fill" style="width:${healthPct}%"></div></div>
+        </div>
+        <div class="overall-mission-list">
+          <div class="mission-item">
+            <span class="mission-label">Healthy</span>
+            <strong class="is-good">${healthyCount}</strong>
+          </div>
+          <div class="mission-item">
+            <span class="mission-label">Watch</span>
+            <strong class="is-watch">${watchCount}</strong>
+          </div>
+          <div class="mission-item">
+            <span class="mission-label">Struggling</span>
+            <strong class="is-risk">${strugglingCount}</strong>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSpotlight(sections) {
+      const spotlightEl = document.getElementById('overallSpotlight');
+      if (!spotlightEl) return;
+      const ranked = sections
+        .map((s) => ({ ...s, score: efficiencyScore(s) }))
+        .sort((a, b) => b.score - a.score);
+      const winner = ranked[0];
+      const runnerUp = ranked[1];
+      if (!winner) {
+        spotlightEl.innerHTML = '<p class="overall-empty">Waiting for section data...</p>';
+        return;
       }
+
+      spotlightEl.innerHTML = `
+        <div class="spotlight-main">
+          <div class="spotlight-badge">Most Efficient Section</div>
+          <div class="spotlight-name">${winner.name}</div>
+          <div class="spotlight-owner">${winner.owner}</div>
+          <div class="spotlight-score">Efficiency Score ${winner.score}</div>
+        </div>
+        ${runnerUp ? `
+          <div class="spotlight-runner">
+            Next up: <strong>${runnerUp.name}</strong> (${runnerUp.score})
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function renderRaceTrack(sections) {
+      const raceEl = document.getElementById('overallRaceTrack');
+      if (!raceEl) return;
+      const lanes = sections
+        .map((s) => ({ ...s, progress: progressToTarget(s) }))
+        .sort((a, b) => b.progress - a.progress);
+      raceEl.innerHTML = lanes.map((lane) => `
+        <div class="overall-race-lane">
+          <span class="lane-name">${lane.name}</span>
+          <div class="lane-track">
+            <div class="lane-fill" style="width:${lane.progress}%"></div>
+          </div>
+          <span class="lane-value">${lane.progress}%</span>
+        </div>
+      `).join('');
+    }
+
+    function buildSyntheticSeries(section) {
+      const base = section.current;
+      const trend = section.trend || 0;
+      const adjust = trend === 0 ? 1 : Math.max(1, Math.round(Math.abs(trend) / 2));
+      return [
+        Math.max(0, base - (adjust * 2)),
+        Math.max(0, base - adjust),
+        Math.max(0, base - Math.round(adjust / 2)),
+        base,
+        Math.max(0, base + (trend > 0 ? adjust : -adjust)),
+        Math.max(0, base + (trend > 0 ? adjust * 2 : -Math.round(adjust / 2))),
+        Math.max(0, base + trend),
+      ];
+    }
+
+    function renderTrendSparkline(series) {
+      const width = 220;
+      const height = 72;
+      const min = Math.min(...series);
+      const max = Math.max(...series);
+      const range = Math.max(1, max - min);
+      const step = width / Math.max(1, series.length - 1);
+      const points = series.map((val, idx) => {
+        const x = idx * step;
+        const y = height - (((val - min) / range) * (height - 16) + 8);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      });
+      const line = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${p}`).join(' ');
+      const area = `${line} L ${width},${height} L 0,${height} Z`;
+      return `
+        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="overall-trend-spark">
+          <path d="${area}" class="overall-trend-area"></path>
+          <path d="${line}" class="overall-trend-line"></path>
+        </svg>
+      `;
+    }
+
+    function renderTrends(sections) {
+      const trendGrid = document.getElementById('overallTrendGrid');
+      if (!trendGrid) return;
+      trendGrid.innerHTML = sections.map((section) => {
+        const series = buildSyntheticSeries(section);
+        return `
+          <article class="card overall-trend-card">
+            <div class="overall-trend-head">
+              <span>${section.name}</span>
+              <strong>${section.current}</strong>
+            </div>
+            ${renderTrendSparkline(series)}
+          </article>
+        `;
+      }).join('');
+    }
+
+    function renderChallenge(sections) {
+      const challengeEl = document.getElementById('overallChallengeCard');
+      if (!challengeEl) return;
+      const sorted = sections
+        .map((section) => ({
+          name: section.name,
+          score: efficiencyScore(section),
+        }))
+        .sort((a, b) => b.score - a.score);
+      const leader = sorted[0];
+      const second = sorted[1];
+      const gap = leader && second ? leader.score - second.score : 0;
+      challengeEl.innerHTML = `
+        <div class="overall-challenge-main">
+          <div class="challenge-title">Section Sprint</div>
+          <div class="challenge-leader">${leader ? leader.name : '—'} leads</div>
+          <div class="challenge-gap">${leader ? `Ahead by ${gap} pts` : 'Waiting for data'}</div>
+        </div>
+        <div class="challenge-foot">
+          Objective: keep 4+ sections healthy for 20 mins
+        </div>
+      `;
     }
 
     function isValidSection(section) {
@@ -220,9 +384,19 @@
         if (!valid.length) throw new Error('No valid sections returned');
         renderSections(valid);
         renderSummary(valid);
+        renderMissionBoard(valid);
+        renderSpotlight(valid);
+        renderTrends(valid);
+        renderRaceTrack(valid);
+        renderChallenge(valid);
       } catch (_err) {
         renderSections(mockSections);
         renderSummary(mockSections);
+        renderMissionBoard(mockSections);
+        renderSpotlight(mockSections);
+        renderTrends(mockSections);
+        renderRaceTrack(mockSections);
+        renderChallenge(mockSections);
       }
     }
 
