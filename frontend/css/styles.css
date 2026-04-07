@@ -3268,8 +3268,8 @@ main.layout {
 }
 
 .overall-summary-card {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(300px, 1.1fr) minmax(0, 1.4fr);
   align-items: stretch;
   gap: 12px;
   min-height: 0;
@@ -3346,9 +3346,10 @@ main.layout {
 
 .overall-summary-right {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(74px, auto);
   gap: 10px;
-  width: min(560px, 100%);
+  width: 100%;
 }
 
 .overall-kpi {
@@ -3369,7 +3370,11 @@ main.layout {
 }
 
 .overall-kpi strong {
-  font-size: 16px;
+  font-size: 20px;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .overall-section-grid {
@@ -3938,11 +3943,12 @@ main.layout {
 
 @media (max-width: 1100px) {
   .overall-summary-card {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .overall-summary-right {
     width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .overall-section-grid {

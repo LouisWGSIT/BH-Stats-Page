@@ -6,14 +6,14 @@
         key: 'goods_in',
         name: 'Goods In',
         target: 90,
-        current: 128,
+        current: 412,
         trend: 14,
         owner: 'Inbound Team',
-        queueLabel: 'Totes Received',
+        queueLabel: 'GRNs (Last 3 Months)',
         subMetrics: [
-          { label: 'Received Today', value: 128 },
-          { label: 'Booked In Today', value: 92 },
-          { label: 'Awaiting IA', value: 36 },
+          { label: 'Total Received (Not Booked In)', value: 412 },
+          { label: 'Booked In Today', value: 61 },
+          { label: 'Awaiting IA (All Booked In)', value: 1743 },
         ],
       },
       {
@@ -119,7 +119,7 @@
 
     function getOutstandingCount(section) {
       if (section.key === 'goods_in') {
-        return getSubMetric(section, [/awaiting ia/]);
+        return getSubMetric(section, [/total received \(not booked in\)/, /not booked in/, /awaiting ia/]);
       }
       if (section.key === 'ia') {
         return getSubMetric(section, [/awaiting ia/]);
@@ -253,6 +253,11 @@
       const bottleneckEl = document.getElementById('overallBottleneck');
       const redCountEl = document.getElementById('overallRedCount');
       const lastUpdateEl = document.getElementById('overallLastUpdate');
+      const doneTodayEl = document.getElementById('overallDoneToday');
+      const queueTotalEl = document.getElementById('overallQueueTotal');
+      const topDoneEl = document.getElementById('overallTopDone');
+      const queueLeaderEl = document.getElementById('overallQueueLeader');
+      const liveFeedsEl = document.getElementById('overallLiveFeeds');
 
       const enriched = sections.map((s) => ({ ...s, done: getDoneCount(s) }));
       const activeCount = enriched.filter((s) => s.done > 0).length;
@@ -261,6 +266,8 @@
       const bottleneck = enriched.reduce((max, s) => (
         asNumber(s.current) > asNumber(max.current) ? s : max
       ), enriched[0]);
+      const topDone = enriched.reduce((max, s) => (s.done > max.done ? s : max), enriched[0]);
+      const liveFeeds = enriched.filter((s) => s.isLive).length;
 
       if (summaryEl) {
         summaryEl.textContent = `${doneTotal} completed actions across ${activeCount}/${enriched.length} active sections today.`;
@@ -275,6 +282,11 @@
       if (bottleneckEl) bottleneckEl.textContent = bottleneck ? bottleneck.name : 'None';
       if (redCountEl) redCountEl.textContent = String(activeCount);
       if (lastUpdateEl) lastUpdateEl.textContent = new Date().toLocaleTimeString();
+      if (doneTodayEl) doneTodayEl.textContent = String(doneTotal);
+      if (queueTotalEl) queueTotalEl.textContent = String(queuedTotal);
+      if (topDoneEl) topDoneEl.textContent = topDone ? `${topDone.name} (${topDone.done})` : '—';
+      if (queueLeaderEl) queueLeaderEl.textContent = bottleneck ? `${bottleneck.name} (${bottleneck.current})` : '—';
+      if (liveFeedsEl) liveFeedsEl.textContent = `${liveFeeds}/${enriched.length}`;
     }
 
     function renderMissionBoard(sections) {
@@ -451,6 +463,7 @@
         normalizedSubMetrics.forEach((row) => {
           if (row.label === 'Delivered This Morning') row.label = 'Received Today';
           if (row.label === 'Checked In') row.label = 'Booked In Today';
+          if (row.label === 'Awaiting IA') row.label = 'Total Received (Not Booked In)';
         });
       }
 

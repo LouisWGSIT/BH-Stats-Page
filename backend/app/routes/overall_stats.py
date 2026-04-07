@@ -16,6 +16,10 @@ def create_overall_stats_router(*, qa_export_module):
     }
     goods_in_table_raw = os.getenv("OVERALL_GOODS_IN_TABLE", "ITAD_GRN").strip() or "ITAD_GRN"
     goods_in_table = goods_in_table_raw if re.fullmatch(r"[A-Za-z0-9_]+", goods_in_table_raw) else "ITAD_GRN"
+    try:
+        goods_in_lookback_days = max(1, int(os.getenv("OVERALL_GOODS_IN_LOOKBACK_DAYS", "90")))
+    except Exception:
+        goods_in_lookback_days = 90
 
     def _run_query_variants(cur, queries: list[str]) -> int:
         last_error = None
@@ -40,14 +44,14 @@ def create_overall_stats_router(*, qa_export_module):
             "sectionKey": "goods_in",
             "sectionName": "Goods In",
             "targetQueue": 90,
-            "currentQueue": 128,
+            "currentQueue": 412,
             "trendPctHour": 14,
             "owner": "Inbound Team",
-            "queueLabel": "Totes Delivered",
+            "queueLabel": "GRNs (Last 3 Months)",
             "subMetrics": [
-                {"label": "Delivered This Morning", "value": 128},
-                {"label": "Checked In", "value": 92},
-                {"label": "Awaiting IA", "value": 36},
+                {"label": "Total Received (Not Booked In)", "value": 412},
+                {"label": "Booked In Today", "value": 61},
+                {"label": "Awaiting IA (All Booked In)", "value": 1743},
             ],
             "updatedAt": now_iso,
             "isLive": False,
@@ -65,7 +69,7 @@ def create_overall_stats_router(*, qa_export_module):
             cur = conn.cursor()
             try:
                 try:
-                    default_delivered = _run_query_variants(cur, [
+                    default_received_today = _run_query_variants(cur, [
                         f"""
                         SELECT COUNT(*)
                         FROM {goods_in_table}
@@ -109,9 +113,32 @@ def create_overall_stats_router(*, qa_export_module):
                           AND UPPER(COALESCE(bookedin, 'N')) <> 'Y'
                         """,
                     ])
+
+                    received_total = _run_query_variants(cur, [
+                        f"""
+                        SELECT COUNT(*)
+                        FROM {goods_in_table}
+                        WHERE DATE(date_received) >= DATE_SUB(CURDATE(), INTERVAL {goods_in_lookback_days} DAY)
+                          AND UPPER(COALESCE(recieved, '')) = 'Y'
+                        """,
+                        f"""
+                        SELECT COUNT(*)
+                        FROM {goods_in_table}
+                        WHERE DATE(date_received) >= DATE_SUB(CURDATE(), INTERVAL {goods_in_lookback_days} DAY)
+                          AND UPPER(COALESCE(received, '')) = 'Y'
+                        """,
+                    ])
+                    booked_total = _run_query_variants(cur, [
+                        f"""
+                        SELECT COUNT(*)
+                        FROM {goods_in_table}
+                        WHERE DATE(date_received) >= DATE_SUB(CURDATE(), INTERVAL {goods_in_lookback_days} DAY)
+                          AND UPPER(COALESCE(bookedin, '')) = 'Y'
+                        """,
+                    ])
                     source = f"mariadb:{goods_in_table}"
                 except Exception:
-                    default_delivered = _run_scalar_query(
+                    default_received_today = _run_scalar_query(
                         cur,
                         """
                         SELECT COUNT(DISTINCT pallet_id)
@@ -119,26 +146,28 @@ def create_overall_stats_router(*, qa_export_module):
                         WHERE received_date >= CURDATE()
                         """,
                     )
-                    default_checked_in = max(0, int(round(default_delivered * 0.72)))
-                    default_awaiting_ia = max(0, default_delivered - default_checked_in)
+                    default_checked_in = max(0, int(round(default_received_today * 0.72)))
+                    default_awaiting_ia = max(0, default_received_today - default_checked_in)
+                    received_total = default_received_today
+                    booked_total = default_checked_in
                     source = "mariadb:Stockbypallet"
 
                 if goods_in_queries["delivered"] or goods_in_queries["checked_in"] or goods_in_queries["awaiting_ia"]:
-                    delivered = _run_scalar_query(cur, goods_in_queries["delivered"]) if goods_in_queries["delivered"] else default_delivered
+                    delivered = _run_scalar_query(cur, goods_in_queries["delivered"]) if goods_in_queries["delivered"] else max(0, received_total - booked_total)
                     checked_in = _run_scalar_query(cur, goods_in_queries["checked_in"]) if goods_in_queries["checked_in"] else default_checked_in
                     awaiting_ia = _run_scalar_query(cur, goods_in_queries["awaiting_ia"]) if goods_in_queries["awaiting_ia"] else default_awaiting_ia
                     source = "mariadb:custom-overall-goods-in-queries"
                 else:
-                    delivered = default_delivered
+                    delivered = max(0, received_total - booked_total)
                     checked_in = default_checked_in
-                    awaiting_ia = default_awaiting_ia
+                    awaiting_ia = booked_total
             finally:
                 cur.close()
                 conn.close()
 
             trend = 0
             if delivered > 0:
-                trend = int(round(((awaiting_ia - (mock["subMetrics"][2]["value"])) / max(1, delivered)) * 100))
+                trend = int(round((checked_in / max(1, delivered)) * 100))
 
             return {
                 "sectionKey": "goods_in",
@@ -147,11 +176,11 @@ def create_overall_stats_router(*, qa_export_module):
                 "currentQueue": delivered,
                 "trendPctHour": trend,
                 "owner": "Inbound Team",
-                "queueLabel": "GRNs Received",
+                "queueLabel": f"GRNs (Last {goods_in_lookback_days} Days)",
                 "subMetrics": [
-                    {"label": "Received Today", "value": delivered},
+                    {"label": "Total Received (Not Booked In)", "value": delivered},
                     {"label": "Booked In Today", "value": checked_in},
-                    {"label": "Awaiting IA", "value": awaiting_ia},
+                    {"label": "Awaiting IA (All Booked In)", "value": awaiting_ia},
                 ],
                 "updatedAt": now_iso,
                 "isLive": True,
