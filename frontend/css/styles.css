@@ -3303,9 +3303,45 @@ main.layout {
 }
 
 .overall-summary-left p {
-  margin: 0;
+  margin: 0 0 10px 0;
   color: var(--muted);
   font-size: 12px;
+}
+
+.overall-summary-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 260px;
+}
+
+.overall-summary-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.overall-summary-chip {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.overall-summary-chip.good {
+  background: rgba(77, 217, 126, 0.18);
+  color: #9df3bf;
+}
+
+.overall-summary-chip.watch {
+  background: rgba(255, 184, 61, 0.18);
+  color: #ffd27a;
+}
+
+.overall-summary-chip.risk {
+  background: rgba(255, 84, 84, 0.18);
+  color: #ff9c8d;
 }
 
 .overall-summary-right {
@@ -3791,9 +3827,9 @@ main.layout {
 
 .lane-car {
   position: absolute;
-  top: -8px;
-  width: 18px;
-  height: 18px;
+  top: -10px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
@@ -3946,6 +3982,31 @@ main.layout {
   max-height: 104px;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.overall-submetrics-erasure {
+  overflow: hidden;
+  max-height: none;
+}
+
+.overall-roller-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px 4px;
+  align-items: center;
+}
+
+.overall-roller-grid .roller-label {
+  font-size: 10px;
+  color: #9fb3c8;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.overall-roller-grid .roller-value {
+  font-size: 15px;
+  color: #ffffff;
+  text-align: center;
 }
 
 .overall-submetrics::-webkit-scrollbar {

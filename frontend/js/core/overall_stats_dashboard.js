@@ -74,44 +74,90 @@
       },
     ];
 
-    function getStatus(current, target) {
-      const ratio = target > 0 ? current / target : 0;
-      if (ratio <= 1.0) return { key: 'green', label: 'Healthy' };
-      if (ratio <= 1.2) return { key: 'amber', label: 'Watch' };
-      return { key: 'red', label: 'Struggling' };
-    }
-
     function trendLabel(value) {
       if (value > 0) return `+${value}%`;
       if (value < 0) return `${value}%`;
       return '0%';
     }
 
-    function recommendation(section, statusKey) {
-      if (statusKey === 'red') {
-        return `Move 1-2 staff to ${section.name} immediately.`;
-      }
-      if (statusKey === 'amber') {
-        return `Monitor ${section.name}; prep cover if trend worsens.`;
-      }
-      return `${section.name} stable; can lend support if needed.`;
-    }
-
     function clamp(value, min, max) {
       return Math.min(Math.max(value, min), max);
     }
 
-    function progressToTarget(section) {
-      if (!section.target || section.target <= 0) return 0;
-      const raw = (section.target / Math.max(section.current, 1)) * 100;
-      return clamp(Math.round(raw), 0, 100);
+    function asNumber(value) {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : 0;
     }
 
-    function efficiencyScore(section) {
-      const base = progressToTarget(section);
-      const trendPenalty = section.trend > 0 ? section.trend : 0;
-      const trendBonus = section.trend < 0 ? Math.abs(section.trend) * 1.5 : 0;
-      return Math.round(base - trendPenalty + trendBonus);
+    function getSubMetric(section, patterns) {
+      const rows = Array.isArray(section.subMetrics) ? section.subMetrics : [];
+      for (const row of rows) {
+        const label = String(row.label || '').toLowerCase();
+        if (patterns.some((p) => p.test(label))) return asNumber(row.value);
+      }
+      return 0;
+    }
+
+    function getDoneCount(section) {
+      if (section.key === 'goods_in') {
+        return getSubMetric(section, [/booked in today/, /^booked in$/]);
+      }
+      if (section.key === 'ia') {
+        return getSubMetric(section, [/completed ia/, /ready for erasure/]);
+      }
+      if (section.key === 'erasure') {
+        return getSubMetric(section, [/erased today/, /processed today/, /completed erasure/]);
+      }
+      if (section.key === 'qa') {
+        return getSubMetric(section, [/completed qa today/, /qa complete/]);
+      }
+      if (section.key === 'sorting') {
+        return getSubMetric(section, [/sorted this morning/, /sorted today/]);
+      }
+      return 0;
+    }
+
+    function getOutstandingCount(section) {
+      if (section.key === 'goods_in') {
+        return getSubMetric(section, [/awaiting ia/]);
+      }
+      if (section.key === 'ia') {
+        return getSubMetric(section, [/awaiting ia/]);
+      }
+      if (section.key === 'erasure') {
+        return asNumber(section.current);
+      }
+      if (section.key === 'qa') {
+        const db = getSubMetric(section, [/db awaiting qa/]);
+        const nonDb = getSubMetric(section, [/non-db awaiting qa/]);
+        return db + nonDb || asNumber(section.current);
+      }
+      if (section.key === 'sorting') {
+        return getSubMetric(section, [/awaiting sorting/]) || asNumber(section.current);
+      }
+      return asNumber(section.current);
+    }
+
+    function getCompletionSnapshot(section) {
+      const done = Math.max(0, getDoneCount(section));
+      const outstanding = Math.max(0, getOutstandingCount(section));
+      const total = Math.max(done + outstanding, 1);
+      const pct = clamp(Math.round((done / total) * 100), 0, 100);
+      return { done, outstanding, total, pct };
+    }
+
+    function activityScore(section) {
+      const done = getDoneCount(section);
+      const queuePenalty = Math.round(asNumber(section.current) * 0.2);
+      const trendMod = section.trend < 0 ? Math.abs(section.trend) : Math.round(-section.trend * 0.5);
+      return Math.max(0, done + trendMod - queuePenalty);
+    }
+
+    function activityText(section) {
+      const done = getDoneCount(section);
+      if (done > 0) return `${section.name} active with ${done} completed actions.`;
+      if (asNumber(section.current) > 0) return `${section.name} has work queued; awaiting completion updates.`;
+      return `${section.name} is quiet right now.`;
     }
 
     const sectionEngineerSeeds = {
@@ -124,7 +170,7 @@
 
     function getEngineersForSection(section) {
       const seed = sectionEngineerSeeds[section.key] || ['TM', 'AA', 'BB'];
-      const base = efficiencyScore(section);
+      const base = activityScore(section) + Math.round(getDoneCount(section) * 0.5);
       return seed.map((initials, idx) => ({
         initials,
         section: section.name,
@@ -136,26 +182,43 @@
       const grid = document.getElementById('overallSectionGrid');
       if (!grid) return;
       grid.innerHTML = sections.map((section) => {
-        const status = getStatus(section.current, section.target);
-        const gap = section.current - section.target;
         const trendClass = section.trend > 0 ? 'is-up' : section.trend < 0 ? 'is-down' : 'is-flat';
         const sourceLabel = section.isLive ? 'Live' : 'Mock';
         const sourceClass = section.isLive ? 'live' : 'mock';
-        const detailRows = (section.subMetrics || [])
-          .map((row) => `
-            <div class="overall-submetric-row">
-              <span>${row.label}</span>
-              <strong>${row.value}</strong>
+        const done = getDoneCount(section);
+        let detailRows = '';
+        let subMetricClass = 'overall-submetrics';
+        if (section.key === 'erasure') {
+          const rollers = (section.subMetrics || [])
+            .filter((row) => /^Roller\s+\d+\s+Queue$/i.test(row.label))
+            .sort((a, b) => {
+              const aNum = Number((/^Roller\s+(\d+)/i.exec(a.label) || [])[1] || 0);
+              const bNum = Number((/^Roller\s+(\d+)/i.exec(b.label) || [])[1] || 0);
+              return aNum - bNum;
+            });
+          detailRows = `
+            <div class="overall-roller-grid">
+              ${rollers.map((row) => `<span class="roller-label">${row.label.replace(' Queue', '')}</span>`).join('')}
+              ${rollers.map((row) => `<strong class="roller-value">${row.value}</strong>`).join('')}
             </div>
-          `)
-          .join('');
+          `;
+          subMetricClass = 'overall-submetrics overall-submetrics-erasure';
+        } else {
+          detailRows = (section.subMetrics || [])
+            .map((row) => `
+              <div class="overall-submetric-row">
+                <span>${row.label}</span>
+                <strong>${row.value}</strong>
+              </div>
+            `)
+            .join('');
+        }
         return `
-          <article class="overall-section-card status-${status.key}">
+          <article class="overall-section-card">
             <div class="overall-card-top">
               <h3>${section.name}</h3>
               <div class="overall-pill-stack">
                 <span class="overall-source-pill ${sourceClass}">${sourceLabel}</span>
-                <span class="overall-status-pill ${status.key}">${status.label}</span>
               </div>
             </div>
             <div class="overall-metric-row">
@@ -164,21 +227,21 @@
                 <strong>${section.current}</strong>
               </div>
               <div class="overall-metric-block">
-                <span class="label">Target Queue</span>
-                <strong>${section.target}</strong>
+                <span class="label">Done</span>
+                <strong>${done}</strong>
               </div>
               <div class="overall-metric-block">
-                <span class="label">Gap</span>
-                <strong>${gap >= 0 ? '+' : ''}${gap}</strong>
+                <span class="label">Trend (1h)</span>
+                <strong>${trendLabel(section.trend)}</strong>
               </div>
             </div>
             <div class="overall-queue-label">${section.queueLabel || 'Queue'}</div>
-            <div class="overall-submetrics">${detailRows}</div>
+            <div class="${subMetricClass}">${detailRows}</div>
             <div class="overall-metadata-row">
               <span class="owner">${section.owner}</span>
               <span class="trend ${trendClass}">${trendLabel(section.trend)} vs last hour</span>
             </div>
-            <p class="overall-action">${recommendation(section, status.key)}</p>
+            <p class="overall-action">${activityText(section)}</p>
           </article>
         `;
       }).join('');
@@ -186,68 +249,75 @@
 
     function renderSummary(sections) {
       const summaryEl = document.getElementById('overallSummaryText');
+      const summaryMetaEl = document.getElementById('overallSummaryMeta');
       const bottleneckEl = document.getElementById('overallBottleneck');
       const redCountEl = document.getElementById('overallRedCount');
       const lastUpdateEl = document.getElementById('overallLastUpdate');
 
-      const withStatus = sections.map((s) => ({ ...s, status: getStatus(s.current, s.target) }));
-      const red = withStatus.filter((s) => s.status.key === 'red');
-      const bottleneck = withStatus.reduce((max, s) => {
-        const ratio = s.target > 0 ? s.current / s.target : 0;
-        const maxRatio = max.target > 0 ? max.current / max.target : 0;
-        return ratio > maxRatio ? s : max;
-      }, withStatus[0]);
+      const enriched = sections.map((s) => ({ ...s, done: getDoneCount(s) }));
+      const activeCount = enriched.filter((s) => s.done > 0).length;
+      const queuedTotal = enriched.reduce((sum, s) => sum + asNumber(s.current), 0);
+      const doneTotal = enriched.reduce((sum, s) => sum + s.done, 0);
+      const bottleneck = enriched.reduce((max, s) => (
+        asNumber(s.current) > asNumber(max.current) ? s : max
+      ), enriched[0]);
 
       if (summaryEl) {
-        summaryEl.textContent = red.length > 0
-          ? `Focus today: clear red sections before 11:00.`
-          : 'No critical bottlenecks right now.';
+        summaryEl.textContent = `${doneTotal} completed actions across ${activeCount}/${enriched.length} active sections today.`;
+      }
+      if (summaryMetaEl) {
+        summaryMetaEl.innerHTML = `
+          <span class="overall-summary-chip good">Done Today: ${doneTotal}</span>
+          <span class="overall-summary-chip watch">In Queue: ${queuedTotal}</span>
+          <span class="overall-summary-chip risk">Active Sections: ${activeCount}</span>
+        `;
       }
       if (bottleneckEl) bottleneckEl.textContent = bottleneck ? bottleneck.name : 'None';
-      if (redCountEl) redCountEl.textContent = String(red.length);
+      if (redCountEl) redCountEl.textContent = String(activeCount);
       if (lastUpdateEl) lastUpdateEl.textContent = new Date().toLocaleTimeString();
     }
 
     function renderMissionBoard(sections) {
       const missionEl = document.getElementById('overallMissionBoard');
       if (!missionEl) return;
-
-      const statuses = sections.map((s) => ({ ...s, status: getStatus(s.current, s.target) }));
-      const healthyCount = statuses.filter((s) => s.status.key === 'green').length;
-      const watchCount = statuses.filter((s) => s.status.key === 'amber').length;
-      const strugglingCount = statuses.filter((s) => s.status.key === 'red').length;
-      const healthPct = Math.round((healthyCount / Math.max(statuses.length, 1)) * 100);
-      const objectiveMet = healthyCount >= 4;
+      const enriched = sections.map((s) => ({ ...s, done: getDoneCount(s) }));
+      const doneTotal = enriched.reduce((sum, s) => sum + s.done, 0);
+      const queueTotal = enriched.reduce((sum, s) => sum + asNumber(s.current), 0);
+      const peak = Math.max(doneTotal, queueTotal, 1);
+      const donePct = Math.round((doneTotal / peak) * 100);
+      const queuePct = Math.round((queueTotal / peak) * 100);
+      const top = [...enriched].sort((a, b) => b.done - a.done)[0];
+      const busiest = [...enriched].sort((a, b) => asNumber(b.current) - asNumber(a.current))[0];
 
       missionEl.innerHTML = `
         <div class="overall-mission-progress">
           <div class="mission-head">
-            <span>Shift Objective</span>
-            <strong>${healthyCount}/${statuses.length} sections healthy</strong>
+            <span>Live Throughput</span>
+            <strong>Done ${doneTotal} / Queue ${queueTotal}</strong>
           </div>
-          <div class="mission-track"><div class="mission-fill" style="width:${healthPct}%"></div></div>
+          <div class="mission-track"><div class="mission-fill" style="width:${donePct}%"></div></div>
         </div>
-        <div class="mission-objective ${objectiveMet ? 'is-good' : 'is-watch'}">
-          ${objectiveMet ? 'Objective met: operational flow stable' : 'Objective: get 4+ sections healthy'}
+        <div class="mission-objective is-watch">
+          Queue load is at ${queuePct}% of today peak volume.
         </div>
         <div class="overall-mission-list">
           <div class="mission-item">
-            <span class="mission-label">Healthy</span>
-            <strong class="is-good">${healthyCount}</strong>
+            <span class="mission-label">Most Completed</span>
+            <strong class="is-good">${top ? `${top.name} (${top.done})` : '—'}</strong>
           </div>
           <div class="mission-item">
-            <span class="mission-label">Watch</span>
-            <strong class="is-watch">${watchCount}</strong>
+            <span class="mission-label">Largest Queue</span>
+            <strong class="is-watch">${busiest ? `${busiest.name} (${busiest.current})` : '—'}</strong>
           </div>
           <div class="mission-item">
-            <span class="mission-label">Struggling</span>
-            <strong class="is-risk">${strugglingCount}</strong>
+            <span class="mission-label">Sections Reporting Done</span>
+            <strong class="is-risk">${enriched.filter((s) => s.done > 0).length}</strong>
           </div>
         </div>
         <div class="mission-legend">
-          <span><i class="dot good"></i> At/under target</span>
-          <span><i class="dot watch"></i> 100-120% target</span>
-          <span><i class="dot risk"></i> 120%+ target</span>
+          <span><i class="dot good"></i> Completed actions</span>
+          <span><i class="dot watch"></i> Current queue load</span>
+          <span><i class="dot risk"></i> Active sections</span>
         </div>
       `;
     }
@@ -288,8 +358,13 @@
     function renderRaceTrack(sections) {
       const raceEl = document.getElementById('overallRaceTrack');
       if (!raceEl) return;
+      const maxDone = Math.max(...sections.map((s) => getDoneCount(s)), 1);
       const lanes = sections
-        .map((s) => ({ ...s, progress: progressToTarget(s) }))
+        .map((s) => ({
+          ...s,
+          done: getDoneCount(s),
+          progress: clamp(Math.round((getDoneCount(s) / maxDone) * 100), 0, 100),
+        }))
         .sort((a, b) => b.progress - a.progress);
       raceEl.innerHTML = lanes.map((lane) => `
         <div class="overall-race-lane">
@@ -298,7 +373,7 @@
             <div class="lane-fill" style="width:${lane.progress}%"></div>
             <img class="lane-car" src="assets/F1Car.png" alt="" style="left:calc(${lane.progress}% - 10px)" />
           </div>
-          <span class="lane-value">${lane.progress}%</span>
+          <span class="lane-value">${lane.done}</span>
         </div>
       `).join('');
     }
@@ -307,26 +382,21 @@
       const trendGrid = document.getElementById('overallTrendGrid');
       if (!trendGrid) return;
       trendGrid.innerHTML = sections.map((section) => {
-        const ratioRaw = section.target > 0 ? (section.current / section.target) * 100 : 0;
-        const ratio = clamp(Math.round(ratioRaw), 0, 160);
-        const fill = Math.min(ratio, 100);
-        const status = getStatus(section.current, section.target).key;
-        const gap = section.current - section.target;
+        const snap = getCompletionSnapshot(section);
         return `
-          <article class="overall-trend-card status-${status}">
+          <article class="overall-trend-card">
             <div class="overall-trend-head">
               <span>${section.name}</span>
-              <strong>${section.current}/${section.target}</strong>
+              <strong>${snap.done}/${snap.total}</strong>
             </div>
             <div class="overall-trend-bar-wrap">
               <div class="overall-trend-bar-bg">
-                <div class="overall-trend-bar-fill" style="width:${fill}%"></div>
+                <div class="overall-trend-bar-fill" style="width:${snap.pct}%"></div>
               </div>
-              ${ratio > 100 ? `<div class="overall-trend-overflow" style="width:${Math.min(ratio - 100, 60)}%"></div>` : ''}
             </div>
             <div class="overall-trend-meta">
-              <span>${ratio}% of target</span>
-              <span class="${gap > 0 ? 'is-risk' : gap < 0 ? 'is-good' : ''}">Gap ${gap >= 0 ? '+' : ''}${gap}</span>
+              <span>${snap.pct}% completed</span>
+              <span>Outstanding ${snap.outstanding}</span>
             </div>
           </article>
         `;
@@ -339,7 +409,7 @@
       const sorted = sections
         .map((section) => ({
           name: section.name,
-          score: efficiencyScore(section),
+          score: activityScore(section),
         }))
         .sort((a, b) => b.score - a.score);
       const leader = sorted[0];
@@ -352,7 +422,7 @@
           <div class="challenge-gap">${leader ? `Ahead by ${gap} pts` : 'Waiting for data'}</div>
         </div>
         <div class="challenge-foot">
-          Objective: keep 4+ sections healthy for 20 mins
+          Objective: increase completed actions in the next cycle
         </div>
       `;
     }

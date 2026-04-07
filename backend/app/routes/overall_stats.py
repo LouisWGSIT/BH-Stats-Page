@@ -83,6 +83,12 @@ def create_overall_stats_router(*, qa_export_module):
                         f"""
                         SELECT COUNT(*)
                         FROM {goods_in_table}
+                        WHERE DATE(bookedin_date) = CURDATE()
+                          AND UPPER(COALESCE(bookedin, '')) = 'Y'
+                        """,
+                        f"""
+                        SELECT COUNT(*)
+                        FROM {goods_in_table}
                         WHERE DATE(date_received) = CURDATE()
                           AND UPPER(COALESCE(bookedin, '')) = 'Y'
                         """,
