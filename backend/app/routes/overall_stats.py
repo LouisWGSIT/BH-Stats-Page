@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 import os
+import re
 
 from fastapi import APIRouter
 
@@ -13,6 +14,19 @@ def create_overall_stats_router(*, qa_export_module):
         "checked_in": os.getenv("OVERALL_GOODS_IN_CHECKED_IN_QUERY", "").strip(),
         "awaiting_ia": os.getenv("OVERALL_GOODS_IN_AWAITING_IA_QUERY", "").strip(),
     }
+    goods_in_table_raw = os.getenv("OVERALL_GOODS_IN_TABLE", "ITAD_GRN").strip() or "ITAD_GRN"
+    goods_in_table = goods_in_table_raw if re.fullmatch(r"[A-Za-z0-9_]+", goods_in_table_raw) else "ITAD_GRN"
+
+    def _run_query_variants(cur, queries: list[str]) -> int:
+        last_error = None
+        for query in queries:
+            try:
+                return _run_scalar_query(cur, query)
+            except Exception as exc:
+                last_error = exc
+        if last_error:
+            raise last_error
+        return 0
 
     def _run_scalar_query(cur, query: str) -> int:
         cur.execute(query)
@@ -50,24 +64,68 @@ def create_overall_stats_router(*, qa_export_module):
                 return mock
             cur = conn.cursor()
             try:
-                delivered_query = goods_in_queries["delivered"] or (
-                    """
-                    SELECT COUNT(DISTINCT pallet_id)
-                    FROM Stockbypallet
-                    WHERE received_date >= CURDATE()
-                    """
-                )
-                delivered = _run_scalar_query(cur, delivered_query)
+                try:
+                    default_delivered = _run_query_variants(cur, [
+                        f"""
+                        SELECT COUNT(*)
+                        FROM {goods_in_table}
+                        WHERE DATE(date_received) = CURDATE()
+                          AND UPPER(COALESCE(recieved, '')) = 'Y'
+                        """,
+                        f"""
+                        SELECT COUNT(*)
+                        FROM {goods_in_table}
+                        WHERE DATE(date_received) = CURDATE()
+                          AND UPPER(COALESCE(received, '')) = 'Y'
+                        """,
+                    ])
+                    default_checked_in = _run_query_variants(cur, [
+                        f"""
+                        SELECT COUNT(*)
+                        FROM {goods_in_table}
+                        WHERE DATE(date_received) = CURDATE()
+                          AND UPPER(COALESCE(bookedin, '')) = 'Y'
+                        """,
+                    ])
+                    default_awaiting_ia = _run_query_variants(cur, [
+                        f"""
+                        SELECT COUNT(*)
+                        FROM {goods_in_table}
+                        WHERE DATE(date_received) = CURDATE()
+                          AND UPPER(COALESCE(recieved, '')) = 'Y'
+                          AND UPPER(COALESCE(bookedin, 'N')) <> 'Y'
+                        """,
+                        f"""
+                        SELECT COUNT(*)
+                        FROM {goods_in_table}
+                        WHERE DATE(date_received) = CURDATE()
+                          AND UPPER(COALESCE(received, '')) = 'Y'
+                          AND UPPER(COALESCE(bookedin, 'N')) <> 'Y'
+                        """,
+                    ])
+                    source = f"mariadb:{goods_in_table}"
+                except Exception:
+                    default_delivered = _run_scalar_query(
+                        cur,
+                        """
+                        SELECT COUNT(DISTINCT pallet_id)
+                        FROM Stockbypallet
+                        WHERE received_date >= CURDATE()
+                        """,
+                    )
+                    default_checked_in = max(0, int(round(default_delivered * 0.72)))
+                    default_awaiting_ia = max(0, default_delivered - default_checked_in)
+                    source = "mariadb:Stockbypallet"
 
-                if goods_in_queries["checked_in"]:
-                    checked_in = _run_scalar_query(cur, goods_in_queries["checked_in"])
+                if goods_in_queries["delivered"] or goods_in_queries["checked_in"] or goods_in_queries["awaiting_ia"]:
+                    delivered = _run_scalar_query(cur, goods_in_queries["delivered"]) if goods_in_queries["delivered"] else default_delivered
+                    checked_in = _run_scalar_query(cur, goods_in_queries["checked_in"]) if goods_in_queries["checked_in"] else default_checked_in
+                    awaiting_ia = _run_scalar_query(cur, goods_in_queries["awaiting_ia"]) if goods_in_queries["awaiting_ia"] else default_awaiting_ia
+                    source = "mariadb:custom-overall-goods-in-queries"
                 else:
-                    checked_in = max(0, int(round(delivered * 0.72)))
-
-                if goods_in_queries["awaiting_ia"]:
-                    awaiting_ia = _run_scalar_query(cur, goods_in_queries["awaiting_ia"])
-                else:
-                    awaiting_ia = max(0, delivered - checked_in)
+                    delivered = default_delivered
+                    checked_in = default_checked_in
+                    awaiting_ia = default_awaiting_ia
             finally:
                 cur.close()
                 conn.close()
@@ -76,10 +134,6 @@ def create_overall_stats_router(*, qa_export_module):
             if delivered > 0:
                 trend = int(round(((awaiting_ia - (mock["subMetrics"][2]["value"])) / max(1, delivered)) * 100))
 
-            source = "mariadb:Stockbypallet"
-            if goods_in_queries["delivered"] or goods_in_queries["checked_in"] or goods_in_queries["awaiting_ia"]:
-                source = "mariadb:custom-overall-goods-in-queries"
-
             return {
                 "sectionKey": "goods_in",
                 "sectionName": "Goods In",
@@ -87,10 +141,10 @@ def create_overall_stats_router(*, qa_export_module):
                 "currentQueue": delivered,
                 "trendPctHour": trend,
                 "owner": "Inbound Team",
-                "queueLabel": "Totes Delivered",
+                "queueLabel": "GRNs Received",
                 "subMetrics": [
-                    {"label": "Delivered This Morning", "value": delivered},
-                    {"label": "Checked In", "value": checked_in},
+                    {"label": "Received Today", "value": delivered},
+                    {"label": "Booked In Today", "value": checked_in},
                     {"label": "Awaiting IA", "value": awaiting_ia},
                 ],
                 "updatedAt": now_iso,

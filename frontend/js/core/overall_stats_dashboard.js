@@ -369,15 +369,48 @@
     }
 
     function normalizeSection(section) {
+      const key = section.sectionKey;
+      const subMetrics = Array.isArray(section.subMetrics) ? section.subMetrics : [];
+      const normalizedSubMetrics = subMetrics.map((row) => ({
+        label: String(row && row.label ? row.label : ''),
+        value: row && row.value != null ? row.value : '—',
+      }));
+
+      // Keep Goods In wording aligned with what we can actually track.
+      if (key === 'goods_in') {
+        normalizedSubMetrics.forEach((row) => {
+          if (row.label === 'Delivered This Morning') row.label = 'Received Today';
+          if (row.label === 'Checked In') row.label = 'Booked In Today';
+        });
+      }
+
+      // Always show Roller 1..7 rows for Erasure for stable wallboard layout.
+      if (key === 'erasure') {
+        const rollerMap = new Map();
+        normalizedSubMetrics.forEach((row) => {
+          const match = /^Roller\s+(\d+)\s+Queue$/i.exec(row.label);
+          if (match) rollerMap.set(Number(match[1]), row.value);
+        });
+        const rollerRows = [];
+        for (let i = 1; i <= 7; i += 1) {
+          rollerRows.push({
+            label: `Roller ${i} Queue`,
+            value: rollerMap.has(i) ? rollerMap.get(i) : '—',
+          });
+        }
+        normalizedSubMetrics.length = 0;
+        normalizedSubMetrics.push(...rollerRows);
+      }
+
       return {
-        key: section.sectionKey,
+        key,
         name: section.sectionName,
         target: section.targetQueue,
         current: section.currentQueue,
         trend: typeof section.trendPctHour === 'number' ? section.trendPctHour : 0,
         owner: section.owner || 'Operations Team',
         queueLabel: section.queueLabel || 'Queue',
-        subMetrics: section.subMetrics || [],
+        subMetrics: normalizedSubMetrics,
         isLive: section.isLive === true,
         source: section.source || 'mock',
       };
