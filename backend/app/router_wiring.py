@@ -93,6 +93,7 @@ def register_routes(
     app.include_router(
         create_admin_diagnostics_router(
             require_admin=require_admin,
+            db_module=db_module,
             get_mariadb_connection=qa_export_module.get_mariadb_connection,
             get_client_ip=get_client_ip,
             get_client_ips=get_client_ips,

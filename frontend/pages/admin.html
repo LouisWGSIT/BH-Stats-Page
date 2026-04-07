@@ -446,7 +446,50 @@
                 </div>
             </div>
 
-            <!-- Section 7: Dashboard Activity (last 24 hours) -->
+            <!-- Section 7: Erasure Evidence -->
+            <div class="section admin-only">
+                <h2>🧾 Erasure Evidence</h2>
+                <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
+                    Verifies erased devices are landing in SQLite and shows whether sample records map to MariaDB assets/QA.
+                </p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="font-size:13px;color:#666;">Window:
+                        <select id="erasureEvidenceDays" style="max-width:120px;">
+                            <option value="7">7d</option>
+                            <option value="30" selected>30d</option>
+                            <option value="60">60d</option>
+                            <option value="90">90d</option>
+                        </select>
+                    </label>
+                    <label style="font-size:13px;color:#666;">Samples:
+                        <select id="erasureEvidenceLimit" style="max-width:120px;">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </label>
+                    <button onclick="loadErasureEvidence()">🔎 Refresh Evidence</button>
+                </div>
+                <div id="erasureEvidenceSummary" class="stats" style="display:none;margin-top:12px;"></div>
+                <div id="erasureEvidenceTableWrap" class="stats" style="display:none;margin-top:12px;max-height:360px;overflow:auto;">
+                    <table class="table" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>Time (UK)</th>
+                                <th>Key</th>
+                                <th>StockID Match</th>
+                                <th>QA Match</th>
+                                <th>Initials</th>
+                                <th>Device Type</th>
+                                <th>Job ID</th>
+                            </tr>
+                        </thead>
+                        <tbody id="erasureEvidenceTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Section 8: Dashboard Activity (last 24 hours) -->
             <div class="section admin-only">
                 <h2>📈 Dashboard Activity (24h)</h2>
                 <p style="color: #666; margin-bottom: 8px; font-size: 14px;">
@@ -829,6 +872,7 @@
                 refreshInitialsDropdowns();
                 loadConnectedDevices();
                 loadExternalAttempts();
+                try { loadErasureEvidence(); } catch (e) { /* ignore */ }
                 // Load activity and enable auto-poll checkbox wiring
                 try { fetchAdminActivity(); } catch (e) { /* ignore */ }
                 try { setupActivityAutoPoll(); } catch (e) { /* ignore */ }
@@ -1298,6 +1342,62 @@
             } catch (error) {
                 content.innerHTML = '<p style="color:#c00;">Error loading external attempts: ' + error.message + '</p>';
                 container.style.display = 'block';
+            }
+        }
+
+        async function loadErasureEvidence() {
+            const daysSel = document.getElementById('erasureEvidenceDays');
+            const limitSel = document.getElementById('erasureEvidenceLimit');
+            const summary = document.getElementById('erasureEvidenceSummary');
+            const wrap = document.getElementById('erasureEvidenceTableWrap');
+            const tbody = document.getElementById('erasureEvidenceTableBody');
+            if (!summary || !wrap || !tbody) return;
+
+            const days = parseInt((daysSel && daysSel.value) || '30', 10);
+            const limit = parseInt((limitSel && limitSel.value) || '50', 10);
+
+            try {
+                const res = await fetch(`/admin/erasure-evidence?days=${days}&limit=${limit}`, {
+                    headers: getAuthHeaders(false)
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${res.status}`);
+                }
+                const data = await res.json();
+                const s = data.summary || {};
+                const samples = Array.isArray(data.samples) ? data.samples : [];
+
+                summary.innerHTML = `
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                        <div class="stat-card"><div class="stat-value">${s.erasuresSuccessCount || 0}</div><div class="stat-label">SQLite erasures (success)</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.erasuresWithSerialCount || 0}</div><div class="stat-label">With serial in erasures</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.localErasuresCount || 0}</div><div class="stat-label">SQLite local_erasures</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.mariaAssetMatchesInSample || 0}/${samples.length}</div><div class="stat-label">Asset matches (sample)</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.mariaQaMatchesInSample || 0}/${samples.length}</div><div class="stat-label">QA matches (sample)</div></div>
+                    </div>
+                `;
+                summary.style.display = 'block';
+
+                tbody.innerHTML = '';
+                samples.forEach((row) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.ts)}</td>
+                        <td style="font-size:12px;">${row.key || ''}</td>
+                        <td style="font-size:12px;">${row.asset_match ? (row.stockid || 'yes') : 'no'}</td>
+                        <td style="font-size:12px;">${row.qa_match ? 'yes' : 'no'}</td>
+                        <td style="font-size:12px;">${row.initials || ''}</td>
+                        <td style="font-size:12px;">${row.device_type || ''}</td>
+                        <td style="font-size:12px;">${row.job_id || ''}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+                wrap.style.display = 'block';
+            } catch (err) {
+                summary.style.display = 'block';
+                summary.innerHTML = `<div class="result error" style="display:block;">Failed to load erasure evidence: ${err.message}</div>`;
+                wrap.style.display = 'none';
             }
         }
 
