@@ -136,17 +136,20 @@
     });
   }
 
-  function createDonutChart(canvasId, color) {
+  function createDonutChart(canvasId) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || typeof Chart === 'undefined') return null;
     const ctx = canvas.getContext('2d');
     return new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: ['Value', 'Remaining'],
+        labels: ['Remaining', 'Value'],
         datasets: [{
-          data: [0, 1],
-          backgroundColor: [color, 'rgba(255,255,255,0.08)'],
+          data: [1, 0],
+          backgroundColor: [
+            theme.ringPrimary || '#ff1ea3',
+            theme.ringSecondary || '#8cf04a',
+          ],
           borderWidth: 0,
           hoverOffset: 0,
         }],
@@ -172,8 +175,8 @@
 
   initializeTargetLabels();
 
-  const totalTodayChart = createDonutChart('chartTotalToday', theme.ringPrimary || '#ff1ea3');
-  const monthChart = createDonutChart('chartMonthToday', theme.ringSecondary || '#8cf04a');
+  const totalTodayChart = createDonutChart('chartTotalToday');
+  const monthChart = createDonutChart('chartMonthToday');
 
   async function refreshSummary() {}
   async function refreshAllTopLists() {}
@@ -336,7 +339,7 @@
   function updateDonut(chart, value, target) {
     if (!chart) return;
     const remaining = Math.max(target - value, 0);
-    chart.data.datasets[0].data = [value, remaining];
+    chart.data.datasets[0].data = [remaining, value];
     chart.canvas.dataset.target = target;
     chart.update('none'); // Skip animation for better performance
     
