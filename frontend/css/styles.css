@@ -3494,13 +3494,16 @@ main.layout {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
-  min-height: 88px;
+  min-height: 90px;
+  align-items: stretch;
 }
 
 .overall-trend-card {
   padding: 8px;
   align-items: stretch;
   text-align: left;
+  justify-content: flex-start;
+  gap: 6px;
 }
 
 .overall-trend-head {
@@ -3517,21 +3520,49 @@ main.layout {
   font-size: 13px;
 }
 
-.overall-trend-spark {
-  width: 100%;
-  height: 62px;
+.overall-trend-bar-wrap {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
 }
 
-.overall-trend-line {
-  fill: none;
-  stroke: #8cf04a;
-  stroke-width: 2.1;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.overall-trend-bar-bg {
+  position: absolute;
+  inset: 0;
 }
 
-.overall-trend-area {
-  fill: rgba(140, 240, 74, 0.13);
+.overall-trend-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8cf04a, #ffe066, #ff1ea3);
+}
+
+.overall-trend-overflow {
+  position: absolute;
+  right: 0;
+  top: -1px;
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(255, 30, 163, 0.35);
+  box-shadow: 0 0 10px rgba(255, 30, 163, 0.4);
+}
+
+.overall-trend-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #b8c8d9;
+}
+
+.overall-trend-meta .is-good {
+  color: #8cf04a;
+}
+
+.overall-trend-meta .is-risk {
+  color: #ff9c8d;
 }
 
 .overall-bottom-grid {

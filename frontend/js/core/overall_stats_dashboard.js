@@ -270,55 +270,31 @@
       `).join('');
     }
 
-    function buildSyntheticSeries(section) {
-      const base = section.current;
-      const trend = section.trend || 0;
-      const adjust = trend === 0 ? 1 : Math.max(1, Math.round(Math.abs(trend) / 2));
-      return [
-        Math.max(0, base - (adjust * 2)),
-        Math.max(0, base - adjust),
-        Math.max(0, base - Math.round(adjust / 2)),
-        base,
-        Math.max(0, base + (trend > 0 ? adjust : -adjust)),
-        Math.max(0, base + (trend > 0 ? adjust * 2 : -Math.round(adjust / 2))),
-        Math.max(0, base + trend),
-      ];
-    }
-
-    function renderTrendSparkline(series) {
-      const width = 220;
-      const height = 72;
-      const min = Math.min(...series);
-      const max = Math.max(...series);
-      const range = Math.max(1, max - min);
-      const step = width / Math.max(1, series.length - 1);
-      const points = series.map((val, idx) => {
-        const x = idx * step;
-        const y = height - (((val - min) / range) * (height - 16) + 8);
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      });
-      const line = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${p}`).join(' ');
-      const area = `${line} L ${width},${height} L 0,${height} Z`;
-      return `
-        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="overall-trend-spark">
-          <path d="${area}" class="overall-trend-area"></path>
-          <path d="${line}" class="overall-trend-line"></path>
-        </svg>
-      `;
-    }
-
     function renderTrends(sections) {
       const trendGrid = document.getElementById('overallTrendGrid');
       if (!trendGrid) return;
       trendGrid.innerHTML = sections.map((section) => {
-        const series = buildSyntheticSeries(section);
+        const ratioRaw = section.target > 0 ? (section.current / section.target) * 100 : 0;
+        const ratio = clamp(Math.round(ratioRaw), 0, 160);
+        const fill = Math.min(ratio, 100);
+        const status = getStatus(section.current, section.target).key;
+        const gap = section.current - section.target;
         return `
-          <article class="card overall-trend-card">
+          <article class="card overall-trend-card status-${status}">
             <div class="overall-trend-head">
               <span>${section.name}</span>
-              <strong>${section.current}</strong>
+              <strong>${section.current}/${section.target}</strong>
             </div>
-            ${renderTrendSparkline(series)}
+            <div class="overall-trend-bar-wrap">
+              <div class="overall-trend-bar-bg">
+                <div class="overall-trend-bar-fill" style="width:${fill}%"></div>
+              </div>
+              ${ratio > 100 ? `<div class="overall-trend-overflow" style="width:${Math.min(ratio - 100, 60)}%"></div>` : ''}
+            </div>
+            <div class="overall-trend-meta">
+              <span>${ratio}% of target</span>
+              <span class="${gap > 0 ? 'is-risk' : gap < 0 ? 'is-good' : ''}">Gap ${gap >= 0 ? '+' : ''}${gap}</span>
+            </div>
           </article>
         `;
       }).join('');
