@@ -251,6 +251,41 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         except Exception:
             return result
 
+    def _get_qa_today_totals() -> dict:
+        """Return QA dashboard-compatible daily totals.
+
+        - qaAppScans: ITAD_QA_App daily scans excluding unassigned usernames.
+        - deQaScans/nonDeQaScans: audit_master daily QA events.
+        - combinedScans: qaAppScans + deQaScans + nonDeQaScans.
+        """
+        out = {
+            "qaAppScans": 0,
+            "deQaScans": 0,
+            "nonDeQaScans": 0,
+            "combinedScans": 0,
+            "source": "mock",
+        }
+        try:
+            start_date, end_date, _ = qa_export.get_week_dates("today")
+            qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date) or {}
+            de_data = qa_export.get_de_qa_comparison(start_date, end_date) or {}
+            non_de_data = qa_export.get_non_de_qa_comparison(start_date, end_date) or {}
+
+            qa_app = sum(stats.get("total", 0) for name, stats in qa_data.items() if str(name).lower() != "(unassigned)")
+            de = sum(stats.get("total", 0) for name, stats in de_data.items() if str(name).lower() != "(unassigned)")
+            non_de = sum(stats.get("total", 0) for name, stats in non_de_data.items() if str(name).lower() != "(unassigned)")
+
+            out.update({
+                "qaAppScans": int(qa_app),
+                "deQaScans": int(de),
+                "nonDeQaScans": int(non_de),
+                "combinedScans": int(qa_app + de + non_de),
+                "source": "qa_dashboard_parity:ITAD_QA_App+audit_master",
+            })
+            return out
+        except Exception:
+            return out
+
     def _mock_goods_in_payload(now_iso: str) -> dict:
         return {
             "sectionKey": "goods_in",
@@ -449,22 +484,11 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             source = qa_live.get("source", "mock")
             is_live = source != "mock"
             try:
-                conn = qa_export.get_mariadb_connection()
-                if conn:
-                    cur = conn.cursor()
-                    try:
-                        cur.execute(
-                            """
-                            SELECT COUNT(DISTINCT stockid)
-                            FROM ITAD_QA_App
-                            WHERE DATE(added_date) = CURDATE()
-                            """
-                        )
-                        row = cur.fetchone()
-                        completed_today = int(row[0]) if row and row[0] is not None else 0
-                    finally:
-                        cur.close()
-                        conn.close()
+                qa_today = _get_qa_today_totals()
+                completed_today = int(qa_today.get("combinedScans", 0))
+                if qa_today.get("source") != "mock":
+                    source = f"{source}+{qa_today.get('source')}"
+                    is_live = True
             except Exception:
                 completed_today = 71
 
@@ -527,19 +551,9 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                         row = cur.fetchone()
                         base_awaiting = int(row[0]) if row and row[0] is not None else 0
 
-                        # Sorted today: use ITAD_QA_App factual scans for today's activity.
-                        cur.execute(
-                            """
-                            SELECT COUNT(DISTINCT stockid)
-                            FROM ITAD_QA_App
-                            WHERE DATE(added_date) = CURDATE()
-                              AND TRIM(COALESCE(stockid, '')) <> ''
-                              AND TRIM(COALESCE(username, '')) <> ''
-                            """
-                        )
-                        row = cur.fetchone()
-                        sorted_today = int(row[0]) if row and row[0] is not None else 0
-                        completed_qa_today = sorted_today
+                        qa_today = _get_qa_today_totals()
+                        sorted_today = int(qa_today.get("qaAppScans", 0))
+                        completed_qa_today = int(qa_today.get("combinedScans", sorted_today))
 
                         cur.execute(
                             """
@@ -556,6 +570,8 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                         awaiting_sorting = max(0, base_awaiting)
 
                         source = "mariadb:ITAD_QA_App+ITAD_asset_info"
+                        if qa_today.get("source") != "mock":
+                            source = f"{source}+{qa_today.get('source')}"
                         is_live = True
                     finally:
                         cur.close()
