@@ -371,6 +371,67 @@ def create_admin_diagnostics_router(
                 row = cur.fetchone()
                 decremented_total = int(row[0]) if row and row[0] is not None else 0
 
+                # Reassurance metrics:
+                # - split awaiting stockids by reason
+                # - measure potential undercount caused by blank usernames in QA scans
+                # - verify QA completion metadata coverage in ITAD_asset_info (de_* fields)
+                cur.execute(
+                    """
+                    SELECT
+                        COUNT(DISTINCT CASE WHEN q.last_qa_with_user IS NULL THEN a.stockid END) AS missing_qa_with_username,
+                        COUNT(DISTINCT CASE WHEN q.last_qa_with_user IS NOT NULL AND a.de_completed_date > q.last_qa_with_user THEN a.stockid END) AS qa_older_than_de_completed
+                    FROM ITAD_asset_info a
+                    LEFT JOIN (
+                        SELECT stockid, MAX(added_date) AS last_qa_with_user
+                        FROM ITAD_QA_App
+                        WHERE stockid IS NOT NULL
+                          AND TRIM(COALESCE(stockid, '')) <> ''
+                          AND TRIM(COALESCE(username, '')) <> ''
+                        GROUP BY stockid
+                    ) q ON q.stockid = a.stockid
+                    WHERE a.stockid IS NOT NULL
+                      AND TRIM(COALESCE(a.stockid, '')) <> ''
+                      AND a.de_completed_date IS NOT NULL
+                      AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                    """,
+                    (days,),
+                )
+                row = cur.fetchone()
+                missing_qa_with_username = int(row[0]) if row and row[0] is not None else 0
+                qa_older_than_de_completed = int(row[1]) if row and len(row) > 1 and row[1] is not None else 0
+
+                cur.execute(
+                    """
+                    SELECT COUNT(DISTINCT q.stockid)
+                    FROM ITAD_QA_App q
+                    INNER JOIN ITAD_asset_info a ON a.stockid = q.stockid
+                    WHERE a.stockid IS NOT NULL
+                      AND TRIM(COALESCE(a.stockid, '')) <> ''
+                      AND a.de_completed_date IS NOT NULL
+                      AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                      AND q.added_date >= a.de_completed_date
+                      AND TRIM(COALESCE(q.username, '')) = ''
+                    """,
+                    (days,),
+                )
+                row = cur.fetchone()
+                blank_username_after_de = int(row[0]) if row and row[0] is not None else 0
+
+                cur.execute(
+                    """
+                    SELECT COUNT(DISTINCT a.stockid)
+                    FROM ITAD_asset_info a
+                    WHERE a.stockid IS NOT NULL
+                      AND TRIM(COALESCE(a.stockid, '')) <> ''
+                      AND a.de_completed_date IS NOT NULL
+                      AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                      AND TRIM(COALESCE(a.de_completed_by, '')) <> ''
+                    """,
+                    (days,),
+                )
+                row = cur.fetchone()
+                de_completed_by_present = int(row[0]) if row and row[0] is not None else 0
+
                 # Sample awaiting rows for quick manual validation in admin UI.
                 cur.execute(
                     """
@@ -472,6 +533,12 @@ def create_admin_diagnostics_router(
                     "candidateStockids": candidate_total,
                     "awaitingSorting": awaiting_total,
                     "decrementedByQa": decremented_total,
+                    "missingQaWithUsername": missing_qa_with_username,
+                    "qaOlderThanDeCompleted": qa_older_than_de_completed,
+                    "blankUsernameAfterDe": blank_username_after_de,
+                    "deCompletedByPresent": de_completed_by_present,
+                    "reconciliationGap": int(candidate_total - (awaiting_total + decremented_total)),
+                    "qaFieldNamingNote": "ITAD_asset_info de_* columns represent QA completion metadata in current process.",
                     "sampleAwaitingCount": len(awaiting_samples),
                     "sampleDecrementedCount": len(decremented_samples),
                     "generatedAt": datetime.now(UTC).isoformat(),

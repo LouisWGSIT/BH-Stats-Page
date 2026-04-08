@@ -162,8 +162,8 @@
         maintainAspectRatio: true,
         aspectRatio: 1,
         cutout: '58%',
-        rotation: -90,
-        circumference: -360,
+        rotation: 0,
+        circumference: 360,
         plugins: {
           legend: { display: false },
           tooltip: { enabled: false },

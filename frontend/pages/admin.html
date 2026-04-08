@@ -1489,9 +1489,15 @@
                         <div class="stat-card"><div class="stat-value">${s.candidateStockids || 0}</div><div class="stat-label">Candidate StockIDs</div></div>
                         <div class="stat-card"><div class="stat-value">${s.awaitingSorting || 0}</div><div class="stat-label">Awaiting Sorting</div></div>
                         <div class="stat-card"><div class="stat-value">${s.decrementedByQa || 0}</div><div class="stat-label">Decremented by QA</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.missingQaWithUsername || 0}</div><div class="stat-label">Missing QA Username</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.qaOlderThanDeCompleted || 0}</div><div class="stat-label">QA Older Than DE</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.blankUsernameAfterDe || 0}</div><div class="stat-label">Blank Username After DE</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.deCompletedByPresent || 0}</div><div class="stat-label">DE Completed By Present</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.reconciliationGap || 0}</div><div class="stat-label">Reconciliation Gap</div></div>
                         <div class="stat-card"><div class="stat-value">${s.sampleAwaitingCount || awaiting.length}</div><div class="stat-label">Awaiting Samples</div></div>
                         <div class="stat-card"><div class="stat-value">${s.sampleDecrementedCount || decremented.length}</div><div class="stat-label">Decremented Samples</div></div>
                     </div>
+                    <div style="margin-top:8px;font-size:12px;color:#666;">${s.qaFieldNamingNote || ''}</div>
                     <div style="margin-top:8px;font-size:12px;color:#666;">Generated: ${formatActivityTimeUk(s.generatedAt)}</div>
                 `;
                 summary.style.display = 'block';

@@ -2125,7 +2125,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px;
+  padding: 12px 12px 16px;
+  overflow: visible;
 }
 
 .donut-card .flip-card-front > div {
@@ -2140,6 +2141,8 @@ body {
   width: 110px !important;
   height: 110px !important;
   flex-shrink: 0;
+  display: block;
+  margin-bottom: 4px;
 }
 
 .donut-card .flip-card-back {
