@@ -25,6 +25,10 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         qa_compare_lookback_days = max(1, int(os.getenv("OVERALL_QA_COMPARE_LOOKBACK_DAYS", "30")))
     except Exception:
         qa_compare_lookback_days = 30
+    try:
+        sorting_lookback_days = max(1, int(os.getenv("OVERALL_SORTING_LOOKBACK_DAYS", "90")))
+    except Exception:
+        sorting_lookback_days = 90
     qa_include_audit_master = os.getenv("OVERALL_QA_INCLUDE_AUDIT_MASTER", "false").lower() in ("1", "true", "yes")
 
     def _run_query_variants(cur, queries: list[str]) -> int:
@@ -484,7 +488,8 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         if section_key == "sorting":
             awaiting_sorting = 118
             sorted_today = 74
-            qa_output_last_hour = 29
+            completed_qa_today = 74
+            sorting_output_last_hour = 29
             source = "mock"
             is_live = False
 
@@ -493,36 +498,42 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 if conn:
                     cur = conn.cursor()
                     try:
-                        # Items QA'd today where the QA event is at/after the latest asset update
-                        # are treated as candidates waiting to move through Sorting.
+                        # Base queue: stock IDs updated in asset_info within lookback window where
+                        # sorting/QA log is missing OR older than latest asset update.
                         cur.execute(
                             """
-                            SELECT COUNT(DISTINCT q.stockid)
-                            FROM ITAD_QA_App q
-                            JOIN ITAD_asset_info a ON a.stockid = q.stockid
-                            WHERE DATE(q.added_date) = CURDATE()
+                            SELECT COUNT(DISTINCT a.stockid)
+                            FROM ITAD_asset_info a
+                            LEFT JOIN (
+                                SELECT stockid, MAX(added_date) AS last_sort_ts
+                                FROM ITAD_QA_App
+                                GROUP BY stockid
+                            ) q ON q.stockid = a.stockid
+                            WHERE a.stockid IS NOT NULL
+                              AND TRIM(COALESCE(a.stockid, '')) <> ''
+                              AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
                               AND (
-                                    a.last_update IS NULL
-                                    OR q.added_date >= a.last_update
+                                    q.last_sort_ts IS NULL
+                                    OR a.last_update > q.last_sort_ts
                                   )
+                            """
+                            ,
+                            (sorting_lookback_days,),
+                        )
+                        row = cur.fetchone()
+                        base_awaiting = int(row[0]) if row and row[0] is not None else 0
+
+                        # Sorted today: use ITAD_QA_App factual scans for today's activity.
+                        cur.execute(
+                            """
+                            SELECT COUNT(DISTINCT stockid)
+                            FROM ITAD_QA_App
+                            WHERE DATE(added_date) = CURDATE()
                             """
                         )
                         row = cur.fetchone()
-                        awaiting_sorting = int(row[0]) if row and row[0] is not None else 0
-
-                        # Keep "Sorted Today" factual where Stockbypallet is available.
-                        try:
-                            cur.execute(
-                                """
-                                SELECT COUNT(DISTINCT stockid)
-                                FROM Stockbypallet
-                                WHERE DATE(received_date) = CURDATE()
-                                """
-                            )
-                            row = cur.fetchone()
-                            sorted_today = int(row[0]) if row and row[0] is not None else 0
-                        except Exception:
-                            sorted_today = 0
+                        sorted_today = int(row[0]) if row and row[0] is not None else 0
+                        completed_qa_today = sorted_today
 
                         cur.execute(
                             """
@@ -532,7 +543,10 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                             """
                         )
                         row = cur.fetchone()
-                        qa_output_last_hour = int(row[0]) if row and row[0] is not None else 0
+                        sorting_output_last_hour = int(row[0]) if row and row[0] is not None else 0
+
+                        # Operationally: QA completions feed sorting queue, sorting completions reduce it.
+                        awaiting_sorting = max(0, base_awaiting + completed_qa_today - sorted_today)
 
                         source = "mariadb:ITAD_QA_App+ITAD_asset_info"
                         is_live = True
@@ -554,7 +568,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 "subMetrics": [
                     {"label": "Awaiting Sorting", "value": max(0, awaiting_sorting)},
                     {"label": "Sorted Today", "value": max(0, sorted_today)},
-                    {"label": "QA Output Last Hour", "value": max(0, qa_output_last_hour)},
+                    {"label": "Sorting Output Last Hour", "value": max(0, sorting_output_last_hour)},
                 ],
                 "isLive": is_live,
                 "source": source,
