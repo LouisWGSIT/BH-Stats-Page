@@ -238,111 +238,147 @@ async def refresh_qa_snapshot_tables(periods: list[str] | None = None):
 def create_qa_insights_router(*, cache_get, cache_set) -> APIRouter:
     router = APIRouter()
 
+    async def _get_qa_insights_payload(period: str = "this_week") -> dict:
+        cache_key = f"qa_insights:{period}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        start_date, end_date, label = qa_export.get_week_dates(period)
+        qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
+        de_qa_data = qa_export.get_de_qa_comparison(start_date, end_date)
+        non_de_qa_data = qa_export.get_non_de_qa_comparison(start_date, end_date)
+
+        total_qa_app = sum(stats["total"] for name, stats in qa_data.items() if name.lower() != "(unassigned)") if qa_data else 0
+        total_de = sum(stats["total"] for name, stats in de_qa_data.items() if name.lower() != "(unassigned)") if de_qa_data else 0
+        total_non_de = sum(stats["total"] for name, stats in non_de_qa_data.items() if name.lower() != "(unassigned)") if non_de_qa_data else 0
+        combined_total = total_qa_app + total_de + total_non_de
+
+        day_count = max(1, (end_date - start_date).days + 1)
+        active_engineers = set()
+        for name, stats in (qa_data or {}).items():
+            if name.lower() != "(unassigned)" and stats.get("total", 0) > 0:
+                active_engineers.add(name)
+        for name, stats in (de_qa_data or {}).items():
+            if name.lower() != "(unassigned)" and stats.get("total", 0) > 0:
+                active_engineers.add(name)
+        for name, stats in (non_de_qa_data or {}).items():
+            if name.lower() != "(unassigned)" and stats.get("total", 0) > 0:
+                active_engineers.add(name)
+        active_count = len(active_engineers)
+
+        projection = None
+        today = datetime.now().date()
+        if period == "this_month":
+            total_days = (today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+            total_days = total_days.day
+            days_elapsed = max(1, today.day)
+            projection = round((combined_total / days_elapsed) * total_days)
+
+        rolling_7 = 0
+        rolling_30 = 0
+        trend_pct = 0
+        try:
+            end_rolling = datetime.now().date()
+            start_rolling = end_rolling - timedelta(days=29)
+            daily_totals = qa_export.get_qa_daily_totals_range(start_rolling, end_rolling)
+            daily_values = [row.get("qaTotal", row.get("deQa", 0) + row.get("nonDeQa", 0)) for row in daily_totals]
+            if daily_values:
+                rolling_30 = round(sum(daily_values) / len(daily_values), 1)
+                last_7 = daily_values[-7:]
+                prev_7 = daily_values[-14:-7] if len(daily_values) >= 14 else []
+                rolling_7 = round(sum(last_7) / max(1, len(last_7)), 1)
+                if prev_7 and sum(prev_7) > 0:
+                    prev_avg = sum(prev_7) / len(prev_7)
+                    trend_pct = round(((rolling_7 - prev_avg) / prev_avg) * 100, 1)
+        except Exception:
+            pass
+
+        qa_only_total = total_de + total_non_de
+        result = {
+            "period": label,
+            "dateRange": f"{start_date} to {end_date}",
+            "total": qa_only_total,
+            "combinedTotal": combined_total,
+            "breakdown": {"qaApp": total_qa_app, "deQa": total_de, "nonDeQa": total_non_de},
+            "avgPerDay": round(qa_only_total / day_count, 1),
+            "rolling7DayAvg": rolling_7,
+            "rolling30DayAvg": rolling_30,
+            "trend7DayPct": trend_pct,
+            "activeEngineers": active_count,
+            "avgPerEngineer": round(qa_only_total / active_count, 1) if active_count else 0,
+            "projection": projection,
+        }
+        return cache_set(cache_key, result)
+
+    async def _get_qa_trends_payload(period: str = "this_week") -> dict:
+        today = datetime.now().date()
+        cache_key = f"qa_trends:{period}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        if period == "today":
+            result = {"period": "Today", "granularity": "hour", "series": qa_export.get_qa_hourly_totals(today)}
+            return cache_set(cache_key, result)
+
+        if period == "all_time":
+            min_date, max_date = qa_export.get_qa_data_bounds()
+            if max_date:
+                end_date = max_date
+                start_date = max_date - timedelta(days=29)
+            else:
+                start_date = today - timedelta(days=29)
+                end_date = today
+            label = "All Time (Last 30 Days)"
+        else:
+            start_date, end_date, label = qa_export.get_week_dates(period)
+
+        result = {"period": label, "granularity": "day", "series": qa_export.get_qa_daily_totals_range(start_date, end_date)}
+        return cache_set(cache_key, result)
+
     @router.get("/api/insights/qa")
     async def qa_insights(period: str = "this_week"):
         try:
-            cache_key = f"qa_insights:{period}"
-            cached = cache_get(cache_key)
-            if cached is not None:
-                return cached
-            start_date, end_date, label = qa_export.get_week_dates(period)
-            qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
-            de_qa_data = qa_export.get_de_qa_comparison(start_date, end_date)
-            non_de_qa_data = qa_export.get_non_de_qa_comparison(start_date, end_date)
-
-            total_qa_app = sum(stats["total"] for name, stats in qa_data.items() if name.lower() != "(unassigned)") if qa_data else 0
-            total_de = sum(stats["total"] for name, stats in de_qa_data.items() if name.lower() != "(unassigned)") if de_qa_data else 0
-            total_non_de = sum(stats["total"] for name, stats in non_de_qa_data.items() if name.lower() != "(unassigned)") if non_de_qa_data else 0
-            combined_total = total_qa_app + total_de + total_non_de
-
-            day_count = max(1, (end_date - start_date).days + 1)
-            active_engineers = set()
-            for name, stats in (qa_data or {}).items():
-                if name.lower() != "(unassigned)" and stats.get("total", 0) > 0:
-                    active_engineers.add(name)
-            for name, stats in (de_qa_data or {}).items():
-                if name.lower() != "(unassigned)" and stats.get("total", 0) > 0:
-                    active_engineers.add(name)
-            for name, stats in (non_de_qa_data or {}).items():
-                if name.lower() != "(unassigned)" and stats.get("total", 0) > 0:
-                    active_engineers.add(name)
-            active_count = len(active_engineers)
-
-            projection = None
-            today = datetime.now().date()
-            if period == "this_month":
-                total_days = (today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-                total_days = total_days.day
-                days_elapsed = max(1, today.day)
-                projection = round((combined_total / days_elapsed) * total_days)
-
-            rolling_7 = 0
-            rolling_30 = 0
-            trend_pct = 0
-            try:
-                end_rolling = datetime.now().date()
-                start_rolling = end_rolling - timedelta(days=29)
-                daily_totals = qa_export.get_qa_daily_totals_range(start_rolling, end_rolling)
-                daily_values = [row.get("qaTotal", row.get("deQa", 0) + row.get("nonDeQa", 0)) for row in daily_totals]
-                if daily_values:
-                    rolling_30 = round(sum(daily_values) / len(daily_values), 1)
-                    last_7 = daily_values[-7:]
-                    prev_7 = daily_values[-14:-7] if len(daily_values) >= 14 else []
-                    rolling_7 = round(sum(last_7) / max(1, len(last_7)), 1)
-                    if prev_7 and sum(prev_7) > 0:
-                        prev_avg = sum(prev_7) / len(prev_7)
-                        trend_pct = round(((rolling_7 - prev_avg) / prev_avg) * 100, 1)
-            except Exception:
-                pass
-
-            qa_only_total = total_de + total_non_de
-            result = {
-                "period": label,
-                "dateRange": f"{start_date} to {end_date}",
-                "total": qa_only_total,
-                "combinedTotal": combined_total,
-                "breakdown": {"qaApp": total_qa_app, "deQa": total_de, "nonDeQa": total_non_de},
-                "avgPerDay": round(qa_only_total / day_count, 1),
-                "rolling7DayAvg": rolling_7,
-                "rolling30DayAvg": rolling_30,
-                "trend7DayPct": trend_pct,
-                "activeEngineers": active_count,
-                "avgPerEngineer": round(qa_only_total / active_count, 1) if active_count else 0,
-                "projection": projection,
-            }
-            return cache_set(cache_key, result)
+            return await _get_qa_insights_payload(period)
         except Exception:
             return {"error": "Failed to compute QA insights"}
 
     @router.get("/api/qa-trends")
     async def qa_trends(period: str = "this_week"):
         try:
-            today = datetime.now().date()
-            cache_key = f"qa_trends:{period}"
+            return await _get_qa_trends_payload(period)
+        except Exception:
+            return {"error": "Failed to compute QA trends"}
+
+    @router.get("/api/qa-bootstrap")
+    async def qa_bootstrap():
+        """Single-call QA payload to reduce client request fanout and warm endpoint caches."""
+        try:
+            cache_key = "qa_bootstrap_payload"
             cached = cache_get(cache_key)
             if cached is not None:
                 return cached
 
-            if period == "today":
-                result = {"period": "Today", "granularity": "hour", "series": qa_export.get_qa_hourly_totals(today)}
-                return cache_set(cache_key, result)
+            periods = ["today", "this_week", "all_time"]
+            dashboard = {}
+            trends = {}
+            insights = {}
 
-            if period == "all_time":
-                min_date, max_date = qa_export.get_qa_data_bounds()
-                if max_date:
-                    end_date = max_date
-                    start_date = max_date - timedelta(days=29)
-                else:
-                    start_date = today - timedelta(days=29)
-                    end_date = today
-                label = "All Time (Last 30 Days)"
-            else:
-                start_date, end_date, label = qa_export.get_week_dates(period)
+            for period in periods:
+                dashboard[period] = await compute_qa_dashboard_data(period, cache_get, cache_set)
+                trends[period] = await _get_qa_trends_payload(period)
+                insights[period] = await _get_qa_insights_payload(period)
 
-            result = {"period": label, "granularity": "day", "series": qa_export.get_qa_daily_totals_range(start_date, end_date)}
-            return cache_set(cache_key, result)
+            payload = {
+                "dashboard": dashboard,
+                "trends": trends,
+                "insights": insights,
+                "generatedAt": datetime.now(UTC).isoformat(),
+            }
+            return cache_set(cache_key, payload)
         except Exception:
-            return {"error": "Failed to compute QA trends"}
+            return {"error": "Failed to build QA bootstrap payload"}
 
     @router.get("/api/insights/qa-engineers")
     async def qa_engineer_insights(period: str = "this_week", limit: int = 10):

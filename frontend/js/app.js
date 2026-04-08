@@ -43,6 +43,53 @@
     lastLeaderCount: 0,
   };
 
+  const scriptLoadState = Object.create(null);
+
+  function loadScriptOnce(src) {
+    if (scriptLoadState[src]) {
+      return scriptLoadState[src];
+    }
+
+    scriptLoadState[src] = new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[src="${src}"]`);
+      if (existing) {
+        if (existing.dataset.loaded === 'true') {
+          resolve();
+          return;
+        }
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      script.addEventListener('load', () => {
+        script.dataset.loaded = 'true';
+        resolve();
+      }, { once: true });
+      script.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      document.body.appendChild(script);
+    });
+
+    return scriptLoadState[src];
+  }
+
+  async function ensureQAModulesLoaded() {
+    await loadScriptOnce('core/qa_trend_panel.js');
+    await loadScriptOnce('core/qa_metrics_rotator.js');
+    await loadScriptOnce('core/qa_cards_renderer.js');
+    await loadScriptOnce('core/qa_card_rotator.js');
+    await loadScriptOnce('core/qa_dashboard_ui.js');
+    await loadScriptOnce('core/qa_data_loader.js');
+    await loadScriptOnce('qa/qa_dashboard.js');
+  }
+
+  async function ensureOverallModuleLoaded() {
+    await loadScriptOnce('core/overall_stats_dashboard.js');
+  }
+
   const keepAliveApi = (window.DisplayKeepAlive && typeof window.DisplayKeepAlive.init === 'function')
     ? window.DisplayKeepAlive.init()
     : null;
@@ -122,7 +169,14 @@
     triggerGreenie('Hourly check-in: keep the momentum rolling.');
   }
 
-  function triggerRaceConfetti() {
+  async function triggerRaceConfetti() {
+    if (typeof confetti === 'undefined') {
+      try {
+        await loadScriptOnce('https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.0/dist/confetti.browser.min.js');
+      } catch (_err) {
+        return;
+      }
+    }
     if (typeof confetti === 'undefined') return;
     const palette = ['#ff1ea3', '#8cf04a', '#00d4ff', '#ffcc00'];
     confetti({
@@ -1244,12 +1298,21 @@
   
   let currentDashboard = 0;
 
-  const qaAdapterApi = (window.QaAdapter && typeof window.QaAdapter.init === 'function')
-    ? window.QaAdapter.init({
-        getAvatarDataUri,
-        renderSVGSparkline,
-      })
-    : null;
+  let qaAdapterApi = null;
+
+  async function ensureQaAdapterApi() {
+    if (qaAdapterApi) {
+      return qaAdapterApi;
+    }
+    await ensureQAModulesLoaded();
+    qaAdapterApi = (window.QaAdapter && typeof window.QaAdapter.init === 'function')
+      ? window.QaAdapter.init({
+          getAvatarDataUri,
+          renderSVGSparkline,
+        })
+      : null;
+    return qaAdapterApi;
+  }
 
   const escapeHtml = (qaAdapterApi && typeof qaAdapterApi.escapeHtml === 'function')
     ? qaAdapterApi.escapeHtml
@@ -1260,17 +1323,28 @@
       };
 
   async function loadQADashboard(period = 'this_week') {
-    if (!qaAdapterApi || typeof qaAdapterApi.load !== 'function') return;
-    return qaAdapterApi.load(period);
+    const adapter = await ensureQaAdapterApi();
+    if (!adapter || typeof adapter.load !== 'function') return;
+    return adapter.load(period);
   }
 
-  const overallStatsApi = (window.OverallStatsDashboard && typeof window.OverallStatsDashboard.init === 'function')
-    ? window.OverallStatsDashboard.init()
-    : null;
+  let overallStatsApi = null;
 
-  function loadOverallDashboard() {
-    if (!overallStatsApi || typeof overallStatsApi.load !== 'function') return;
-    return overallStatsApi.load();
+  async function ensureOverallStatsApi() {
+    if (overallStatsApi) {
+      return overallStatsApi;
+    }
+    await ensureOverallModuleLoaded();
+    overallStatsApi = (window.OverallStatsDashboard && typeof window.OverallStatsDashboard.init === 'function')
+      ? window.OverallStatsDashboard.init()
+      : null;
+    return overallStatsApi;
+  }
+
+  async function loadOverallDashboard() {
+    const overall = await ensureOverallStatsApi();
+    if (!overall || typeof overall.load !== 'function') return;
+    return overall.load();
   }
   
   if (window.DashboardSwitcher && typeof window.DashboardSwitcher.init === 'function') {
