@@ -1,4 +1,5 @@
 from typing import Callable
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -287,5 +288,203 @@ def create_admin_diagnostics_router(
             "summary": summary,
             "samples": samples,
         }
+
+    @router.get("/admin/sorting-evidence")
+    def admin_sorting_evidence(request: Request, days: int = 30, limit: int = 50):
+        """Admin-only diagnostic: sampled proof for Awaiting Sorting calculation."""
+        require_admin(request)
+        days = max(1, min(int(days or 30), 180))
+        limit = max(10, min(int(limit or 50), 200))
+
+        conn = None
+        try:
+            conn = get_mariadb_connection()
+            if not conn:
+                return JSONResponse(status_code=503, content={"status": "fail", "detail": "MariaDB connection failed"})
+
+            cur = conn.cursor()
+            try:
+                # Candidate stockids: recently DE-completed assets that could be in sorting flow.
+                cur.execute(
+                    """
+                    SELECT COUNT(DISTINCT a.stockid)
+                    FROM ITAD_asset_info a
+                    WHERE a.stockid IS NOT NULL
+                      AND TRIM(COALESCE(a.stockid, '')) <> ''
+                      AND a.de_completed_date IS NOT NULL
+                      AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                    """,
+                    (days,),
+                )
+                row = cur.fetchone()
+                candidate_total = int(row[0]) if row and row[0] is not None else 0
+
+                # Awaiting sorting by current rule:
+                # DE complete exists, and latest QA row with username is missing or older than DE completion.
+                cur.execute(
+                    """
+                    SELECT COUNT(DISTINCT a.stockid)
+                    FROM ITAD_asset_info a
+                    LEFT JOIN (
+                        SELECT stockid, MAX(added_date) AS last_qa_with_user
+                        FROM ITAD_QA_App
+                        WHERE stockid IS NOT NULL
+                          AND TRIM(COALESCE(stockid, '')) <> ''
+                          AND TRIM(COALESCE(username, '')) <> ''
+                        GROUP BY stockid
+                    ) q ON q.stockid = a.stockid
+                    WHERE a.stockid IS NOT NULL
+                      AND TRIM(COALESCE(a.stockid, '')) <> ''
+                      AND a.de_completed_date IS NOT NULL
+                      AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                      AND (
+                            q.last_qa_with_user IS NULL
+                            OR a.de_completed_date > q.last_qa_with_user
+                          )
+                    """,
+                    (days,),
+                )
+                row = cur.fetchone()
+                awaiting_total = int(row[0]) if row and row[0] is not None else 0
+
+                # Rows that have a valid decrement signal (QA row with username newer than DE completion).
+                cur.execute(
+                    """
+                    SELECT COUNT(DISTINCT a.stockid)
+                    FROM ITAD_asset_info a
+                    INNER JOIN (
+                        SELECT stockid, MAX(added_date) AS last_qa_with_user
+                        FROM ITAD_QA_App
+                        WHERE stockid IS NOT NULL
+                          AND TRIM(COALESCE(stockid, '')) <> ''
+                          AND TRIM(COALESCE(username, '')) <> ''
+                        GROUP BY stockid
+                    ) q ON q.stockid = a.stockid
+                    WHERE a.stockid IS NOT NULL
+                      AND TRIM(COALESCE(a.stockid, '')) <> ''
+                      AND a.de_completed_date IS NOT NULL
+                      AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                      AND q.last_qa_with_user >= a.de_completed_date
+                    """,
+                    (days,),
+                )
+                row = cur.fetchone()
+                decremented_total = int(row[0]) if row and row[0] is not None else 0
+
+                # Sample awaiting rows for quick manual validation in admin UI.
+                cur.execute(
+                    """
+                    SELECT
+                        a.stockid,
+                        a.de_completed_date,
+                        q.last_qa_with_user,
+                        CASE
+                            WHEN q.last_qa_with_user IS NULL THEN 'missing_qa_with_username'
+                            WHEN a.de_completed_date > q.last_qa_with_user THEN 'qa_older_than_de_completed'
+                            ELSE 'unknown'
+                        END AS reason
+                    FROM ITAD_asset_info a
+                    LEFT JOIN (
+                        SELECT stockid, MAX(added_date) AS last_qa_with_user
+                        FROM ITAD_QA_App
+                        WHERE stockid IS NOT NULL
+                          AND TRIM(COALESCE(stockid, '')) <> ''
+                          AND TRIM(COALESCE(username, '')) <> ''
+                        GROUP BY stockid
+                    ) q ON q.stockid = a.stockid
+                    WHERE a.stockid IS NOT NULL
+                      AND TRIM(COALESCE(a.stockid, '')) <> ''
+                      AND a.de_completed_date IS NOT NULL
+                      AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                      AND (
+                            q.last_qa_with_user IS NULL
+                            OR a.de_completed_date > q.last_qa_with_user
+                          )
+                    ORDER BY a.de_completed_date DESC
+                    LIMIT %s
+                    """,
+                    (days, limit),
+                )
+                awaiting_rows = cur.fetchall() or []
+
+                # Sample decremented rows to compare what "good" looks like.
+                cur.execute(
+                    """
+                    SELECT
+                        a.stockid,
+                        a.de_completed_date,
+                        q.last_qa_with_user,
+                        'decremented_by_qa_scan' AS reason
+                    FROM ITAD_asset_info a
+                    INNER JOIN (
+                        SELECT stockid, MAX(added_date) AS last_qa_with_user
+                        FROM ITAD_QA_App
+                        WHERE stockid IS NOT NULL
+                          AND TRIM(COALESCE(stockid, '')) <> ''
+                          AND TRIM(COALESCE(username, '')) <> ''
+                        GROUP BY stockid
+                    ) q ON q.stockid = a.stockid
+                    WHERE a.stockid IS NOT NULL
+                      AND TRIM(COALESCE(a.stockid, '')) <> ''
+                      AND a.de_completed_date IS NOT NULL
+                      AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                      AND q.last_qa_with_user >= a.de_completed_date
+                    ORDER BY q.last_qa_with_user DESC
+                    LIMIT %s
+                    """,
+                    (days, max(10, limit // 2)),
+                )
+                decremented_rows = cur.fetchall() or []
+            finally:
+                cur.close()
+                conn.close()
+
+            def _to_iso(value):
+                if value is None:
+                    return None
+                if isinstance(value, datetime):
+                    dt = value if value.tzinfo else value.replace(tzinfo=UTC)
+                    return dt.isoformat()
+                return str(value)
+
+            awaiting_samples = [
+                {
+                    "stockid": str(r[0]) if r and r[0] is not None else None,
+                    "deCompletedDate": _to_iso(r[1] if len(r) > 1 else None),
+                    "lastQaAddedDate": _to_iso(r[2] if len(r) > 2 else None),
+                    "reason": str(r[3]) if len(r) > 3 and r[3] is not None else "unknown",
+                }
+                for r in awaiting_rows
+            ]
+            decremented_samples = [
+                {
+                    "stockid": str(r[0]) if r and r[0] is not None else None,
+                    "deCompletedDate": _to_iso(r[1] if len(r) > 1 else None),
+                    "lastQaAddedDate": _to_iso(r[2] if len(r) > 2 else None),
+                    "reason": str(r[3]) if len(r) > 3 and r[3] is not None else "decremented_by_qa_scan",
+                }
+                for r in decremented_rows
+            ]
+
+            return {
+                "summary": {
+                    "windowDays": days,
+                    "candidateStockids": candidate_total,
+                    "awaitingSorting": awaiting_total,
+                    "decrementedByQa": decremented_total,
+                    "sampleAwaitingCount": len(awaiting_samples),
+                    "sampleDecrementedCount": len(decremented_samples),
+                    "generatedAt": datetime.now(UTC).isoformat(),
+                },
+                "awaitingSamples": awaiting_samples,
+                "decrementedSamples": decremented_samples,
+            }
+        except Exception as exc:
+            try:
+                if conn:
+                    conn.close()
+            except Exception:
+                pass
+            raise HTTPException(status_code=500, detail=str(exc))
 
     return router

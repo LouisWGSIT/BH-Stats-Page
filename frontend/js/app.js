@@ -146,12 +146,12 @@
     return new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: ['Remaining', 'Value'],
+        labels: ['Value', 'Remaining'],
         datasets: [{
-          data: [1, 0],
+          data: [0, 1],
           backgroundColor: [
-            theme.ringPrimary || '#ff1ea3',
             theme.ringSecondary || '#8cf04a',
+            theme.ringPrimary || '#ff1ea3',
           ],
           borderWidth: 0,
           hoverOffset: 0,
@@ -162,6 +162,8 @@
         maintainAspectRatio: true,
         aspectRatio: 1,
         cutout: '58%',
+        rotation: -90,
+        circumference: -360,
         plugins: {
           legend: { display: false },
           tooltip: { enabled: false },
@@ -343,7 +345,7 @@
   function updateDonut(chart, value, target) {
     if (!chart) return;
     const remaining = Math.max(target - value, 0);
-    chart.data.datasets[0].data = [remaining, value];
+    chart.data.datasets[0].data = [value, remaining];
     chart.canvas.dataset.target = target;
     chart.update('none'); // Skip animation for better performance
     

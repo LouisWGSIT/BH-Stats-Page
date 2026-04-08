@@ -489,6 +489,61 @@
                 </div>
             </div>
 
+            <!-- Section 7.1: Sorting Evidence -->
+            <div class="section admin-only">
+                <h2>📦 Sorting Evidence</h2>
+                <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
+                    Debugs Awaiting Sorting using sampled stockids. Rule: DE completed in ITAD_asset_info and no newer QA row with username in ITAD_QA_App.
+                </p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="font-size:13px;color:#666;">Window:
+                        <select id="sortingEvidenceDays" style="max-width:120px;">
+                            <option value="7">7d</option>
+                            <option value="30" selected>30d</option>
+                            <option value="60">60d</option>
+                            <option value="90">90d</option>
+                        </select>
+                    </label>
+                    <label style="font-size:13px;color:#666;">Samples:
+                        <select id="sortingEvidenceLimit" style="max-width:120px;">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </label>
+                    <button onclick="loadSortingEvidence()">🔎 Refresh Sorting Evidence</button>
+                </div>
+                <div id="sortingEvidenceSummary" class="stats" style="display:none;margin-top:12px;"></div>
+                <div id="sortingEvidenceAwaitingWrap" class="stats" style="display:none;margin-top:12px;max-height:320px;overflow:auto;">
+                    <h3 style="margin-bottom:8px;">Awaiting Samples</h3>
+                    <table class="table" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>StockID</th>
+                                <th>DE Completed</th>
+                                <th>Last QA Added</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sortingEvidenceAwaitingBody"></tbody>
+                    </table>
+                </div>
+                <div id="sortingEvidenceDecrementedWrap" class="stats" style="display:none;margin-top:12px;max-height:260px;overflow:auto;">
+                    <h3 style="margin-bottom:8px;">Decremented Samples (Control)</h3>
+                    <table class="table" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>StockID</th>
+                                <th>DE Completed</th>
+                                <th>Last QA Added</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sortingEvidenceDecrementedBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
             <!-- Section 8: Dashboard Activity (last 24 hours) -->
             <div class="section admin-only">
                 <h2>📈 Dashboard Activity (24h)</h2>
@@ -873,6 +928,7 @@
                 loadConnectedDevices();
                 loadExternalAttempts();
                 try { loadErasureEvidence(); } catch (e) { /* ignore */ }
+                try { loadSortingEvidence(); } catch (e) { /* ignore */ }
                 // Load activity and enable auto-poll checkbox wiring
                 try { fetchAdminActivity(); } catch (e) { /* ignore */ }
                 try { setupActivityAutoPoll(); } catch (e) { /* ignore */ }
@@ -1398,6 +1454,78 @@
                 summary.style.display = 'block';
                 summary.innerHTML = `<div class="result error" style="display:block;">Failed to load erasure evidence: ${err.message}</div>`;
                 wrap.style.display = 'none';
+            }
+        }
+
+        async function loadSortingEvidence() {
+            const daysSel = document.getElementById('sortingEvidenceDays');
+            const limitSel = document.getElementById('sortingEvidenceLimit');
+            const summary = document.getElementById('sortingEvidenceSummary');
+            const awaitingWrap = document.getElementById('sortingEvidenceAwaitingWrap');
+            const awaitingBody = document.getElementById('sortingEvidenceAwaitingBody');
+            const decrementedWrap = document.getElementById('sortingEvidenceDecrementedWrap');
+            const decrementedBody = document.getElementById('sortingEvidenceDecrementedBody');
+            if (!summary || !awaitingWrap || !awaitingBody || !decrementedWrap || !decrementedBody) return;
+
+            const days = parseInt((daysSel && daysSel.value) || '30', 10);
+            const limit = parseInt((limitSel && limitSel.value) || '50', 10);
+
+            try {
+                const res = await fetch(`/admin/sorting-evidence?days=${days}&limit=${limit}`, {
+                    headers: getAuthHeaders(false)
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${res.status}`);
+                }
+
+                const data = await res.json();
+                const s = data.summary || {};
+                const awaiting = Array.isArray(data.awaitingSamples) ? data.awaitingSamples : [];
+                const decremented = Array.isArray(data.decrementedSamples) ? data.decrementedSamples : [];
+
+                summary.innerHTML = `
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                        <div class="stat-card"><div class="stat-value">${s.candidateStockids || 0}</div><div class="stat-label">Candidate StockIDs</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.awaitingSorting || 0}</div><div class="stat-label">Awaiting Sorting</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.decrementedByQa || 0}</div><div class="stat-label">Decremented by QA</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.sampleAwaitingCount || awaiting.length}</div><div class="stat-label">Awaiting Samples</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.sampleDecrementedCount || decremented.length}</div><div class="stat-label">Decremented Samples</div></div>
+                    </div>
+                    <div style="margin-top:8px;font-size:12px;color:#666;">Generated: ${formatActivityTimeUk(s.generatedAt)}</div>
+                `;
+                summary.style.display = 'block';
+
+                awaitingBody.innerHTML = '';
+                awaiting.forEach((row) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-size:12px;">${row.stockid || ''}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.deCompletedDate)}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAddedDate)}</td>
+                        <td style="font-size:12px;">${row.reason || ''}</td>
+                    `;
+                    awaitingBody.appendChild(tr);
+                });
+                awaitingWrap.style.display = 'block';
+
+                decrementedBody.innerHTML = '';
+                decremented.forEach((row) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-size:12px;">${row.stockid || ''}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.deCompletedDate)}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAddedDate)}</td>
+                        <td style="font-size:12px;">${row.reason || ''}</td>
+                    `;
+                    decrementedBody.appendChild(tr);
+                });
+                decrementedWrap.style.display = 'block';
+            } catch (err) {
+                summary.style.display = 'block';
+                summary.innerHTML = `<div class="result error" style="display:block;">Failed to load sorting evidence: ${err.message}</div>`;
+                awaitingWrap.style.display = 'none';
+                decrementedWrap.style.display = 'none';
             }
         }
 

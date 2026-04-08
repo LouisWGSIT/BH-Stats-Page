@@ -498,8 +498,8 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 if conn:
                     cur = conn.cursor()
                     try:
-                        # Base queue: stock IDs updated in asset_info within lookback window where
-                        # sorting/QA log is missing OR older than latest asset update.
+                        # Awaiting sorting is defined as stock IDs completed in erasure that do not
+                        # yet have a newer QA/sorting scan entry with a username.
                         cur.execute(
                             """
                             SELECT COUNT(DISTINCT a.stockid)
@@ -507,14 +507,18 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                             LEFT JOIN (
                                 SELECT stockid, MAX(added_date) AS last_sort_ts
                                 FROM ITAD_QA_App
+                                WHERE stockid IS NOT NULL
+                                  AND TRIM(COALESCE(stockid, '')) <> ''
+                                  AND TRIM(COALESCE(username, '')) <> ''
                                 GROUP BY stockid
                             ) q ON q.stockid = a.stockid
                             WHERE a.stockid IS NOT NULL
                               AND TRIM(COALESCE(a.stockid, '')) <> ''
-                              AND a.last_update >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                              AND a.de_completed_date IS NOT NULL
+                              AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                               AND (
                                     q.last_sort_ts IS NULL
-                                    OR a.last_update > q.last_sort_ts
+                                    OR a.de_completed_date > q.last_sort_ts
                                   )
                             """
                             ,
@@ -529,6 +533,8 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                             SELECT COUNT(DISTINCT stockid)
                             FROM ITAD_QA_App
                             WHERE DATE(added_date) = CURDATE()
+                              AND TRIM(COALESCE(stockid, '')) <> ''
+                              AND TRIM(COALESCE(username, '')) <> ''
                             """
                         )
                         row = cur.fetchone()
@@ -540,13 +546,14 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                             SELECT COUNT(DISTINCT stockid)
                             FROM ITAD_QA_App
                             WHERE added_date >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+                              AND TRIM(COALESCE(stockid, '')) <> ''
+                              AND TRIM(COALESCE(username, '')) <> ''
                             """
                         )
                         row = cur.fetchone()
                         sorting_output_last_hour = int(row[0]) if row and row[0] is not None else 0
 
-                        # Operationally: QA completions feed sorting queue, sorting completions reduce it.
-                        awaiting_sorting = max(0, base_awaiting + completed_qa_today - sorted_today)
+                        awaiting_sorting = max(0, base_awaiting)
 
                         source = "mariadb:ITAD_QA_App+ITAD_asset_info"
                         is_live = True

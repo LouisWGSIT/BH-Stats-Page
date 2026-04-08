@@ -539,6 +539,19 @@ def test_admin_external_access_attempts_returns_shape(client):
     assert "total" in body
 
 
+def test_admin_sorting_evidence_requires_admin(client):
+    r = client.get("/admin/sorting-evidence")
+    assert r.status_code == 401
+
+
+def test_admin_sorting_evidence_handles_db_unavailable(client, app_module, monkeypatch):
+    monkeypatch.setattr(app_module.qa_export, "get_mariadb_connection", lambda: None)
+    r = client.get("/admin/sorting-evidence", headers={"Authorization": "Bearer test-admin-pass"})
+    assert r.status_code == 503
+    body = r.json()
+    assert body["status"] == "fail"
+
+
 def test_admin_initials_list_requires_admin(client):
     r = client.get("/admin/initials-list")
     assert r.status_code == 401
