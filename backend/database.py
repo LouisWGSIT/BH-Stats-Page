@@ -19,7 +19,7 @@ def get_daily_totals() -> list:
 import sqlite3
 import json
 from datetime import datetime, date, timedelta
-from typing import List, Tuple, Dict
+from typing import Any, List, Tuple, Dict
 from pathlib import Path
 import os
 from collections import defaultdict
@@ -247,6 +247,17 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_local_erasures_stockid ON local_erasures(stockid)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_local_erasures_ts ON local_erasures(ts)")
 
+        # Snapshot cache for serving pre-aggregated dashboard payloads.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dashboard_snapshots (
+                snapshot_key TEXT PRIMARY KEY,
+                payload_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                source_version TEXT
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_dashboard_snapshots_updated_at ON dashboard_snapshots(updated_at)")
+
         # Add new columns if they don't exist (migration)
         try:
             cursor.execute("ALTER TABLE erasures ADD COLUMN manufacturer TEXT")
@@ -300,6 +311,55 @@ def init_db():
 def get_today_str() -> str:
     """Get today's date as string"""
     return date.today().isoformat()
+
+
+def get_dashboard_snapshot(snapshot_key: str) -> Dict[str, Any] | None:
+    """Return a persisted dashboard snapshot payload for a key, if available."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT payload_json, updated_at, source_version FROM dashboard_snapshots WHERE snapshot_key = ?",
+        (snapshot_key,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    payload_raw, updated_at, source_version = row
+    try:
+        payload = json.loads(payload_raw) if payload_raw else None
+    except Exception:
+        payload = None
+    if payload is None:
+        return None
+    return {
+        "payload": payload,
+        "updatedAt": str(updated_at) if updated_at is not None else None,
+        "sourceVersion": str(source_version) if source_version is not None else None,
+    }
+
+
+def upsert_dashboard_snapshot(snapshot_key: str, payload: Dict[str, Any], source_version: str | None = None) -> Dict[str, Any]:
+    """Persist a dashboard snapshot payload and return the saved metadata."""
+    updated_at = datetime.utcnow().isoformat() + "Z"
+    payload_json = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
+    with sqlite_transaction() as (_conn, cursor):
+        cursor.execute(
+            """
+            INSERT INTO dashboard_snapshots (snapshot_key, payload_json, updated_at, source_version)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(snapshot_key) DO UPDATE SET
+                payload_json = excluded.payload_json,
+                updated_at = excluded.updated_at,
+                source_version = excluded.source_version
+            """,
+            (snapshot_key, payload_json, updated_at, source_version),
+        )
+    return {
+        "payload": payload,
+        "updatedAt": updated_at,
+        "sourceVersion": source_version,
+    }
 
 def get_yesterday_str() -> str:
     """Get yesterday's date as string (Friday if today is Monday)"""

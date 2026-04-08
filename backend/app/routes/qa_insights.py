@@ -1,17 +1,83 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+import os
 
 from fastapi import APIRouter
 
+import backend.database as db
 import backend.qa_export as qa_export
 
 
-async def compute_qa_dashboard_data(period: str, cache_get, cache_set):
-    """Shared QA dashboard payload builder used by endpoint and internal callers."""
+QA_DASHBOARD_SNAPSHOT_TTL_SECONDS = max(15, int(os.getenv("QA_DASHBOARD_SNAPSHOT_TTL_SECONDS", "120")))
+QA_ALL_TIME_RECORD_TTL_SECONDS = max(60, int(os.getenv("QA_ALL_TIME_RECORD_TTL_SECONDS", "600")))
+QA_SNAPSHOT_MAX_STALE_SECONDS = max(300, int(os.getenv("QA_SNAPSHOT_MAX_STALE_SECONDS", "3600")))
+
+
+def _parse_snapshot_ts(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
     try:
-        cache_key = f"qa_dashboard:{period}"
-        cached = cache_get(cache_key)
-        if cached is not None:
-            return cached
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
+    except Exception:
+        return None
+
+
+def _snapshot_payload_if_usable(snapshot_key: str, max_stale_seconds: int) -> tuple[dict | None, float | None]:
+    snap = db.get_dashboard_snapshot(snapshot_key)
+    if not snap:
+        return None, None
+    payload = snap.get("payload") if isinstance(snap, dict) else None
+    if not isinstance(payload, dict):
+        return None, None
+    ts = _parse_snapshot_ts(snap.get("updatedAt") if isinstance(snap, dict) else None)
+    if ts is None:
+        return None, None
+    age_seconds = max(0.0, (datetime.now(UTC) - ts).total_seconds())
+    if age_seconds > float(max_stale_seconds):
+        return None, age_seconds
+    return payload, age_seconds
+
+
+def _get_all_time_daily_record_snapshot(*, force_refresh: bool = False) -> dict:
+    snapshot_key = "qa_all_time_daily_record"
+    if not force_refresh:
+        payload, age = _snapshot_payload_if_usable(snapshot_key, QA_SNAPSHOT_MAX_STALE_SECONDS)
+        if isinstance(payload, dict) and age is not None and age <= QA_ALL_TIME_RECORD_TTL_SECONDS:
+            return payload
+    value = qa_export.get_all_time_daily_record() or {
+        "data_bearing_records": [],
+        "non_data_bearing_records": [],
+    }
+    try:
+        db.upsert_dashboard_snapshot(snapshot_key, value, source_version="qa_export.get_all_time_daily_record")
+    except Exception:
+        pass
+    return value
+
+
+async def compute_qa_dashboard_data(period: str, cache_get, cache_set, force_refresh: bool = False):
+    """Shared QA dashboard payload builder used by endpoint and internal callers."""
+    cache_key = f"qa_dashboard:{period}"
+    snapshot_key = f"qa_dashboard:{period}"
+    snapshot_fallback = None
+    try:
+        if not force_refresh:
+            cached = cache_get(cache_key)
+            if cached is not None:
+                return cached
+
+            snapshot_payload, snapshot_age = _snapshot_payload_if_usable(snapshot_key, QA_SNAPSHOT_MAX_STALE_SECONDS)
+            if isinstance(snapshot_payload, dict):
+                snapshot_fallback = snapshot_payload
+                if snapshot_age is not None and snapshot_age <= QA_DASHBOARD_SNAPSHOT_TTL_SECONDS:
+                    return cache_set(cache_key, snapshot_payload)
 
         start_date, end_date, period_label = qa_export.get_week_dates(period)
         qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
@@ -40,6 +106,10 @@ async def compute_qa_dashboard_data(period: str, cache_get, cache_set):
                     "maxDate": str(max_date) if max_date else None,
                 },
             }
+            try:
+                db.upsert_dashboard_snapshot(snapshot_key, result, source_version=f"period:{period_label}")
+            except Exception:
+                pass
             return cache_set(cache_key, result)
 
         total_scans = sum(stats["total"] for name, stats in qa_data.items() if name.lower() != "(unassigned)") if qa_data else 0
@@ -115,7 +185,7 @@ async def compute_qa_dashboard_data(period: str, cache_get, cache_set):
 
         top_performers = sorted(technicians, key=lambda x: x["combinedScans"], reverse=True)[:5]
         avg_consistency = sum(consistency_scores) / len(consistency_scores) if consistency_scores else 0
-        daily_record = qa_export.get_all_time_daily_record()
+        daily_record = _get_all_time_daily_record_snapshot(force_refresh=False)
 
         result = {
             "period": period_label,
@@ -134,9 +204,35 @@ async def compute_qa_dashboard_data(period: str, cache_get, cache_set):
             },
             "topPerformers": top_performers,
         }
+        try:
+            db.upsert_dashboard_snapshot(snapshot_key, result, source_version=f"period:{period_label}")
+        except Exception:
+            pass
         return cache_set(cache_key, result)
     except Exception as exc:
+        if isinstance(snapshot_fallback, dict):
+            return cache_set(cache_key, snapshot_fallback)
         return {"error": str(exc), "period": period}
+
+
+async def refresh_qa_snapshot_tables(periods: list[str] | None = None):
+    """Refresh persisted QA snapshots in the background to reduce request-time DB load."""
+    target_periods = periods or ["today", "this_week", "this_month", "all_time"]
+
+    # Refresh all-time records first so period payloads can reuse this snapshot.
+    _get_all_time_daily_record_snapshot(force_refresh=True)
+
+    def _no_cache_get(_cache_key):
+        return None
+
+    def _no_cache_set(_cache_key, value):
+        return value
+
+    for period in target_periods:
+        try:
+            await compute_qa_dashboard_data(period, _no_cache_get, _no_cache_set, force_refresh=True)
+        except Exception:
+            continue
 
 
 def create_qa_insights_router(*, cache_get, cache_set) -> APIRouter:

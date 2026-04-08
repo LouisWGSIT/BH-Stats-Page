@@ -37,13 +37,18 @@ from backend.app.routes.erasure_insights import create_erasure_insights_router
 from backend.app.routes.hwid import create_hwid_router
 from backend.app.routes.metrics_analytics import create_metrics_analytics_router
 from backend.app.routes.overall_stats import create_overall_stats_router
-from backend.app.routes.qa_insights import compute_qa_dashboard_data, create_qa_insights_router
+from backend.app.routes.qa_insights import (
+    compute_qa_dashboard_data,
+    create_qa_insights_router,
+    refresh_qa_snapshot_tables,
+)
 from backend.app.routes.static_pages import create_static_pages_router
 from backend.app.routes.webhooks import create_webhooks_router
 from backend.app.runtime_tasks import (
     TTLCache,
     check_daily_reset,
     memory_watchdog,
+    refresh_qa_snapshots_periodically,
     sync_engineer_stats_on_startup,
     warm_cache_on_startup,
 )
@@ -151,6 +156,18 @@ async def lifespan(app: FastAPI):
                     psutil_module=psutil,
                     cache_clear=QA_CACHE.clear,
                     take_tracemalloc_snapshot=take_tracemalloc_snapshot,
+                )
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        background_tasks.append(
+            asyncio.create_task(
+                refresh_qa_snapshots_periodically(
+                    refresh_snapshots_func=refresh_qa_snapshot_tables,
+                    interval_seconds=int(os.getenv("QA_SNAPSHOT_REFRESH_SECONDS", "120")),
                 )
             )
         )

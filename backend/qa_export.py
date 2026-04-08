@@ -276,8 +276,8 @@ def get_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict]:
 
     try:
         cursor = conn.cursor()
-        start_str = start_date.isoformat()
-        end_str = end_date.isoformat()
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
 
         # Use DISTINCT sales_order to avoid counting duplicates from DEAPP_Submission_EditStock_Payload
         cursor.execute("""
@@ -288,10 +288,10 @@ def get_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict]:
             WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
               AND user_id IS NOT NULL AND user_id <> ''
               AND sales_order IS NOT NULL AND sales_order <> ''
-              AND DATE(date_time) >= %s AND DATE(date_time) <= %s
+              AND date_time >= %s AND date_time < %s
             GROUP BY user_id, DATE(date_time)
             ORDER BY user_id, scan_date
-        """, (start_str, end_str))
+          """, (start_dt, end_dt))
 
         rows = cursor.fetchall()
 
@@ -332,8 +332,8 @@ def get_non_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict
 
     try:
         cursor = conn.cursor()
-        start_str = start_date.isoformat()
-        end_str = end_date.isoformat()
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
 
         # Use DISTINCT sales_order to avoid counting duplicates from Non_DEAPP_Submission_EditStock_Payload
         cursor.execute("""
@@ -344,10 +344,10 @@ def get_non_de_qa_comparison(start_date: date, end_date: date) -> Dict[str, Dict
             WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
               AND user_id IS NOT NULL AND user_id <> ''
               AND sales_order IS NOT NULL AND sales_order <> ''
-              AND DATE(date_time) >= %s AND DATE(date_time) <= %s
+              AND date_time >= %s AND date_time < %s
             GROUP BY user_id, DATE(date_time)
             ORDER BY user_id, scan_date
-        """, (start_str, end_str))
+          """, (start_dt, end_dt))
 
         rows = cursor.fetchall()
 
@@ -392,9 +392,6 @@ def get_qa_daily_totals_range(start_date: date, end_date: date) -> List[Dict[str
         from datetime import datetime, timedelta
         start_dt = datetime.combine(start_date, datetime.min.time())
         end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
-        # Also prepare ISO date strings for audit_master queries
-        start_str = start_date.isoformat()
-        end_str = end_date.isoformat()
 
         cursor.execute("""
             SELECT DATE(added_date) as scan_date, COUNT(*) as total_scans
@@ -407,30 +404,30 @@ def get_qa_daily_totals_range(start_date: date, end_date: date) -> List[Dict[str
             if scan_date:
                 totals[scan_date]["qaApp"] = int(total_scans or 0)
 
-                cursor.execute("""
-                        SELECT DATE(date_time) as scan_date, COUNT(DISTINCT sales_order) as total_scans
-                        FROM audit_master
-                        WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
-                            AND user_id IS NOT NULL AND user_id <> ''
-                            AND sales_order IS NOT NULL AND sales_order <> ''
-                            AND date_time >= %s AND date_time < %s
-                        GROUP BY DATE(date_time)
-                        ORDER BY scan_date
-                """, (start_dt, end_dt))
+        cursor.execute("""
+            SELECT DATE(date_time) as scan_date, COUNT(DISTINCT sales_order) as total_scans
+            FROM audit_master
+            WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
+              AND user_id IS NOT NULL AND user_id <> ''
+              AND sales_order IS NOT NULL AND sales_order <> ''
+              AND date_time >= %s AND date_time < %s
+            GROUP BY DATE(date_time)
+            ORDER BY scan_date
+        """, (start_dt, end_dt))
         for scan_date, total_scans in cursor.fetchall():
             if scan_date:
                 totals[scan_date]["deQa"] = int(total_scans or 0)
 
-                cursor.execute("""
-                        SELECT DATE(date_time) as scan_date, COUNT(DISTINCT sales_order) as total_scans
-                        FROM audit_master
-                        WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
-                            AND user_id IS NOT NULL AND user_id <> ''
-                            AND sales_order IS NOT NULL AND sales_order <> ''
-                            AND date_time >= %s AND date_time < %s
-                        GROUP BY DATE(date_time)
-                        ORDER BY scan_date
-                """, (start_dt, end_dt))
+        cursor.execute("""
+            SELECT DATE(date_time) as scan_date, COUNT(DISTINCT sales_order) as total_scans
+            FROM audit_master
+            WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
+              AND user_id IS NOT NULL AND user_id <> ''
+              AND sales_order IS NOT NULL AND sales_order <> ''
+              AND date_time >= %s AND date_time < %s
+            GROUP BY DATE(date_time)
+            ORDER BY scan_date
+        """, (start_dt, end_dt))
         for scan_date, total_scans in cursor.fetchall():
             if scan_date:
                 totals[scan_date]["nonDeQa"] = int(total_scans or 0)
@@ -463,17 +460,18 @@ def get_qa_hourly_totals(date_obj: date) -> List[Dict[str, int]]:
         return []
 
     totals = defaultdict(lambda: {"qaApp": 0, "deQa": 0, "nonDeQa": 0})
-    date_str = date_obj.isoformat()
+    start_dt = datetime.combine(date_obj, datetime.min.time())
+    end_dt = start_dt + timedelta(days=1)
     try:
         cursor = conn.cursor()
 
         cursor.execute("""
             SELECT HOUR(added_date) as hour_slot, COUNT(*) as total_scans
             FROM ITAD_QA_App
-            WHERE DATE(added_date) = %s
+            WHERE added_date >= %s AND added_date < %s
             GROUP BY HOUR(added_date)
             ORDER BY hour_slot
-        """, (date_str,))
+        """, (start_dt, end_dt))
         for hour_slot, total_scans in cursor.fetchall():
             if hour_slot is not None:
                 totals[int(hour_slot)]["qaApp"] = int(total_scans or 0)
@@ -484,10 +482,10 @@ def get_qa_hourly_totals(date_obj: date) -> List[Dict[str, int]]:
             WHERE audit_type IN ('DEAPP_Submission', 'DEAPP_Submission_EditStock_Payload')
               AND user_id IS NOT NULL AND user_id <> ''
               AND sales_order IS NOT NULL AND sales_order <> ''
-              AND DATE(date_time) = %s
+                            AND date_time >= %s AND date_time < %s
             GROUP BY HOUR(date_time)
             ORDER BY hour_slot
-        """, (date_str,))
+                """, (start_dt, end_dt))
         for hour_slot, total_scans in cursor.fetchall():
             if hour_slot is not None:
                 totals[int(hour_slot)]["deQa"] = int(total_scans or 0)
@@ -498,10 +496,10 @@ def get_qa_hourly_totals(date_obj: date) -> List[Dict[str, int]]:
             WHERE audit_type IN ('Non_DEAPP_Submission', 'Non_DEAPP_Submission_EditStock_Payload')
               AND user_id IS NOT NULL AND user_id <> ''
               AND sales_order IS NOT NULL AND sales_order <> ''
-              AND DATE(date_time) = %s
+                            AND date_time >= %s AND date_time < %s
             GROUP BY HOUR(date_time)
             ORDER BY hour_slot
-        """, (date_str,))
+                """, (start_dt, end_dt))
         for hour_slot, total_scans in cursor.fetchall():
             if hour_slot is not None:
                 totals[int(hour_slot)]["nonDeQa"] = int(total_scans or 0)

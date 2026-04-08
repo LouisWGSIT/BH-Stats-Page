@@ -139,3 +139,15 @@ def sync_engineer_stats_on_startup(*, db_module):
         print(f"[Startup] Engineer stats by device type sync complete: {synced_type} records")
     except Exception as e:
         print(f"[Startup] Error syncing engineer stats by device type: {e}")
+
+
+async def refresh_qa_snapshots_periodically(*, refresh_snapshots_func, interval_seconds: int = 120):
+    """Periodically refresh QA dashboard snapshots to keep request path lightweight."""
+    interval = max(30, int(interval_seconds or 120))
+    await asyncio.sleep(5)
+    while True:
+        try:
+            await refresh_snapshots_func()
+        except Exception:
+            pass
+        await asyncio.sleep(interval)
