@@ -6,6 +6,8 @@
       loadOverallDashboard,
       setCurrentDashboard,
       getCurrentDashboard,
+      onDashboardWillChange,
+      onDashboardChanged,
     } = deps;
 
     let dashboardLocked = false;
@@ -38,6 +40,11 @@
 
       if (index < 0 || index >= dashboards.length) {
         return;
+      }
+
+      const previousIndex = currentDashboard();
+      if (typeof onDashboardWillChange === 'function') {
+        onDashboardWillChange(previousIndex, index);
       }
 
       setDashboard(index);
@@ -103,6 +110,10 @@
       }
 
       localStorage.setItem('currentDashboard', index);
+
+      if (typeof onDashboardChanged === 'function') {
+        onDashboardChanged(previousIndex, index);
+      }
     }
 
     function lockDashboard() {

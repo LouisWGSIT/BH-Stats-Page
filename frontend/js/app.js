@@ -1236,6 +1236,7 @@
   if (createAdaptivePoll) {
     createAdaptivePoll(async () => {
       await initializeAnalytics();
+      await createMonthlyMomentumChart();
     }, 300000, { viewerMultiplier: 4, hiddenMultiplier: 8 });
   }
 
@@ -1276,6 +1277,20 @@
     window.DashboardSwitcher.init({
       loadQADashboard,
       loadOverallDashboard,
+      onDashboardWillChange: (fromIndex, toIndex) => {
+        // Prevent hidden-view transitions from getting flip cards stuck.
+        if (fromIndex === 0 && toIndex !== 0) {
+          cleanupFlipCards();
+          cleanupRotatorCards();
+        }
+      },
+      onDashboardChanged: (_fromIndex, toIndex) => {
+        // Recreate timers whenever we return to Erasure view.
+        if (toIndex === 0) {
+          setupFlipCards();
+          setupRotatorCards();
+        }
+      },
       setCurrentDashboard: (index) => {
         currentDashboard = index;
       },
@@ -1341,6 +1356,7 @@
 
   // Kick off using aggregated payload
   refreshAggregated();
+  refreshAllTimeTotals();
   
   // Initialize new flip cards
   updateRecordsMilestones();
@@ -1355,6 +1371,7 @@
 
   setInterval(() => {
     refreshAggregated();
+    refreshAllTimeTotals();
     checkAndTriggerWinner();
     checkGreenieTime();
 
