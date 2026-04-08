@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from datetime import date
+import asyncio
 import os
 import re
 import sqlite3
@@ -32,6 +33,12 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             return dt.astimezone(UTC)
         except Exception:
             return None
+
+    def _get_refresh_timeout_seconds() -> float:
+        try:
+            return max(0.2, float(os.getenv("OVERALL_REFRESH_TIMEOUT_SECONDS", "2.5")))
+        except Exception:
+            return 2.5
 
     def _get_snapshot_payload(snapshot_key: str) -> tuple[dict | None, float | None]:
         try:
@@ -427,6 +434,115 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
 
         return out
 
+    def _build_spotlight_fallback_payload(reason: str) -> dict:
+        return {
+            "generatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "goodsIn": {"name": "Unable to yet", "count": 0, "source": "fallback"},
+            "ia": {"name": "Unable to yet", "count": 0, "source": "fallback"},
+            "erasure": {"name": "—", "count": 0, "source": "fallback"},
+            "qa": {"name": "—", "count": 0, "source": "fallback"},
+            "sorting": {"name": "—", "count": 0, "source": "fallback"},
+            "degraded": True,
+            "reason": reason,
+        }
+
+    def _build_sections_payload() -> dict:
+        return {
+            "sections": [
+                _build_goods_in_payload(),
+                _build_non_goods_mock("ia"),
+                _build_non_goods_mock("erasure"),
+                _build_non_goods_mock("qa"),
+                _build_non_goods_mock("sorting"),
+            ]
+        }
+
+    def _build_sections_fallback_payload(reason: str) -> dict:
+        now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        return {
+            "sections": [
+                _mock_goods_in_payload(now_iso),
+                {
+                    "sectionKey": "ia",
+                    "sectionName": "IA",
+                    "targetQueue": 72,
+                    "currentQueue": 0,
+                    "trendPctHour": 0,
+                    "owner": "Assessment Team",
+                    "queueLabel": "Totes Awaiting IA",
+                    "subMetrics": [
+                        {"label": "Awaiting IA", "value": 0},
+                        {"label": "Completed IA", "value": 0},
+                        {"label": "Ready for Erasure", "value": 0},
+                    ],
+                    "updatedAt": now_iso,
+                    "isLive": False,
+                    "source": "fallback",
+                },
+                {
+                    "sectionKey": "erasure",
+                    "sectionName": "Erasure",
+                    "targetQueue": 140,
+                    "currentQueue": 0,
+                    "trendPctHour": 0,
+                    "owner": "Erasure Team",
+                    "queueLabel": "Data-Bearing Awaiting Erasure",
+                    "subMetrics": [
+                        {"label": "Roller 1 Queue", "value": 0},
+                        {"label": "Roller 2 Queue", "value": 0},
+                        {"label": "Roller 3 Queue", "value": 0},
+                    ],
+                    "updatedAt": now_iso,
+                    "isLive": False,
+                    "source": "fallback",
+                },
+                {
+                    "sectionKey": "qa",
+                    "sectionName": "QA",
+                    "targetQueue": 95,
+                    "currentQueue": 44,
+                    "trendPctHour": -8,
+                    "owner": "QA Team",
+                    "queueLabel": "Items Awaiting QA",
+                    "subMetrics": [
+                        {"label": "DB Awaiting QA", "value": 44},
+                        {"label": "Non-DB Awaiting QA", "value": 0},
+                        {"label": "Completed QA Today", "value": 0},
+                    ],
+                    "updatedAt": now_iso,
+                    "isLive": False,
+                    "source": "fallback",
+                },
+                {
+                    "sectionKey": "sorting",
+                    "sectionName": "Sorting",
+                    "targetQueue": 110,
+                    "currentQueue": 118,
+                    "trendPctHour": 5,
+                    "owner": "Sorting Team",
+                    "queueLabel": "Items Awaiting Sorting",
+                    "subMetrics": [
+                        {"label": "Awaiting Sorting", "value": 118},
+                        {"label": "Sorted Today", "value": 0},
+                        {"label": "Sorting Output Last Hour", "value": 0},
+                    ],
+                    "updatedAt": now_iso,
+                    "isLive": False,
+                    "source": "fallback",
+                },
+            ],
+            "degraded": True,
+            "reason": reason,
+        }
+
+    async def _refresh_sections_with_budget() -> dict:
+        timeout_s = _get_refresh_timeout_seconds()
+        return await asyncio.wait_for(asyncio.to_thread(_build_sections_payload), timeout=timeout_s)
+
+    async def _refresh_spotlight_with_budget() -> dict:
+        timeout_s = _get_refresh_timeout_seconds()
+        return await asyncio.wait_for(asyncio.to_thread(_build_spotlight_payload), timeout=timeout_s)
+
     def _mock_goods_in_payload(now_iso: str) -> dict:
         return {
             "sectionKey": "goods_in",
@@ -767,29 +883,19 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             if not _should_attempt_refresh("sections"):
                 return payload
             try:
-                sections = [
-                    _build_goods_in_payload(),
-                    _build_non_goods_mock("ia"),
-                    _build_non_goods_mock("erasure"),
-                    _build_non_goods_mock("qa"),
-                    _build_non_goods_mock("sorting"),
-                ]
-                fresh_payload = {"sections": sections}
+                fresh_payload = await _refresh_sections_with_budget()
                 _store_snapshot_payload(snapshot_key, fresh_payload, "overall_sections_refresh")
                 return fresh_payload
             except Exception:
                 return payload
-
-        sections = [
-            _build_goods_in_payload(),
-            _build_non_goods_mock("ia"),
-            _build_non_goods_mock("erasure"),
-            _build_non_goods_mock("qa"),
-            _build_non_goods_mock("sorting"),
-        ]
-        fresh_payload = {"sections": sections}
-        _store_snapshot_payload(snapshot_key, fresh_payload, "overall_sections_build")
-        return fresh_payload
+        if not _should_attempt_refresh("sections"):
+            return _build_sections_fallback_payload("throttled_no_snapshot")
+        try:
+            fresh_payload = await _refresh_sections_with_budget()
+            _store_snapshot_payload(snapshot_key, fresh_payload, "overall_sections_build")
+            return fresh_payload
+        except Exception:
+            return _build_sections_fallback_payload("refresh_timeout_or_error")
 
     @router.get("/overall/qa-awaiting-diagnostics")
     async def overall_qa_awaiting_diagnostics(request: Request):
@@ -806,14 +912,18 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             if not _should_attempt_refresh("spotlight"):
                 return payload
             try:
-                fresh_payload = _build_spotlight_payload()
+                fresh_payload = await _refresh_spotlight_with_budget()
                 _store_snapshot_payload(snapshot_key, fresh_payload, "overall_spotlight_refresh")
                 return fresh_payload
             except Exception:
                 return payload
-
-        fresh_payload = _build_spotlight_payload()
-        _store_snapshot_payload(snapshot_key, fresh_payload, "overall_spotlight_build")
-        return fresh_payload
+        if not _should_attempt_refresh("spotlight"):
+            return _build_spotlight_fallback_payload("throttled_no_snapshot")
+        try:
+            fresh_payload = await _refresh_spotlight_with_budget()
+            _store_snapshot_payload(snapshot_key, fresh_payload, "overall_spotlight_build")
+            return fresh_payload
+        except Exception:
+            return _build_spotlight_fallback_payload("refresh_timeout_or_error")
 
     return router

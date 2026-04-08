@@ -1,6 +1,7 @@
 from pathlib import Path
 from datetime import datetime, UTC
 from datetime import date
+import time
 
 
 def test_health_liveness(client):
@@ -349,6 +350,49 @@ def test_overall_spotlight_endpoint_returns_contract_shape(client):
     assert 'erasure' in body
     assert 'qa' in body
     assert 'sorting' in body
+
+
+def test_qa_bootstrap_endpoint_returns_expected_sections(client):
+    r = client.get('/api/qa-bootstrap', headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert 'dashboard' in body
+    assert 'trends' in body
+    assert 'insights' in body
+    assert 'today' in body['dashboard']
+    assert 'this_week' in body['dashboard']
+    assert 'all_time' in body['dashboard']
+
+
+def test_static_assets_have_cache_control_headers(client):
+    r_js = client.get('/core/dashboard_switcher.js')
+    assert r_js.status_code == 200
+    cache_control = r_js.headers.get('cache-control', '')
+    assert 'public' in cache_control
+    assert 'max-age=' in cache_control
+
+    r_html = client.get('/')
+    assert r_html.status_code == 200
+    html_cache_control = r_html.headers.get('cache-control', '')
+    assert 'no-cache' in html_cache_control
+
+
+def test_overall_sections_falls_back_when_refresh_times_out(client, app_module, monkeypatch):
+    monkeypatch.setenv('OVERALL_REFRESH_TIMEOUT_SECONDS', '0.05')
+
+    def _slow_conn():
+        time.sleep(0.2)
+        return None
+
+    monkeypatch.setattr(app_module.qa_export, 'get_mariadb_connection', _slow_conn)
+
+    r = client.get('/overall/sections')
+    assert r.status_code == 200
+    body = r.json()
+    assert 'sections' in body
+    assert isinstance(body['sections'], list)
+    assert len(body['sections']) >= 1
+    assert body.get('degraded') is True
 
 
 def test_erasure_metrics_qa_summary_contract_shape(client):

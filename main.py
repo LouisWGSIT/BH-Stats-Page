@@ -283,6 +283,31 @@ app.middleware("http")(add_request_id_middleware)
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     return await auth_binding_funcs["auth_middleware"](request, call_next)
+
+
+@app.middleware("http")
+async def static_cache_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+
+    if request.method != "GET":
+        return response
+
+    if response.headers.get("Cache-Control"):
+        return response
+
+    path = request.url.path.lower()
+    static_exts = (
+        ".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".woff", ".woff2"
+    )
+
+    if path.endswith(static_exts):
+        response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=600"
+    elif path in ("/", "/index.html", "/admin.html", "/manager.html", "/qr-code-generator.html"):
+        response.headers["Cache-Control"] = "no-cache"
+    elif path.endswith(".json"):
+        response.headers["Cache-Control"] = "no-cache"
+
+    return response
 # Initialize database tables on startup
 db.init_db()
 
