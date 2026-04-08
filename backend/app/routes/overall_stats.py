@@ -440,7 +440,8 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             qa_live = _compute_db_awaiting_qa(include_samples=False)
             db_awaiting = int(qa_live.get("dbAwaitingQa", 44))
             completed_today = 0
-            non_db_awaiting = 23
+            # Hold non-DB awaiting at 0 until we wire a reliable source.
+            non_db_awaiting = 0
             source = qa_live.get("source", "mock")
             is_live = source != "mock"
             try:
@@ -476,6 +477,84 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     {"label": "DB Awaiting QA", "value": db_awaiting},
                     {"label": "Non-DB Awaiting QA", "value": non_db_awaiting},
                     {"label": "Completed QA Today", "value": completed_today},
+                ],
+                "isLive": is_live,
+                "source": source,
+            }
+        if section_key == "sorting":
+            awaiting_sorting = 118
+            sorted_today = 74
+            qa_output_last_hour = 29
+            source = "mock"
+            is_live = False
+
+            try:
+                conn = qa_export.get_mariadb_connection()
+                if conn:
+                    cur = conn.cursor()
+                    try:
+                        # Items QA'd today where the QA event is at/after the latest asset update
+                        # are treated as candidates waiting to move through Sorting.
+                        cur.execute(
+                            """
+                            SELECT COUNT(DISTINCT q.stockid)
+                            FROM ITAD_QA_App q
+                            JOIN ITAD_asset_info a ON a.stockid = q.stockid
+                            WHERE DATE(q.added_date) = CURDATE()
+                              AND (
+                                    a.last_update IS NULL
+                                    OR q.added_date >= a.last_update
+                                  )
+                            """
+                        )
+                        row = cur.fetchone()
+                        awaiting_sorting = int(row[0]) if row and row[0] is not None else 0
+
+                        # Keep "Sorted Today" factual where Stockbypallet is available.
+                        try:
+                            cur.execute(
+                                """
+                                SELECT COUNT(DISTINCT stockid)
+                                FROM Stockbypallet
+                                WHERE DATE(received_date) = CURDATE()
+                                """
+                            )
+                            row = cur.fetchone()
+                            sorted_today = int(row[0]) if row and row[0] is not None else 0
+                        except Exception:
+                            sorted_today = 0
+
+                        cur.execute(
+                            """
+                            SELECT COUNT(DISTINCT stockid)
+                            FROM ITAD_QA_App
+                            WHERE added_date >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+                            """
+                        )
+                        row = cur.fetchone()
+                        qa_output_last_hour = int(row[0]) if row and row[0] is not None else 0
+
+                        source = "mariadb:ITAD_QA_App+ITAD_asset_info"
+                        is_live = True
+                    finally:
+                        cur.close()
+                        conn.close()
+            except Exception:
+                pass
+
+            return {
+                **base,
+                "sectionKey": "sorting",
+                "sectionName": "Sorting",
+                "targetQueue": 110,
+                "currentQueue": max(0, awaiting_sorting),
+                "trendPctHour": 5,
+                "owner": "Sorting Team",
+                "queueLabel": "Items Awaiting Sorting",
+                "subMetrics": [
+                    {"label": "Awaiting Sorting", "value": max(0, awaiting_sorting)},
+                    {"label": "Sorted Today", "value": max(0, sorted_today)},
+                    {"label": "QA Output Last Hour", "value": max(0, qa_output_last_hour)},
                 ],
                 "isLive": is_live,
                 "source": source,
