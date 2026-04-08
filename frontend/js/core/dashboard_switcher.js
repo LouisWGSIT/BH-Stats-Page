@@ -31,6 +31,23 @@
       }
     }
 
+    function getDashboardIndexFromHash() {
+      const raw = String(window.location.hash || '').replace('#', '').trim().toLowerCase();
+      if (!raw) return null;
+      const idx = dashboards.indexOf(raw);
+      return idx >= 0 ? idx : null;
+    }
+
+    function persistDashboardInUrl(dashboardKey) {
+      try {
+        const url = new URL(window.location.href);
+        url.hash = dashboardKey;
+        window.history.replaceState({}, '', url.toString());
+      } catch (_err) {
+        // No-op if URL APIs are unavailable.
+      }
+    }
+
     function switchDashboard(index, opts = {}) {
       const erasureView = document.getElementById('erasureStatsView');
       const qaView = document.getElementById('qaStatsView');
@@ -110,6 +127,7 @@
       }
 
       localStorage.setItem('currentDashboard', index);
+      persistDashboardInUrl(dashboard);
 
       if (typeof onDashboardChanged === 'function') {
         onDashboardChanged(previousIndex, index);
@@ -181,8 +199,12 @@
       lockDashboard();
     }
 
-    const savedDashboard = parseInt(localStorage.getItem('currentDashboard') || '0');
-    switchDashboard(savedDashboard, { isInitialRestore: true });
+    const hashDashboard = getDashboardIndexFromHash();
+    const savedDashboard = parseInt(localStorage.getItem('currentDashboard') || '0', 10);
+    const initialDashboard = Number.isInteger(hashDashboard)
+      ? hashDashboard
+      : (Number.isFinite(savedDashboard) ? savedDashboard : 0);
+    switchDashboard(initialDashboard, { isInitialRestore: true });
 
     bindControls();
     startQaAutoRefresh();
