@@ -6,17 +6,6 @@
     const rotatorIntervals = new Map();
     const rotatorTimeouts = new Map();
 
-    function hydrateDeferredImages(scope) {
-      const root = scope || document;
-      const deferred = root.querySelectorAll ? root.querySelectorAll('img[data-src]') : [];
-      deferred.forEach((img) => {
-        const src = img.getAttribute('data-src');
-        if (!src) return;
-        img.setAttribute('src', src);
-        img.removeAttribute('data-src');
-      });
-    }
-
     function cleanupFlipCards() {
       flipIntervals.forEach((id) => clearInterval(id));
       flipTimeouts.forEach((t) => {
@@ -129,7 +118,6 @@
           if (currentIndex === -1) {
             panels.forEach((panel) => panel.classList.remove('active', 'entering', 'exiting', 'about-to-rotate'));
             panels[nextIndex].classList.add('active');
-            hydrateDeferredImages(panels[nextIndex]);
             return;
           }
 
@@ -148,7 +136,6 @@
             const nextPanel = panels[nextIndex];
             nextPanel.classList.add('entering');
             nextPanel.classList.add('active');
-            hydrateDeferredImages(nextPanel);
 
             void nextPanel.offsetHeight;
 

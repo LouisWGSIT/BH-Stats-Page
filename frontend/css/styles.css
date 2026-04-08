@@ -719,17 +719,13 @@ body {
 .car-body {
   width: 44px;
   height: 44px;
-  background-image: none;
+  background-image: url('assets/F1Car.png');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
   position: relative;
   z-index: 10;
   flex-shrink: 0;
-}
-
-#erasureStatsView.is-active .car-body {
-  background-image: url('assets/F1Car.png');
 }
 
 /* Car body classes removed - no longer needed without animations */

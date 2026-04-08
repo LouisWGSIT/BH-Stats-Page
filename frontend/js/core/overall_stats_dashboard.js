@@ -415,7 +415,7 @@
           <span class="lane-name">${lane.name}</span>
           <div class="lane-track">
             <div class="lane-fill" style="width:${lane.progress}%"></div>
-            <img class="lane-car" src="assets/F1Car.png" alt="" loading="lazy" decoding="async" fetchpriority="low" style="left:calc(${lane.progress}% - 10px)" />
+            <img class="lane-car" src="assets/F1Car.png" alt="" style="left:calc(${lane.progress}% - 10px)" />
           </div>
           <span class="lane-value">${lane.done}</span>
         </div>
