@@ -1,6 +1,8 @@
 // Overall stats dashboard with mock operational data for staffing huddles.
 (function () {
   function init() {
+    let isLoading = false;
+
     const mockSections = [
       {
         key: 'goods_in',
@@ -20,28 +22,28 @@
         key: 'ia',
         name: 'IA',
         target: 72,
-        current: 81,
-        trend: 6,
+        current: 0,
+        trend: 0,
         owner: 'Assessment Team',
         queueLabel: 'Totes Awaiting IA',
         subMetrics: [
-          { label: 'Awaiting IA', value: 81 },
-          { label: 'Completed IA', value: 59 },
-          { label: 'Ready for Erasure', value: 43 },
+          { label: 'Awaiting IA', value: 0 },
+          { label: 'Completed IA', value: 0 },
+          { label: 'Ready for Erasure', value: 0 },
         ],
       },
       {
         key: 'erasure',
         name: 'Erasure',
         target: 140,
-        current: 136,
-        trend: -4,
+        current: 0,
+        trend: 0,
         owner: 'Erasure Team',
         queueLabel: 'Data-Bearing Awaiting Erasure',
         subMetrics: [
-          { label: 'Roller 1 Queue', value: 46 },
-          { label: 'Roller 2 Queue', value: 39 },
-          { label: 'Roller 3 Queue', value: 51 },
+          { label: 'Roller 1 Queue', value: 0 },
+          { label: 'Roller 2 Queue', value: 0 },
+          { label: 'Roller 3 Queue', value: 0 },
         ],
       },
       {
@@ -160,22 +162,14 @@
       return `${section.name} is quiet right now.`;
     }
 
-    const sectionEngineerSeeds = {
-      goods_in: ['AB', 'KH', 'LM'],
-      ia: ['SV', 'JR', 'PM'],
-      erasure: ['MS', 'MO', 'JD'],
-      qa: ['LL', 'KW', 'OJ'],
-      sorting: ['BB', 'OW', 'LW'],
-    };
-
-    function getEngineersForSection(section) {
-      const seed = sectionEngineerSeeds[section.key] || ['TM', 'AA', 'BB'];
-      const base = activityScore(section) + Math.round(getDoneCount(section) * 0.5);
-      return seed.map((initials, idx) => ({
-        initials,
-        section: section.name,
-        score: Math.max(0, base - (idx * 5) + (idx === 0 ? 4 : 0)),
-      }));
+    function getFallbackSpotlight() {
+      return {
+        goodsIn: { name: 'Unable to yet', count: 0 },
+        ia: { name: 'Unable to yet', count: 0 },
+        erasure: { name: '—', count: 0 },
+        qa: { name: '—', count: 0 },
+        sorting: { name: '—', count: 0 },
+      };
     }
 
     function renderSections(sections) {
@@ -334,33 +328,36 @@
       `;
     }
 
-    function renderSpotlight(sections) {
+    function renderSpotlight(spotlight) {
       const spotlightEl = document.getElementById('overallSpotlight');
       if (!spotlightEl) return;
-      const rankedEngineers = sections
-        .flatMap((section) => getEngineersForSection(section))
-        .sort((a, b) => b.score - a.score);
-      if (!rankedEngineers.length) {
-        spotlightEl.innerHTML = '<p class="overall-empty">Waiting for section data...</p>';
-        return;
-      }
+      const s = spotlight || getFallbackSpotlight();
 
-      const topBySection = sections.map((section) => getEngineersForSection(section)[0]).filter(Boolean);
-      const topOverall = rankedEngineers[0];
+      const rows = [
+        { section: 'Goods In', name: (s.goodsIn && s.goodsIn.name) || 'Unable to yet', count: (s.goodsIn && s.goodsIn.count) || 0 },
+        { section: 'IA', name: (s.ia && s.ia.name) || 'Unable to yet', count: (s.ia && s.ia.count) || 0 },
+        { section: 'Erasure', name: (s.erasure && s.erasure.name) || '—', count: (s.erasure && s.erasure.count) || 0 },
+        { section: 'QA', name: (s.qa && s.qa.name) || '—', count: (s.qa && s.qa.count) || 0 },
+        { section: 'Sorting', name: (s.sorting && s.sorting.name) || '—', count: (s.sorting && s.sorting.count) || 0 },
+      ];
+
+      const bestLive = rows
+        .filter((r) => r.name !== 'Unable to yet' && r.name !== '—')
+        .sort((a, b) => (b.count || 0) - (a.count || 0))[0] || rows[0];
 
       spotlightEl.innerHTML = `
         <div class="spotlight-main spotlight-main-compact">
           <div class="spotlight-badge">Top Efficiency Right Now</div>
-          <div class="spotlight-name">${topOverall.initials}</div>
-          <div class="spotlight-owner">${topOverall.section}</div>
-          <div class="spotlight-score">Efficiency Score ${topOverall.score}</div>
+          <div class="spotlight-name">${bestLive.name}</div>
+          <div class="spotlight-owner">${bestLive.section}</div>
+          <div class="spotlight-score">${bestLive.count} actions today</div>
         </div>
         <div class="spotlight-grid">
-          ${topBySection.map((eng) => `
+          ${rows.map((row) => `
             <div class="spotlight-chip">
-              <span class="chip-section">${eng.section}</span>
-              <strong>${eng.initials}</strong>
-              <span class="chip-score">${eng.score}</span>
+              <span class="chip-section">${row.section}</span>
+              <strong>${row.name}</strong>
+              <span class="chip-score">${row.count}</span>
             </div>
           `).join('')}
         </div>
@@ -370,12 +367,47 @@
     function renderRaceTrack(sections) {
       const raceEl = document.getElementById('overallRaceTrack');
       if (!raceEl) return;
-      const maxDone = Math.max(...sections.map((s) => getDoneCount(s)), 1);
+
+      function getErasureTodayFromDashboard() {
+        const el = document.getElementById('totalTodayValue');
+        if (!el) return 0;
+        const raw = String(el.textContent || '').replace(/,/g, '').trim();
+        const parsed = parseInt(raw, 10);
+        return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+      }
+
+      function getRaceTrackDone(section) {
+        // Erasure is sourced from the Erasure dashboard donut metric.
+        if (section.key === 'erasure') {
+          return getErasureTodayFromDashboard();
+        }
+
+        // While a section has mock payloads, keep race-track value at zero.
+        if (section.isLive !== true) {
+          return 0;
+        }
+
+        if (section.key === 'qa') {
+          return getSubMetric(section, [/completed qa today/, /qa complete/]);
+        }
+        if (section.key === 'ia') {
+          return getSubMetric(section, [/completed ia/, /ready for erasure/]);
+        }
+        if (section.key === 'sorting') {
+          return getSubMetric(section, [/sorted this morning/, /sorted today/]);
+        }
+        if (section.key === 'goods_in') {
+          return getSubMetric(section, [/booked in today/, /^booked in$/]);
+        }
+        return 0;
+      }
+
+      const maxDone = Math.max(...sections.map((s) => getRaceTrackDone(s)), 1);
       const lanes = sections
         .map((s) => ({
           ...s,
-          done: getDoneCount(s),
-          progress: clamp(Math.round((getDoneCount(s) / maxDone) * 100), 0, 100),
+          done: getRaceTrackDone(s),
+          progress: clamp(Math.round((getRaceTrackDone(s) / maxDone) * 100), 0, 100),
         }))
         .sort((a, b) => b.progress - a.progress);
       raceEl.innerHTML = lanes.map((lane) => `
@@ -500,17 +532,35 @@
     }
 
     async function load() {
+      if (isLoading) return;
+      isLoading = true;
       try {
-        const res = await fetch('/overall/sections');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const payload = await res.json();
+        const [sectionsRes, spotlightRes] = await Promise.all([
+          fetch('/overall/sections'),
+          fetch('/overall/spotlight').catch(() => null),
+        ]);
+        if (!sectionsRes.ok) throw new Error(`HTTP ${sectionsRes.status}`);
+        const payload = await sectionsRes.json();
         const sections = Array.isArray(payload.sections) ? payload.sections : [];
         const valid = sections.filter(isValidSection).map(normalizeSection);
         if (!valid.length) throw new Error('No valid sections returned');
+
+        let spotlightData = getFallbackSpotlight();
+        if (spotlightRes && spotlightRes.ok) {
+          const spotlightPayload = await spotlightRes.json();
+          spotlightData = {
+            goodsIn: spotlightPayload.goodsIn || { name: 'Unable to yet', count: 0 },
+            ia: spotlightPayload.ia || { name: 'Unable to yet', count: 0 },
+            erasure: spotlightPayload.erasure || { name: '—', count: 0 },
+            qa: spotlightPayload.qa || { name: '—', count: 0 },
+            sorting: spotlightPayload.sorting || { name: '—', count: 0 },
+          };
+        }
+
         renderSections(valid);
         renderSummary(valid);
         renderMissionBoard(valid);
-        renderSpotlight(valid);
+        renderSpotlight(spotlightData);
         renderTrends(valid);
         renderRaceTrack(valid);
         renderChallenge(valid);
@@ -518,10 +568,12 @@
         renderSections(mockSections);
         renderSummary(mockSections);
         renderMissionBoard(mockSections);
-        renderSpotlight(mockSections);
+        renderSpotlight(getFallbackSpotlight());
         renderTrends(mockSections);
         renderRaceTrack(mockSections);
         renderChallenge(mockSections);
+      } finally {
+        isLoading = false;
       }
     }
 

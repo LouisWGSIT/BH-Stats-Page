@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from datetime import date
 import os
 import re
 import sqlite3
@@ -286,6 +287,91 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         except Exception:
             return out
 
+    def _first_name(value: str) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return "—"
+        if "@" in raw:
+            raw = raw.split("@", 1)[0]
+        raw = raw.replace("_", " ").replace("-", " ").replace(".", " ")
+        parts = [p for p in raw.split() if p]
+        if not parts:
+            return "—"
+        token = parts[0]
+        if len(token) <= 3 and token.isupper():
+            return token
+        return token.capitalize()
+
+    def _build_spotlight_payload() -> dict:
+        out = {
+            "generatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "goodsIn": {"name": "Unable to yet", "count": 0, "source": "pending_table"},
+            "ia": {"name": "Unable to yet", "count": 0, "source": "pending_table"},
+            "erasure": {"name": "—", "count": 0, "source": "sqlite:erasures"},
+            "qa": {"name": "—", "count": 0, "source": "mariadb:ITAD_asset_info.de_completed_by"},
+            "sorting": {"name": "—", "count": 0, "source": "mariadb:ITAD_QA_App.username"},
+        }
+
+        try:
+            leaders = db_module.leaderboard(scope="today", limit=1) or []
+            if leaders:
+                row = leaders[0] or {}
+                out["erasure"]["name"] = str(row.get("initials") or row.get("name") or "—")
+                out["erasure"]["count"] = int(row.get("erasures") or row.get("count") or 0)
+        except Exception:
+            pass
+
+        conn = None
+        try:
+            conn = qa_export.get_mariadb_connection()
+            if conn:
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        """
+                        SELECT de_completed_by, COUNT(*) AS cnt
+                        FROM ITAD_asset_info
+                        WHERE de_completed_date IS NOT NULL
+                          AND DATE(de_completed_date) = CURDATE()
+                          AND TRIM(COALESCE(de_completed_by, '')) <> ''
+                        GROUP BY de_completed_by
+                        ORDER BY cnt DESC
+                        LIMIT 1
+                        """
+                    )
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        out["qa"]["name"] = _first_name(str(row[0]))
+                        out["qa"]["count"] = int(row[1] or 0)
+                finally:
+                    cur.close()
+                    conn.close()
+                    conn = None
+        except Exception:
+            try:
+                if conn:
+                    conn.close()
+            except Exception:
+                pass
+
+        try:
+            qa_daily = qa_export.get_daily_qa_data(date.today()) or {}
+            best_name = "—"
+            best_count = 0
+            for uname, stats in qa_daily.items():
+                if str(uname).lower() == "(unassigned)":
+                    continue
+                count = int((stats or {}).get("total_scans", 0) or 0)
+                if count > best_count:
+                    best_count = count
+                    best_name = _first_name(str(uname))
+            out["sorting"]["name"] = best_name
+            out["sorting"]["count"] = best_count
+        except Exception:
+            pass
+
+        return out
+
     def _mock_goods_in_payload(now_iso: str) -> dict:
         return {
             "sectionKey": "goods_in",
@@ -449,14 +535,14 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 "sectionKey": "ia",
                 "sectionName": "IA",
                 "targetQueue": 72,
-                "currentQueue": 81,
-                "trendPctHour": 6,
+                "currentQueue": 0,
+                "trendPctHour": 0,
                 "owner": "Assessment Team",
                 "queueLabel": "Totes Awaiting IA",
                 "subMetrics": [
-                    {"label": "Awaiting IA", "value": 81},
-                    {"label": "Completed IA", "value": 59},
-                    {"label": "Ready for Erasure", "value": 43},
+                    {"label": "Awaiting IA", "value": 0},
+                    {"label": "Completed IA", "value": 0},
+                    {"label": "Ready for Erasure", "value": 0},
                 ],
             }
         if section_key == "erasure":
@@ -465,14 +551,14 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 "sectionKey": "erasure",
                 "sectionName": "Erasure",
                 "targetQueue": 140,
-                "currentQueue": 136,
-                "trendPctHour": -4,
+                "currentQueue": 0,
+                "trendPctHour": 0,
                 "owner": "Erasure Team",
                 "queueLabel": "Data-Bearing Awaiting Erasure",
                 "subMetrics": [
-                    {"label": "Roller 1 Queue", "value": 46},
-                    {"label": "Roller 2 Queue", "value": 39},
-                    {"label": "Roller 3 Queue", "value": 51},
+                    {"label": "Roller 1 Queue", "value": 0},
+                    {"label": "Roller 2 Queue", "value": 0},
+                    {"label": "Roller 3 Queue", "value": 0},
                 ],
             }
         if section_key == "qa":
@@ -631,5 +717,9 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
     async def overall_qa_awaiting_diagnostics(request: Request):
         require_manager_or_admin(request)
         return _compute_db_awaiting_qa(include_samples=True, sample_limit=50)
+
+    @router.get("/overall/spotlight")
+    async def overall_spotlight() -> dict:
+        return _build_spotlight_payload()
 
     return router

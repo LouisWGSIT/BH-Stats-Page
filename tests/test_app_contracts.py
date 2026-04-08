@@ -340,6 +340,17 @@ def test_overall_sections_endpoint_returns_list(client):
     assert r_export_excel.status_code in (400, 401)
 
 
+def test_overall_spotlight_endpoint_returns_contract_shape(client):
+    r = client.get('/overall/spotlight')
+    assert r.status_code == 200
+    body = r.json()
+    assert 'goodsIn' in body
+    assert 'ia' in body
+    assert 'erasure' in body
+    assert 'qa' in body
+    assert 'sorting' in body
+
+
 def test_erasure_metrics_qa_summary_contract_shape(client):
     r = client.get("/metrics/qa-summary", headers={"Authorization": "Bearer test-manager-pass"})
     assert r.status_code == 200

@@ -1357,6 +1357,12 @@
     refreshAggregated();
     checkAndTriggerWinner();
     checkGreenieTime();
+
+    // Keep Overall dashboard data fresh while that view is active.
+    if (currentDashboard === 2 && !document.hidden) {
+      loadOverallDashboard();
+    }
+
     // Update new flip cards
     updateRecordsMilestones();
     updateWeeklyRecords();
