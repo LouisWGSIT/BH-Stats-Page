@@ -1,4 +1,5 @@
 import sqlite3
+import os
 from datetime import datetime, timedelta, UTC
 from typing import Callable
 
@@ -11,6 +12,7 @@ def create_admin_activity_router(
     load_device_tokens: Callable[[], dict],
     activity_log,
     get_activity_writer: Callable[[], object | None],
+    db_module,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -24,6 +26,75 @@ def create_admin_activity_router(
             if ts and ts >= cutoff:
                 recent.append(entry)
         return recent
+
+    def _sqlite_storage_monitor() -> dict:
+        payload = {
+            "db_path": None,
+            "db_exists": False,
+            "db_size_bytes": 0,
+            "wal_size_bytes": 0,
+            "shm_size_bytes": 0,
+            "page_size": None,
+            "page_count": None,
+            "sqlite_allocated_bytes": None,
+            "tables": {},
+            "error": None,
+        }
+        try:
+            db_path = getattr(db_module, "DB_PATH", None)
+            payload["db_path"] = db_path
+            if not db_path:
+                return payload
+
+            payload["db_exists"] = os.path.exists(db_path)
+            if payload["db_exists"]:
+                payload["db_size_bytes"] = int(os.path.getsize(db_path) or 0)
+
+            wal_path = f"{db_path}-wal"
+            shm_path = f"{db_path}-shm"
+            if os.path.exists(wal_path):
+                payload["wal_size_bytes"] = int(os.path.getsize(wal_path) or 0)
+            if os.path.exists(shm_path):
+                payload["shm_size_bytes"] = int(os.path.getsize(shm_path) or 0)
+
+            conn = sqlite3.connect(db_path, timeout=5)
+            cur = conn.cursor()
+            try:
+                cur.execute("PRAGMA page_size")
+                page_size_row = cur.fetchone()
+                page_size = int(page_size_row[0]) if page_size_row and page_size_row[0] else None
+
+                cur.execute("PRAGMA page_count")
+                page_count_row = cur.fetchone()
+                page_count = int(page_count_row[0]) if page_count_row and page_count_row[0] else None
+
+                payload["page_size"] = page_size
+                payload["page_count"] = page_count
+                if page_size is not None and page_count is not None:
+                    payload["sqlite_allocated_bytes"] = int(page_size * page_count)
+
+                table_names = [
+                    "dashboard_snapshots",
+                    "qa_all_time_daily_agg",
+                    "local_erasures",
+                    "erasures",
+                    "daily_stats",
+                ]
+                table_counts = {}
+                for table_name in table_names:
+                    try:
+                        cur.execute(f"SELECT COUNT(*) FROM {table_name}")
+                        row = cur.fetchone()
+                        table_counts[table_name] = int(row[0] or 0) if row else 0
+                    except Exception:
+                        table_counts[table_name] = None
+                payload["tables"] = table_counts
+            finally:
+                cur.close()
+                conn.close()
+        except Exception as exc:
+            payload["error"] = str(exc)
+        return payload
 
     @router.get("/admin/activity")
     def admin_activity(request: Request):
@@ -103,6 +174,7 @@ def create_admin_activity_router(
                 "unique_client_ips": len({x.get("client_ip") for x in recent if x.get("client_ip")}),
             },
             "memory_peak_rss": memory_peak,
+            "sqlite_storage": _sqlite_storage_monitor(),
             "connected_devices": connected,
             "recent": recent_sorted,
         }

@@ -79,6 +79,7 @@ def register_routes(
             load_device_tokens=load_device_tokens,
             activity_log=activity_log,
             get_activity_writer=lambda: getattr(app.state, "activity_writer", None),
+            db_module=db_module,
         )
     )
     app.include_router(

@@ -36,9 +36,9 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
 
     def _get_refresh_timeout_seconds() -> float:
         try:
-            return max(0.2, float(os.getenv("OVERALL_REFRESH_TIMEOUT_SECONDS", "2.5")))
+            return max(0.2, float(os.getenv("OVERALL_REFRESH_TIMEOUT_SECONDS", "6.0")))
         except Exception:
-            return 2.5
+            return 6.0
 
     def _get_snapshot_payload(snapshot_key: str) -> tuple[dict | None, float | None]:
         try:
@@ -877,24 +877,21 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
     async def overall_sections() -> dict:
         snapshot_key = "overall_sections"
         payload, age = _get_snapshot_payload(snapshot_key)
-        if isinstance(payload, dict) and age is not None and age <= float(snapshot_max_stale_seconds):
-            if age <= float(snapshot_ttl_seconds):
-                return payload
-            if not _should_attempt_refresh("sections"):
-                return payload
-            try:
-                fresh_payload = await _refresh_sections_with_budget()
-                _store_snapshot_payload(snapshot_key, fresh_payload, "overall_sections_refresh")
-                return fresh_payload
-            except Exception:
-                return payload
-        if not _should_attempt_refresh("sections"):
-            return _build_sections_fallback_payload("throttled_no_snapshot")
+        has_snapshot = isinstance(payload, dict)
+        if has_snapshot and age is not None and age <= float(snapshot_ttl_seconds):
+            return payload
+
+        # If we have a stale snapshot, prefer serving it over returning full mock fallback.
+        if has_snapshot and not _should_attempt_refresh("sections"):
+            return payload
+
         try:
             fresh_payload = await _refresh_sections_with_budget()
             _store_snapshot_payload(snapshot_key, fresh_payload, "overall_sections_build")
             return fresh_payload
         except Exception:
+            if has_snapshot:
+                return payload
             return _build_sections_fallback_payload("refresh_timeout_or_error")
 
     @router.get("/overall/qa-awaiting-diagnostics")
@@ -906,24 +903,20 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
     async def overall_spotlight() -> dict:
         snapshot_key = "overall_spotlight"
         payload, age = _get_snapshot_payload(snapshot_key)
-        if isinstance(payload, dict) and age is not None and age <= float(snapshot_max_stale_seconds):
-            if age <= float(snapshot_ttl_seconds):
-                return payload
-            if not _should_attempt_refresh("spotlight"):
-                return payload
-            try:
-                fresh_payload = await _refresh_spotlight_with_budget()
-                _store_snapshot_payload(snapshot_key, fresh_payload, "overall_spotlight_refresh")
-                return fresh_payload
-            except Exception:
-                return payload
-        if not _should_attempt_refresh("spotlight"):
-            return _build_spotlight_fallback_payload("throttled_no_snapshot")
+        has_snapshot = isinstance(payload, dict)
+        if has_snapshot and age is not None and age <= float(snapshot_ttl_seconds):
+            return payload
+
+        if has_snapshot and not _should_attempt_refresh("spotlight"):
+            return payload
+
         try:
             fresh_payload = await _refresh_spotlight_with_budget()
             _store_snapshot_payload(snapshot_key, fresh_payload, "overall_spotlight_build")
             return fresh_payload
         except Exception:
+            if has_snapshot:
+                return payload
             return _build_spotlight_fallback_payload("refresh_timeout_or_error")
 
     return router

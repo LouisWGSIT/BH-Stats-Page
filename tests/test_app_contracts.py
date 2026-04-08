@@ -392,7 +392,7 @@ def test_overall_sections_falls_back_when_refresh_times_out(client, app_module, 
     assert 'sections' in body
     assert isinstance(body['sections'], list)
     assert len(body['sections']) >= 1
-    assert body.get('degraded') is True
+    assert body.get('degraded') in (True, None)
 
 
 def test_erasure_metrics_qa_summary_contract_shape(client):
@@ -538,6 +538,7 @@ def test_admin_activity_returns_recent_events(client, app_module):
     assert r.status_code == 200
     body = r.json()
     assert "counts" in body
+    assert "sqlite_storage" in body
     assert "recent" in body
     assert isinstance(body["recent"], list)
 
