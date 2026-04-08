@@ -53,6 +53,20 @@
     }
   }
 
+  function hydrateDeferredImages(scope) {
+    const root = scope || document;
+    const deferred = root.querySelectorAll ? root.querySelectorAll('img[data-src]') : [];
+    deferred.forEach((img) => {
+      const src = img.getAttribute('data-src');
+      if (!src) return;
+      img.setAttribute('src', src);
+      img.removeAttribute('data-src');
+    });
+  }
+
+  // Load only assets needed for panels currently visible at startup.
+  hydrateDeferredImages(document.querySelector('.panel.active') || document);
+
   function truncateInitials(initials) {
     const value = (initials || '').toString().trim();
     if (!value) return '—';
@@ -93,6 +107,8 @@
     const wrapper = container ? container.querySelector('.greenie-wrapper') : null;
     const quote = document.getElementById('greenieQuote');
     if (!container || !wrapper || !quote) return;
+
+    hydrateDeferredImages(container);
 
     quote.textContent = message || 'Keep pushing, team.';
     container.classList.remove('hidden');

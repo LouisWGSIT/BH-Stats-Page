@@ -719,13 +719,17 @@ body {
 .car-body {
   width: 44px;
   height: 44px;
-  background-image: url('assets/F1Car.png');
+  background-image: none;
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
   position: relative;
   z-index: 10;
   flex-shrink: 0;
+}
+
+#erasureStatsView.is-active .car-body {
+  background-image: url('assets/F1Car.png');
 }
 
 /* Car body classes removed - no longer needed without animations */
@@ -3818,9 +3822,12 @@ main.layout {
   background: rgba(255, 255, 255, 0.08);
   overflow: visible;
   position: relative;
+  isolation: isolate;
 }
 
 .lane-fill {
+  position: relative;
+  z-index: 1;
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--ring-secondary), var(--ring-primary));
@@ -3835,14 +3842,16 @@ main.layout {
 
 .lane-car {
   position: absolute;
-  top: -10px;
-  width: 22px;
-  height: 22px;
+  top: -12px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
   transform: rotate(90deg);
   transform-origin: center;
+  pointer-events: none;
 }
 
 .overall-challenge-main {

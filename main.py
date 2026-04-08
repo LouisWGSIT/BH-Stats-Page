@@ -118,9 +118,17 @@ async def lifespan(app: FastAPI):
         db_path=os.getenv('ACTIVITY_DB_PATH', 'logs/activity.sqlite'),
     )
 
-    sync_engineer_stats_on_startup(db_module=db)
-
     background_tasks = []
+    # Avoid blocking cold start on sync work; run it in a worker thread instead.
+    try:
+        background_tasks.append(
+            asyncio.create_task(
+                asyncio.to_thread(lambda: sync_engineer_stats_on_startup(db_module=db))
+            )
+        )
+    except Exception:
+        pass
+
     background_tasks.append(asyncio.create_task(check_daily_reset()))
 
     try:
