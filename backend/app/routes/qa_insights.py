@@ -10,6 +10,11 @@ import backend.qa_export as qa_export
 QA_DASHBOARD_SNAPSHOT_TTL_SECONDS = max(15, int(os.getenv("QA_DASHBOARD_SNAPSHOT_TTL_SECONDS", "120")))
 QA_ALL_TIME_RECORD_TTL_SECONDS = max(60, int(os.getenv("QA_ALL_TIME_RECORD_TTL_SECONDS", "600")))
 QA_SNAPSHOT_MAX_STALE_SECONDS = max(300, int(os.getenv("QA_SNAPSHOT_MAX_STALE_SECONDS", "3600")))
+QA_ALL_TIME_SQLITE_REFRESH_SECONDS = max(30, int(os.getenv("QA_ALL_TIME_SQLITE_REFRESH_SECONDS", "120")))
+
+_qa_all_time_refresh_state = {
+    "lastRefresh": datetime.min.replace(tzinfo=UTC),
+}
 
 
 def _parse_snapshot_ts(value: str | None) -> datetime | None:
@@ -62,6 +67,21 @@ def _get_all_time_daily_record_snapshot(*, force_refresh: bool = False) -> dict:
     return value
 
 
+def _should_refresh_all_time_sqlite(*, force_refresh: bool = False) -> bool:
+    if force_refresh:
+        _qa_all_time_refresh_state["lastRefresh"] = datetime.now(UTC)
+        return True
+    now = datetime.now(UTC)
+    last = _qa_all_time_refresh_state.get("lastRefresh")
+    if not isinstance(last, datetime):
+        _qa_all_time_refresh_state["lastRefresh"] = now
+        return True
+    if (now - last).total_seconds() >= float(QA_ALL_TIME_SQLITE_REFRESH_SECONDS):
+        _qa_all_time_refresh_state["lastRefresh"] = now
+        return True
+    return False
+
+
 async def compute_qa_dashboard_data(period: str, cache_get, cache_set, force_refresh: bool = False):
     """Shared QA dashboard payload builder used by endpoint and internal callers."""
     cache_key = f"qa_dashboard:{period}"
@@ -80,9 +100,22 @@ async def compute_qa_dashboard_data(period: str, cache_get, cache_set, force_ref
                     return cache_set(cache_key, snapshot_payload)
 
         start_date, end_date, period_label = qa_export.get_week_dates(period)
-        qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
-        de_qa_data = qa_export.get_de_qa_comparison(start_date, end_date)
-        non_de_qa_data = qa_export.get_non_de_qa_comparison(start_date, end_date)
+
+        if period == "all_time":
+            if _should_refresh_all_time_sqlite(force_refresh=force_refresh):
+                try:
+                    qa_export.refresh_all_time_sqlite_aggregates()
+                except Exception:
+                    pass
+            qa_data, de_qa_data, non_de_qa_data = qa_export.get_all_time_aggregates_from_sqlite()
+            if not qa_data and not de_qa_data and not non_de_qa_data:
+                qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
+                de_qa_data = qa_export.get_de_qa_comparison(start_date, end_date)
+                non_de_qa_data = qa_export.get_non_de_qa_comparison(start_date, end_date)
+        else:
+            qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date)
+            de_qa_data = qa_export.get_de_qa_comparison(start_date, end_date)
+            non_de_qa_data = qa_export.get_non_de_qa_comparison(start_date, end_date)
 
         if not qa_data and not de_qa_data and not non_de_qa_data:
             min_date, max_date = qa_export.get_qa_data_bounds()

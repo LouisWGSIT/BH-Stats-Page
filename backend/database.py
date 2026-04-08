@@ -258,6 +258,22 @@ def init_db():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_dashboard_snapshots_updated_at ON dashboard_snapshots(updated_at)")
 
+        # Persisted QA all-time daily aggregates (baseline + rolling incremental refreshes).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS qa_all_time_daily_agg (
+                metric_date TEXT NOT NULL,
+                engineer TEXT NOT NULL,
+                qa_app_total INTEGER NOT NULL DEFAULT 0,
+                qa_app_success INTEGER NOT NULL DEFAULT 0,
+                de_qa_total INTEGER NOT NULL DEFAULT 0,
+                non_de_qa_total INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (metric_date, engineer)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_qa_all_time_daily_agg_date ON qa_all_time_daily_agg(metric_date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_qa_all_time_daily_agg_engineer ON qa_all_time_daily_agg(engineer)")
+
         # Add new columns if they don't exist (migration)
         try:
             cursor.execute("ALTER TABLE erasures ADD COLUMN manufacturer TEXT")

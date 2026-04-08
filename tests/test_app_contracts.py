@@ -456,6 +456,50 @@ def test_qa_dashboard_contract_shape_with_stubbed_source_data(client, monkeypatc
         assert key in summary
 
 
+def test_qa_dashboard_all_time_can_serve_from_sqlite_aggregates(client, monkeypatch):
+    import backend.app.routes.qa_insights as qa_insights_module
+
+    monkeypatch.setattr(
+        qa_insights_module.qa_export,
+        "refresh_all_time_sqlite_aggregates",
+        lambda: {"ok": True, "rows": 3},
+    )
+    monkeypatch.setattr(
+        qa_insights_module.qa_export,
+        "get_all_time_aggregates_from_sqlite",
+        lambda: (
+            {
+                "Louise L": {
+                    "total": 120,
+                    "successful": 110,
+                    "daily": {"Monday": {"date": "2026-04-07", "scans": 30, "passed": 28}},
+                    "pass_rate": 91.7,
+                }
+            },
+            {
+                "Louise L": {
+                    "total": 60,
+                    "daily": {"Monday": {"date": "2026-04-07", "scans": 60}},
+                }
+            },
+            {
+                "Louise L": {
+                    "total": 15,
+                    "daily": {"Monday": {"date": "2026-04-07", "scans": 15}},
+                }
+            },
+        ),
+    )
+
+    r = client.get("/api/qa-dashboard?period=all_time", headers={"Authorization": "Bearer test-manager-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["period"] == "All Time"
+    assert "summary" in body
+    assert body["summary"]["combinedScans"] == 195
+    assert body["summary"]["topTechnician"] == "Louise L"
+
+
 def test_dashboard_view_isolation_contracts(client):
     r_switcher = client.get("/core/dashboard_switcher.js")
     assert r_switcher.status_code == 200

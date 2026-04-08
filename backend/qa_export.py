@@ -16,6 +16,8 @@ logger = logging.getLogger("qa_export")
 import backend.request_context as request_context
 from contextlib import contextmanager
 
+QA_ALL_TIME_RESYNC_DAYS = max(1, int(os.getenv("QA_ALL_TIME_RESYNC_DAYS", "3")))
+
 # Slow-query alerting removed. Keep threshold var for logs if needed.
 DB_QUERY_ALERT_THRESHOLD = float(os.getenv("DB_QUERY_ALERT_THRESHOLD", "2.0"))
 
@@ -524,6 +526,291 @@ def get_qa_hourly_totals(date_obj: date) -> List[Dict[str, int]]:
         if conn:
             conn.close()
         return []
+
+
+def _normalize_engineer_name(name: str | None) -> str:
+    raw = (name or "").strip()
+    if not raw or raw.upper() == "NO USER":
+        return "(unassigned)"
+    return raw
+
+
+def _get_audit_master_date_bounds() -> Tuple[date | None, date | None]:
+    conn = get_mariadb_connection()
+    if not conn:
+        return None, None
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT MIN(date_time) AS min_date, MAX(date_time) AS max_date
+            FROM audit_master
+            WHERE audit_type IN (
+                'DEAPP_Submission',
+                'DEAPP_Submission_EditStock_Payload',
+                'Non_DEAPP_Submission',
+                'Non_DEAPP_Submission_EditStock_Payload'
+            )
+            """
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if not row or (row[0] is None and row[1] is None):
+            return None, None
+        min_dt = row[0].date() if row[0] and hasattr(row[0], "date") else row[0]
+        max_dt = row[1].date() if row[1] and hasattr(row[1], "date") else row[1]
+        return min_dt, max_dt
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return None, None
+
+
+def _fetch_qa_app_daily_rows(start_date: date, end_date: date) -> List[Tuple[str, str, int, int]]:
+    conn = get_mariadb_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor()
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+        cursor.execute(
+            """
+            SELECT DATE(added_date) AS metric_date,
+                   username,
+                   COUNT(*) AS total_scans,
+                   SUM(CASE WHEN photo_location IS NOT NULL THEN 1 ELSE 0 END) AS successful_scans
+            FROM ITAD_QA_App
+            WHERE added_date >= %s AND added_date < %s
+            GROUP BY DATE(added_date), username
+            """,
+            (start_dt, end_dt),
+        )
+        rows = cursor.fetchall() or []
+        cursor.close()
+        conn.close()
+        out: List[Tuple[str, str, int, int]] = []
+        for metric_date, username, total_scans, successful_scans in rows:
+            if not metric_date:
+                continue
+            day = metric_date.isoformat() if hasattr(metric_date, "isoformat") else str(metric_date)
+            out.append((day, _normalize_engineer_name(username), int(total_scans or 0), int(successful_scans or 0)))
+        return out
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return []
+
+
+def _fetch_audit_daily_rows(start_date: date, end_date: date, *, non_de: bool = False) -> List[Tuple[str, str, int]]:
+    conn = get_mariadb_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor()
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+        types = (
+            ("Non_DEAPP_Submission", "Non_DEAPP_Submission_EditStock_Payload")
+            if non_de
+            else ("DEAPP_Submission", "DEAPP_Submission_EditStock_Payload")
+        )
+        cursor.execute(
+            """
+            SELECT DATE(date_time) AS metric_date,
+                   user_id,
+                   COUNT(DISTINCT sales_order) AS total_scans
+            FROM audit_master
+            WHERE audit_type IN (%s, %s)
+              AND user_id IS NOT NULL AND user_id <> ''
+              AND sales_order IS NOT NULL AND sales_order <> ''
+              AND date_time >= %s AND date_time < %s
+            GROUP BY DATE(date_time), user_id
+            """,
+            (types[0], types[1], start_dt, end_dt),
+        )
+        rows = cursor.fetchall() or []
+        cursor.close()
+        conn.close()
+        out: List[Tuple[str, str, int]] = []
+        for metric_date, user_id, total_scans in rows:
+            if not metric_date:
+                continue
+            day = metric_date.isoformat() if hasattr(metric_date, "isoformat") else str(metric_date)
+            out.append((day, _normalize_engineer_name(user_id), int(total_scans or 0)))
+        return out
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return []
+
+
+def refresh_all_time_sqlite_aggregates(resync_days: int | None = None) -> Dict[str, object]:
+    """Build once from history, then refresh only a short rolling date window.
+
+    This avoids full-range scans on normal request paths while remaining resilient to
+    late-arriving rows by re-reading the last N days.
+    """
+    window_days = max(1, int(resync_days or QA_ALL_TIME_RESYNC_DAYS))
+    today = date.today()
+
+    with db.sqlite_transaction() as (_conn, cur):
+        cur.execute("SELECT MIN(metric_date), MAX(metric_date), COUNT(*) FROM qa_all_time_daily_agg")
+        existing = cur.fetchone() or (None, None, 0)
+    min_existing = existing[0]
+    max_existing = existing[1]
+    row_count = int(existing[2] or 0)
+
+    if row_count == 0:
+        qa_min, qa_max = get_qa_data_bounds()
+        audit_min, audit_max = _get_audit_master_date_bounds()
+        candidates_min = [d for d in (qa_min, audit_min) if d is not None]
+        candidates_max = [d for d in (qa_max, audit_max) if d is not None]
+        if not candidates_min or not candidates_max:
+            return {"ok": False, "reason": "no_source_bounds"}
+        refresh_start = min(candidates_min)
+        refresh_end = max(candidates_max)
+    else:
+        try:
+            max_dt = datetime.fromisoformat(str(max_existing)).date()
+        except Exception:
+            max_dt = today
+        refresh_start = max(date(2000, 1, 1), max_dt - timedelta(days=window_days))
+        refresh_end = today
+
+    if refresh_start > refresh_end:
+        refresh_start = refresh_end
+
+    qa_rows = _fetch_qa_app_daily_rows(refresh_start, refresh_end)
+    de_rows = _fetch_audit_daily_rows(refresh_start, refresh_end, non_de=False)
+    non_de_rows = _fetch_audit_daily_rows(refresh_start, refresh_end, non_de=True)
+
+    aggregate: Dict[Tuple[str, str], Dict[str, int]] = defaultdict(
+        lambda: {
+            "qa_app_total": 0,
+            "qa_app_success": 0,
+            "de_qa_total": 0,
+            "non_de_qa_total": 0,
+        }
+    )
+
+    for metric_date, engineer, total_scans, successful_scans in qa_rows:
+        key = (metric_date, engineer)
+        aggregate[key]["qa_app_total"] += int(total_scans or 0)
+        aggregate[key]["qa_app_success"] += int(successful_scans or 0)
+
+    for metric_date, engineer, total_scans in de_rows:
+        key = (metric_date, engineer)
+        aggregate[key]["de_qa_total"] += int(total_scans or 0)
+
+    for metric_date, engineer, total_scans in non_de_rows:
+        key = (metric_date, engineer)
+        aggregate[key]["non_de_qa_total"] += int(total_scans or 0)
+
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    with db.sqlite_transaction() as (_conn, cur):
+        cur.execute(
+            "DELETE FROM qa_all_time_daily_agg WHERE metric_date >= ? AND metric_date <= ?",
+            (refresh_start.isoformat(), refresh_end.isoformat()),
+        )
+
+        for (metric_date, engineer), totals in aggregate.items():
+            cur.execute(
+                """
+                INSERT INTO qa_all_time_daily_agg (
+                    metric_date,
+                    engineer,
+                    qa_app_total,
+                    qa_app_success,
+                    de_qa_total,
+                    non_de_qa_total,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    metric_date,
+                    engineer,
+                    int(totals["qa_app_total"]),
+                    int(totals["qa_app_success"]),
+                    int(totals["de_qa_total"]),
+                    int(totals["non_de_qa_total"]),
+                    now_iso,
+                ),
+            )
+
+    return {
+        "ok": True,
+        "range": [refresh_start.isoformat(), refresh_end.isoformat()],
+        "rows": len(aggregate),
+        "baselineBuilt": row_count == 0,
+        "existingMin": min_existing,
+        "existingMax": max_existing,
+    }
+
+
+def get_all_time_aggregates_from_sqlite() -> Tuple[Dict[str, Dict], Dict[str, Dict], Dict[str, Dict]]:
+    """Return QA app / DE / Non-DE aggregate structures from persisted SQLite rollups."""
+    conn = sqlite3.connect(db.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT metric_date, engineer, qa_app_total, qa_app_success, de_qa_total, non_de_qa_total
+        FROM qa_all_time_daily_agg
+        ORDER BY metric_date ASC
+        """
+    )
+    rows = cursor.fetchall() or []
+    conn.close()
+
+    qa_data = defaultdict(lambda: {"total": 0, "successful": 0, "daily": {}, "pass_rate": 0.0})
+    de_data = defaultdict(lambda: {"total": 0, "daily": {}})
+    non_de_data = defaultdict(lambda: {"total": 0, "daily": {}})
+
+    for metric_date, engineer, qa_total, qa_success, de_total, non_de_total in rows:
+        name = _normalize_engineer_name(engineer)
+        try:
+            day_name = datetime.fromisoformat(str(metric_date)).strftime("%A")
+        except Exception:
+            day_name = "Unknown"
+
+        qa_total_i = int(qa_total or 0)
+        qa_success_i = int(qa_success or 0)
+        de_total_i = int(de_total or 0)
+        non_de_total_i = int(non_de_total or 0)
+
+        qa_data[name]["total"] += qa_total_i
+        qa_data[name]["successful"] += qa_success_i
+        qa_data[name]["daily"][day_name] = {
+            "date": metric_date,
+            "scans": qa_data[name]["daily"].get(day_name, {}).get("scans", 0) + qa_total_i,
+            "passed": qa_data[name]["daily"].get(day_name, {}).get("passed", 0) + qa_success_i,
+        }
+
+        de_data[name]["total"] += de_total_i
+        de_data[name]["daily"][day_name] = {
+            "date": metric_date,
+            "scans": de_data[name]["daily"].get(day_name, {}).get("scans", 0) + de_total_i,
+        }
+
+        non_de_data[name]["total"] += non_de_total_i
+        non_de_data[name]["daily"][day_name] = {
+            "date": metric_date,
+            "scans": non_de_data[name]["daily"].get(day_name, {}).get("scans", 0) + non_de_total_i,
+        }
+
+    for name in list(qa_data.keys()):
+        total = int(qa_data[name]["total"])
+        successful = int(qa_data[name]["successful"])
+        qa_data[name]["pass_rate"] = round((successful / total) * 100, 1) if total > 0 else 0.0
+
+    return dict(qa_data), dict(de_data), dict(non_de_data)
 
 def get_qa_engineer_daily_totals_range(start_date: date, end_date: date) -> Dict[str, Dict[str, int]]:
     """Return per-engineer daily totals (combined QA App + DE + Non-DE)."""
