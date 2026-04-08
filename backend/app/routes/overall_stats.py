@@ -10,6 +10,61 @@ from fastapi import APIRouter, Request
 def create_overall_stats_router(*, qa_export_module, db_module, require_manager_or_admin):
     router = APIRouter()
     qa_export = qa_export_module
+    snapshot_ttl_seconds = max(30, int(os.getenv("OVERALL_SNAPSHOT_TTL_SECONDS", "120")))
+    snapshot_max_stale_seconds = max(300, int(os.getenv("OVERALL_SNAPSHOT_MAX_STALE_SECONDS", "3600")))
+    refresh_throttle_state = {
+        "sections": datetime.min.replace(tzinfo=UTC),
+        "spotlight": datetime.min.replace(tzinfo=UTC),
+    }
+
+    def _parse_snapshot_ts(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        raw = str(value).strip()
+        if not raw:
+            return None
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(raw)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            return dt.astimezone(UTC)
+        except Exception:
+            return None
+
+    def _get_snapshot_payload(snapshot_key: str) -> tuple[dict | None, float | None]:
+        try:
+            snap = db_module.get_dashboard_snapshot(snapshot_key)
+        except Exception:
+            snap = None
+        if not isinstance(snap, dict):
+            return None, None
+        payload = snap.get("payload")
+        if not isinstance(payload, dict):
+            return None, None
+        ts = _parse_snapshot_ts(snap.get("updatedAt"))
+        if ts is None:
+            return None, None
+        age = max(0.0, (datetime.now(UTC) - ts).total_seconds())
+        return payload, age
+
+    def _store_snapshot_payload(snapshot_key: str, payload: dict, source_version: str) -> None:
+        try:
+            db_module.upsert_dashboard_snapshot(snapshot_key, payload, source_version=source_version)
+        except Exception:
+            pass
+
+    def _should_attempt_refresh(kind: str) -> bool:
+        now = datetime.now(UTC)
+        last = refresh_throttle_state.get(kind)
+        if not isinstance(last, datetime):
+            refresh_throttle_state[kind] = now
+            return True
+        if (now - last).total_seconds() < float(snapshot_ttl_seconds):
+            return False
+        refresh_throttle_state[kind] = now
+        return True
 
     goods_in_queries = {
         "delivered": os.getenv("OVERALL_GOODS_IN_DELIVERED_QUERY", "").strip(),
@@ -704,6 +759,27 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
 
     @router.get("/overall/sections")
     async def overall_sections() -> dict:
+        snapshot_key = "overall_sections"
+        payload, age = _get_snapshot_payload(snapshot_key)
+        if isinstance(payload, dict) and age is not None and age <= float(snapshot_max_stale_seconds):
+            if age <= float(snapshot_ttl_seconds):
+                return payload
+            if not _should_attempt_refresh("sections"):
+                return payload
+            try:
+                sections = [
+                    _build_goods_in_payload(),
+                    _build_non_goods_mock("ia"),
+                    _build_non_goods_mock("erasure"),
+                    _build_non_goods_mock("qa"),
+                    _build_non_goods_mock("sorting"),
+                ]
+                fresh_payload = {"sections": sections}
+                _store_snapshot_payload(snapshot_key, fresh_payload, "overall_sections_refresh")
+                return fresh_payload
+            except Exception:
+                return payload
+
         sections = [
             _build_goods_in_payload(),
             _build_non_goods_mock("ia"),
@@ -711,7 +787,9 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             _build_non_goods_mock("qa"),
             _build_non_goods_mock("sorting"),
         ]
-        return {"sections": sections}
+        fresh_payload = {"sections": sections}
+        _store_snapshot_payload(snapshot_key, fresh_payload, "overall_sections_build")
+        return fresh_payload
 
     @router.get("/overall/qa-awaiting-diagnostics")
     async def overall_qa_awaiting_diagnostics(request: Request):
@@ -720,6 +798,22 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
 
     @router.get("/overall/spotlight")
     async def overall_spotlight() -> dict:
-        return _build_spotlight_payload()
+        snapshot_key = "overall_spotlight"
+        payload, age = _get_snapshot_payload(snapshot_key)
+        if isinstance(payload, dict) and age is not None and age <= float(snapshot_max_stale_seconds):
+            if age <= float(snapshot_ttl_seconds):
+                return payload
+            if not _should_attempt_refresh("spotlight"):
+                return payload
+            try:
+                fresh_payload = _build_spotlight_payload()
+                _store_snapshot_payload(snapshot_key, fresh_payload, "overall_spotlight_refresh")
+                return fresh_payload
+            except Exception:
+                return payload
+
+        fresh_payload = _build_spotlight_payload()
+        _store_snapshot_payload(snapshot_key, fresh_payload, "overall_spotlight_build")
+        return fresh_payload
 
     return router
