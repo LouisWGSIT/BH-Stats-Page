@@ -11,6 +11,7 @@ QA_DASHBOARD_SNAPSHOT_TTL_SECONDS = max(15, int(os.getenv("QA_DASHBOARD_SNAPSHOT
 QA_ALL_TIME_RECORD_TTL_SECONDS = max(60, int(os.getenv("QA_ALL_TIME_RECORD_TTL_SECONDS", "600")))
 QA_SNAPSHOT_MAX_STALE_SECONDS = max(300, int(os.getenv("QA_SNAPSHOT_MAX_STALE_SECONDS", "3600")))
 QA_ALL_TIME_SQLITE_REFRESH_SECONDS = max(30, int(os.getenv("QA_ALL_TIME_SQLITE_REFRESH_SECONDS", "120")))
+QA_BOOTSTRAP_SNAPSHOT_TTL_SECONDS = max(15, int(os.getenv("QA_BOOTSTRAP_SNAPSHOT_TTL_SECONDS", "120")))
 
 _qa_all_time_refresh_state = {
     "lastRefresh": datetime.min.replace(tzinfo=UTC),
@@ -393,6 +394,16 @@ def create_qa_insights_router(*, cache_get, cache_set) -> APIRouter:
             if cached is not None:
                 return cached
 
+            snap_payload, snap_age = _snapshot_payload_if_usable("qa_bootstrap_payload", QA_SNAPSHOT_MAX_STALE_SECONDS)
+            if isinstance(snap_payload, dict):
+                # Serve fresh-enough persisted snapshot immediately on cold starts.
+                if snap_age is not None and snap_age <= QA_BOOTSTRAP_SNAPSHOT_TTL_SECONDS:
+                    return cache_set(cache_key, snap_payload)
+                # Still serve stale snapshot while we rebuild in this request path.
+                stale_snapshot = snap_payload
+            else:
+                stale_snapshot = None
+
             periods = ["today", "this_week", "all_time"]
             dashboard = {}
             trends = {}
@@ -409,8 +420,14 @@ def create_qa_insights_router(*, cache_get, cache_set) -> APIRouter:
                 "insights": insights,
                 "generatedAt": datetime.now(UTC).isoformat(),
             }
+            try:
+                db.upsert_dashboard_snapshot("qa_bootstrap_payload", payload, source_version="qa_bootstrap_build")
+            except Exception:
+                pass
             return cache_set(cache_key, payload)
         except Exception:
+            if 'stale_snapshot' in locals() and isinstance(stale_snapshot, dict):
+                return cache_set("qa_bootstrap_payload", stale_snapshot)
             return {"error": "Failed to build QA bootstrap payload"}
 
     @router.get("/api/insights/qa-engineers")

@@ -521,7 +521,13 @@
                             <tr>
                                 <th>StockID</th>
                                 <th>DE Completed</th>
+                                <th>DE By</th>
                                 <th>Last QA Added</th>
+                                <th>Last QA User</th>
+                                <th>Latest QA (Any)</th>
+                                <th>Latest QA User (Any)</th>
+                                <th>Hours Since DE</th>
+                                <th>Lag (hours)</th>
                                 <th>Reason</th>
                             </tr>
                         </thead>
@@ -535,7 +541,13 @@
                             <tr>
                                 <th>StockID</th>
                                 <th>DE Completed</th>
+                                <th>DE By</th>
                                 <th>Last QA Added</th>
+                                <th>Last QA User</th>
+                                <th>Latest QA (Any)</th>
+                                <th>Latest QA User (Any)</th>
+                                <th>Hours Since DE</th>
+                                <th>Lag (hours)</th>
                                 <th>Reason</th>
                             </tr>
                         </thead>
@@ -555,6 +567,7 @@
                     <label style="font-size:13px;color:#666;"><input type="checkbox" id="autoPollActivity"> Auto-refresh every 30s</label>
                 </div>
                 <div id="activitySummary" style="margin-bottom:10px; display:none;"></div>
+                <div id="sqliteStorageSummary" class="stats" style="margin-bottom:10px; display:none;"></div>
                 <div id="memoryPanel" style="display:block;margin-bottom:10px;">
                     <div style="display:flex;align-items:center;gap:12px;">
                         <div style="font-size:13px;color:#666;">Memory (RSS):</div>
@@ -1508,7 +1521,13 @@
                     tr.innerHTML = `
                         <td style="font-size:12px;">${row.stockid || ''}</td>
                         <td style="font-size:12px;">${formatActivityTimeUk(row.deCompletedDate)}</td>
+                        <td style="font-size:12px;">${row.deCompletedBy || ''}</td>
                         <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAddedDate)}</td>
+                        <td style="font-size:12px;">${row.lastQaUsername || ''}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAnyDate)}</td>
+                        <td style="font-size:12px;">${row.lastQaAnyUsername || ''}</td>
+                        <td style="font-size:12px;">${row.hoursSinceDeCompleted != null ? row.hoursSinceDeCompleted.toFixed(1) : ''}</td>
+                        <td style="font-size:12px;">${row.lagHours != null ? row.lagHours.toFixed(1) : ''}</td>
                         <td style="font-size:12px;">${row.reason || ''}</td>
                     `;
                     awaitingBody.appendChild(tr);
@@ -1521,7 +1540,13 @@
                     tr.innerHTML = `
                         <td style="font-size:12px;">${row.stockid || ''}</td>
                         <td style="font-size:12px;">${formatActivityTimeUk(row.deCompletedDate)}</td>
+                        <td style="font-size:12px;">${row.deCompletedBy || ''}</td>
                         <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAddedDate)}</td>
+                        <td style="font-size:12px;">${row.lastQaUsername || ''}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAnyDate)}</td>
+                        <td style="font-size:12px;">${row.lastQaAnyUsername || ''}</td>
+                        <td style="font-size:12px;">${row.hoursSinceDeCompleted != null ? row.hoursSinceDeCompleted.toFixed(1) : ''}</td>
+                        <td style="font-size:12px;">${row.lagHours != null ? row.lagHours.toFixed(1) : ''}</td>
                         <td style="font-size:12px;">${row.reason || ''}</td>
                     `;
                     decrementedBody.appendChild(tr);
@@ -1605,6 +1630,7 @@
 
         async function fetchAdminActivity() {
             const summaryEl = document.getElementById('activitySummary');
+            const sqliteEl = document.getElementById('sqliteStorageSummary');
             const container = document.getElementById('activityContainer');
             const tbody = document.getElementById('activityTableBody');
             const btn = document.getElementById('refreshActivityBtn');
@@ -1622,6 +1648,25 @@
                     summaryEl.innerHTML += `<br><strong>Connected devices:</strong> ${data.connected_devices.length}`;
                 }
 
+                const sqlite = data.sqlite_storage || {};
+                const tableStats = sqlite.tables || {};
+                if (sqliteEl) {
+                    sqliteEl.style.display = 'block';
+                    sqliteEl.innerHTML = `
+                        <h3 style="margin-bottom:8px;">SQLite Storage Monitor</h3>
+                        <div style="font-size:12px;color:#444;margin-bottom:8px;">Path: <code>${sqlite.db_path || '-'}</code> ${sqlite.db_exists ? '✅' : '❌'}</div>
+                        <div class="stats-grid" style="margin-top:8px;">
+                            <div class="stat-card"><div class="stat-value">${(sqlite.db_size_bytes || 0).toLocaleString()}</div><div class="stat-label">DB bytes</div></div>
+                            <div class="stat-card"><div class="stat-value">${(sqlite.wal_size_bytes || 0).toLocaleString()}</div><div class="stat-label">WAL bytes</div></div>
+                            <div class="stat-card"><div class="stat-value">${(sqlite.sqlite_allocated_bytes || 0).toLocaleString()}</div><div class="stat-label">Allocated bytes</div></div>
+                            <div class="stat-card"><div class="stat-value">${tableStats.dashboard_snapshots ?? '-'}</div><div class="stat-label">Snapshot rows</div></div>
+                            <div class="stat-card"><div class="stat-value">${tableStats.qa_all_time_daily_agg ?? '-'}</div><div class="stat-label">QA agg rows</div></div>
+                            <div class="stat-card"><div class="stat-value">${tableStats.local_erasures ?? '-'}</div><div class="stat-label">local_erasures rows</div></div>
+                        </div>
+                        ${sqlite.error ? `<div style="margin-top:8px;color:#b42318;font-size:12px;">Error: ${sqlite.error}</div>` : ''}
+                    `;
+                }
+
                 // Render recent table
                 tbody.innerHTML = '';
                 (data.recent || []).forEach(ev => {
@@ -1636,6 +1681,7 @@
             } catch (err) {
                 summaryEl.style.display = 'block';
                 summaryEl.innerHTML = `<span style="color:#c00;">Failed to load activity: ${err.message}</span>`;
+                if (sqliteEl) sqliteEl.style.display = 'none';
                 container.style.display = 'none';
             } finally {
                 btn.disabled = false;

@@ -508,24 +508,117 @@ def create_admin_diagnostics_router(
                     return dt.isoformat()
                 return str(value)
 
-            awaiting_samples = [
-                {
-                    "stockid": str(r[0]) if r and r[0] is not None else None,
-                    "deCompletedDate": _to_iso(r[1] if len(r) > 1 else None),
-                    "lastQaAddedDate": _to_iso(r[2] if len(r) > 2 else None),
-                    "reason": str(r[3]) if len(r) > 3 and r[3] is not None else "unknown",
+            def _parse_dt(value):
+                if value is None:
+                    return None
+                if isinstance(value, datetime):
+                    return value if value.tzinfo else value.replace(tzinfo=UTC)
+                raw = str(value).strip()
+                if not raw:
+                    return None
+                if raw.endswith("Z"):
+                    raw = raw[:-1] + "+00:00"
+                try:
+                    dt = datetime.fromisoformat(raw)
+                    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+                except Exception:
+                    return None
+
+            now_utc = datetime.now(UTC)
+
+            # Enrich sampled stockids with DE owner and latest QA metadata.
+            sampled_stockids = []
+            for row in awaiting_rows + decremented_rows:
+                if row and row[0] is not None:
+                    sid = str(row[0]).strip()
+                    if sid:
+                        sampled_stockids.append(sid)
+            sampled_stockids = sorted(set(sampled_stockids))
+
+            sample_meta = {}
+            if sampled_stockids:
+                meta_conn = get_mariadb_connection()
+                if meta_conn:
+                    mcur = meta_conn.cursor()
+                    try:
+                        ph = ",".join(["%s"] * len(sampled_stockids))
+                        q = (
+                            "SELECT a.stockid, a.de_completed_by, "
+                            "u.last_qa_with_user, u.last_qa_user, "
+                            "x.last_qa_any, x.last_qa_any_user "
+                            "FROM ITAD_asset_info a "
+                            "LEFT JOIN ("
+                            "  SELECT q.stockid, "
+                            "         MAX(q.added_date) AS last_qa_with_user, "
+                            "         SUBSTRING_INDEX(GROUP_CONCAT(q.username ORDER BY q.added_date DESC SEPARATOR '||'), '||', 1) AS last_qa_user "
+                            "  FROM ITAD_QA_App q "
+                            f"  WHERE q.stockid IN ({ph}) "
+                            "    AND TRIM(COALESCE(q.stockid, '')) <> '' "
+                            "    AND TRIM(COALESCE(q.username, '')) <> '' "
+                            "  GROUP BY q.stockid"
+                            ") u ON u.stockid = a.stockid "
+                            "LEFT JOIN ("
+                            "  SELECT q.stockid, "
+                            "         MAX(q.added_date) AS last_qa_any, "
+                            "         SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(q.username, '') ORDER BY q.added_date DESC SEPARATOR '||'), '||', 1) AS last_qa_any_user "
+                            "  FROM ITAD_QA_App q "
+                            f"  WHERE q.stockid IN ({ph}) "
+                            "    AND TRIM(COALESCE(q.stockid, '')) <> '' "
+                            "  GROUP BY q.stockid"
+                            ") x ON x.stockid = a.stockid "
+                            f"WHERE a.stockid IN ({ph})"
+                        )
+                        params = tuple(sampled_stockids) + tuple(sampled_stockids) + tuple(sampled_stockids)
+                        mcur.execute(q, params)
+                        for r in mcur.fetchall() or []:
+                            sid = str(r[0]) if r and r[0] is not None else None
+                            if not sid:
+                                continue
+                            sample_meta[sid] = {
+                                "deCompletedBy": str(r[1]) if len(r) > 1 and r[1] is not None else None,
+                                "lastQaWithUser": _to_iso(r[2] if len(r) > 2 else None),
+                                "lastQaUsername": str(r[3]) if len(r) > 3 and r[3] is not None else None,
+                                "lastQaAny": _to_iso(r[4] if len(r) > 4 else None),
+                                "lastQaAnyUsername": str(r[5]) if len(r) > 5 and r[5] is not None else None,
+                            }
+                    finally:
+                        try:
+                            mcur.close()
+                            meta_conn.close()
+                        except Exception:
+                            pass
+
+            def _enrich_sample(row, default_reason: str):
+                stockid = str(row[0]) if row and row[0] is not None else None
+                de_completed = _to_iso(row[1] if len(row) > 1 else None)
+                last_qa_added = _to_iso(row[2] if len(row) > 2 else None)
+                reason = str(row[3]) if len(row) > 3 and row[3] is not None else default_reason
+
+                meta = sample_meta.get(stockid or "", {})
+                de_dt = _parse_dt(de_completed)
+                qa_with_user_dt = _parse_dt(last_qa_added or meta.get("lastQaWithUser"))
+                lag_hours = None
+                hours_since_de = None
+                if de_dt:
+                    hours_since_de = round((now_utc - de_dt).total_seconds() / 3600.0, 2)
+                if de_dt and qa_with_user_dt:
+                    lag_hours = round((qa_with_user_dt - de_dt).total_seconds() / 3600.0, 2)
+
+                return {
+                    "stockid": stockid,
+                    "deCompletedDate": de_completed,
+                    "deCompletedBy": meta.get("deCompletedBy"),
+                    "lastQaAddedDate": last_qa_added or meta.get("lastQaWithUser"),
+                    "lastQaUsername": meta.get("lastQaUsername"),
+                    "lastQaAnyDate": meta.get("lastQaAny"),
+                    "lastQaAnyUsername": meta.get("lastQaAnyUsername"),
+                    "hoursSinceDeCompleted": hours_since_de,
+                    "lagHours": lag_hours,
+                    "reason": reason,
                 }
-                for r in awaiting_rows
-            ]
-            decremented_samples = [
-                {
-                    "stockid": str(r[0]) if r and r[0] is not None else None,
-                    "deCompletedDate": _to_iso(r[1] if len(r) > 1 else None),
-                    "lastQaAddedDate": _to_iso(r[2] if len(r) > 2 else None),
-                    "reason": str(r[3]) if len(r) > 3 and r[3] is not None else "decremented_by_qa_scan",
-                }
-                for r in decremented_rows
-            ]
+
+            awaiting_samples = [_enrich_sample(r, "unknown") for r in awaiting_rows]
+            decremented_samples = [_enrich_sample(r, "decremented_by_qa_scan") for r in decremented_rows]
 
             return {
                 "summary": {
