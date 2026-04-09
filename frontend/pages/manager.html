@@ -735,7 +735,7 @@
         }
 
         async function ensureManagerAccess() {
-            const existingToken = sessionStorage.getItem('authToken') || localStorage.getItem('deviceToken');
+            const existingToken = sessionStorage.getItem('authToken');
             if (existingToken) {
                 try {
                     const statusRes = await fetch('/auth/status', {
@@ -780,9 +780,6 @@
             }
 
             sessionStorage.setItem('authToken', loginData.token);
-            if (loginData.device_token) {
-                localStorage.setItem('deviceToken', loginData.device_token);
-            }
             authToken = loginData.token;
             userRole = loginData.role;
             return true;

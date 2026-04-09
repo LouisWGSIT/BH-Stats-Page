@@ -671,9 +671,6 @@
             }
 
             sessionStorage.setItem('authToken', loginData.token);
-            if (loginData.device_token) {
-                localStorage.setItem('deviceToken', loginData.device_token);
-            }
             authToken = loginData.token;
             userRole = loginData.role;
             return true;
@@ -1134,9 +1131,38 @@
                     if (a.added_date) summaryHtml += `• Added: ${a.added_date}<br>`;
                     summaryHtml += `</div>`;
                 }
-                        const stageColor = event.stage.includes('QA') ? '#667eea' 
-                            : event.stage.includes('Sorting') ? '#10b981'
-                            : event.stage.includes('Erasure') ? '#f59e0b'
+
+                if (data.pallet_info && data.pallet_info.pallet_id) {
+                    const p = data.pallet_info;
+                    summaryHtml += `<div style="margin-top:10px; padding:10px; background:#e8f5e9; border-radius:6px;">`;
+                    summaryHtml += `<strong>Pallet Info:</strong><br>`;
+                    summaryHtml += `• Pallet ID: ${p.pallet_id}<br>`;
+                    if (p.destination) summaryHtml += `• Destination: ${p.destination}<br>`;
+                    if (p.location) summaryHtml += `• Location: ${p.location}<br>`;
+                    if (p.status) summaryHtml += `• Status: ${p.status}<br>`;
+                    summaryHtml += `</div>`;
+                } else {
+                    summaryHtml += `<div style="margin-top:10px; padding:10px; background:#fff3cd; border-radius:6px;">`;
+                    summaryHtml += `<strong>⚠️ No Pallet Assignment Found</strong>`;
+                    summaryHtml += `</div>`;
+                }
+
+                summaryHtml += renderInsights(data.insights, data.smart_advisory);
+                summaryHtml += renderBottleneck(data.bottleneck, 'Destination Bottleneck Snapshot');
+
+                resultDiv.innerHTML = summaryHtml;
+                resultDiv.className = 'result info';
+                resultDiv.style.display = 'block';
+
+                if (data.timeline && data.timeline.length > 0) {
+                    let timelineHtml = '<div style="margin-top:15px;">';
+                    data.timeline.forEach((event) => {
+                        const stageColor = event.stage.includes('QA')
+                            ? '#667eea'
+                            : event.stage.includes('Sorting')
+                            ? '#10b981'
+                            : event.stage.includes('Erasure')
+                            ? '#f59e0b'
                             : '#666';
                         timelineHtml += `
                             <div style="display:flex; gap:15px; margin-bottom:12px; padding:10px; background:white; border-radius:6px; border-left:4px solid ${stageColor};">
@@ -1145,7 +1171,7 @@
                                     <strong style="color:${stageColor};">${event.stage}</strong>
                                     ${event.user ? `<span style="margin-left:10px; color:#666;">by ${event.user}</span>` : ''}
                                     ${event.location ? `<span style="margin-left:10px; color:#999;">@ ${event.location}</span>` : ''}
-                                    <div style="font-size:11px; color:#999;">Source: ${event.source}</div>
+                                    <div style="font-size:11px; color:#999;">Source: ${event.source || ''}</div>
                                 </div>
                             </div>
                         `;

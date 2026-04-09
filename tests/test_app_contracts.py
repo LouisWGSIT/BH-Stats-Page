@@ -761,6 +761,84 @@ def test_metrics_summary_endpoint_available(client):
     assert isinstance(body, dict)
 
 
+def test_local_network_can_read_dashboard_api_without_auth(client):
+    # Trusted local-network viewers should be able to read dashboard APIs
+    # without a manager/admin token.
+    r = client.get(
+        "/api/qa-dashboard?period=today",
+        headers={"X-Forwarded-For": "192.168.1.10"},
+    )
+    assert r.status_code == 200
+
+
+def test_local_network_still_cannot_access_admin_without_auth(client):
+    # Local-network trust must not bypass /admin protections.
+    r = client.get(
+        "/admin/connected-devices",
+        headers={"X-Forwarded-For": "192.168.1.10"},
+    )
+    assert r.status_code == 401
+
+
+def test_overall_sections_overrides_stale_daily_done_counts(client, app_module, monkeypatch):
+    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+    stale_payload = {
+        "sections": [
+            {
+                "sectionKey": "qa",
+                "sectionName": "QA",
+                "currentQueue": 2775,
+                "subMetrics": [
+                    {"label": "DB Awaiting QA", "value": 2775},
+                    {"label": "Non-DB Awaiting QA", "value": 0},
+                    {"label": "Completed QA Today", "value": 588},
+                ],
+                "updatedAt": now_iso,
+                "isLive": True,
+                "source": "snapshot",
+            },
+            {
+                "sectionKey": "sorting",
+                "sectionName": "Sorting",
+                "currentQueue": 8708,
+                "subMetrics": [
+                    {"label": "Awaiting Sorting", "value": 8708},
+                    {"label": "Sorted Today", "value": 123},
+                    {"label": "Sorting Output Last Hour", "value": 10},
+                ],
+                "updatedAt": now_iso,
+                "isLive": True,
+                "source": "snapshot",
+            },
+        ]
+    }
+
+    def _fake_get_snapshot(key):
+        if key == "overall_sections":
+            return {"payload": stale_payload, "updatedAt": now_iso}
+        return None
+
+    monkeypatch.setattr(app_module.db, "get_dashboard_snapshot", _fake_get_snapshot)
+    monkeypatch.setattr(app_module.qa_export, "get_weekly_qa_comparison", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(app_module.qa_export, "get_de_qa_comparison", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(app_module.qa_export, "get_non_de_qa_comparison", lambda *_args, **_kwargs: {})
+
+    r = client.get("/overall/sections")
+    assert r.status_code == 200
+    body = r.json()
+    sections = body.get("sections") or []
+    qa = next((s for s in sections if s.get("sectionKey") == "qa"), None)
+    sorting = next((s for s in sections if s.get("sectionKey") == "sorting"), None)
+    assert qa is not None
+    assert sorting is not None
+
+    qa_done = next((m.get("value") for m in qa.get("subMetrics", []) if str(m.get("label", "")).lower() == "completed qa today"), None)
+    sorting_done = next((m.get("value") for m in sorting.get("subMetrics", []) if str(m.get("label", "")).lower() == "sorted today"), None)
+    assert qa_done == 0
+    assert sorting_done == 0
+
+
 def test_analytics_hourly_totals_endpoint_available(client):
     r = client.get("/analytics/hourly-totals", headers={"Authorization": "Bearer test-manager-pass"})
     assert r.status_code == 200

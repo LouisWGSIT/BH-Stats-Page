@@ -493,6 +493,52 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             ]
         }
 
+    def _apply_live_daily_totals(payload: dict | None) -> dict | None:
+        if not isinstance(payload, dict):
+            return payload
+        sections = payload.get("sections")
+        if not isinstance(sections, list):
+            return payload
+
+        try:
+            qa_today = _get_qa_today_totals()
+        except Exception:
+            return payload
+
+        qa_done = int(qa_today.get("combinedScans", 0) or 0)
+        sorting_done = int(qa_today.get("qaAppScans", 0) or 0)
+        qa_source = str(qa_today.get("source") or "")
+
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            key = str(section.get("sectionKey") or "").lower()
+            rows = section.get("subMetrics")
+            if not isinstance(rows, list):
+                continue
+
+            if key == "qa":
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    if str(row.get("label") or "").strip().lower() == "completed qa today":
+                        row["value"] = qa_done
+                if qa_source and qa_source != "mock":
+                    section["isLive"] = True
+                    section["source"] = f"{section.get('source', 'snapshot')}+{qa_source}"
+
+            if key == "sorting":
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    if str(row.get("label") or "").strip().lower() == "sorted today":
+                        row["value"] = sorting_done
+                if qa_source and qa_source != "mock":
+                    section["isLive"] = True
+                    section["source"] = f"{section.get('source', 'snapshot')}+{qa_source}"
+
+        return payload
+
     def _build_sections_fallback_payload(reason: str) -> dict:
         now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         return {
@@ -915,20 +961,20 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         payload, age = _get_snapshot_payload(snapshot_key)
         has_snapshot = isinstance(payload, dict)
         if has_snapshot and age is not None and age <= float(snapshot_ttl_seconds):
-            return payload
+            return _apply_live_daily_totals(payload)
 
         # If we have a stale snapshot, prefer serving it over returning full mock fallback.
         if has_snapshot and not _should_attempt_refresh("sections"):
-            return payload
+            return _apply_live_daily_totals(payload)
 
         try:
             fresh_payload = await _refresh_sections_with_budget()
             _store_snapshot_payload(snapshot_key, fresh_payload, "overall_sections_build")
-            return fresh_payload
+            return _apply_live_daily_totals(fresh_payload)
         except Exception:
             if has_snapshot:
-                return payload
-            return _build_sections_fallback_payload("refresh_timeout_or_error")
+                return _apply_live_daily_totals(payload)
+            return _apply_live_daily_totals(_build_sections_fallback_payload("refresh_timeout_or_error"))
 
     @router.get("/overall/qa-awaiting-diagnostics")
     async def overall_qa_awaiting_diagnostics(request: Request):
