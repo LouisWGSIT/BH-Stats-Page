@@ -879,6 +879,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                               AND TRIM(COALESCE(a.stockid, '')) <> ''
                               AND a.de_completed_date IS NOT NULL
                               AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                                                            AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) NOT LIKE CONCAT('A100', '%')
                               AND (
                                     q.last_sort_ts IS NULL
                                     OR a.de_completed_date > q.last_sort_ts
@@ -908,7 +909,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
 
                         awaiting_sorting = max(0, base_awaiting)
 
-                        source = "mariadb:ITAD_QA_App+ITAD_asset_info"
+                        source = "mariadb:ITAD_QA_App+ITAD_asset_info(A100-excluded)"
                         if qa_today.get("source") != "mock":
                             source = f"{source}+{qa_today.get('source')}"
                         is_live = True

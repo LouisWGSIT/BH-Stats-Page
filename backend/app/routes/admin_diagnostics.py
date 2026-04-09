@@ -338,7 +338,7 @@ def create_admin_diagnostics_router(
                       AND TRIM(COALESCE(a.stockid, '')) <> ''
                       AND a.de_completed_date IS NOT NULL
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                                            AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) NOT LIKE 'A100%'
+                                            AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) NOT LIKE CONCAT('A100', '%')
                       AND (
                             q.last_qa_with_user IS NULL
                             OR a.de_completed_date > q.last_qa_with_user
@@ -369,7 +369,7 @@ def create_admin_diagnostics_router(
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                                             AND (
                                                         q.last_qa_with_user >= a.de_completed_date
-                                                        OR UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%'
+                                                        OR UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE CONCAT('A100', '%')
                                                     )
                     """,
                     (days,),
@@ -399,7 +399,7 @@ def create_admin_diagnostics_router(
                       AND TRIM(COALESCE(a.stockid, '')) <> ''
                       AND a.de_completed_date IS NOT NULL
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                                            AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) NOT LIKE 'A100%'
+                                            AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) NOT LIKE CONCAT('A100', '%')
                     """,
                     (days,),
                 )
@@ -432,7 +432,7 @@ def create_admin_diagnostics_router(
                       AND TRIM(COALESCE(a.stockid, '')) <> ''
                       AND a.de_completed_date IS NOT NULL
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                      AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%'
+                      AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE CONCAT('A100', '%')
                     """,
                     (days,),
                 )
@@ -463,7 +463,7 @@ def create_admin_diagnostics_router(
                         q.last_qa_with_user,
                         a.pallet_id,
                         CASE
-                            WHEN UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%' THEN 'decremented_by_a100_pallet'
+                            WHEN UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE CONCAT('A100', '%') THEN 'decremented_by_a100_pallet'
                             WHEN q.last_qa_with_user IS NULL THEN 'missing_sorting_with_username'
                             WHEN a.de_completed_date > q.last_qa_with_user THEN 'sorting_older_than_qa_completed'
                             ELSE 'unknown'
@@ -481,7 +481,7 @@ def create_admin_diagnostics_router(
                       AND TRIM(COALESCE(a.stockid, '')) <> ''
                       AND a.de_completed_date IS NOT NULL
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                                            AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) NOT LIKE 'A100%'
+                                            AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) NOT LIKE CONCAT('A100', '%')
                       AND (
                             q.last_qa_with_user IS NULL
                             OR a.de_completed_date > q.last_qa_with_user
@@ -502,7 +502,7 @@ def create_admin_diagnostics_router(
                         q.last_qa_with_user,
                         a.pallet_id,
                         CASE
-                            WHEN UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%' THEN 'decremented_by_a100_pallet'
+                            WHEN UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE CONCAT('A100', '%') THEN 'decremented_by_a100_pallet'
                             ELSE 'decremented_by_sorting_scan'
                         END AS reason
                     FROM ITAD_asset_info a
@@ -520,10 +520,10 @@ def create_admin_diagnostics_router(
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                                             AND (
                                                         q.last_qa_with_user >= a.de_completed_date
-                                                        OR UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%'
+                                                        OR UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE CONCAT('A100', '%')
                                                     )
                                         ORDER BY
-                                                CASE WHEN UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%' THEN 1 ELSE 0 END DESC,
+                                                CASE WHEN UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE CONCAT('A100', '%') THEN 1 ELSE 0 END DESC,
                                                 q.last_qa_with_user DESC
                     LIMIT %s
                     """,
