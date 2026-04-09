@@ -272,6 +272,21 @@
             margin-top: 15px;
         }
 
+        
+        .filterable-card {
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+        }
+        
+        .filterable-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+        }
+        
+        .filterable-card.active {
+            border-left-color: #10b981;
+            box-shadow: 0 0 0 2px rgba(16,185,129,0.18);
+        }
         .stat-card {
             background: white;
             padding: 15px;
@@ -1119,80 +1134,6 @@
                     if (a.added_date) summaryHtml += `• Added: ${a.added_date}<br>`;
                     summaryHtml += `</div>`;
                 }
-                
-                // Pallet info
-                if (data.pallet_info && data.pallet_info.pallet_id) {
-                    const p = data.pallet_info;
-                    summaryHtml += `<div style="margin-top:10px; padding:10px; background:#e8f5e9; border-radius:6px;">`;
-                    summaryHtml += `<strong>Pallet Info:</strong><br>`;
-                    summaryHtml += `• Pallet ID: ${p.pallet_id}<br>`;
-                    if (p.destination) summaryHtml += `• Destination: ${p.destination}<br>`;
-                    if (p.location) summaryHtml += `• Location: ${p.location}<br>`;
-                    if (p.status) summaryHtml += `• Status: ${p.status}<br>`;
-                    summaryHtml += `</div>`;
-                } else {
-                    summaryHtml += `<div style="margin-top:10px; padding:10px; background:#fff3cd; border-radius:6px;">`;
-                    summaryHtml += `<strong>⚠️ No Pallet Assignment Found</strong>`;
-                    summaryHtml += `</div>`;
-                }
-
-                // Likely-location hypotheses
-                if (data.hypotheses && data.hypotheses.length > 0) {
-                    const safeStock = stockId ? stockId.replace(/[^a-zA-Z0-9_-]/g, '_') : 'unknown';
-                    summaryHtml += `<div style="margin-top:12px; padding:10px; background:#eef2ff; border-radius:6px;"><strong>Top location suggestions</strong><br>`;
-                    summaryHtml += `<div class="badge-legend">Legend: <span class="badge most-recent">Most recent</span> <span class="badge confirmed">Confirmed</span></div>`;
-                    let overallMostRecentAssigned = false;
-                    const displayType = (t) => {
-                        const map = { physical: 'Sorting', postsorting: 'Post Sorting', stage: 'QA', erasure: 'Erasure' };
-                        const key = (t || '').toString().toLowerCase();
-                        return map[key] || t;
-                    };
-                    const postSortingRe = /rf[-_ ]?pend|rf[-_ ]?room|breakfix|quarantine|used[_ ]?approved/i;
-                    data.hypotheses.forEach((h, idx) => {
-                        const score = h.score || 0;
-                        const last = h.last_seen ? ` (last seen ${h.last_seen})` : '';
-                        let badgeType = h.type || (h.is_blancco ? 'erasure' : 'physical');
-                        // If the location text matches post-sorting patterns, label accordingly
-                        if ((!badgeType || badgeType === 'physical') && h.location && postSortingRe.test(h.location)) {
-                            badgeType = 'postsorting';
-                        }
-                        const badge = displayType(badgeType);
-                        const evList = (h.evidence || []).slice(0,3).map(e => formatEvidence(e)).filter(Boolean).join(', ');
-                        const aiId = `ai-${safeStock}-${idx}`;
-                        // build badges using CSS classes
-                        let badgeHtml = '';
-                        if (!overallMostRecentAssigned && h.is_most_recent) { badgeHtml += `<span class="badge most-recent">Most recent</span>`; overallMostRecentAssigned = true; }
-                        if (h.is_confirmed) badgeHtml += `<span class="badge confirmed">Confirmed</span>`;
-
-                        summaryHtml += `<div style="margin-top:8px;">
-                            <div style="font-weight:700; display:flex; align-items:center; gap:8px;">
-                                <div style="flex:1;">${h.location}${last} <span style="font-size:11px;color:#666;margin-left:8px;">[${badge}]</span></div>
-                                <div>${badgeHtml}</div>
-                            </div>
-                            <div style="height:10px; background:#ddd; border-radius:4px; overflow:hidden; width:200px; margin-top:6px;"><div style="width:${score}%; height:10px; background:linear-gradient(90deg,#60a5fa,#7c3aed);"></div></div>
-                            <div style="font-size:12px;color:#444;margin-top:6px;">Evidence: ${ evList }</div>
-                            <div style="height:8px;"></div>
-                            <div style="margin-top:8px;">
-                                <button class="btn-confirm" onclick="(function(){ const note = prompt('Optional note for confirmation (leave blank if none):'); confirmDeviceLocation(stockId, h.location, note); })()">Confirm</button>
-                            </div>
-                        </div>`;
-                    });
-                    summaryHtml += `</div>`;
-                }
-
-                summaryHtml += renderInsights(data.insights);
-                summaryHtml += renderBottleneck(data.bottleneck, 'Destination Bottleneck Snapshot');
-
-                resultDiv.innerHTML = summaryHtml;
-                resultDiv.className = 'result info';
-                resultDiv.style.display = 'block';
-
-                // Show timeline
-
-                // AI explanations are shown inline (no toggle required)
-                if (data.timeline && data.timeline.length > 0) {
-                    let timelineHtml = '<div style="margin-top:15px;">';
-                    data.timeline.forEach((event, idx) => {
                         const stageColor = event.stage.includes('QA') ? '#667eea' 
                             : event.stage.includes('Sorting') ? '#10b981'
                             : event.stage.includes('Erasure') ? '#f59e0b'
@@ -1470,6 +1411,10 @@
             }
         }
 
+        let _sortingAwaitingSamples = [];
+        let _sortingDecrementedSamples = [];
+        let _sortingEvidenceFilter = 'all';
+
         async function loadSortingEvidence() {
             const daysSel = document.getElementById('sortingEvidenceDays');
             const limitSel = document.getElementById('sortingEvidenceLimit');
@@ -1497,14 +1442,18 @@
                 const awaiting = Array.isArray(data.awaitingSamples) ? data.awaitingSamples : [];
                 const decremented = Array.isArray(data.decrementedSamples) ? data.decrementedSamples : [];
 
+                _sortingAwaitingSamples = awaiting;
+                _sortingDecrementedSamples = decremented;
+                _sortingEvidenceFilter = 'all';
+
                 summary.innerHTML = `
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
-                        <div class="stat-card"><div class="stat-value">${s.candidateStockids || 0}</div><div class="stat-label">Candidate StockIDs</div></div>
-                        <div class="stat-card"><div class="stat-value">${s.awaitingSorting || 0}</div><div class="stat-label">Awaiting Sorting</div></div>
-                        <div class="stat-card"><div class="stat-value">${s.decrementedByQa || 0}</div><div class="stat-label">Decremented by QA</div></div>
-                        <div class="stat-card"><div class="stat-value">${s.missingQaWithUsername || 0}</div><div class="stat-label">Missing QA Username</div></div>
-                        <div class="stat-card"><div class="stat-value">${s.qaOlderThanDeCompleted || 0}</div><div class="stat-label">QA Older Than DE</div></div>
-                        <div class="stat-card"><div class="stat-value">${s.blankUsernameAfterDe || 0}</div><div class="stat-label">Blank Username After DE</div></div>
+                        <div class="stat-card filterable-card active" data-sort-filter="all"><div class="stat-value">${s.candidateStockids || 0}</div><div class="stat-label">Candidate StockIDs</div></div>
+                        <div class="stat-card filterable-card" data-sort-filter="awaiting"><div class="stat-value">${s.awaitingSorting || 0}</div><div class="stat-label">Awaiting Sorting</div></div>
+                        <div class="stat-card filterable-card" data-sort-filter="decremented"><div class="stat-value">${s.decrementedByQa || 0}</div><div class="stat-label">Decremented by QA</div></div>
+                        <div class="stat-card filterable-card" data-sort-filter="missing_qa_with_username"><div class="stat-value">${s.missingQaWithUsername || 0}</div><div class="stat-label">Missing QA Username</div></div>
+                        <div class="stat-card filterable-card" data-sort-filter="qa_older_than_de_completed"><div class="stat-value">${s.qaOlderThanDeCompleted || 0}</div><div class="stat-label">QA Older Than DE</div></div>
+                        <div class="stat-card filterable-card" data-sort-filter="blank_username_after_de"><div class="stat-value">${s.blankUsernameAfterDe || 0}</div><div class="stat-label">Blank Username After DE</div></div>
                         <div class="stat-card"><div class="stat-value">${s.deCompletedByPresent || 0}</div><div class="stat-label">DE Completed By Present</div></div>
                         <div class="stat-card"><div class="stat-value">${s.reconciliationGap || 0}</div><div class="stat-label">Reconciliation Gap</div></div>
                         <div class="stat-card"><div class="stat-value">${s.sampleAwaitingCount || awaiting.length}</div><div class="stat-label">Awaiting Samples</div></div>
@@ -1515,49 +1464,72 @@
                 `;
                 summary.style.display = 'block';
 
-                awaitingBody.innerHTML = '';
-                awaiting.forEach((row) => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td style="font-size:12px;">${row.stockid || ''}</td>
-                        <td style="font-size:12px;">${formatActivityTimeUk(row.deCompletedDate)}</td>
-                        <td style="font-size:12px;">${row.deCompletedBy || ''}</td>
-                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAddedDate)}</td>
-                        <td style="font-size:12px;">${row.lastQaUsername || ''}</td>
-                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAnyDate)}</td>
-                        <td style="font-size:12px;">${row.lastQaAnyUsername || ''}</td>
-                        <td style="font-size:12px;">${row.hoursSinceDeCompleted != null ? row.hoursSinceDeCompleted.toFixed(1) : ''}</td>
-                        <td style="font-size:12px;">${row.lagHours != null ? row.lagHours.toFixed(1) : ''}</td>
-                        <td style="font-size:12px;">${row.reason || ''}</td>
-                    `;
-                    awaitingBody.appendChild(tr);
+                summary.querySelectorAll('[data-sort-filter]').forEach((card) => {
+                    card.addEventListener('click', () => {
+                        _sortingEvidenceFilter = card.getAttribute('data-sort-filter') || 'all';
+                        summary.querySelectorAll('[data-sort-filter]').forEach((el) => el.classList.remove('active'));
+                        card.classList.add('active');
+                        renderSortingEvidenceTables();
+                    });
                 });
-                awaitingWrap.style.display = 'block';
 
-                decrementedBody.innerHTML = '';
-                decremented.forEach((row) => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td style="font-size:12px;">${row.stockid || ''}</td>
-                        <td style="font-size:12px;">${formatActivityTimeUk(row.deCompletedDate)}</td>
-                        <td style="font-size:12px;">${row.deCompletedBy || ''}</td>
-                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAddedDate)}</td>
-                        <td style="font-size:12px;">${row.lastQaUsername || ''}</td>
-                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAnyDate)}</td>
-                        <td style="font-size:12px;">${row.lastQaAnyUsername || ''}</td>
-                        <td style="font-size:12px;">${row.hoursSinceDeCompleted != null ? row.hoursSinceDeCompleted.toFixed(1) : ''}</td>
-                        <td style="font-size:12px;">${row.lagHours != null ? row.lagHours.toFixed(1) : ''}</td>
-                        <td style="font-size:12px;">${row.reason || ''}</td>
-                    `;
-                    decrementedBody.appendChild(tr);
-                });
-                decrementedWrap.style.display = 'block';
+                renderSortingEvidenceTables();
             } catch (err) {
                 summary.style.display = 'block';
                 summary.innerHTML = `<div class="result error" style="display:block;">Failed to load sorting evidence: ${err.message}</div>`;
                 awaitingWrap.style.display = 'none';
                 decrementedWrap.style.display = 'none';
             }
+        }
+        
+        function renderSortingEvidenceTables() {
+            const awaitingWrap = document.getElementById('sortingEvidenceAwaitingWrap');
+            const awaitingBody = document.getElementById('sortingEvidenceAwaitingBody');
+            const decrementedWrap = document.getElementById('sortingEvidenceDecrementedWrap');
+            const decrementedBody = document.getElementById('sortingEvidenceDecrementedBody');
+            if (!awaitingWrap || !awaitingBody || !decrementedWrap || !decrementedBody) return;
+        
+            const filter = _sortingEvidenceFilter || 'all';
+            let awaitingRows = _sortingAwaitingSamples || [];
+            let decrementedRows = _sortingDecrementedSamples || [];
+        
+            if (filter === 'missing_qa_with_username' || filter === 'qa_older_than_de_completed') {
+                awaitingRows = awaitingRows.filter((r) => (r.reason || '') === filter);
+                decrementedRows = [];
+            } else if (filter === 'blank_username_after_de') {
+                awaitingRows = awaitingRows.filter((r) => (r.reason || '').includes('blank_username_after_de'));
+                decrementedRows = [];
+            } else if (filter === 'awaiting') {
+                decrementedRows = [];
+            } else if (filter === 'decremented') {
+                awaitingRows = [];
+            }
+        
+            const renderRows = (tbody, rows) => {
+                tbody.innerHTML = '';
+                rows.forEach((row) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-size:12px;">${row.stockid || ''}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.deCompletedDate)}</td>
+                        <td style="font-size:12px;">${row.deCompletedBy || ''}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAddedDate)}</td>
+                        <td style="font-size:12px;">${row.lastQaUsername || ''}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAnyDate)}</td>
+                        <td style="font-size:12px;">${row.lastQaAnyUsername || ''}</td>
+                        <td style="font-size:12px;">${row.hoursSinceDeCompleted != null ? Number(row.hoursSinceDeCompleted).toFixed(1) : ''}</td>
+                        <td style="font-size:12px;">${row.lagHours != null ? Number(row.lagHours).toFixed(1) : ''}</td>
+                        <td style="font-size:12px;">${row.reason || ''}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            };
+        
+            renderRows(awaitingBody, awaitingRows);
+            renderRows(decrementedBody, decrementedRows);
+        
+            awaitingWrap.style.display = awaitingRows.length ? 'block' : 'none';
+            decrementedWrap.style.display = decrementedRows.length ? 'block' : 'none';
         }
 
         // -------- Dashboard Activity (admin) --------

@@ -329,6 +329,28 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             "source": "mock",
         }
         try:
+            snap = db_module.get_dashboard_snapshot("qa_dashboard:today")
+            payload = snap.get("payload") if isinstance(snap, dict) else None
+            summary = payload.get("summary") if isinstance(payload, dict) else None
+            snap_updated_at = _parse_snapshot_ts(snap.get("updatedAt") if isinstance(snap, dict) else None)
+            # Guard against previous-day cached "today" values carrying over after midnight.
+            is_current_day_snapshot = bool(
+                snap_updated_at and snap_updated_at.astimezone().date() == date.today()
+            )
+            if isinstance(summary, dict) and is_current_day_snapshot:
+                qa_app = int(summary.get("totalScans", 0) or 0)
+                de = int(summary.get("deQaScans", 0) or 0)
+                non_de = int(summary.get("nonDeQaScans", 0) or 0)
+                combined = int(summary.get("combinedScans", qa_app + de + non_de) or 0)
+                out.update({
+                    "qaAppScans": qa_app,
+                    "deQaScans": de,
+                    "nonDeQaScans": non_de,
+                    "combinedScans": combined,
+                    "source": "sqlite:qa_dashboard_today_snapshot",
+                })
+                return out
+
             start_date, end_date, _ = qa_export.get_week_dates("today")
             qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date) or {}
             de_data = qa_export.get_de_qa_comparison(start_date, end_date) or {}
