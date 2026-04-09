@@ -1648,6 +1648,7 @@
                         <div class="stat-card filterable-card active" data-erasure-filter="all"><div class="stat-value">${samples.length}</div><div class="stat-label">All Sample Rows</div></div>
                         <div class="stat-card filterable-card" data-erasure-filter="awaiting_yes"><div class="stat-value">${s.sampleAwaitingQaByRule || 0}/${samples.length}</div><div class="stat-label">Awaiting QA By Rule (Sample)</div></div>
                         <div class="stat-card filterable-card" data-erasure-filter="awaiting_no"><div class="stat-value">${s.sampleDeductedByQaAfterErasure || 0}/${samples.length}</div><div class="stat-label">Deducted By QA Timestamp (Sample)</div></div>
+                        <div class="stat-card filterable-card" data-erasure-filter="deducted_7_digit_stockid"><div class="stat-value">${s.sampleExcludedBy7DigitStockid || 0}</div><div class="stat-label">Deducted 7-Digit StockID</div></div>
                         <div class="stat-card filterable-card" data-erasure-filter="qa_match_yes"><div class="stat-value">${s.mariaQaMatchesInSample || 0}/${samples.length}</div><div class="stat-label">QA Match = yes (Sample)</div></div>
                         <div class="stat-card filterable-card" data-erasure-filter="qa_match_yes_awaiting_yes"><div class="stat-value">${samples.filter((r) => r.qa_match && r.awaiting_qa_by_rule === true).length}</div><div class="stat-label">QA Match + Awaiting QA</div></div>
                         <div class="stat-card"><div class="stat-value">${s.erasuresSuccessCount || 0}</div><div class="stat-label">SQLite erasures (success)</div></div>
@@ -1686,6 +1687,7 @@
                 const f = _erasureEvidenceFilter || 'all';
                 if (f === 'awaiting_yes') return row.awaiting_qa_by_rule === true;
                 if (f === 'awaiting_no') return row.awaiting_qa_by_rule === false;
+                if (f === 'deducted_7_digit_stockid') return (row.qa_status_reason || '') === 'deducted_itad_7_digit_stockid';
                 if (f === 'qa_match_yes') return !!row.qa_match;
                 if (f === 'qa_match_yes_awaiting_yes') return !!row.qa_match && row.awaiting_qa_by_rule === true;
                 return true;

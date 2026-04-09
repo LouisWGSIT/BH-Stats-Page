@@ -142,6 +142,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         result = {
             "dbAwaitingQa": 0,
             "completedAfterErasure": 0,
+            "excludedBy7DigitStockid": 0,
             "considered": 0,
             "samples": [],
             "source": "mock",
@@ -152,6 +153,9 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 if v is None:
                     return ""
                 return re.sub(r"[^A-Za-z0-9]", "", str(v)).upper()
+
+            def _is_seven_digit_stockid(v):
+                return bool(re.fullmatch(r"\d{7}", str(v or "").strip()))
 
             start_dt = datetime.now(UTC) - timedelta(days=qa_compare_lookback_days)
             start_iso = start_dt.isoformat()
@@ -219,6 +223,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             try:
                 awaiting = 0
                 completed = 0
+                excluded_seven_digit = 0
                 considered = 0
                 samples = []
                 batch_size = 500
@@ -292,6 +297,12 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                                 samples.append({"key": key, "stockid": None, "reason": "missing_in_asset_info", "erasureTs": str(er_ts) if er_ts else None, "qaTs": None})
                             continue
 
+                        if _is_seven_digit_stockid(sid):
+                            excluded_seven_digit += 1
+                            if include_samples and len(samples) < sample_limit:
+                                samples.append({"key": key, "stockid": sid, "reason": "excluded_itad_7_digit_stockid", "erasureTs": str(er_ts) if er_ts else None, "qaTs": None})
+                            continue
+
                         qa_ts = qa_map.get(sid)
                         if not qa_ts:
                             awaiting += 1
@@ -310,9 +321,10 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 result.update({
                     "dbAwaitingQa": int(awaiting),
                     "completedAfterErasure": int(completed),
+                    "excludedBy7DigitStockid": int(excluded_seven_digit),
                     "considered": int(considered),
                     "samples": samples if include_samples else [],
-                    "source": "local_erasures_vs_mariadb",
+                    "source": "local_erasures_vs_mariadb(exclude_7_digit_stockid)",
                     "includeAuditMaster": qa_include_audit_master,
                 })
                 return result

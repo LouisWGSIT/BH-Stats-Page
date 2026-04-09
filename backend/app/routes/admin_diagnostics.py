@@ -196,6 +196,9 @@ def create_admin_diagnostics_router(
             except Exception:
                 return None
 
+        def _is_seven_digit_stockid(v):
+            return bool(re.fullmatch(r"\d{7}", str(v or "").strip()))
+
         start_iso = (datetime.now(UTC) - timedelta(days=days)).isoformat()
         summary = {
             "windowDays": days,
@@ -206,6 +209,7 @@ def create_admin_diagnostics_router(
             "mariaQaMatchesInSample": 0,
             "sampleAwaitingQaByRule": 0,
             "sampleDeductedByQaAfterErasure": 0,
+            "sampleExcludedBy7DigitStockid": 0,
         }
         samples = []
 
@@ -395,7 +399,11 @@ def create_admin_diagnostics_router(
             qa_status_reason = "no_asset_match"
             qa_lag_hours = None
             if has_asset:
-                if erasure_dt and qa_dt:
+                if _is_seven_digit_stockid(stockid):
+                    awaiting_by_rule = False
+                    qa_status_reason = "deducted_itad_7_digit_stockid"
+                    summary["sampleExcludedBy7DigitStockid"] += 1
+                elif erasure_dt and qa_dt:
                     qa_lag_hours = round((qa_dt - erasure_dt).total_seconds() / 3600.0, 2)
                     if qa_dt >= erasure_dt:
                         awaiting_by_rule = False
