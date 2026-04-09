@@ -1688,7 +1688,7 @@
                 const f = _erasureEvidenceFilter || 'all';
                 if (f === 'awaiting_yes') return row.awaiting_qa_by_rule === true;
                 if (f === 'awaiting_no') return row.awaiting_qa_by_rule === false;
-                if (f === 'deducted_7_digit_stockid') return (row.qa_status_reason || '') === 'deducted_itad_7_digit_stockid';
+                if (f === 'deducted_7_digit_stockid') return (row.qa_status_reason || '').startsWith('deducted_itad_7_digit');
                 if (f === 'qa_match_yes') return !!row.qa_match;
                 if (f === 'qa_match_yes_awaiting_yes') return !!row.qa_match && row.awaiting_qa_by_rule === true;
                 return true;

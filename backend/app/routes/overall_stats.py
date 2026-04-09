@@ -336,6 +336,15 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                         er_ts = key_to_erasure.get(key) or key_to_erasure_norm.get(_norm_key(key))
                         sid = key_to_stockid.get(key) or key_to_stockid_norm.get(_norm_key(key))
                         considered += 1
+
+                        # Exclude ITAD lane early when incoming key itself is a 7-digit asset number,
+                        # even if the asset is not yet present in MariaDB.
+                        if _is_seven_digit_stockid(key):
+                            excluded_seven_digit += 1
+                            if include_samples and len(samples) < sample_limit:
+                                samples.append({"key": key, "stockid": None, "reason": "excluded_itad_7_digit_input_key", "erasureTs": str(er_ts) if er_ts else None, "qaTs": None})
+                            continue
+
                         if not sid:
                             awaiting += 1
                             if include_samples and len(samples) < sample_limit:

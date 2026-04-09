@@ -443,7 +443,11 @@ def create_admin_diagnostics_router(
             awaiting_by_rule = None
             qa_status_reason = "no_asset_match"
             qa_lag_hours = None
-            if has_asset:
+            if _is_seven_digit_stockid(payload_stockid) or _is_seven_digit_stockid(key_id):
+                awaiting_by_rule = False
+                qa_status_reason = "deducted_itad_7_digit_input_key"
+                summary["sampleExcludedBy7DigitStockid"] += 1
+            elif has_asset:
                 if _is_seven_digit_stockid(stockid):
                     awaiting_by_rule = False
                     qa_status_reason = "deducted_itad_7_digit_stockid"
