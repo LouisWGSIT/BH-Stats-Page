@@ -493,6 +493,47 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             ]
         }
 
+    def _get_sorting_awaiting_live_count() -> tuple[int | None, str | None]:
+        """Compute awaiting sorting from live MariaDB data with A100 pallet exclusion."""
+        try:
+            conn = qa_export.get_mariadb_connection()
+            if not conn:
+                return None, None
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    """
+                    SELECT COUNT(DISTINCT a.stockid)
+                    FROM ITAD_asset_info a
+                    LEFT JOIN (
+                        SELECT stockid, MAX(added_date) AS last_sort_ts
+                        FROM ITAD_QA_App
+                        WHERE stockid IS NOT NULL
+                          AND TRIM(COALESCE(stockid, '')) <> ''
+                          AND TRIM(COALESCE(username, '')) <> ''
+                        GROUP BY stockid
+                    ) q ON q.stockid = a.stockid
+                    WHERE a.stockid IS NOT NULL
+                      AND TRIM(COALESCE(a.stockid, '')) <> ''
+                      AND a.de_completed_date IS NOT NULL
+                      AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                      AND LEFT(UPPER(TRIM(COALESCE(a.pallet_id, ''))), 4) <> 'A100'
+                      AND (
+                            q.last_sort_ts IS NULL
+                            OR a.de_completed_date > q.last_sort_ts
+                          )
+                    """,
+                    (sorting_lookback_days,),
+                )
+                row = cur.fetchone()
+                live_count = int(row[0]) if row and row[0] is not None else 0
+                return max(0, live_count), "mariadb:ITAD_QA_App+ITAD_asset_info(A100-excluded)"
+            finally:
+                cur.close()
+                conn.close()
+        except Exception:
+            return None, None
+
     def _apply_live_daily_totals(payload: dict | None) -> dict | None:
         if not isinstance(payload, dict):
             return payload
@@ -504,6 +545,8 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             qa_today = _get_qa_today_totals()
         except Exception:
             return payload
+
+        sorting_awaiting_live, sorting_live_source = _get_sorting_awaiting_live_count()
 
         qa_done = int(qa_today.get("combinedScans", 0) or 0)
         sorting_done = int(qa_today.get("qaAppScans", 0) or 0)
@@ -531,11 +574,20 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 for row in rows:
                     if not isinstance(row, dict):
                         continue
+                    if sorting_awaiting_live is not None and str(row.get("label") or "").strip().lower() == "awaiting sorting":
+                        row["value"] = sorting_awaiting_live
                     if str(row.get("label") or "").strip().lower() == "sorted today":
                         row["value"] = sorting_done
+                if sorting_awaiting_live is not None:
+                    section["currentQueue"] = sorting_awaiting_live
                 if qa_source and qa_source != "mock":
                     section["isLive"] = True
                     section["source"] = f"{section.get('source', 'snapshot')}+{qa_source}"
+                if sorting_awaiting_live is not None and sorting_live_source:
+                    section["isLive"] = True
+                    existing_source = str(section.get("source") or "snapshot")
+                    if sorting_live_source not in existing_source:
+                        section["source"] = f"{existing_source}+{sorting_live_source}"
 
         return payload
 
