@@ -599,7 +599,10 @@
                                     <th>Time (UK)</th>
                                     <th>Key</th>
                                     <th>StockID Match</th>
+                                    <th>Last QA (UK)</th>
                                     <th>QA Match</th>
+                                    <th>Awaiting QA?</th>
+                                    <th>QA By (de_completed_by)</th>
                                     <th>Initials</th>
                                     <th>Device Type</th>
                                     <th>Job ID</th>
@@ -1638,6 +1641,8 @@
                         <div class="stat-card"><div class="stat-value">${s.localErasuresCount || 0}</div><div class="stat-label">SQLite local_erasures</div></div>
                         <div class="stat-card"><div class="stat-value">${s.mariaAssetMatchesInSample || 0}/${samples.length}</div><div class="stat-label">Asset matches (sample)</div></div>
                         <div class="stat-card"><div class="stat-value">${s.mariaQaMatchesInSample || 0}/${samples.length}</div><div class="stat-label">QA matches (sample)</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.sampleAwaitingQaByRule || 0}/${samples.length}</div><div class="stat-label">Awaiting QA by rule (sample)</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.sampleDeductedByQaAfterErasure || 0}/${samples.length}</div><div class="stat-label">Deducted by QA timestamp (sample)</div></div>
                     </div>
                 `;
                 summary.style.display = 'block';
@@ -1671,11 +1676,19 @@
             tbody.innerHTML = '';
             pageRows.forEach((row) => {
                 const tr = document.createElement('tr');
+                const awaitingLabel = row.awaiting_qa_by_rule === true
+                    ? 'yes'
+                    : row.awaiting_qa_by_rule === false
+                        ? 'no'
+                        : 'n/a';
                 tr.innerHTML = `
                     <td style="font-size:12px;">${formatActivityTimeUk(row.ts)}</td>
                     <td style="font-size:12px;">${row.key || ''}</td>
                     <td style="font-size:12px;">${row.asset_match ? (row.stockid || 'yes') : 'no'}</td>
+                    <td style="font-size:12px;">${row.last_qa_date ? formatActivityTimeUk(row.last_qa_date) : ''}</td>
                     <td style="font-size:12px;">${row.qa_match ? 'yes' : 'no'}</td>
+                    <td style="font-size:12px;">${awaitingLabel}</td>
+                    <td style="font-size:12px;">${row.qa_by_de_completed_by || ''}</td>
                     <td style="font-size:12px;">${row.initials || ''}</td>
                     <td style="font-size:12px;">${row.device_type || ''}</td>
                     <td style="font-size:12px;">${row.job_id || ''}</td>

@@ -170,6 +170,32 @@ def create_admin_diagnostics_router(
                 return ""
             return s.replace(" ", "T")
 
+        def _parse_dt(v):
+            if v is None:
+                return None
+            if isinstance(v, datetime):
+                return v if v.tzinfo else v.replace(tzinfo=UTC)
+            raw = str(v).strip()
+            if not raw:
+                return None
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"
+            for fmt in (
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d %H:%M:%S.%f",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%dT%H:%M:%S.%f",
+            ):
+                try:
+                    return datetime.strptime(raw, fmt).replace(tzinfo=UTC)
+                except Exception:
+                    continue
+            try:
+                dt = datetime.fromisoformat(raw)
+                return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+            except Exception:
+                return None
+
         start_iso = (datetime.now(UTC) - timedelta(days=days)).isoformat()
         summary = {
             "windowDays": days,
@@ -178,6 +204,8 @@ def create_admin_diagnostics_router(
             "localErasuresCount": 0,
             "mariaAssetMatchesInSample": 0,
             "mariaQaMatchesInSample": 0,
+            "sampleAwaitingQaByRule": 0,
+            "sampleDeductedByQaAfterErasure": 0,
         }
         samples = []
 
@@ -219,6 +247,7 @@ def create_admin_diagnostics_router(
 
         key_to_stockid = {}
         qa_stockids = set()
+        qa_meta_by_stockid = {}
         if key_norms:
             mariadb_conn = get_mariadb_connection()
             if mariadb_conn:
@@ -254,6 +283,46 @@ def create_admin_diagnostics_router(
                             tuple(sids),
                         )
                         qa_stockids = {str(r[0]) for r in (mcur.fetchall() or []) if r and r[0]}
+
+                        mcur.execute(
+                            f"""
+                            SELECT stockid, de_completed_by, de_completed_date
+                            FROM ITAD_asset_info
+                            WHERE stockid IN ({ph})
+                            """,
+                            tuple(sids),
+                        )
+                        for ar in mcur.fetchall() or []:
+                            sid = str(ar[0]) if ar and ar[0] is not None else None
+                            if not sid:
+                                continue
+                            qa_meta_by_stockid.setdefault(sid, {})
+                            qa_meta_by_stockid[sid]["qaByDeCompletedBy"] = str(ar[1]) if len(ar) > 1 and ar[1] is not None else None
+                            qa_meta_by_stockid[sid]["qaCompletedDate"] = _to_iso(ar[2] if len(ar) > 2 else None)
+
+                        mcur.execute(
+                            f"""
+                            SELECT
+                                stockid,
+                                MAX(added_date) AS last_qa_date,
+                                SUBSTRING_INDEX(
+                                    GROUP_CONCAT(COALESCE(username, '') ORDER BY added_date DESC SEPARATOR '||'),
+                                    '||',
+                                    1
+                                ) AS last_qa_username
+                            FROM ITAD_QA_App
+                            WHERE stockid IN ({ph})
+                            GROUP BY stockid
+                            """,
+                            tuple(sids),
+                        )
+                        for qr in mcur.fetchall() or []:
+                            sid = str(qr[0]) if qr and qr[0] is not None else None
+                            if not sid:
+                                continue
+                            qa_meta_by_stockid.setdefault(sid, {})
+                            qa_meta_by_stockid[sid]["lastQaDate"] = _to_iso(qr[1] if len(qr) > 1 else None)
+                            qa_meta_by_stockid[sid]["lastQaUsername"] = str(qr[2]) if len(qr) > 2 and qr[2] is not None else None
                 except Exception:
                     pass
                 finally:
@@ -268,11 +337,40 @@ def create_admin_diagnostics_router(
             nkey = _norm(key_id)
             stockid = key_to_stockid.get(nkey)
             has_asset = bool(stockid)
-            has_qa = bool(stockid and stockid in qa_stockids)
+            meta = qa_meta_by_stockid.get(stockid or "", {})
+            last_qa_date = meta.get("lastQaDate")
+            has_qa = bool(stockid and (stockid in qa_stockids or last_qa_date))
             if has_asset:
                 summary["mariaAssetMatchesInSample"] += 1
             if has_qa:
                 summary["mariaQaMatchesInSample"] += 1
+
+            erasure_dt = _parse_dt(ts)
+            qa_dt = _parse_dt(last_qa_date)
+            awaiting_by_rule = None
+            qa_status_reason = "no_asset_match"
+            qa_lag_hours = None
+            if has_asset:
+                if erasure_dt and qa_dt:
+                    qa_lag_hours = round((qa_dt - erasure_dt).total_seconds() / 3600.0, 2)
+                    if qa_dt >= erasure_dt:
+                        awaiting_by_rule = False
+                        qa_status_reason = "deducted_qa_on_or_after_erasure"
+                    else:
+                        awaiting_by_rule = True
+                        qa_status_reason = "awaiting_qa_last_qa_before_erasure"
+                elif qa_dt:
+                    awaiting_by_rule = False
+                    qa_status_reason = "deducted_has_qa_no_erasure_ts"
+                else:
+                    awaiting_by_rule = True
+                    qa_status_reason = "awaiting_no_qa_found"
+
+            if awaiting_by_rule is True:
+                summary["sampleAwaitingQaByRule"] += 1
+            elif awaiting_by_rule is False:
+                summary["sampleDeductedByQaAfterErasure"] += 1
+
             samples.append({
                 "ts": _to_iso(ts),
                 "job_id": job_id,
@@ -282,6 +380,12 @@ def create_admin_diagnostics_router(
                 "asset_match": has_asset,
                 "stockid": stockid,
                 "qa_match": has_qa,
+                "last_qa_date": last_qa_date,
+                "qa_by_de_completed_by": meta.get("qaByDeCompletedBy"),
+                "last_qa_username": meta.get("lastQaUsername"),
+                "awaiting_qa_by_rule": awaiting_by_rule,
+                "qa_status_reason": qa_status_reason,
+                "qa_lag_hours": qa_lag_hours,
             })
 
         return {

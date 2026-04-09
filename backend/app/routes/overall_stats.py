@@ -534,6 +534,14 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         except Exception:
             return None, None
 
+    def _get_qa_awaiting_live_count() -> tuple[int | None, str | None]:
+        """Compute DB awaiting QA from live erasure vs QA timestamp comparison."""
+        try:
+            qa_live = _compute_db_awaiting_qa(include_samples=False)
+            return int(qa_live.get("dbAwaitingQa", 0) or 0), str(qa_live.get("source") or "")
+        except Exception:
+            return None, None
+
     def _apply_live_daily_totals(payload: dict | None) -> dict | None:
         if not isinstance(payload, dict):
             return payload
@@ -547,6 +555,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             return payload
 
         sorting_awaiting_live, sorting_live_source = _get_sorting_awaiting_live_count()
+        qa_awaiting_live, qa_awaiting_live_source = _get_qa_awaiting_live_count()
 
         qa_done = int(qa_today.get("combinedScans", 0) or 0)
         sorting_done = int(qa_today.get("qaAppScans", 0) or 0)
@@ -564,11 +573,20 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 for row in rows:
                     if not isinstance(row, dict):
                         continue
+                    if qa_awaiting_live is not None and str(row.get("label") or "").strip().lower() == "db awaiting qa":
+                        row["value"] = qa_awaiting_live
                     if str(row.get("label") or "").strip().lower() == "completed qa today":
                         row["value"] = qa_done
+                if qa_awaiting_live is not None:
+                    section["currentQueue"] = qa_awaiting_live
                 if qa_source and qa_source != "mock":
                     section["isLive"] = True
                     section["source"] = f"{section.get('source', 'snapshot')}+{qa_source}"
+                if qa_awaiting_live is not None and qa_awaiting_live_source and qa_awaiting_live_source != "mock":
+                    section["isLive"] = True
+                    existing_source = str(section.get("source") or "snapshot")
+                    if qa_awaiting_live_source not in existing_source:
+                        section["source"] = f"{existing_source}+{qa_awaiting_live_source}"
 
             if key == "sorting":
                 for row in rows:
