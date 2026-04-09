@@ -4,6 +4,7 @@ import asyncio
 import os
 import re
 import sqlite3
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request
 
@@ -13,6 +14,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
     qa_export = qa_export_module
     snapshot_ttl_seconds = max(30, int(os.getenv("OVERALL_SNAPSHOT_TTL_SECONDS", "120")))
     snapshot_max_stale_seconds = max(300, int(os.getenv("OVERALL_SNAPSHOT_MAX_STALE_SECONDS", "3600")))
+    overall_business_tz_name = os.getenv("OVERALL_BUSINESS_TZ", "Europe/London")
     refresh_throttle_state = {
         "sections": datetime.min.replace(tzinfo=UTC),
         "spotlight": datetime.min.replace(tzinfo=UTC),
@@ -33,6 +35,12 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             return dt.astimezone(UTC)
         except Exception:
             return None
+
+    def _business_today() -> date:
+        try:
+            return datetime.now(ZoneInfo(overall_business_tz_name)).date()
+        except Exception:
+            return datetime.now(UTC).date()
 
     def _get_refresh_timeout_seconds() -> float:
         try:
@@ -333,10 +341,15 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             payload = snap.get("payload") if isinstance(snap, dict) else None
             summary = payload.get("summary") if isinstance(payload, dict) else None
             snap_updated_at = _parse_snapshot_ts(snap.get("updatedAt") if isinstance(snap, dict) else None)
-            # Guard against previous-day cached "today" values carrying over after midnight.
-            is_current_day_snapshot = bool(
-                snap_updated_at and snap_updated_at.astimezone().date() == date.today()
-            )
+            # Guard against previous-day cached "today" values carrying over after midnight
+            # in the business timezone.
+            snap_business_day = None
+            if snap_updated_at:
+                try:
+                    snap_business_day = snap_updated_at.astimezone(ZoneInfo(overall_business_tz_name)).date()
+                except Exception:
+                    snap_business_day = snap_updated_at.date()
+            is_current_day_snapshot = bool(snap_business_day and snap_business_day == _business_today())
             if isinstance(summary, dict) and is_current_day_snapshot:
                 qa_app = int(summary.get("totalScans", 0) or 0)
                 de = int(summary.get("deQaScans", 0) or 0)
@@ -351,7 +364,8 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 })
                 return out
 
-            start_date, end_date, _ = qa_export.get_week_dates("today")
+            today_business = _business_today()
+            start_date, end_date = today_business, today_business
             qa_data = qa_export.get_weekly_qa_comparison(start_date, end_date) or {}
             de_data = qa_export.get_de_qa_comparison(start_date, end_date) or {}
             non_de_data = qa_export.get_non_de_qa_comparison(start_date, end_date) or {}
@@ -439,7 +453,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 pass
 
         try:
-            qa_daily = qa_export.get_daily_qa_data(date.today()) or {}
+            qa_daily = qa_export.get_daily_qa_data(_business_today()) or {}
             best_name = "—"
             best_count = 0
             for uname, stats in qa_daily.items():

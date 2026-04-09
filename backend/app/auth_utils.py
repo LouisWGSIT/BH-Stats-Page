@@ -211,9 +211,9 @@ async def auth_middleware(
         return await call_next(request)
 
     if is_local_network_fn(client_ip):
-        # Intentional policy: trusted network viewers can access non-admin routes
-        # even if a remembered device token is missing.
-        if not request.url.path.startswith("/admin"):
+        # Local network users still need auth for protected API/export/manager/admin routes.
+        # Keep unauthenticated access for public pages/static assets only.
+        if request.url.path in ("/", "/index.html", "/manager.html"):
             return await call_next(request)
 
     auth_header = request.headers.get("Authorization", "")
