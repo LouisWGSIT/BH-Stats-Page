@@ -20,7 +20,7 @@
         }
 
         .container {
-            max-width: 1000px;
+            max-width: min(1600px, 96vw);
             margin: 0 auto;
             background: white;
             border-radius: 12px;
@@ -144,8 +144,22 @@
         .table thead th {
             position: sticky;
             top: 0;
-            z-index: 1;
+            z-index: 3;
             background: #f8fafc;
+        }
+
+        .table-scroll {
+            max-height: 360px;
+            overflow: auto;
+            position: relative;
+        }
+
+        .table-scroll.awaiting {
+            max-height: 320px;
+        }
+
+        .table-scroll.decremented {
+            max-height: 260px;
         }
 
         .pagination-controls {
@@ -577,21 +591,23 @@
                     <button onclick="loadErasureEvidence()">🔎 Refresh Evidence</button>
                 </div>
                 <div id="erasureEvidenceSummary" class="stats" style="display:none;margin-top:12px;"></div>
-                <div id="erasureEvidenceTableWrap" class="stats" style="display:none;margin-top:12px;max-height:360px;overflow:auto;">
-                    <table class="table" style="width:100%;">
-                        <thead>
-                            <tr>
-                                <th>Time (UK)</th>
-                                <th>Key</th>
-                                <th>StockID Match</th>
-                                <th>QA Match</th>
-                                <th>Initials</th>
-                                <th>Device Type</th>
-                                <th>Job ID</th>
-                            </tr>
-                        </thead>
-                        <tbody id="erasureEvidenceTableBody"></tbody>
-                    </table>
+                <div id="erasureEvidenceTableWrap" class="stats" style="display:none;margin-top:12px;">
+                    <div class="table-scroll">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>Time (UK)</th>
+                                    <th>Key</th>
+                                    <th>StockID Match</th>
+                                    <th>QA Match</th>
+                                    <th>Initials</th>
+                                    <th>Device Type</th>
+                                    <th>Job ID</th>
+                                </tr>
+                            </thead>
+                            <tbody id="erasureEvidenceTableBody"></tbody>
+                        </table>
+                    </div>
                     <div id="erasureEvidencePagination" class="pagination-controls" style="display:none;">
                         <div id="erasureEvidencePaginationInfo"></div>
                         <div class="pager-buttons">
@@ -627,27 +643,29 @@
                     <button onclick="loadSortingEvidence()">🔎 Refresh Sorting Evidence</button>
                 </div>
                 <div id="sortingEvidenceSummary" class="stats" style="display:none;margin-top:12px;"></div>
-                <div id="sortingEvidenceAwaitingWrap" class="stats" style="display:none;margin-top:12px;max-height:320px;overflow:auto;">
+                <div id="sortingEvidenceAwaitingWrap" class="stats" style="display:none;margin-top:12px;">
                     <h3 style="margin-bottom:8px;">Awaiting Samples</h3>
-                    <table class="table" style="width:100%;">
-                        <thead>
-                            <tr>
-                                <th>StockID</th>
-                                <th>QA Completed</th>
-                                <th>QA By</th>
-                                <th>Last Sorting Added</th>
-                                <th>Last Sorting User</th>
-                                <th>Latest Sorting (Any)</th>
-                                <th>Latest Sorting User (Any)</th>
-                                <th>Location</th>
-                                <th>Pallet ID</th>
-                                <th>Hours Since QA</th>
-                                <th>Lag (hours)</th>
-                                <th>Reason</th>
-                            </tr>
-                        </thead>
-                        <tbody id="sortingEvidenceAwaitingBody"></tbody>
-                    </table>
+                    <div class="table-scroll awaiting">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>StockID</th>
+                                    <th>QA Completed</th>
+                                    <th>QA By</th>
+                                    <th>Last Sorting Added</th>
+                                    <th>Last Sorting User</th>
+                                    <th>Latest Sorting (Any)</th>
+                                    <th>Latest Sorting User (Any)</th>
+                                    <th>Location</th>
+                                    <th>Pallet ID</th>
+                                    <th>Hours Since QA</th>
+                                    <th>Lag (hours)</th>
+                                    <th>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sortingEvidenceAwaitingBody"></tbody>
+                        </table>
+                    </div>
                     <div id="sortingAwaitingPagination" class="pagination-controls" style="display:none;">
                         <div id="sortingAwaitingPaginationInfo"></div>
                         <div class="pager-buttons">
@@ -656,27 +674,29 @@
                         </div>
                     </div>
                 </div>
-                <div id="sortingEvidenceDecrementedWrap" class="stats" style="display:none;margin-top:12px;max-height:260px;overflow:auto;">
+                <div id="sortingEvidenceDecrementedWrap" class="stats" style="display:none;margin-top:12px;">
                     <h3 style="margin-bottom:8px;">Decremented Samples (Control)</h3>
-                    <table class="table" style="width:100%;">
-                        <thead>
-                            <tr>
-                                <th>StockID</th>
-                                <th>QA Completed</th>
-                                <th>QA By</th>
-                                <th>Last Sorting Added</th>
-                                <th>Last Sorting User</th>
-                                <th>Latest Sorting (Any)</th>
-                                <th>Latest Sorting User (Any)</th>
-                                <th>Location</th>
-                                <th>Pallet ID</th>
-                                <th>Hours Since QA</th>
-                                <th>Lag (hours)</th>
-                                <th>Reason</th>
-                            </tr>
-                        </thead>
-                        <tbody id="sortingEvidenceDecrementedBody"></tbody>
-                    </table>
+                    <div class="table-scroll decremented">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>StockID</th>
+                                    <th>QA Completed</th>
+                                    <th>QA By</th>
+                                    <th>Last Sorting Added</th>
+                                    <th>Last Sorting User</th>
+                                    <th>Latest Sorting (Any)</th>
+                                    <th>Latest Sorting User (Any)</th>
+                                    <th>Location</th>
+                                    <th>Pallet ID</th>
+                                    <th>Hours Since QA</th>
+                                    <th>Lag (hours)</th>
+                                    <th>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sortingEvidenceDecrementedBody"></tbody>
+                        </table>
+                    </div>
                     <div id="sortingDecrementedPagination" class="pagination-controls" style="display:none;">
                         <div id="sortingDecrementedPaginationInfo"></div>
                         <div class="pager-buttons">
@@ -1727,6 +1747,7 @@
                         <div class="stat-card filterable-card active" data-sort-filter="all"><div class="stat-value">${s.candidateStockids || 0}</div><div class="stat-label">Candidate StockIDs</div></div>
                         <div class="stat-card filterable-card" data-sort-filter="awaiting"><div class="stat-value">${s.awaitingSorting || 0}</div><div class="stat-label">Awaiting Sorting</div></div>
                         <div class="stat-card filterable-card" data-sort-filter="decremented"><div class="stat-value">${s.decrementedBySorting || s.decrementedByQa || 0}</div><div class="stat-label">Decremented by Sorting</div></div>
+                        <div class="stat-card filterable-card" data-sort-filter="decremented_by_a100_pallet"><div class="stat-value">${s.excludedByA100Pallet || 0}</div><div class="stat-label">Excluded by A100 Pallet</div></div>
                         <div class="stat-card filterable-card" data-sort-filter="missing_sorting_with_username"><div class="stat-value">${s.missingSortingWithUsername || s.missingQaWithUsername || 0}</div><div class="stat-label">Missing Sorting Username</div></div>
                         <div class="stat-card filterable-card" data-sort-filter="sorting_older_than_qa_completed"><div class="stat-value">${s.sortingOlderThanQaCompleted || s.qaOlderThanDeCompleted || 0}</div><div class="stat-label">Sorting Older Than QA</div></div>
                         <div class="stat-card filterable-card" data-sort-filter="blank_username_after_qa_completed"><div class="stat-value">${s.blankUsernameAfterQaCompleted || s.blankUsernameAfterDe || 0}</div><div class="stat-label">Blank Sorting Username After QA</div></div>
@@ -1785,6 +1806,9 @@
             } else if (filter === 'blank_username_after_qa_completed') {
                 awaitingRows = awaitingRows.filter((r) => (r.reason || '').includes('blank_username_after_qa_completed'));
                 decrementedRows = [];
+            } else if (filter === 'decremented_by_a100_pallet') {
+                awaitingRows = [];
+                decrementedRows = decrementedRows.filter((r) => (r.reason || '') === 'decremented_by_a100_pallet');
             } else if (filter === 'awaiting') {
                 decrementedRows = [];
             } else if (filter === 'decremented') {

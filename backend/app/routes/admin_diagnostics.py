@@ -321,6 +321,7 @@ def create_admin_diagnostics_router(
 
                 # Awaiting sorting by current rule:
                 # DE complete exists, and latest QA row with username is missing or older than DE completion.
+                # Exclusion rule: any pallet_id starting with A100 is considered already assigned and should be deducted.
                 cur.execute(
                     """
                     SELECT COUNT(DISTINCT a.stockid)
@@ -337,6 +338,7 @@ def create_admin_diagnostics_router(
                       AND TRIM(COALESCE(a.stockid, '')) <> ''
                       AND a.de_completed_date IS NOT NULL
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                                            AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) NOT LIKE 'A100%'
                       AND (
                             q.last_qa_with_user IS NULL
                             OR a.de_completed_date > q.last_qa_with_user
@@ -348,11 +350,12 @@ def create_admin_diagnostics_router(
                 awaiting_total = int(row[0]) if row and row[0] is not None else 0
 
                 # Rows that have a valid decrement signal (Sorting row with username newer than QA completion).
+                # Includes A100 pallet assignment as a decrement signal.
                 cur.execute(
                     """
                     SELECT COUNT(DISTINCT a.stockid)
                     FROM ITAD_asset_info a
-                    INNER JOIN (
+                    LEFT JOIN (
                         SELECT stockid, MAX(added_date) AS last_qa_with_user
                         FROM ITAD_QA_App
                         WHERE stockid IS NOT NULL
@@ -364,7 +367,10 @@ def create_admin_diagnostics_router(
                       AND TRIM(COALESCE(a.stockid, '')) <> ''
                       AND a.de_completed_date IS NOT NULL
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                      AND q.last_qa_with_user >= a.de_completed_date
+                                            AND (
+                                                        q.last_qa_with_user >= a.de_completed_date
+                                                        OR UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%'
+                                                    )
                     """,
                     (days,),
                 )
@@ -393,6 +399,7 @@ def create_admin_diagnostics_router(
                       AND TRIM(COALESCE(a.stockid, '')) <> ''
                       AND a.de_completed_date IS NOT NULL
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                                            AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) NOT LIKE 'A100%'
                     """,
                     (days,),
                 )
@@ -425,6 +432,21 @@ def create_admin_diagnostics_router(
                       AND TRIM(COALESCE(a.stockid, '')) <> ''
                       AND a.de_completed_date IS NOT NULL
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                      AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%'
+                    """,
+                    (days,),
+                )
+                row = cur.fetchone()
+                excluded_by_a100 = int(row[0]) if row and row[0] is not None else 0
+
+                cur.execute(
+                    """
+                    SELECT COUNT(DISTINCT a.stockid)
+                    FROM ITAD_asset_info a
+                    WHERE a.stockid IS NOT NULL
+                      AND TRIM(COALESCE(a.stockid, '')) <> ''
+                      AND a.de_completed_date IS NOT NULL
+                      AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
                       AND TRIM(COALESCE(a.de_completed_by, '')) <> ''
                     """,
                     (days,),
@@ -439,7 +461,9 @@ def create_admin_diagnostics_router(
                         a.stockid,
                         a.de_completed_date,
                         q.last_qa_with_user,
+                        a.pallet_id,
                         CASE
+                            WHEN UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%' THEN 'decremented_by_a100_pallet'
                             WHEN q.last_qa_with_user IS NULL THEN 'missing_sorting_with_username'
                             WHEN a.de_completed_date > q.last_qa_with_user THEN 'sorting_older_than_qa_completed'
                             ELSE 'unknown'
@@ -457,6 +481,7 @@ def create_admin_diagnostics_router(
                       AND TRIM(COALESCE(a.stockid, '')) <> ''
                       AND a.de_completed_date IS NOT NULL
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                                            AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) NOT LIKE 'A100%'
                       AND (
                             q.last_qa_with_user IS NULL
                             OR a.de_completed_date > q.last_qa_with_user
@@ -475,9 +500,13 @@ def create_admin_diagnostics_router(
                         a.stockid,
                         a.de_completed_date,
                         q.last_qa_with_user,
-                        'decremented_by_sorting_scan' AS reason
+                        a.pallet_id,
+                        CASE
+                            WHEN UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%' THEN 'decremented_by_a100_pallet'
+                            ELSE 'decremented_by_sorting_scan'
+                        END AS reason
                     FROM ITAD_asset_info a
-                    INNER JOIN (
+                    LEFT JOIN (
                         SELECT stockid, MAX(added_date) AS last_qa_with_user
                         FROM ITAD_QA_App
                         WHERE stockid IS NOT NULL
@@ -489,8 +518,13 @@ def create_admin_diagnostics_router(
                       AND TRIM(COALESCE(a.stockid, '')) <> ''
                       AND a.de_completed_date IS NOT NULL
                       AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                      AND q.last_qa_with_user >= a.de_completed_date
-                    ORDER BY q.last_qa_with_user DESC
+                                            AND (
+                                                        q.last_qa_with_user >= a.de_completed_date
+                                                        OR UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%'
+                                                    )
+                                        ORDER BY
+                                                CASE WHEN UPPER(TRIM(COALESCE(a.pallet_id, ''))) LIKE 'A100%' THEN 1 ELSE 0 END DESC,
+                                                q.last_qa_with_user DESC
                     LIMIT %s
                     """,
                     (days, max(10, limit // 2)),
@@ -637,7 +671,7 @@ def create_admin_diagnostics_router(
                 stockid = str(row[0]) if row and row[0] is not None else None
                 qa_completed = _to_iso(row[1] if len(row) > 1 else None)
                 last_sorting_added = _to_iso(row[2] if len(row) > 2 else None)
-                reason = str(row[3]) if len(row) > 3 and row[3] is not None else default_reason
+                reason = str(row[4]) if len(row) > 4 and row[4] is not None else default_reason
 
                 meta = sample_meta.get(stockid or "", {})
                 qa_dt = _parse_dt(qa_completed)
@@ -658,7 +692,7 @@ def create_admin_diagnostics_router(
                     "latestSortingAnyDate": meta.get("lastSortingAny"),
                     "latestSortingAnyUsername": meta.get("lastSortingAnyUsername"),
                     "location": meta.get("lastSortingAnyLocation") or meta.get("assetLocation"),
-                    "assetPalletId": meta.get("assetPalletId"),
+                    "assetPalletId": (str(row[3]) if len(row) > 3 and row[3] is not None else None) or meta.get("assetPalletId"),
                     "hoursSinceQaCompleted": hours_since_qa_completed,
                     "lagHours": lag_hours,
                     "reason": reason,
@@ -676,6 +710,7 @@ def create_admin_diagnostics_router(
                     "missingSortingWithUsername": missing_sorting_with_username,
                     "sortingOlderThanQaCompleted": sorting_older_than_qa_completed,
                     "blankUsernameAfterQaCompleted": blank_username_after_de,
+                    "excludedByA100Pallet": excluded_by_a100,
                     "qaCompletedByPresent": de_completed_by_present,
                     # Backward-compat aliases for existing UI consumers.
                     "decrementedByQa": decremented_total,

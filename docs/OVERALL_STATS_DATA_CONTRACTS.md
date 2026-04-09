@@ -131,6 +131,8 @@ These are the key headers confirmed from `ITAD_asset_info` screenshots and shoul
   - `condition`
   - `post_item_assessment_condition`
   - `warehouse`
+  - `location` (current physical location indicator used in admin Sorting Evidence)
+  - `pallet_id` (current pallet assignment; may be NULL)
 
 - Other observed workflow fields:
   - `breakfix_status`
@@ -139,6 +141,17 @@ These are the key headers confirmed from `ITAD_asset_info` screenshots and shoul
   - `sla_onhold_reason`
   - `sla_complete_date`
   - `sla_result`
+
+## Sorting Evidence Field Mapping Notes (April 9, 2026)
+For admin diagnostics in Sorting Evidence, prefer these `ITAD_asset_info` fields as primary source-of-truth:
+
+- `location`
+- `pallet_id`
+
+Implementation guidance:
+- If present, map `location` directly to the Sorting Evidence Location column.
+- If present, map `pallet_id` directly to the Sorting Evidence Pallet ID column.
+- Treat NULL pallet values as expected for unpalleted workflow states.
 
 ## Frontend Mapping
 Current visual loader:
