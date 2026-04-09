@@ -97,10 +97,12 @@
             color: #334155;
             border: 1px solid #cbd5e1;
             border-radius: 999px;
-            padding: 4px 10px;
-            font-size: 12px;
-            font-weight: 700;
-            line-height: 1.2;
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             box-shadow: none;
             transform: none;
         }
@@ -109,6 +111,61 @@
             background: #f8fafc;
             box-shadow: none;
             transform: none;
+        }
+
+        .collapse-toggle .chevron {
+            width: 10px;
+            height: 10px;
+            border-right: 2px solid #475569;
+            border-bottom: 2px solid #475569;
+            transform: rotate(-135deg);
+            transition: transform 0.2s ease;
+            margin-top: 2px;
+        }
+
+        .collapse-toggle.expanded .chevron {
+            transform: rotate(45deg);
+            margin-top: -1px;
+        }
+
+        .table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        .table th,
+        .table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #f8fafc;
+        }
+
+        .pagination-controls {
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 12px;
+            color: #475569;
+        }
+
+        .pagination-controls .pager-buttons {
+            display: flex;
+            gap: 6px;
+        }
+
+        .pagination-controls button {
+            padding: 6px 10px;
+            font-size: 12px;
         }
 
         .form-group {
@@ -535,6 +592,13 @@
                         </thead>
                         <tbody id="erasureEvidenceTableBody"></tbody>
                     </table>
+                    <div id="erasureEvidencePagination" class="pagination-controls" style="display:none;">
+                        <div id="erasureEvidencePaginationInfo"></div>
+                        <div class="pager-buttons">
+                            <button type="button" id="erasureEvidencePrevBtn">◀ Prev</button>
+                            <button type="button" id="erasureEvidenceNextBtn">Next ▶</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -583,6 +647,13 @@
                         </thead>
                         <tbody id="sortingEvidenceAwaitingBody"></tbody>
                     </table>
+                    <div id="sortingAwaitingPagination" class="pagination-controls" style="display:none;">
+                        <div id="sortingAwaitingPaginationInfo"></div>
+                        <div class="pager-buttons">
+                            <button type="button" id="sortingAwaitingPrevBtn">◀ Prev</button>
+                            <button type="button" id="sortingAwaitingNextBtn">Next ▶</button>
+                        </div>
+                    </div>
                 </div>
                 <div id="sortingEvidenceDecrementedWrap" class="stats" style="display:none;margin-top:12px;max-height:260px;overflow:auto;">
                     <h3 style="margin-bottom:8px;">Decremented Samples (Control)</h3>
@@ -604,6 +675,13 @@
                         </thead>
                         <tbody id="sortingEvidenceDecrementedBody"></tbody>
                     </table>
+                    <div id="sortingDecrementedPagination" class="pagination-controls" style="display:none;">
+                        <div id="sortingDecrementedPaginationInfo"></div>
+                        <div class="pager-buttons">
+                            <button type="button" id="sortingDecrementedPrevBtn">◀ Prev</button>
+                            <button type="button" id="sortingDecrementedNextBtn">Next ▶</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -660,6 +738,8 @@
     <script>
         let authToken = null;
         let userRole = null;
+        const _sectionLoaded = {};
+        const _sectionLoaders = {};
 
         async function ensureManagerAccess() {
             const existingToken = sessionStorage.getItem('authToken');
@@ -766,22 +846,67 @@
                 const toggleBtn = document.createElement('button');
                 toggleBtn.type = 'button';
                 toggleBtn.className = 'collapse-toggle';
+                toggleBtn.innerHTML = '<span class="chevron" aria-hidden="true"></span>';
 
                 const updateToggleLabel = () => {
                     const expanded = !section.classList.contains('collapsed');
-                    toggleBtn.textContent = expanded ? 'Collapse' : 'Expand';
+                    toggleBtn.classList.toggle('expanded', expanded);
+                    toggleBtn.setAttribute('title', expanded ? 'Collapse section' : 'Expand section');
+                    toggleBtn.setAttribute('aria-label', expanded ? 'Collapse section' : 'Expand section');
                     toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
                 };
 
                 toggleBtn.addEventListener('click', () => {
                     section.classList.toggle('collapsed');
                     updateToggleLabel();
+                    if (!section.classList.contains('collapsed')) {
+                        maybeLoadSection(sectionId);
+                    }
                 });
 
                 heading.appendChild(toggleBtn);
                 updateToggleLabel();
                 section.dataset.collapsibleInit = '1';
             });
+        }
+
+        function registerSectionLoaders() {
+            _sectionLoaders['section-fix-initials'] = async () => {
+                if (userRole !== 'admin') return;
+                await refreshInitialsDropdowns();
+            };
+            _sectionLoaders['section-connected-devices'] = async () => {
+                await loadConnectedDevices();
+                if (userRole === 'admin') {
+                    await loadExternalAttempts();
+                }
+            };
+            _sectionLoaders['section-erasure-evidence'] = async () => {
+                if (userRole !== 'admin') return;
+                await loadErasureEvidence();
+            };
+            _sectionLoaders['section-sorting-evidence'] = async () => {
+                if (userRole !== 'admin') return;
+                await loadSortingEvidence();
+            };
+            _sectionLoaders['section-dashboard-activity'] = async () => {
+                if (userRole !== 'admin') return;
+                await fetchAdminActivity();
+                setupActivityAutoPoll();
+            };
+        }
+
+        async function maybeLoadSection(sectionId) {
+            if (_sectionLoaded[sectionId]) return;
+            const loader = _sectionLoaders[sectionId];
+            if (!loader) return;
+            _sectionLoaded[sectionId] = true;
+            try {
+                await loader();
+            } catch (err) {
+                _sectionLoaded[sectionId] = false;
+                console.error(`Section load failed: ${sectionId}`, err);
+            }
         }
 
         function getAuthHeaders(isJson = true) {
@@ -1034,17 +1159,8 @@
             const ok = await ensureManagerAccess();
             if (!ok) return;
             applyRoleVisibility();
+            registerSectionLoaders();
             initCollapsibleSections();
-            if (userRole === 'admin') {
-                refreshInitialsDropdowns();
-                loadConnectedDevices();
-                loadExternalAttempts();
-                try { loadErasureEvidence(); } catch (e) { /* ignore */ }
-                try { loadSortingEvidence(); } catch (e) { /* ignore */ }
-                // Load activity and enable auto-poll checkbox wiring
-                try { fetchAdminActivity(); } catch (e) { /* ignore */ }
-                try { setupActivityAutoPoll(); } catch (e) { /* ignore */ }
-            }
         });
 
         async function populateFromDropdown() {
@@ -1504,20 +1620,9 @@
                 `;
                 summary.style.display = 'block';
 
-                tbody.innerHTML = '';
-                samples.forEach((row) => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td style="font-size:12px;">${formatActivityTimeUk(row.ts)}</td>
-                        <td style="font-size:12px;">${row.key || ''}</td>
-                        <td style="font-size:12px;">${row.asset_match ? (row.stockid || 'yes') : 'no'}</td>
-                        <td style="font-size:12px;">${row.qa_match ? 'yes' : 'no'}</td>
-                        <td style="font-size:12px;">${row.initials || ''}</td>
-                        <td style="font-size:12px;">${row.device_type || ''}</td>
-                        <td style="font-size:12px;">${row.job_id || ''}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                _erasureEvidenceSamples = samples;
+                _erasureEvidencePage = 1;
+                renderErasureEvidenceTable();
                 wrap.style.display = 'block';
             } catch (err) {
                 summary.style.display = 'block';
@@ -1526,9 +1631,61 @@
             }
         }
 
+        function renderErasureEvidenceTable() {
+            const tbody = document.getElementById('erasureEvidenceTableBody');
+            const pagination = document.getElementById('erasureEvidencePagination');
+            const info = document.getElementById('erasureEvidencePaginationInfo');
+            const prevBtn = document.getElementById('erasureEvidencePrevBtn');
+            const nextBtn = document.getElementById('erasureEvidenceNextBtn');
+            if (!tbody || !pagination || !info || !prevBtn || !nextBtn) return;
+
+            const total = _erasureEvidenceSamples.length;
+            const totalPages = Math.max(1, Math.ceil(total / _ERASURE_EVIDENCE_PAGE_SIZE));
+            _erasureEvidencePage = Math.min(Math.max(1, _erasureEvidencePage), totalPages);
+
+            const start = (_erasureEvidencePage - 1) * _ERASURE_EVIDENCE_PAGE_SIZE;
+            const pageRows = _erasureEvidenceSamples.slice(start, start + _ERASURE_EVIDENCE_PAGE_SIZE);
+
+            tbody.innerHTML = '';
+            pageRows.forEach((row) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.ts)}</td>
+                    <td style="font-size:12px;">${row.key || ''}</td>
+                    <td style="font-size:12px;">${row.asset_match ? (row.stockid || 'yes') : 'no'}</td>
+                    <td style="font-size:12px;">${row.qa_match ? 'yes' : 'no'}</td>
+                    <td style="font-size:12px;">${row.initials || ''}</td>
+                    <td style="font-size:12px;">${row.device_type || ''}</td>
+                    <td style="font-size:12px;">${row.job_id || ''}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            pagination.style.display = total > _ERASURE_EVIDENCE_PAGE_SIZE ? 'flex' : 'none';
+            info.textContent = `Page ${_erasureEvidencePage} of ${totalPages} • ${total} rows`;
+            prevBtn.disabled = _erasureEvidencePage <= 1;
+            nextBtn.disabled = _erasureEvidencePage >= totalPages;
+
+            prevBtn.onclick = () => {
+                _erasureEvidencePage -= 1;
+                renderErasureEvidenceTable();
+            };
+            nextBtn.onclick = () => {
+                _erasureEvidencePage += 1;
+                renderErasureEvidenceTable();
+            };
+        }
+
+        let _erasureEvidenceSamples = [];
+        let _erasureEvidencePage = 1;
+        const _ERASURE_EVIDENCE_PAGE_SIZE = 20;
+
         let _sortingAwaitingSamples = [];
         let _sortingDecrementedSamples = [];
         let _sortingEvidenceFilter = 'all';
+        let _sortingAwaitingPage = 1;
+        let _sortingDecrementedPage = 1;
+        const _SORTING_EVIDENCE_PAGE_SIZE = 20;
 
         async function loadSortingEvidence() {
             const daysSel = document.getElementById('sortingEvidenceDays');
@@ -1560,6 +1717,8 @@
                 _sortingAwaitingSamples = awaiting;
                 _sortingDecrementedSamples = decremented;
                 _sortingEvidenceFilter = 'all';
+                _sortingAwaitingPage = 1;
+                _sortingDecrementedPage = 1;
 
                 summary.innerHTML = `
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
@@ -1584,6 +1743,8 @@
                         _sortingEvidenceFilter = card.getAttribute('data-sort-filter') || 'all';
                         summary.querySelectorAll('[data-sort-filter]').forEach((el) => el.classList.remove('active'));
                         card.classList.add('active');
+                        _sortingAwaitingPage = 1;
+                        _sortingDecrementedPage = 1;
                         renderSortingEvidenceTables();
                     });
                 });
@@ -1602,6 +1763,14 @@
             const awaitingBody = document.getElementById('sortingEvidenceAwaitingBody');
             const decrementedWrap = document.getElementById('sortingEvidenceDecrementedWrap');
             const decrementedBody = document.getElementById('sortingEvidenceDecrementedBody');
+            const awaitingPagination = document.getElementById('sortingAwaitingPagination');
+            const awaitingInfo = document.getElementById('sortingAwaitingPaginationInfo');
+            const awaitingPrev = document.getElementById('sortingAwaitingPrevBtn');
+            const awaitingNext = document.getElementById('sortingAwaitingNextBtn');
+            const decrementedPagination = document.getElementById('sortingDecrementedPagination');
+            const decrementedInfo = document.getElementById('sortingDecrementedPaginationInfo');
+            const decrementedPrev = document.getElementById('sortingDecrementedPrevBtn');
+            const decrementedNext = document.getElementById('sortingDecrementedNextBtn');
             if (!awaitingWrap || !awaitingBody || !decrementedWrap || !decrementedBody) return;
         
             const filter = _sortingEvidenceFilter || 'all';
@@ -1640,12 +1809,64 @@
                     tbody.appendChild(tr);
                 });
             };
+
+            const paginateRows = (rows, pageRef) => {
+                const total = rows.length;
+                const totalPages = Math.max(1, Math.ceil(total / _SORTING_EVIDENCE_PAGE_SIZE));
+                const page = Math.min(Math.max(1, pageRef.value), totalPages);
+                pageRef.value = page;
+                const start = (page - 1) * _SORTING_EVIDENCE_PAGE_SIZE;
+                return {
+                    pageRows: rows.slice(start, start + _SORTING_EVIDENCE_PAGE_SIZE),
+                    total,
+                    totalPages,
+                    page,
+                };
+            };
+
+            const awaitingPageState = { value: _sortingAwaitingPage };
+            const decrementedPageState = { value: _sortingDecrementedPage };
+            const awaitingPaged = paginateRows(awaitingRows, awaitingPageState);
+            const decrementedPaged = paginateRows(decrementedRows, decrementedPageState);
+
+            _sortingAwaitingPage = awaitingPaged.page;
+            _sortingDecrementedPage = decrementedPaged.page;
         
-            renderRows(awaitingBody, awaitingRows);
-            renderRows(decrementedBody, decrementedRows);
+            renderRows(awaitingBody, awaitingPaged.pageRows);
+            renderRows(decrementedBody, decrementedPaged.pageRows);
         
             awaitingWrap.style.display = awaitingRows.length ? 'block' : 'none';
             decrementedWrap.style.display = decrementedRows.length ? 'block' : 'none';
+
+            if (awaitingPagination && awaitingInfo && awaitingPrev && awaitingNext) {
+                awaitingPagination.style.display = awaitingPaged.total > _SORTING_EVIDENCE_PAGE_SIZE ? 'flex' : 'none';
+                awaitingInfo.textContent = `Page ${awaitingPaged.page} of ${awaitingPaged.totalPages} • ${awaitingPaged.total} rows`;
+                awaitingPrev.disabled = awaitingPaged.page <= 1;
+                awaitingNext.disabled = awaitingPaged.page >= awaitingPaged.totalPages;
+                awaitingPrev.onclick = () => {
+                    _sortingAwaitingPage -= 1;
+                    renderSortingEvidenceTables();
+                };
+                awaitingNext.onclick = () => {
+                    _sortingAwaitingPage += 1;
+                    renderSortingEvidenceTables();
+                };
+            }
+
+            if (decrementedPagination && decrementedInfo && decrementedPrev && decrementedNext) {
+                decrementedPagination.style.display = decrementedPaged.total > _SORTING_EVIDENCE_PAGE_SIZE ? 'flex' : 'none';
+                decrementedInfo.textContent = `Page ${decrementedPaged.page} of ${decrementedPaged.totalPages} • ${decrementedPaged.total} rows`;
+                decrementedPrev.disabled = decrementedPaged.page <= 1;
+                decrementedNext.disabled = decrementedPaged.page >= decrementedPaged.totalPages;
+                decrementedPrev.onclick = () => {
+                    _sortingDecrementedPage -= 1;
+                    renderSortingEvidenceTables();
+                };
+                decrementedNext.onclick = () => {
+                    _sortingDecrementedPage += 1;
+                    renderSortingEvidenceTables();
+                };
+            }
         }
 
         // -------- Dashboard Activity (admin) --------

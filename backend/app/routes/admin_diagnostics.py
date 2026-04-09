@@ -541,9 +541,43 @@ def create_admin_diagnostics_router(
                 if meta_conn:
                     mcur = meta_conn.cursor()
                     try:
+                        def _pick_existing_column(table_name: str, candidates: list[str]) -> str | None:
+                            try:
+                                mcur.execute(
+                                    """
+                                    SELECT LOWER(COLUMN_NAME)
+                                    FROM information_schema.columns
+                                    WHERE table_schema = DATABASE() AND table_name = %s
+                                    """,
+                                    (table_name,),
+                                )
+                                cols = {str(r[0]).lower() for r in (mcur.fetchall() or []) if r and r[0]}
+                                for c in candidates:
+                                    if c.lower() in cols:
+                                        return c
+                            except Exception:
+                                return None
+                            return None
+
+                        asset_destination_col = _pick_existing_column(
+                            "ITAD_asset_info",
+                            ["destination", "site", "location", "de_destination", "final_destination"],
+                        )
+                        qa_location_col = _pick_existing_column(
+                            "ITAD_QA_App",
+                            ["scanned_location", "location", "destination", "scan_location", "warehouse_location"],
+                        )
+
+                        asset_destination_expr = (
+                            f"a.`{asset_destination_col}`" if asset_destination_col else "NULL"
+                        )
+                        qa_location_group_expr = (
+                            f"COALESCE(q.`{qa_location_col}`, '')" if qa_location_col else "''"
+                        )
+
                         ph = ",".join(["%s"] * len(sampled_stockids))
                         q = (
-                            "SELECT a.stockid, a.de_completed_by, a.destination, "
+                            f"SELECT a.stockid, a.de_completed_by, {asset_destination_expr} AS asset_destination, "
                             "u.last_sorting_with_user, u.last_sorting_user, "
                             "x.last_sorting_any, x.last_sorting_any_user, x.last_sorting_any_location "
                             "FROM ITAD_asset_info a "
@@ -561,7 +595,7 @@ def create_admin_diagnostics_router(
                             "  SELECT q.stockid, "
                             "         MAX(q.added_date) AS last_sorting_any, "
                             "         SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(q.username, '') ORDER BY q.added_date DESC SEPARATOR '||'), '||', 1) AS last_sorting_any_user, "
-                            "         SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(q.scanned_location, '') ORDER BY q.added_date DESC SEPARATOR '||'), '||', 1) AS last_sorting_any_location "
+                            f"         SUBSTRING_INDEX(GROUP_CONCAT({qa_location_group_expr} ORDER BY q.added_date DESC SEPARATOR '||'), '||', 1) AS last_sorting_any_location "
                             "  FROM ITAD_QA_App q "
                             f"  WHERE q.stockid IN ({ph}) "
                             "    AND TRIM(COALESCE(q.stockid, '')) <> '' "

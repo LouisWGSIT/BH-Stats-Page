@@ -55,6 +55,33 @@ def test_admin_devices_with_admin_token(client):
     assert isinstance(body["devices"], list)
 
 
+def test_admin_page_collapsible_sections_lazy_init_smoke(client):
+    r = client.get("/admin.html", headers={"Authorization": "Bearer test-admin-pass"})
+    assert r.status_code == 200
+    html = r.text
+
+    for section_id in [
+        "section-fix-initials",
+        "section-connected-devices",
+        "section-erasure-evidence",
+        "section-sorting-evidence",
+        "section-dashboard-activity",
+    ]:
+        assert f'id="{section_id}"' in html
+
+    assert "registerSectionLoaders();" in html
+    assert "toggleBtn.innerHTML = '<span class=\"chevron\" aria-hidden=\"true\"></span>'" in html
+
+    load_idx = html.find("window.addEventListener('load', async () => {")
+    assert load_idx != -1
+    load_snippet = html[load_idx: load_idx + 600]
+    assert "registerSectionLoaders();" in load_snippet
+    assert "initCollapsibleSections();" in load_snippet
+    assert "loadErasureEvidence();" not in load_snippet
+    assert "loadSortingEvidence();" not in load_snippet
+    assert "fetchAdminActivity();" not in load_snippet
+
+
 def test_hwid_requires_api_key(client):
     r = client.post("/hwid", json={"hashid": "abc"})
     assert r.status_code == 401
