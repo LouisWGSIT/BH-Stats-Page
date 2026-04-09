@@ -1,13 +1,37 @@
 import base64
+import hmac
 import hashlib
 import ipaddress
 import json
 import os
 import secrets
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _utc_now_iso() -> str:
+    return _utc_now().isoformat().replace("+00:00", "Z")
+
+
+def _parse_iso_to_utc(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        raw = str(value).strip()
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
+    except Exception:
+        return None
 
 
 def load_device_tokens(*, db_module, device_tokens_db: str, device_tokens_file: str):
@@ -82,16 +106,15 @@ def is_device_token_valid(*, token: str, load_tokens, save_tokens) -> bool:
     tokens = load_tokens()
     if token in tokens:
         entry = tokens[token]
-        try:
-            expiry = datetime.fromisoformat(entry['expiry'])
-        except Exception:
+        expiry = _parse_iso_to_utc(entry.get('expiry'))
+        if expiry is None:
             try:
                 del tokens[token]
                 save_tokens(tokens)
             except Exception:
                 pass
             return False
-        if datetime.now() < expiry:
+        if _utc_now() < expiry:
             return True
         try:
             del tokens[token]
@@ -108,7 +131,7 @@ def touch_device_token(*, token: str, load_tokens, save_tokens, client_ips: list
     if token not in tokens:
         return
     entry = tokens[token]
-    entry['last_seen'] = datetime.now().isoformat()
+    entry['last_seen'] = _utc_now_iso()
     if user_agent:
         entry['user_agent'] = user_agent
     if client_ips:
@@ -163,9 +186,9 @@ def get_role_from_request(*, request: Request, admin_password: str, manager_pass
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
-        if token == admin_password:
+        if hmac.compare_digest(token, admin_password):
             return "admin"
-        if token == manager_password:
+        if hmac.compare_digest(token, manager_password):
             return "manager"
         if is_token_valid(token):
             tokens = load_tokens()
@@ -250,15 +273,16 @@ async def auth_middleware(
 
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
-        if token == admin_password:
+        if hmac.compare_digest(token, admin_password):
             return await call_next(request)
-        if token == manager_password:
+        if hmac.compare_digest(token, manager_password):
             if request.url.path.startswith("/admin"):
                 return JSONResponse(status_code=403, content={"detail": "Admin access required."})
             return await call_next(request)
 
-    if request.query_params.get("auth") in (admin_password, manager_password):
-        if request.query_params.get("auth") == manager_password and request.url.path.startswith("/admin"):
+    query_auth = request.query_params.get("auth")
+    if query_auth and (hmac.compare_digest(query_auth, admin_password) or hmac.compare_digest(query_auth, manager_password)):
+        if hmac.compare_digest(query_auth, manager_password) and request.url.path.startswith("/admin"):
             return JSONResponse(status_code=403, content={"detail": "Admin access required."})
         return await call_next(request)
 
@@ -267,9 +291,9 @@ async def auth_middleware(
             decoded = base64.b64decode(auth_header[6:]).decode()
             if ":" in decoded:
                 _, password = decoded.split(":", 1)
-                if password == admin_password:
+                if hmac.compare_digest(password, admin_password):
                     return await call_next(request)
-                if password == manager_password and not request.url.path.startswith("/admin"):
+                if hmac.compare_digest(password, manager_password) and not request.url.path.startswith("/admin"):
                     return await call_next(request)
         except Exception:
             pass

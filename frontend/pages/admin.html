@@ -77,6 +77,40 @@
             color: #333;
         }
 
+        .section.collapsible-section h2 {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .section.collapsible-section .section-body {
+            display: block;
+        }
+
+        .section.collapsible-section.collapsed .section-body {
+            display: none;
+        }
+
+        .collapse-toggle {
+            background: transparent;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.2;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .collapse-toggle:hover {
+            background: #f8fafc;
+            box-shadow: none;
+            transform: none;
+        }
+
         .form-group {
             margin-bottom: 15px;
         }
@@ -405,7 +439,7 @@
 
         <div class="content">
             <!-- Section 1: Fix Initials -->
-            <div class="section admin-only">
+            <div class="section admin-only" id="section-fix-initials">
                 <h2 style="display:flex;align-items:center;gap:8px;">
                     <span>Fix/Correct Initials</span>
                     <button id="refreshInitialsBtn" onclick="refreshInitialsDropdowns()" title="Refresh initials list" style="padding:6px 10px;font-size:14px;line-height:1;">↻</button>
@@ -443,7 +477,7 @@
             </div>
 
             <!-- Section 6: Connected Devices -->
-            <div class="section">
+            <div class="section" id="section-connected-devices">
                 <h2>🔐 Connected Devices</h2>
                 <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
                     View devices with active sessions and revoke access if needed.
@@ -462,7 +496,7 @@
             </div>
 
             <!-- Section 7: Erasure Evidence -->
-            <div class="section admin-only">
+            <div class="section admin-only" id="section-erasure-evidence">
                 <h2>🧾 Erasure Evidence</h2>
                 <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
                     Verifies erased devices are landing in SQLite and shows whether sample records map to MariaDB assets/QA.
@@ -505,10 +539,10 @@
             </div>
 
             <!-- Section 7.1: Sorting Evidence -->
-            <div class="section admin-only">
+            <div class="section admin-only" id="section-sorting-evidence">
                 <h2>📦 Sorting Evidence</h2>
                 <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
-                    Debugs Awaiting Sorting using sampled stockids. Rule: DE completed in ITAD_asset_info and no newer QA row with username in ITAD_QA_App.
+                    Debugs Awaiting Sorting using sampled stockids. Rule: QA completed in ITAD_asset_info and no newer Sorting row with username in ITAD_QA_App.
                 </p>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                     <label style="font-size:13px;color:#666;">Window:
@@ -535,13 +569,14 @@
                         <thead>
                             <tr>
                                 <th>StockID</th>
-                                <th>DE Completed</th>
-                                <th>DE By</th>
-                                <th>Last QA Added</th>
-                                <th>Last QA User</th>
-                                <th>Latest QA (Any)</th>
-                                <th>Latest QA User (Any)</th>
-                                <th>Hours Since DE</th>
+                                <th>QA Completed</th>
+                                <th>QA By</th>
+                                <th>Last Sorting Added</th>
+                                <th>Last Sorting User</th>
+                                <th>Latest Sorting (Any)</th>
+                                <th>Latest Sorting User (Any)</th>
+                                <th>Location</th>
+                                <th>Hours Since QA</th>
                                 <th>Lag (hours)</th>
                                 <th>Reason</th>
                             </tr>
@@ -555,13 +590,14 @@
                         <thead>
                             <tr>
                                 <th>StockID</th>
-                                <th>DE Completed</th>
-                                <th>DE By</th>
-                                <th>Last QA Added</th>
-                                <th>Last QA User</th>
-                                <th>Latest QA (Any)</th>
-                                <th>Latest QA User (Any)</th>
-                                <th>Hours Since DE</th>
+                                <th>QA Completed</th>
+                                <th>QA By</th>
+                                <th>Last Sorting Added</th>
+                                <th>Last Sorting User</th>
+                                <th>Latest Sorting (Any)</th>
+                                <th>Latest Sorting User (Any)</th>
+                                <th>Location</th>
+                                <th>Hours Since QA</th>
                                 <th>Lag (hours)</th>
                                 <th>Reason</th>
                             </tr>
@@ -572,7 +608,7 @@
             </div>
 
             <!-- Section 8: Dashboard Activity (last 24 hours) -->
-            <div class="section admin-only">
+            <div class="section admin-only" id="section-dashboard-activity">
                 <h2>📈 Dashboard Activity (24h)</h2>
                 <p style="color: #666; margin-bottom: 8px; font-size: 14px;">
                     Tracks exports, device searches, memory samples, and Fix Initials usage to help identify causes of memory spikes.
@@ -695,6 +731,56 @@
 
             document.querySelectorAll('.admin-only').forEach(section => {
                 section.style.display = (userRole === 'admin') ? '' : 'none';
+            });
+        }
+
+        function initCollapsibleSections() {
+            const sectionIds = [
+                'section-fix-initials',
+                'section-connected-devices',
+                'section-erasure-evidence',
+                'section-sorting-evidence',
+                'section-dashboard-activity'
+            ];
+
+            sectionIds.forEach((sectionId) => {
+                const section = document.getElementById(sectionId);
+                if (!section || section.dataset.collapsibleInit === '1') return;
+
+                const heading = section.querySelector('h2');
+                if (!heading) return;
+
+                const body = document.createElement('div');
+                body.className = 'section-body';
+
+                let node = heading.nextSibling;
+                while (node) {
+                    const nextNode = node.nextSibling;
+                    body.appendChild(node);
+                    node = nextNode;
+                }
+
+                section.appendChild(body);
+                section.classList.add('collapsible-section', 'collapsed');
+
+                const toggleBtn = document.createElement('button');
+                toggleBtn.type = 'button';
+                toggleBtn.className = 'collapse-toggle';
+
+                const updateToggleLabel = () => {
+                    const expanded = !section.classList.contains('collapsed');
+                    toggleBtn.textContent = expanded ? 'Collapse' : 'Expand';
+                    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                };
+
+                toggleBtn.addEventListener('click', () => {
+                    section.classList.toggle('collapsed');
+                    updateToggleLabel();
+                });
+
+                heading.appendChild(toggleBtn);
+                updateToggleLabel();
+                section.dataset.collapsibleInit = '1';
             });
         }
 
@@ -948,6 +1034,7 @@
             const ok = await ensureManagerAccess();
             if (!ok) return;
             applyRoleVisibility();
+            initCollapsibleSections();
             if (userRole === 'admin') {
                 refreshInitialsDropdowns();
                 loadConnectedDevices();
@@ -1314,13 +1401,15 @@
                     let html = '<div class="devices-row">';
                     devices.forEach(device => {
                         const tokenSuffix = device.token ? device.token.slice(-8) : 'unknown';
-                        const displayName = device.name ? (device.name + ' (' + (device.role || 'viewer') + ')') : ((device.role || 'unknown') + ' (' + tokenSuffix + ')');
+                        const stableId = (device.device_id || tokenSuffix || 'unknown');
+                        const displayName = device.name ? (device.name + ' (' + (device.role || 'viewer') + ')') : ((device.role || 'unknown') + ' (' + stableId + ')');
                         html += `
                             <div class="device-card">
                                 <div style="display:flex;justify-content:space-between;align-items:center;">
                                     <div style="font-weight:700;color:#222;">${displayName}</div>
                                     <div style="font-size:12px;color:#0a84ff;font-weight:700;">Active</div>
                                 </div>
+                                <div class="device-meta">Device ID: ${stableId}</div>
                                 <div class="device-meta">IP: ${device.client_ip || 'n/a'}</div>
                                 <div class="device-meta">UA: ${device.user_agent || 'n/a'}</div>
                                 <div class="device-meta">Expiry: ${device.expiry || 'n/a'}</div>
@@ -1476,11 +1565,11 @@
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
                         <div class="stat-card filterable-card active" data-sort-filter="all"><div class="stat-value">${s.candidateStockids || 0}</div><div class="stat-label">Candidate StockIDs</div></div>
                         <div class="stat-card filterable-card" data-sort-filter="awaiting"><div class="stat-value">${s.awaitingSorting || 0}</div><div class="stat-label">Awaiting Sorting</div></div>
-                        <div class="stat-card filterable-card" data-sort-filter="decremented"><div class="stat-value">${s.decrementedByQa || 0}</div><div class="stat-label">Decremented by QA</div></div>
-                        <div class="stat-card filterable-card" data-sort-filter="missing_qa_with_username"><div class="stat-value">${s.missingQaWithUsername || 0}</div><div class="stat-label">Missing QA Username</div></div>
-                        <div class="stat-card filterable-card" data-sort-filter="qa_older_than_de_completed"><div class="stat-value">${s.qaOlderThanDeCompleted || 0}</div><div class="stat-label">QA Older Than DE</div></div>
-                        <div class="stat-card filterable-card" data-sort-filter="blank_username_after_de"><div class="stat-value">${s.blankUsernameAfterDe || 0}</div><div class="stat-label">Blank Username After DE</div></div>
-                        <div class="stat-card"><div class="stat-value">${s.deCompletedByPresent || 0}</div><div class="stat-label">DE Completed By Present</div></div>
+                        <div class="stat-card filterable-card" data-sort-filter="decremented"><div class="stat-value">${s.decrementedBySorting || s.decrementedByQa || 0}</div><div class="stat-label">Decremented by Sorting</div></div>
+                        <div class="stat-card filterable-card" data-sort-filter="missing_sorting_with_username"><div class="stat-value">${s.missingSortingWithUsername || s.missingQaWithUsername || 0}</div><div class="stat-label">Missing Sorting Username</div></div>
+                        <div class="stat-card filterable-card" data-sort-filter="sorting_older_than_qa_completed"><div class="stat-value">${s.sortingOlderThanQaCompleted || s.qaOlderThanDeCompleted || 0}</div><div class="stat-label">Sorting Older Than QA</div></div>
+                        <div class="stat-card filterable-card" data-sort-filter="blank_username_after_qa_completed"><div class="stat-value">${s.blankUsernameAfterQaCompleted || s.blankUsernameAfterDe || 0}</div><div class="stat-label">Blank Sorting Username After QA</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.qaCompletedByPresent || s.deCompletedByPresent || 0}</div><div class="stat-label">QA Completed By Present</div></div>
                         <div class="stat-card"><div class="stat-value">${s.reconciliationGap || 0}</div><div class="stat-label">Reconciliation Gap</div></div>
                         <div class="stat-card"><div class="stat-value">${s.sampleAwaitingCount || awaiting.length}</div><div class="stat-label">Awaiting Samples</div></div>
                         <div class="stat-card"><div class="stat-value">${s.sampleDecrementedCount || decremented.length}</div><div class="stat-label">Decremented Samples</div></div>
@@ -1519,11 +1608,11 @@
             let awaitingRows = _sortingAwaitingSamples || [];
             let decrementedRows = _sortingDecrementedSamples || [];
         
-            if (filter === 'missing_qa_with_username' || filter === 'qa_older_than_de_completed') {
+            if (filter === 'missing_sorting_with_username' || filter === 'sorting_older_than_qa_completed') {
                 awaitingRows = awaitingRows.filter((r) => (r.reason || '') === filter);
                 decrementedRows = [];
-            } else if (filter === 'blank_username_after_de') {
-                awaitingRows = awaitingRows.filter((r) => (r.reason || '').includes('blank_username_after_de'));
+            } else if (filter === 'blank_username_after_qa_completed') {
+                awaitingRows = awaitingRows.filter((r) => (r.reason || '').includes('blank_username_after_qa_completed'));
                 decrementedRows = [];
             } else if (filter === 'awaiting') {
                 decrementedRows = [];
@@ -1537,13 +1626,14 @@
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td style="font-size:12px;">${row.stockid || ''}</td>
-                        <td style="font-size:12px;">${formatActivityTimeUk(row.deCompletedDate)}</td>
-                        <td style="font-size:12px;">${row.deCompletedBy || ''}</td>
-                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAddedDate)}</td>
-                        <td style="font-size:12px;">${row.lastQaUsername || ''}</td>
-                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastQaAnyDate)}</td>
-                        <td style="font-size:12px;">${row.lastQaAnyUsername || ''}</td>
-                        <td style="font-size:12px;">${row.hoursSinceDeCompleted != null ? Number(row.hoursSinceDeCompleted).toFixed(1) : ''}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.qaCompletedDate || row.deCompletedDate)}</td>
+                        <td style="font-size:12px;">${row.qaCompletedBy || row.deCompletedBy || ''}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.lastSortingAddedDate || row.lastQaAddedDate)}</td>
+                        <td style="font-size:12px;">${row.lastSortingUsername || row.lastQaUsername || ''}</td>
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.latestSortingAnyDate || row.lastQaAnyDate)}</td>
+                        <td style="font-size:12px;">${row.latestSortingAnyUsername || row.lastQaAnyUsername || ''}</td>
+                        <td style="font-size:12px;">${row.location || ''}</td>
+                        <td style="font-size:12px;">${row.hoursSinceQaCompleted != null ? Number(row.hoursSinceQaCompleted).toFixed(1) : (row.hoursSinceDeCompleted != null ? Number(row.hoursSinceDeCompleted).toFixed(1) : '')}</td>
                         <td style="font-size:12px;">${row.lagHours != null ? Number(row.lagHours).toFixed(1) : ''}</td>
                         <td style="font-size:12px;">${row.reason || ''}</td>
                     `;

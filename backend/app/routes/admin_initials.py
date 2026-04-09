@@ -1,4 +1,5 @@
-from datetime import datetime
+from contextlib import closing
+from datetime import UTC, datetime
 from typing import Callable
 
 from fastapi import APIRouter, HTTPException, Request
@@ -16,20 +17,19 @@ def create_admin_initials_router(
         """Get all unique initials in the database with their counts."""
         require_admin(req)
 
-        conn = db_module.sqlite3.connect(db_module.DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT
-                COALESCE(NULLIF(TRIM(initials), ''), '(unassigned)') as initials_group,
-                COUNT(*) as count
-            FROM erasures
-            GROUP BY COALESCE(NULLIF(TRIM(initials), ''), '(unassigned)')
-            ORDER BY count DESC
-            """
-        )
-        rows = cursor.fetchall()
-        conn.close()
+        with closing(db_module.sqlite3.connect(db_module.DB_PATH)) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(TRIM(initials), ''), '(unassigned)') as initials_group,
+                    COUNT(*) as count
+                FROM erasures
+                GROUP BY COALESCE(NULLIF(TRIM(initials), ''), '(unassigned)')
+                ORDER BY count DESC
+                """
+            )
+            rows = cursor.fetchall()
 
         result = [{"initials": row[0], "count": row[1]} for row in rows]
         return {
@@ -151,7 +151,7 @@ def create_admin_initials_router(
         with db_module.sqlite_transaction() as (_, cursor2):
             cursor2.execute(
                 "INSERT INTO admin_actions (action, from_initials, to_initials, created_at, affected) VALUES (?, ?, ?, ?, ?)",
-                ("fix_initials", from_display, to_initials, datetime.now().isoformat(), len(rows)),
+                ("fix_initials", from_display, to_initials, datetime.now(UTC).isoformat().replace("+00:00", "Z"), len(rows)),
             )
             action_id = cursor2.lastrowid
             cursor2.executemany(

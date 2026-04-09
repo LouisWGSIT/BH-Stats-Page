@@ -1,3 +1,4 @@
+from contextlib import closing
 from datetime import date, datetime, timedelta
 from typing import Dict
 
@@ -11,26 +12,25 @@ def create_metrics_analytics_router(*, db_module, cache_get, cache_set) -> APIRo
 
     @router.get("/metrics/total-by-type")
     async def get_total_by_type(type: str = "laptops_desktops", scope: str = "today"):
-        conn = db_module.sqlite3.connect(db_module.DB_PATH)
-        cursor = conn.cursor()
-        if scope == "month":
-            today = date.today()
-            year = today.year
-            month = today.month
-            first_day = f"{year:04d}-{month:02d}-01"
-            last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
-            where = "date >= ? AND date <= ? AND event = 'success' AND device_type = ?"
-            params = [first_day, last_day, type]
-        elif scope == "all":
-            where = "event = 'success' AND device_type = ?"
-            params = [type]
-        else:
-            key_val = date.today().isoformat()
-            where = "date = ? AND event = 'success' AND device_type = ?"
-            params = [key_val, type]
-        cursor.execute(f"SELECT COUNT(1) FROM erasures WHERE {where}", params)
-        total = cursor.fetchone()[0]
-        conn.close()
+        with closing(db_module.sqlite3.connect(db_module.DB_PATH)) as conn:
+            cursor = conn.cursor()
+            if scope == "month":
+                today = date.today()
+                year = today.year
+                month = today.month
+                first_day = f"{year:04d}-{month:02d}-01"
+                last_day = f"{year:04d}-{month:02d}-{31 if month in [1,3,5,7,8,10,12] else 30 if month in [4,6,9,11] else (28 if year % 4 != 0 else 29):02d}"
+                where = "date >= ? AND date <= ? AND event = 'success' AND device_type = ?"
+                params = [first_day, last_day, type]
+            elif scope == "all":
+                where = "event = 'success' AND device_type = ?"
+                params = [type]
+            else:
+                key_val = date.today().isoformat()
+                where = "date = ? AND event = 'success' AND device_type = ?"
+                params = [key_val, type]
+            cursor.execute(f"SELECT COUNT(1) FROM erasures WHERE {where}", params)
+            total = cursor.fetchone()[0]
         return {"total": total, "type": type, "scope": scope}
 
     @router.get("/metrics/all-time-totals")

@@ -652,6 +652,36 @@ def test_admin_sorting_evidence_handles_db_unavailable(client, app_module, monke
     assert body["status"] == "fail"
 
 
+def test_admin_connected_devices_deduplicates_same_device_role(client, app_module):
+    # Two admin tokens with the same fingerprint suffix should collapse to one
+    # most-recent device record.
+    app_module.save_device_tokens(
+        {
+            "old-token:09a0cea3abcdef12": {
+                "expiry": "2099-01-01T00:00:00Z",
+                "role": "admin",
+                "user_agent": "pytest-agent",
+                "client_ip": "127.0.0.1",
+                "last_seen": "2026-01-01T00:00:00Z",
+            },
+            "new-token:09a0cea3abcdef12": {
+                "expiry": "2099-01-01T00:00:00Z",
+                "role": "admin",
+                "user_agent": "pytest-agent",
+                "client_ip": "127.0.0.1",
+                "last_seen": "2026-01-02T00:00:00Z",
+            },
+        }
+    )
+
+    r = client.get("/admin/connected-devices", headers={"Authorization": "Bearer test-admin-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    devices = body.get("devices") or []
+    assert len(devices) == 1
+    assert devices[0].get("device_id") == "09a0cea3"
+
+
 def test_admin_initials_list_requires_admin(client):
     r = client.get("/admin/initials-list")
     assert r.status_code == 401

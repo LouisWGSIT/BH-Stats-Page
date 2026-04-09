@@ -347,7 +347,7 @@ def create_admin_diagnostics_router(
                 row = cur.fetchone()
                 awaiting_total = int(row[0]) if row and row[0] is not None else 0
 
-                # Rows that have a valid decrement signal (QA row with username newer than DE completion).
+                # Rows that have a valid decrement signal (Sorting row with username newer than QA completion).
                 cur.execute(
                     """
                     SELECT COUNT(DISTINCT a.stockid)
@@ -373,13 +373,13 @@ def create_admin_diagnostics_router(
 
                 # Reassurance metrics:
                 # - split awaiting stockids by reason
-                # - measure potential undercount caused by blank usernames in QA scans
+                # - measure potential undercount caused by blank usernames in Sorting scans
                 # - verify QA completion metadata coverage in ITAD_asset_info (de_* fields)
                 cur.execute(
                     """
                     SELECT
-                        COUNT(DISTINCT CASE WHEN q.last_qa_with_user IS NULL THEN a.stockid END) AS missing_qa_with_username,
-                        COUNT(DISTINCT CASE WHEN q.last_qa_with_user IS NOT NULL AND a.de_completed_date > q.last_qa_with_user THEN a.stockid END) AS qa_older_than_de_completed
+                        COUNT(DISTINCT CASE WHEN q.last_qa_with_user IS NULL THEN a.stockid END) AS missing_sorting_with_username,
+                        COUNT(DISTINCT CASE WHEN q.last_qa_with_user IS NOT NULL AND a.de_completed_date > q.last_qa_with_user THEN a.stockid END) AS sorting_older_than_qa_completed
                     FROM ITAD_asset_info a
                     LEFT JOIN (
                         SELECT stockid, MAX(added_date) AS last_qa_with_user
@@ -397,8 +397,8 @@ def create_admin_diagnostics_router(
                     (days,),
                 )
                 row = cur.fetchone()
-                missing_qa_with_username = int(row[0]) if row and row[0] is not None else 0
-                qa_older_than_de_completed = int(row[1]) if row and len(row) > 1 and row[1] is not None else 0
+                missing_sorting_with_username = int(row[0]) if row and row[0] is not None else 0
+                sorting_older_than_qa_completed = int(row[1]) if row and len(row) > 1 and row[1] is not None else 0
 
                 cur.execute(
                     """
@@ -440,8 +440,8 @@ def create_admin_diagnostics_router(
                         a.de_completed_date,
                         q.last_qa_with_user,
                         CASE
-                            WHEN q.last_qa_with_user IS NULL THEN 'missing_qa_with_username'
-                            WHEN a.de_completed_date > q.last_qa_with_user THEN 'qa_older_than_de_completed'
+                            WHEN q.last_qa_with_user IS NULL THEN 'missing_sorting_with_username'
+                            WHEN a.de_completed_date > q.last_qa_with_user THEN 'sorting_older_than_qa_completed'
                             ELSE 'unknown'
                         END AS reason
                     FROM ITAD_asset_info a
@@ -475,7 +475,7 @@ def create_admin_diagnostics_router(
                         a.stockid,
                         a.de_completed_date,
                         q.last_qa_with_user,
-                        'decremented_by_qa_scan' AS reason
+                        'decremented_by_sorting_scan' AS reason
                     FROM ITAD_asset_info a
                     INNER JOIN (
                         SELECT stockid, MAX(added_date) AS last_qa_with_user
@@ -543,14 +543,14 @@ def create_admin_diagnostics_router(
                     try:
                         ph = ",".join(["%s"] * len(sampled_stockids))
                         q = (
-                            "SELECT a.stockid, a.de_completed_by, "
-                            "u.last_qa_with_user, u.last_qa_user, "
-                            "x.last_qa_any, x.last_qa_any_user "
+                            "SELECT a.stockid, a.de_completed_by, a.destination, "
+                            "u.last_sorting_with_user, u.last_sorting_user, "
+                            "x.last_sorting_any, x.last_sorting_any_user, x.last_sorting_any_location "
                             "FROM ITAD_asset_info a "
                             "LEFT JOIN ("
                             "  SELECT q.stockid, "
-                            "         MAX(q.added_date) AS last_qa_with_user, "
-                            "         SUBSTRING_INDEX(GROUP_CONCAT(q.username ORDER BY q.added_date DESC SEPARATOR '||'), '||', 1) AS last_qa_user "
+                            "         MAX(q.added_date) AS last_sorting_with_user, "
+                            "         SUBSTRING_INDEX(GROUP_CONCAT(q.username ORDER BY q.added_date DESC SEPARATOR '||'), '||', 1) AS last_sorting_user "
                             "  FROM ITAD_QA_App q "
                             f"  WHERE q.stockid IN ({ph}) "
                             "    AND TRIM(COALESCE(q.stockid, '')) <> '' "
@@ -559,8 +559,9 @@ def create_admin_diagnostics_router(
                             ") u ON u.stockid = a.stockid "
                             "LEFT JOIN ("
                             "  SELECT q.stockid, "
-                            "         MAX(q.added_date) AS last_qa_any, "
-                            "         SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(q.username, '') ORDER BY q.added_date DESC SEPARATOR '||'), '||', 1) AS last_qa_any_user "
+                            "         MAX(q.added_date) AS last_sorting_any, "
+                            "         SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(q.username, '') ORDER BY q.added_date DESC SEPARATOR '||'), '||', 1) AS last_sorting_any_user, "
+                            "         SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(q.scanned_location, '') ORDER BY q.added_date DESC SEPARATOR '||'), '||', 1) AS last_sorting_any_location "
                             "  FROM ITAD_QA_App q "
                             f"  WHERE q.stockid IN ({ph}) "
                             "    AND TRIM(COALESCE(q.stockid, '')) <> '' "
@@ -575,11 +576,13 @@ def create_admin_diagnostics_router(
                             if not sid:
                                 continue
                             sample_meta[sid] = {
-                                "deCompletedBy": str(r[1]) if len(r) > 1 and r[1] is not None else None,
-                                "lastQaWithUser": _to_iso(r[2] if len(r) > 2 else None),
-                                "lastQaUsername": str(r[3]) if len(r) > 3 and r[3] is not None else None,
-                                "lastQaAny": _to_iso(r[4] if len(r) > 4 else None),
-                                "lastQaAnyUsername": str(r[5]) if len(r) > 5 and r[5] is not None else None,
+                                "qaCompletedBy": str(r[1]) if len(r) > 1 and r[1] is not None else None,
+                                "assetDestination": str(r[2]) if len(r) > 2 and r[2] is not None else None,
+                                "lastSortingWithUser": _to_iso(r[3] if len(r) > 3 else None),
+                                "lastSortingUsername": str(r[4]) if len(r) > 4 and r[4] is not None else None,
+                                "lastSortingAny": _to_iso(r[5] if len(r) > 5 else None),
+                                "lastSortingAnyUsername": str(r[6]) if len(r) > 6 and r[6] is not None else None,
+                                "lastSortingAnyLocation": str(r[7]) if len(r) > 7 and r[7] is not None else None,
                             }
                     finally:
                         try:
@@ -590,48 +593,55 @@ def create_admin_diagnostics_router(
 
             def _enrich_sample(row, default_reason: str):
                 stockid = str(row[0]) if row and row[0] is not None else None
-                de_completed = _to_iso(row[1] if len(row) > 1 else None)
-                last_qa_added = _to_iso(row[2] if len(row) > 2 else None)
+                qa_completed = _to_iso(row[1] if len(row) > 1 else None)
+                last_sorting_added = _to_iso(row[2] if len(row) > 2 else None)
                 reason = str(row[3]) if len(row) > 3 and row[3] is not None else default_reason
 
                 meta = sample_meta.get(stockid or "", {})
-                de_dt = _parse_dt(de_completed)
-                qa_with_user_dt = _parse_dt(last_qa_added or meta.get("lastQaWithUser"))
+                qa_dt = _parse_dt(qa_completed)
+                sorting_with_user_dt = _parse_dt(last_sorting_added or meta.get("lastSortingWithUser"))
                 lag_hours = None
-                hours_since_de = None
-                if de_dt:
-                    hours_since_de = round((now_utc - de_dt).total_seconds() / 3600.0, 2)
-                if de_dt and qa_with_user_dt:
-                    lag_hours = round((qa_with_user_dt - de_dt).total_seconds() / 3600.0, 2)
+                hours_since_qa_completed = None
+                if qa_dt:
+                    hours_since_qa_completed = round((now_utc - qa_dt).total_seconds() / 3600.0, 2)
+                if qa_dt and sorting_with_user_dt:
+                    lag_hours = round((sorting_with_user_dt - qa_dt).total_seconds() / 3600.0, 2)
 
                 return {
                     "stockid": stockid,
-                    "deCompletedDate": de_completed,
-                    "deCompletedBy": meta.get("deCompletedBy"),
-                    "lastQaAddedDate": last_qa_added or meta.get("lastQaWithUser"),
-                    "lastQaUsername": meta.get("lastQaUsername"),
-                    "lastQaAnyDate": meta.get("lastQaAny"),
-                    "lastQaAnyUsername": meta.get("lastQaAnyUsername"),
-                    "hoursSinceDeCompleted": hours_since_de,
+                    "qaCompletedDate": qa_completed,
+                    "qaCompletedBy": meta.get("qaCompletedBy"),
+                    "lastSortingAddedDate": last_sorting_added or meta.get("lastSortingWithUser"),
+                    "lastSortingUsername": meta.get("lastSortingUsername"),
+                    "latestSortingAnyDate": meta.get("lastSortingAny"),
+                    "latestSortingAnyUsername": meta.get("lastSortingAnyUsername"),
+                    "location": meta.get("lastSortingAnyLocation") or meta.get("assetDestination"),
+                    "hoursSinceQaCompleted": hours_since_qa_completed,
                     "lagHours": lag_hours,
                     "reason": reason,
                 }
 
             awaiting_samples = [_enrich_sample(r, "unknown") for r in awaiting_rows]
-            decremented_samples = [_enrich_sample(r, "decremented_by_qa_scan") for r in decremented_rows]
+            decremented_samples = [_enrich_sample(r, "decremented_by_sorting_scan") for r in decremented_rows]
 
             return {
                 "summary": {
                     "windowDays": days,
                     "candidateStockids": candidate_total,
                     "awaitingSorting": awaiting_total,
+                    "decrementedBySorting": decremented_total,
+                    "missingSortingWithUsername": missing_sorting_with_username,
+                    "sortingOlderThanQaCompleted": sorting_older_than_qa_completed,
+                    "blankUsernameAfterQaCompleted": blank_username_after_de,
+                    "qaCompletedByPresent": de_completed_by_present,
+                    # Backward-compat aliases for existing UI consumers.
                     "decrementedByQa": decremented_total,
-                    "missingQaWithUsername": missing_qa_with_username,
-                    "qaOlderThanDeCompleted": qa_older_than_de_completed,
+                    "missingQaWithUsername": missing_sorting_with_username,
+                    "qaOlderThanDeCompleted": sorting_older_than_qa_completed,
                     "blankUsernameAfterDe": blank_username_after_de,
                     "deCompletedByPresent": de_completed_by_present,
                     "reconciliationGap": int(candidate_total - (awaiting_total + decremented_total)),
-                    "qaFieldNamingNote": "ITAD_asset_info de_* columns represent QA completion metadata in current process.",
+                    "qaFieldNamingNote": "ITAD_asset_info de_* fields currently represent QA completion; ITAD_QA_App rows represent Sorting scans.",
                     "sampleAwaitingCount": len(awaiting_samples),
                     "sampleDecrementedCount": len(decremented_samples),
                     "generatedAt": datetime.now(UTC).isoformat(),

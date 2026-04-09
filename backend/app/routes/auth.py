@@ -1,9 +1,23 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import hashlib
+import hmac
 import secrets
 from typing import Callable
 
 from fastapi import APIRouter, HTTPException, Request
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _token_fingerprint(token: str) -> str | None:
+    if ":" not in token:
+        return None
+    suffix = token.rsplit(":", 1)[-1].strip().lower()
+    if len(suffix) >= 8 and all(ch in "0123456789abcdef" for ch in suffix):
+        return suffix
+    return None
 
 
 def create_auth_router(
@@ -37,10 +51,10 @@ def create_auth_router(
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
-            if token == admin_password:
+            if hmac.compare_digest(token, admin_password):
                 role = "admin"
                 is_authenticated = True
-            elif token == manager_password:
+            elif hmac.compare_digest(token, manager_password):
                 role = "manager"
                 is_authenticated = True
             elif is_device_token_valid(token):
@@ -75,13 +89,13 @@ def create_auth_router(
                 else:
                     anon_token = "ephemeral-" + secrets.token_urlsafe(12)
                     tokens[anon_token] = {
-                        "created": datetime.now().isoformat(),
-                        "expiry": (datetime.now() + timedelta(hours=24)).isoformat(),
+                        "created": _utc_now_iso(),
+                        "expiry": (datetime.now(UTC) + timedelta(hours=24)).isoformat().replace("+00:00", "Z"),
                         "user_agent": ua,
                         "client_ip": client_ip,
                         "client_ips": get_client_ips(request),
                         "last_client_ip": client_ip,
-                        "last_seen": datetime.now().isoformat(),
+                        "last_seen": _utc_now_iso(),
                         "role": "viewer",
                         "ephemeral": True,
                         "fingerprint": fingerprint,
@@ -112,19 +126,29 @@ def create_auth_router(
             else:
                 client_ip = request.client.host if request.client else "0.0.0.0"
 
-            if password == admin_password:
+            if hmac.compare_digest(password, admin_password):
                 user_agent = request.headers.get("User-Agent", "Unknown")
                 device_token = generate_device_token(user_agent, client_ip)
+                new_fp = _token_fingerprint(device_token)
 
                 tokens = load_device_tokens()
+                if new_fp:
+                    for existing_token, existing_info in list(tokens.items()):
+                        if existing_token == device_token:
+                            continue
+                        existing_role = str(existing_info.get("role") or "").strip().lower()
+                        if existing_role != "admin":
+                            continue
+                        if _token_fingerprint(existing_token) == new_fp:
+                            tokens.pop(existing_token, None)
                 tokens[device_token] = {
-                    "created": datetime.now().isoformat(),
-                    "expiry": (datetime.now() + timedelta(days=device_token_expiry_days)).isoformat(),
+                    "created": _utc_now_iso(),
+                    "expiry": (datetime.now(UTC) + timedelta(days=device_token_expiry_days)).isoformat().replace("+00:00", "Z"),
                     "user_agent": user_agent,
                     "client_ip": client_ip,
                     "client_ips": [client_ip],
                     "last_client_ip": client_ip,
-                    "last_seen": datetime.now().isoformat(),
+                    "last_seen": _utc_now_iso(),
                     "role": "admin",
                 }
                 save_device_tokens(tokens)
@@ -138,19 +162,29 @@ def create_auth_router(
                     "message": "Admin access granted",
                 }
 
-            if password == manager_password:
+            if hmac.compare_digest(password, manager_password):
                 user_agent = request.headers.get("User-Agent", "Unknown")
                 device_token = generate_device_token(user_agent, client_ip)
+                new_fp = _token_fingerprint(device_token)
 
                 tokens = load_device_tokens()
+                if new_fp:
+                    for existing_token, existing_info in list(tokens.items()):
+                        if existing_token == device_token:
+                            continue
+                        existing_role = str(existing_info.get("role") or "").strip().lower()
+                        if existing_role != "manager":
+                            continue
+                        if _token_fingerprint(existing_token) == new_fp:
+                            tokens.pop(existing_token, None)
                 tokens[device_token] = {
-                    "created": datetime.now().isoformat(),
-                    "expiry": (datetime.now() + timedelta(days=device_token_expiry_days)).isoformat(),
+                    "created": _utc_now_iso(),
+                    "expiry": (datetime.now(UTC) + timedelta(days=device_token_expiry_days)).isoformat().replace("+00:00", "Z"),
                     "user_agent": user_agent,
                     "client_ip": client_ip,
                     "client_ips": [client_ip],
                     "last_client_ip": client_ip,
-                    "last_seen": datetime.now().isoformat(),
+                    "last_seen": _utc_now_iso(),
                     "role": "manager",
                 }
                 save_device_tokens(tokens)
@@ -192,13 +226,13 @@ def create_auth_router(
             token = generate_device_token(ua, client_ip)
             tokens = load_device_tokens()
             tokens[token] = {
-                "created": datetime.now().isoformat(),
-                "expiry": (datetime.now() + timedelta(days=device_token_expiry_days)).isoformat(),
+                "created": _utc_now_iso(),
+                "expiry": (datetime.now(UTC) + timedelta(days=device_token_expiry_days)).isoformat().replace("+00:00", "Z"),
                 "user_agent": ua,
                 "client_ip": client_ip,
                 "client_ips": get_client_ips(request),
                 "last_client_ip": client_ip,
-                "last_seen": datetime.now().isoformat(),
+                "last_seen": _utc_now_iso(),
                 "role": "viewer",
                 "ephemeral": True,
                 "name": name,

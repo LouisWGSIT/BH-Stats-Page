@@ -18,7 +18,7 @@ def get_daily_totals() -> list:
     return result
 import sqlite3
 import json
-from datetime import datetime, date, timedelta
+from datetime import UTC, datetime, date, timedelta
 from typing import Any, List, Tuple, Dict
 from pathlib import Path
 import os
@@ -357,7 +357,7 @@ def get_dashboard_snapshot(snapshot_key: str) -> Dict[str, Any] | None:
 
 def upsert_dashboard_snapshot(snapshot_key: str, payload: Dict[str, Any], source_version: str | None = None) -> Dict[str, Any]:
     """Persist a dashboard snapshot payload and return the saved metadata."""
-    updated_at = datetime.utcnow().isoformat() + "Z"
+    updated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     payload_json = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
     with sqlite_transaction() as (_conn, cursor):
         cursor.execute(
