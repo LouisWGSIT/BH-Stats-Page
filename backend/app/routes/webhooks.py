@@ -60,6 +60,7 @@ def _extract_stockid_from_obj(obj: Any):
     candidate_keys = [
         "stockid",
         "stock_id",
+        "assetNumber",
         "assetStockId",
         "asset_stock_id",
         "assetTag",
@@ -154,7 +155,7 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             if (bearer != ingestion_key) and (header_key != ingestion_key):
                 return JSONResponse(status_code=401, content={"detail": "Invalid ingestion key"})
 
-        stockid = body.get("stockid") or body.get("stock_id") or body.get("assetTag")
+        stockid = body.get("stockid") or body.get("stock_id") or body.get("assetNumber") or body.get("assetTag")
         if not stockid:
             stockid = _extract_stockid_from_obj(body)
         system_serial = body.get("system_serial") or body.get("systemSerial")
@@ -343,6 +344,7 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             stockid = _clean_placeholder(
                 payload.get("stockid")
                 or payload.get("stock_id")
+                or payload.get("assetNumber")
                 or payload.get("assetTag")
             )
             if not stockid:
@@ -360,6 +362,7 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
                     "initials": initials,
                     "job_id": job_id,
                     "stockid": stockid,
+                    "assetNumber": _clean_placeholder(payload.get("assetNumber")),
                     "system_serial": system_serial,
                 },
             )

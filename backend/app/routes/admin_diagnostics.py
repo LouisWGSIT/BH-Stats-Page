@@ -210,6 +210,7 @@ def create_admin_diagnostics_router(
             "sampleAwaitingQaByRule": 0,
             "sampleDeductedByQaAfterErasure": 0,
             "sampleExcludedBy7DigitStockid": 0,
+            "sampleWithPayloadStockid": 0,
         }
         samples = []
 
@@ -233,10 +234,17 @@ def create_admin_diagnostics_router(
 
             cur.execute(
                 """
-                SELECT ts, job_id, COALESCE(NULLIF(TRIM(system_serial), ''), NULLIF(TRIM(job_id), '')) AS key_id, initials, device_type
-                FROM erasures
-                WHERE event = 'success' AND ts >= ?
-                ORDER BY ts DESC
+                SELECT
+                    e.ts,
+                    e.job_id,
+                    COALESCE(NULLIF(TRIM(le.stockid), ''), NULLIF(TRIM(e.system_serial), ''), NULLIF(TRIM(e.job_id), '')) AS key_id,
+                    e.initials,
+                    e.device_type,
+                    NULLIF(TRIM(le.stockid), '') AS payload_stockid
+                FROM erasures e
+                LEFT JOIN local_erasures le ON le.job_id = e.job_id
+                WHERE e.event = 'success' AND e.ts >= ?
+                ORDER BY e.ts DESC
                 LIMIT ?
                 """,
                 (start_iso, limit),
@@ -418,7 +426,7 @@ def create_admin_diagnostics_router(
                         pass
 
         for row in er_rows:
-            ts, job_id, key_id, initials, device_type = row
+            ts, job_id, key_id, initials, device_type, payload_stockid = row
             nkey = _norm(key_id)
             stockid = key_to_stockid.get(nkey)
             has_asset = bool(stockid)
@@ -459,11 +467,14 @@ def create_admin_diagnostics_router(
                 summary["sampleAwaitingQaByRule"] += 1
             elif awaiting_by_rule is False:
                 summary["sampleDeductedByQaAfterErasure"] += 1
+            if payload_stockid:
+                summary["sampleWithPayloadStockid"] += 1
 
             samples.append({
                 "ts": _to_iso(ts),
                 "job_id": job_id,
                 "key": key_id,
+                "payload_stockid": payload_stockid,
                 "initials": initials,
                 "device_type": device_type,
                 "asset_match": has_asset,
