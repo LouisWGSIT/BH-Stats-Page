@@ -559,17 +559,24 @@ def create_admin_diagnostics_router(
                                 return None
                             return None
 
-                        asset_destination_col = _pick_existing_column(
+                        asset_location_col = _pick_existing_column(
                             "ITAD_asset_info",
-                            ["destination", "site", "location", "de_destination", "final_destination"],
+                            ["location", "destination", "site", "de_destination", "final_destination"],
+                        )
+                        asset_pallet_col = _pick_existing_column(
+                            "ITAD_asset_info",
+                            ["pallet_id", "pallet", "palletid"],
                         )
                         qa_location_col = _pick_existing_column(
                             "ITAD_QA_App",
                             ["scanned_location", "location", "destination", "scan_location", "warehouse_location"],
                         )
 
-                        asset_destination_expr = (
-                            f"a.`{asset_destination_col}`" if asset_destination_col else "NULL"
+                        asset_location_expr = (
+                            f"a.`{asset_location_col}`" if asset_location_col else "NULL"
+                        )
+                        asset_pallet_expr = (
+                            f"a.`{asset_pallet_col}`" if asset_pallet_col else "NULL"
                         )
                         qa_location_group_expr = (
                             f"COALESCE(q.`{qa_location_col}`, '')" if qa_location_col else "''"
@@ -577,7 +584,7 @@ def create_admin_diagnostics_router(
 
                         ph = ",".join(["%s"] * len(sampled_stockids))
                         q = (
-                            f"SELECT a.stockid, a.de_completed_by, {asset_destination_expr} AS asset_destination, "
+                            f"SELECT a.stockid, a.de_completed_by, {asset_location_expr} AS asset_location, {asset_pallet_expr} AS asset_pallet_id, "
                             "u.last_sorting_with_user, u.last_sorting_user, "
                             "x.last_sorting_any, x.last_sorting_any_user, x.last_sorting_any_location "
                             "FROM ITAD_asset_info a "
@@ -611,12 +618,13 @@ def create_admin_diagnostics_router(
                                 continue
                             sample_meta[sid] = {
                                 "qaCompletedBy": str(r[1]) if len(r) > 1 and r[1] is not None else None,
-                                "assetDestination": str(r[2]) if len(r) > 2 and r[2] is not None else None,
-                                "lastSortingWithUser": _to_iso(r[3] if len(r) > 3 else None),
-                                "lastSortingUsername": str(r[4]) if len(r) > 4 and r[4] is not None else None,
-                                "lastSortingAny": _to_iso(r[5] if len(r) > 5 else None),
-                                "lastSortingAnyUsername": str(r[6]) if len(r) > 6 and r[6] is not None else None,
-                                "lastSortingAnyLocation": str(r[7]) if len(r) > 7 and r[7] is not None else None,
+                                "assetLocation": str(r[2]) if len(r) > 2 and r[2] is not None else None,
+                                "assetPalletId": str(r[3]) if len(r) > 3 and r[3] is not None else None,
+                                "lastSortingWithUser": _to_iso(r[4] if len(r) > 4 else None),
+                                "lastSortingUsername": str(r[5]) if len(r) > 5 and r[5] is not None else None,
+                                "lastSortingAny": _to_iso(r[6] if len(r) > 6 else None),
+                                "lastSortingAnyUsername": str(r[7]) if len(r) > 7 and r[7] is not None else None,
+                                "lastSortingAnyLocation": str(r[8]) if len(r) > 8 and r[8] is not None else None,
                             }
                     finally:
                         try:
@@ -649,7 +657,8 @@ def create_admin_diagnostics_router(
                     "lastSortingUsername": meta.get("lastSortingUsername"),
                     "latestSortingAnyDate": meta.get("lastSortingAny"),
                     "latestSortingAnyUsername": meta.get("lastSortingAnyUsername"),
-                    "location": meta.get("lastSortingAnyLocation") or meta.get("assetDestination"),
+                    "location": meta.get("lastSortingAnyLocation") or meta.get("assetLocation"),
+                    "assetPalletId": meta.get("assetPalletId"),
                     "hoursSinceQaCompleted": hours_since_qa_completed,
                     "lagHours": lag_hours,
                     "reason": reason,

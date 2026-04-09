@@ -640,6 +640,7 @@
                                 <th>Latest Sorting (Any)</th>
                                 <th>Latest Sorting User (Any)</th>
                                 <th>Location</th>
+                                <th>Pallet ID</th>
                                 <th>Hours Since QA</th>
                                 <th>Lag (hours)</th>
                                 <th>Reason</th>
@@ -668,6 +669,7 @@
                                 <th>Latest Sorting (Any)</th>
                                 <th>Latest Sorting User (Any)</th>
                                 <th>Location</th>
+                                <th>Pallet ID</th>
                                 <th>Hours Since QA</th>
                                 <th>Lag (hours)</th>
                                 <th>Reason</th>
@@ -1802,6 +1804,7 @@
                         <td style="font-size:12px;">${formatActivityTimeUk(row.latestSortingAnyDate || row.lastQaAnyDate)}</td>
                         <td style="font-size:12px;">${row.latestSortingAnyUsername || row.lastQaAnyUsername || ''}</td>
                         <td style="font-size:12px;">${row.location || ''}</td>
+                        <td style="font-size:12px;">${row.assetPalletId || ''}</td>
                         <td style="font-size:12px;">${row.hoursSinceQaCompleted != null ? Number(row.hoursSinceQaCompleted).toFixed(1) : (row.hoursSinceDeCompleted != null ? Number(row.hoursSinceDeCompleted).toFixed(1) : '')}</td>
                         <td style="font-size:12px;">${row.lagHours != null ? Number(row.lagHours).toFixed(1) : ''}</td>
                         <td style="font-size:12px;">${row.reason || ''}</td>
