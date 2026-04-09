@@ -614,7 +614,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         sorting_awaiting_live, sorting_live_source = _get_sorting_awaiting_live_count()
         qa_awaiting_live, qa_awaiting_live_source = _get_qa_awaiting_live_count()
 
-        qa_done = int(qa_today.get("combinedScans", 0) or 0)
+        qa_done = int((qa_today.get("deQaScans", 0) or 0) + (qa_today.get("nonDeQaScans", 0) or 0))
         sorting_done = int(qa_today.get("qaAppScans", 0) or 0)
         qa_source = str(qa_today.get("source") or "")
 
@@ -951,7 +951,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             is_live = source != "mock"
             try:
                 qa_today = _get_qa_today_totals()
-                completed_today = int(qa_today.get("combinedScans", 0))
+                completed_today = int((qa_today.get("deQaScans", 0) or 0) + (qa_today.get("nonDeQaScans", 0) or 0))
                 if qa_today.get("source") != "mock":
                     source = f"{source}+{qa_today.get('source')}"
                     is_live = True
