@@ -879,7 +879,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                               AND TRIM(COALESCE(a.stockid, '')) <> ''
                               AND a.de_completed_date IS NOT NULL
                               AND a.de_completed_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                                                            AND UPPER(TRIM(COALESCE(a.pallet_id, ''))) NOT LIKE CONCAT('A100', '%')
+                                                              AND LEFT(UPPER(TRIM(COALESCE(a.pallet_id, ''))), 4) <> 'A100'
                               AND (
                                     q.last_sort_ts IS NULL
                                     OR a.de_completed_date > q.last_sort_ts
