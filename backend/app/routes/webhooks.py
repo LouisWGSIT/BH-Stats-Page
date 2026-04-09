@@ -55,6 +55,62 @@ def _clean_placeholder(value):
     return value
 
 
+def _extract_stockid_from_obj(obj: Any):
+    """Best-effort extraction of stock/asset ID from varied payload shapes."""
+    candidate_keys = [
+        "stockid",
+        "stock_id",
+        "assetStockId",
+        "asset_stock_id",
+        "assetTag",
+        "asset_tag",
+        "assetid",
+        "asset_id",
+        "Asset/Stock ID Number",
+        "Asset/Stock ID",
+    ]
+
+    def _is_valid(v: Any) -> str | None:
+        cleaned = _clean_placeholder(v)
+        if cleaned is None:
+            return None
+        s = str(cleaned).strip()
+        if not s:
+            return None
+        return s
+
+    def _walk(o: Any):
+        if isinstance(o, dict):
+            for key in candidate_keys:
+                if key in o:
+                    found = _is_valid(o.get(key))
+                    if found:
+                        return found
+            # Fallback: fuzzy key detection for variants like "asset stock id number".
+            for k, v in o.items():
+                lk = str(k).lower().replace("_", " ").replace("/", " ")
+                if "stock" in lk and "id" in lk:
+                    found = _is_valid(v)
+                    if found:
+                        return found
+                if "asset" in lk and "id" in lk:
+                    found = _is_valid(v)
+                    if found:
+                        return found
+            for _, v in o.items():
+                found = _walk(v)
+                if found:
+                    return found
+        elif isinstance(o, list):
+            for item in o:
+                found = _walk(item)
+                if found:
+                    return found
+        return None
+
+    return _walk(obj)
+
+
 def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
     router = APIRouter()
 
@@ -98,7 +154,9 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             if (bearer != ingestion_key) and (header_key != ingestion_key):
                 return JSONResponse(status_code=401, content={"detail": "Invalid ingestion key"})
 
-        stockid = body.get("stockid")
+        stockid = body.get("stockid") or body.get("stock_id") or body.get("assetTag")
+        if not stockid:
+            stockid = _extract_stockid_from_obj(body)
         system_serial = body.get("system_serial") or body.get("systemSerial")
         job_id = body.get("job_id") or body.get("jobId")
         ts = body.get("ts") or body.get("timestamp")
@@ -287,6 +345,8 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
                 or payload.get("stock_id")
                 or payload.get("assetTag")
             )
+            if not stockid:
+                stockid = _extract_stockid_from_obj(payload)
             db_module.add_local_erasure(
                 stockid=stockid,
                 system_serial=system_serial,

@@ -265,6 +265,51 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                             if n_ser:
                                 key_to_stockid_norm[n_ser] = stockid or serial
 
+                    # Fallback path: some ITAD devices may only be discoverable via
+                    # ITAD_asset_info_blancco serial mappings.
+                    unresolved = [k for k in batch if _norm_key(k) and _norm_key(k) not in key_to_stockid_norm]
+                    if unresolved:
+                        ph_un = ",".join(["%s"] * len(unresolved))
+                        q_blancco_variants = [
+                            (
+                                f"SELECT stockid, serial FROM ITAD_asset_info_blancco "
+                                f"WHERE stockid IN ({ph_un}) OR serial IN ({ph_un})",
+                                tuple(unresolved) + tuple(unresolved),
+                            ),
+                            (
+                                f"SELECT stockid, system_serial FROM ITAD_asset_info_blancco "
+                                f"WHERE stockid IN ({ph_un}) OR system_serial IN ({ph_un})",
+                                tuple(unresolved) + tuple(unresolved),
+                            ),
+                            (
+                                f"SELECT stockid, serialnumber FROM ITAD_asset_info_blancco "
+                                f"WHERE stockid IN ({ph_un}) OR serialnumber IN ({ph_un})",
+                                tuple(unresolved) + tuple(unresolved),
+                            ),
+                        ]
+                        for q_bl, p_bl in q_blancco_variants:
+                            try:
+                                cur.execute(q_bl, p_bl)
+                                bl_rows = cur.fetchall() or []
+                                if not bl_rows:
+                                    continue
+                                for br in bl_rows:
+                                    bsid = str(br[0]) if br and br[0] is not None else None
+                                    bserial = str(br[1]) if br and len(br) > 1 and br[1] is not None else None
+                                    if bsid:
+                                        key_to_stockid[bsid] = bsid
+                                        n_bsid = _norm_key(bsid)
+                                        if n_bsid:
+                                            key_to_stockid_norm[n_bsid] = bsid
+                                    if bserial and bsid:
+                                        key_to_stockid[bserial] = bsid
+                                        n_bserial = _norm_key(bserial)
+                                        if n_bserial:
+                                            key_to_stockid_norm[n_bserial] = bsid
+                                break
+                            except Exception:
+                                continue
+
                     canonical = list({key_to_stockid[k] for k in batch if k in key_to_stockid and key_to_stockid[k]})
                     qa_map = {}
                     if canonical:

@@ -279,6 +279,43 @@ def create_admin_diagnostics_router(
                         if serial and sid:
                             key_to_stockid[_norm(serial)] = sid
 
+                    unresolved_vals = [v for v in vals if _norm(v) and _norm(v) not in key_to_stockid]
+                    if unresolved_vals:
+                        ph_un = ",".join(["%s"] * len(unresolved_vals))
+                        q_blancco_variants = [
+                            (
+                                f"SELECT stockid, serial FROM ITAD_asset_info_blancco "
+                                f"WHERE stockid IN ({ph_un}) OR serial IN ({ph_un})",
+                                tuple(unresolved_vals) + tuple(unresolved_vals),
+                            ),
+                            (
+                                f"SELECT stockid, system_serial FROM ITAD_asset_info_blancco "
+                                f"WHERE stockid IN ({ph_un}) OR system_serial IN ({ph_un})",
+                                tuple(unresolved_vals) + tuple(unresolved_vals),
+                            ),
+                            (
+                                f"SELECT stockid, serialnumber FROM ITAD_asset_info_blancco "
+                                f"WHERE stockid IN ({ph_un}) OR serialnumber IN ({ph_un})",
+                                tuple(unresolved_vals) + tuple(unresolved_vals),
+                            ),
+                        ]
+                        for q_bl, p_bl in q_blancco_variants:
+                            try:
+                                mcur.execute(q_bl, p_bl)
+                                bl_rows = mcur.fetchall() or []
+                                if not bl_rows:
+                                    continue
+                                for br in bl_rows:
+                                    bsid = str(br[0]) if br and br[0] is not None else None
+                                    bserial = str(br[1]) if br and len(br) > 1 and br[1] is not None else None
+                                    if bsid:
+                                        key_to_stockid[_norm(bsid)] = bsid
+                                    if bserial and bsid:
+                                        key_to_stockid[_norm(bserial)] = bsid
+                                break
+                            except Exception:
+                                continue
+
                     sids = list({v for v in key_to_stockid.values() if v})
                     if sids:
                         def _pick_existing_column(table_name: str, candidates: list[str]) -> str | None:
