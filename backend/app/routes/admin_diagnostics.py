@@ -431,8 +431,8 @@ def create_admin_diagnostics_router(
             stockid = key_to_stockid.get(nkey)
             has_asset = bool(stockid)
             meta = qa_meta_by_stockid.get(stockid or "", {})
-            last_qa_date = meta.get("lastQaDate")
-            has_qa = bool(stockid and (stockid in qa_stockids or last_qa_date))
+            last_qa_date = meta.get("qaCompletedDate") or meta.get("lastQaDate")
+            has_qa = bool(stockid and (stockid in qa_stockids or last_qa_date or meta.get("qaByDeCompletedBy")))
             if has_asset:
                 summary["mariaAssetMatchesInSample"] += 1
             if has_qa:
@@ -440,6 +440,8 @@ def create_admin_diagnostics_router(
 
             erasure_dt = _parse_dt(ts)
             qa_dt = _parse_dt(last_qa_date)
+            last_update_dt = _parse_dt(meta.get("assetLastUpdate"))
+            qa_by = (meta.get("qaByDeCompletedBy") or "").strip()
             awaiting_by_rule = None
             qa_status_reason = "no_asset_match"
             qa_lag_hours = None
@@ -463,6 +465,11 @@ def create_admin_diagnostics_router(
                 elif qa_dt:
                     awaiting_by_rule = False
                     qa_status_reason = "deducted_has_qa_no_erasure_ts"
+                elif qa_by and last_update_dt and (not erasure_dt or last_update_dt >= erasure_dt):
+                    awaiting_by_rule = False
+                    qa_status_reason = "deducted_by_de_completed_by_last_update_proxy"
+                    if erasure_dt:
+                        qa_lag_hours = round((last_update_dt - erasure_dt).total_seconds() / 3600.0, 2)
                 else:
                     awaiting_by_rule = True
                     qa_status_reason = "awaiting_no_qa_found"

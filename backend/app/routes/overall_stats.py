@@ -312,6 +312,9 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
 
                     canonical = list({key_to_stockid[k] for k in batch if k in key_to_stockid and key_to_stockid[k]})
                     qa_map = {}
+                    asset_de_ts_map = {}
+                    asset_de_by_map = {}
+                    asset_last_update_map = {}
                     if canonical:
                         q_place = ",".join(["%s"] * len(canonical))
                         if qa_include_audit_master:
@@ -331,6 +334,39 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                         cur.execute(q_qa, params)
                         qa_rows = cur.fetchall() or []
                         qa_map = {str(r[0]): _parse_ts(r[1]) for r in qa_rows if r and r[0]}
+
+                        q_meta_variants = [
+                            (
+                                f"SELECT stockid, de_completed_date, de_completed_by, last_update "
+                                f"FROM ITAD_asset_info WHERE stockid IN ({q_place})",
+                                tuple(canonical),
+                            ),
+                            (
+                                f"SELECT stockid, de_completed_date, de_completed_by, updated_at "
+                                f"FROM ITAD_asset_info WHERE stockid IN ({q_place})",
+                                tuple(canonical),
+                            ),
+                            (
+                                f"SELECT stockid, de_completed_date, de_completed_by, NULL "
+                                f"FROM ITAD_asset_info WHERE stockid IN ({q_place})",
+                                tuple(canonical),
+                            ),
+                        ]
+                        for q_meta, p_meta in q_meta_variants:
+                            try:
+                                cur.execute(q_meta, p_meta)
+                                meta_rows = cur.fetchall() or []
+                                for mr in meta_rows:
+                                    msid = str(mr[0]) if mr and mr[0] is not None else None
+                                    if not msid:
+                                        continue
+                                    asset_de_ts_map[msid] = _parse_ts(mr[1] if len(mr) > 1 else None)
+                                    raw_by = mr[2] if len(mr) > 2 else None
+                                    asset_de_by_map[msid] = str(raw_by).strip() if raw_by is not None and str(raw_by).strip() else None
+                                    asset_last_update_map[msid] = _parse_ts(mr[3] if len(mr) > 3 else None)
+                                break
+                            except Exception:
+                                continue
 
                     for key in batch:
                         er_ts = key_to_erasure.get(key) or key_to_erasure_norm.get(_norm_key(key))
@@ -358,16 +394,30 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                             continue
 
                         qa_ts = qa_map.get(sid)
-                        if not qa_ts:
+                        de_ts = asset_de_ts_map.get(sid)
+                        de_by = asset_de_by_map.get(sid)
+                        last_update_ts = asset_last_update_map.get(sid)
+
+                        effective_qa_ts = qa_ts
+                        if de_ts and (not effective_qa_ts or de_ts > effective_qa_ts):
+                            effective_qa_ts = de_ts
+
+                        if not effective_qa_ts and de_by and last_update_ts and (not er_ts or last_update_ts >= er_ts):
+                            completed += 1
+                            if include_samples and len(samples) < sample_limit:
+                                samples.append({"key": key, "stockid": sid, "reason": "deducted_by_de_completed_by_last_update_proxy", "erasureTs": str(er_ts) if er_ts else None, "qaTs": str(last_update_ts)})
+                            continue
+
+                        if not effective_qa_ts:
                             awaiting += 1
                             if include_samples and len(samples) < sample_limit:
                                 samples.append({"key": key, "stockid": sid, "reason": "no_qa_or_audit_after_erasure", "erasureTs": str(er_ts) if er_ts else None, "qaTs": None})
                             continue
 
-                        if er_ts and qa_ts < er_ts:
+                        if er_ts and effective_qa_ts < er_ts:
                             awaiting += 1
                             if include_samples and len(samples) < sample_limit:
-                                samples.append({"key": key, "stockid": sid, "reason": "qa_before_latest_erasure", "erasureTs": str(er_ts), "qaTs": str(qa_ts)})
+                                samples.append({"key": key, "stockid": sid, "reason": "qa_before_latest_erasure", "erasureTs": str(er_ts), "qaTs": str(effective_qa_ts)})
                             continue
 
                         completed += 1
