@@ -596,13 +596,17 @@
                         <table class="table" style="width:100%;">
                             <thead>
                                 <tr>
-                                    <th>Time (UK)</th>
+                                    <th>Erasure Time (UK)</th>
                                     <th>Key</th>
                                     <th>StockID Match</th>
                                     <th>Last QA (UK)</th>
+                                    <th>Last Update (UK)</th>
                                     <th>QA Match</th>
                                     <th>Awaiting QA?</th>
                                     <th>QA By (de_completed_by)</th>
+                                    <th>Location</th>
+                                    <th>Pallet ID</th>
+                                    <th>Rule Reason</th>
                                     <th>Initials</th>
                                     <th>Device Type</th>
                                     <th>Job ID</th>
@@ -1633,23 +1637,35 @@
                 const data = await res.json();
                 const s = data.summary || {};
                 const samples = Array.isArray(data.samples) ? data.samples : [];
+                summary.style.display = 'block';
+
+                _erasureEvidenceSamples = samples;
+                _erasureEvidenceFilter = 'all';
+                _erasureEvidencePage = 1;
 
                 summary.innerHTML = `
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                        <div class="stat-card filterable-card active" data-erasure-filter="all"><div class="stat-value">${samples.length}</div><div class="stat-label">All Sample Rows</div></div>
+                        <div class="stat-card filterable-card" data-erasure-filter="awaiting_yes"><div class="stat-value">${s.sampleAwaitingQaByRule || 0}/${samples.length}</div><div class="stat-label">Awaiting QA By Rule (Sample)</div></div>
+                        <div class="stat-card filterable-card" data-erasure-filter="awaiting_no"><div class="stat-value">${s.sampleDeductedByQaAfterErasure || 0}/${samples.length}</div><div class="stat-label">Deducted By QA Timestamp (Sample)</div></div>
+                        <div class="stat-card filterable-card" data-erasure-filter="qa_match_yes"><div class="stat-value">${s.mariaQaMatchesInSample || 0}/${samples.length}</div><div class="stat-label">QA Match = yes (Sample)</div></div>
+                        <div class="stat-card filterable-card" data-erasure-filter="qa_match_yes_awaiting_yes"><div class="stat-value">${samples.filter((r) => r.qa_match && r.awaiting_qa_by_rule === true).length}</div><div class="stat-label">QA Match + Awaiting QA</div></div>
                         <div class="stat-card"><div class="stat-value">${s.erasuresSuccessCount || 0}</div><div class="stat-label">SQLite erasures (success)</div></div>
                         <div class="stat-card"><div class="stat-value">${s.erasuresWithSerialCount || 0}</div><div class="stat-label">With serial in erasures</div></div>
                         <div class="stat-card"><div class="stat-value">${s.localErasuresCount || 0}</div><div class="stat-label">SQLite local_erasures</div></div>
                         <div class="stat-card"><div class="stat-value">${s.mariaAssetMatchesInSample || 0}/${samples.length}</div><div class="stat-label">Asset matches (sample)</div></div>
-                        <div class="stat-card"><div class="stat-value">${s.mariaQaMatchesInSample || 0}/${samples.length}</div><div class="stat-label">QA matches (sample)</div></div>
-                        <div class="stat-card"><div class="stat-value">${s.sampleAwaitingQaByRule || 0}/${samples.length}</div><div class="stat-label">Awaiting QA by rule (sample)</div></div>
-                        <div class="stat-card"><div class="stat-value">${s.sampleDeductedByQaAfterErasure || 0}/${samples.length}</div><div class="stat-label">Deducted by QA timestamp (sample)</div></div>
                     </div>
                 `;
-                summary.style.display = 'block';
-
-                _erasureEvidenceSamples = samples;
-                _erasureEvidencePage = 1;
                 renderErasureEvidenceTable();
+                summary.querySelectorAll('[data-erasure-filter]').forEach((card) => {
+                    card.addEventListener('click', () => {
+                        _erasureEvidenceFilter = card.getAttribute('data-erasure-filter') || 'all';
+                        summary.querySelectorAll('[data-erasure-filter]').forEach((el) => el.classList.remove('active'));
+                        card.classList.add('active');
+                        _erasureEvidencePage = 1;
+                        renderErasureEvidenceTable();
+                    });
+                });
                 wrap.style.display = 'block';
             } catch (err) {
                 summary.style.display = 'block';
@@ -1666,12 +1682,21 @@
             const nextBtn = document.getElementById('erasureEvidenceNextBtn');
             if (!tbody || !pagination || !info || !prevBtn || !nextBtn) return;
 
-            const total = _erasureEvidenceSamples.length;
+            const filtered = (_erasureEvidenceSamples || []).filter((row) => {
+                const f = _erasureEvidenceFilter || 'all';
+                if (f === 'awaiting_yes') return row.awaiting_qa_by_rule === true;
+                if (f === 'awaiting_no') return row.awaiting_qa_by_rule === false;
+                if (f === 'qa_match_yes') return !!row.qa_match;
+                if (f === 'qa_match_yes_awaiting_yes') return !!row.qa_match && row.awaiting_qa_by_rule === true;
+                return true;
+            });
+
+            const total = filtered.length;
             const totalPages = Math.max(1, Math.ceil(total / _ERASURE_EVIDENCE_PAGE_SIZE));
             _erasureEvidencePage = Math.min(Math.max(1, _erasureEvidencePage), totalPages);
 
             const start = (_erasureEvidencePage - 1) * _ERASURE_EVIDENCE_PAGE_SIZE;
-            const pageRows = _erasureEvidenceSamples.slice(start, start + _ERASURE_EVIDENCE_PAGE_SIZE);
+            const pageRows = filtered.slice(start, start + _ERASURE_EVIDENCE_PAGE_SIZE);
 
             tbody.innerHTML = '';
             pageRows.forEach((row) => {
@@ -1686,9 +1711,13 @@
                     <td style="font-size:12px;">${row.key || ''}</td>
                     <td style="font-size:12px;">${row.asset_match ? (row.stockid || 'yes') : 'no'}</td>
                     <td style="font-size:12px;">${row.last_qa_date ? formatActivityTimeUk(row.last_qa_date) : ''}</td>
+                    <td style="font-size:12px;">${row.last_update ? formatActivityTimeUk(row.last_update) : ''}</td>
                     <td style="font-size:12px;">${row.qa_match ? 'yes' : 'no'}</td>
                     <td style="font-size:12px;">${awaitingLabel}</td>
                     <td style="font-size:12px;">${row.qa_by_de_completed_by || ''}</td>
+                    <td style="font-size:12px;">${row.location || ''}</td>
+                    <td style="font-size:12px;">${row.pallet_id || ''}</td>
+                    <td style="font-size:12px;">${row.qa_status_reason || ''}</td>
                     <td style="font-size:12px;">${row.initials || ''}</td>
                     <td style="font-size:12px;">${row.device_type || ''}</td>
                     <td style="font-size:12px;">${row.job_id || ''}</td>
@@ -1712,6 +1741,7 @@
         }
 
         let _erasureEvidenceSamples = [];
+        let _erasureEvidenceFilter = 'all';
         let _erasureEvidencePage = 1;
         const _ERASURE_EVIDENCE_PAGE_SIZE = 20;
 

@@ -277,6 +277,41 @@ def create_admin_diagnostics_router(
 
                     sids = list({v for v in key_to_stockid.values() if v})
                     if sids:
+                        def _pick_existing_column(table_name: str, candidates: list[str]) -> str | None:
+                            try:
+                                mcur.execute(
+                                    """
+                                    SELECT LOWER(COLUMN_NAME)
+                                    FROM information_schema.columns
+                                    WHERE table_schema = DATABASE() AND table_name = %s
+                                    """,
+                                    (table_name,),
+                                )
+                                cols = {str(r[0]).lower() for r in (mcur.fetchall() or []) if r and r[0]}
+                                for c in candidates:
+                                    if c.lower() in cols:
+                                        return c
+                            except Exception:
+                                return None
+                            return None
+
+                        asset_location_col = _pick_existing_column(
+                            "ITAD_asset_info",
+                            ["location", "destination", "site", "de_destination", "final_destination"],
+                        )
+                        asset_pallet_col = _pick_existing_column(
+                            "ITAD_asset_info",
+                            ["pallet_id", "pallet", "palletid"],
+                        )
+                        asset_last_update_col = _pick_existing_column(
+                            "ITAD_asset_info",
+                            ["last_update", "updated_at", "last_modified", "modified_at"],
+                        )
+
+                        asset_location_expr = f"`{asset_location_col}`" if asset_location_col else "NULL"
+                        asset_pallet_expr = f"`{asset_pallet_col}`" if asset_pallet_col else "NULL"
+                        asset_last_update_expr = f"`{asset_last_update_col}`" if asset_last_update_col else "NULL"
+
                         ph = ",".join(["%s"] * len(sids))
                         mcur.execute(
                             f"SELECT DISTINCT stockid FROM ITAD_QA_App WHERE stockid IN ({ph})",
@@ -286,7 +321,13 @@ def create_admin_diagnostics_router(
 
                         mcur.execute(
                             f"""
-                            SELECT stockid, de_completed_by, de_completed_date
+                            SELECT
+                                stockid,
+                                de_completed_by,
+                                de_completed_date,
+                                {asset_location_expr} AS asset_location,
+                                {asset_pallet_expr} AS asset_pallet_id,
+                                {asset_last_update_expr} AS asset_last_update
                             FROM ITAD_asset_info
                             WHERE stockid IN ({ph})
                             """,
@@ -299,6 +340,9 @@ def create_admin_diagnostics_router(
                             qa_meta_by_stockid.setdefault(sid, {})
                             qa_meta_by_stockid[sid]["qaByDeCompletedBy"] = str(ar[1]) if len(ar) > 1 and ar[1] is not None else None
                             qa_meta_by_stockid[sid]["qaCompletedDate"] = _to_iso(ar[2] if len(ar) > 2 else None)
+                            qa_meta_by_stockid[sid]["assetLocation"] = str(ar[3]) if len(ar) > 3 and ar[3] is not None else None
+                            qa_meta_by_stockid[sid]["assetPalletId"] = str(ar[4]) if len(ar) > 4 and ar[4] is not None else None
+                            qa_meta_by_stockid[sid]["assetLastUpdate"] = _to_iso(ar[5] if len(ar) > 5 else None)
 
                         mcur.execute(
                             f"""
@@ -383,6 +427,9 @@ def create_admin_diagnostics_router(
                 "last_qa_date": last_qa_date,
                 "qa_by_de_completed_by": meta.get("qaByDeCompletedBy"),
                 "last_qa_username": meta.get("lastQaUsername"),
+                "last_update": meta.get("assetLastUpdate") or last_qa_date,
+                "location": meta.get("assetLocation"),
+                "pallet_id": meta.get("assetPalletId"),
                 "awaiting_qa_by_rule": awaiting_by_rule,
                 "qa_status_reason": qa_status_reason,
                 "qa_lag_hours": qa_lag_hours,
