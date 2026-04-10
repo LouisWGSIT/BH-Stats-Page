@@ -18,7 +18,15 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
     refresh_throttle_state = {
         "sections": datetime.min.replace(tzinfo=UTC),
         "spotlight": datetime.min.replace(tzinfo=UTC),
+        "goods_in_inline": datetime.min.replace(tzinfo=UTC),
     }
+    try:
+        goods_in_inline_refresh_seconds = max(
+            snapshot_ttl_seconds,
+            int(os.getenv("OVERALL_GOODS_IN_INLINE_REFRESH_SECONDS", "300")),
+        )
+    except Exception:
+        goods_in_inline_refresh_seconds = max(snapshot_ttl_seconds, 300)
 
     def _parse_snapshot_ts(value: str | None) -> datetime | None:
         if not value:
@@ -70,16 +78,19 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         except Exception:
             pass
 
-    def _should_attempt_refresh(kind: str) -> bool:
+    def _should_attempt_refresh_with_interval(kind: str, min_seconds: float) -> bool:
         now = datetime.now(UTC)
         last = refresh_throttle_state.get(kind)
         if not isinstance(last, datetime):
             refresh_throttle_state[kind] = now
             return True
-        if (now - last).total_seconds() < float(snapshot_ttl_seconds):
+        if (now - last).total_seconds() < float(min_seconds):
             return False
         refresh_throttle_state[kind] = now
         return True
+
+    def _should_attempt_refresh(kind: str) -> bool:
+        return _should_attempt_refresh_with_interval(kind, float(snapshot_ttl_seconds))
 
     goods_in_queries = {
         "delivered": os.getenv("OVERALL_GOODS_IN_DELIVERED_QUERY", "").strip(),
@@ -746,6 +757,34 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
 
         return payload
 
+    def _apply_live_goods_in_overlay(payload: dict | None) -> dict | None:
+        if not isinstance(payload, dict):
+            return payload
+        sections = payload.get("sections")
+        if not isinstance(sections, list):
+            return payload
+
+        goods_in_index = -1
+        for idx, section in enumerate(sections):
+            if not isinstance(section, dict):
+                continue
+            if str(section.get("sectionKey") or "").strip().lower() == "goods_in":
+                goods_in_index = idx
+                break
+        if goods_in_index < 0:
+            return payload
+
+        if not _should_attempt_refresh_with_interval("goods_in_inline", goods_in_inline_refresh_seconds):
+            return payload
+
+        try:
+            live_goods_in = _build_goods_in_payload()
+            if isinstance(live_goods_in, dict) and live_goods_in.get("isLive") is True:
+                sections[goods_in_index] = live_goods_in
+        except Exception:
+            pass
+        return payload
+
     def _build_sections_fallback_payload(reason: str) -> dict:
         now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         return {
@@ -1250,20 +1289,20 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         payload, age = _get_snapshot_payload(snapshot_key)
         has_snapshot = isinstance(payload, dict)
         if has_snapshot and age is not None and age <= float(snapshot_ttl_seconds):
-            return _apply_live_daily_totals(payload)
+            return _apply_live_goods_in_overlay(_apply_live_daily_totals(payload))
 
         # If we have a stale snapshot, prefer serving it over returning full mock fallback.
         if has_snapshot and not _should_attempt_refresh("sections"):
-            return _apply_live_daily_totals(payload)
+            return _apply_live_goods_in_overlay(_apply_live_daily_totals(payload))
 
         try:
             fresh_payload = await _refresh_sections_with_budget()
             _store_snapshot_payload(snapshot_key, fresh_payload, "overall_sections_build")
-            return _apply_live_daily_totals(fresh_payload)
+            return _apply_live_goods_in_overlay(_apply_live_daily_totals(fresh_payload))
         except Exception:
             if has_snapshot:
-                return _apply_live_daily_totals(payload)
-            return _apply_live_daily_totals(_build_sections_fallback_payload("refresh_timeout_or_error"))
+                return _apply_live_goods_in_overlay(_apply_live_daily_totals(payload))
+            return _apply_live_goods_in_overlay(_apply_live_daily_totals(_build_sections_fallback_payload("refresh_timeout_or_error")))
 
     @router.get("/overall/qa-awaiting-diagnostics")
     async def overall_qa_awaiting_diagnostics(request: Request):
