@@ -6,6 +6,41 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 
+def _to_initials(value: Any) -> str | None:
+    cleaned = _clean_placeholder(value)
+    if cleaned is None:
+        return None
+
+    text = str(cleaned).strip()
+    if not text:
+        return None
+
+    lowered = text.lower()
+    if lowered in {"no user", "unknown", "unassigned", "none", "n/a", "na"}:
+        return None
+
+    # Already-initialized tokens like "SS", "BP", "JD".
+    alpha_only = "".join(ch for ch in text if ch.isalpha())
+    if 2 <= len(alpha_only) <= 4 and text.replace(" ", "").replace("-", "").replace("_", "").replace(".", "").isalpha():
+        return alpha_only.upper()
+
+    # Derive initials from names/usernames when full names are supplied.
+    tokenized = text
+    if "@" in tokenized:
+        tokenized = tokenized.split("@", 1)[0]
+    for sep in (".", "_", "-", "(", ")", "/", "\\"):
+        tokenized = tokenized.replace(sep, " ")
+    parts = [p for p in tokenized.split() if p]
+    if len(parts) >= 2:
+        initials = "".join(p[0] for p in parts if p and p[0].isalpha())
+        if len(initials) >= 2:
+            return initials[:4].upper()
+
+    if len(alpha_only) >= 2:
+        return alpha_only[:2].upper()
+    return None
+
+
 def _extract_initials_from_obj(obj: Any):
     if isinstance(obj, dict):
         for key in [
@@ -15,17 +50,27 @@ def _extract_initials_from_obj(obj: Any):
             "Engineer Initals",
             "Engineer Initials",
             "engineerInitals",
+            "engineer",
+            "username",
+            "user",
+            "operator",
+            "technician",
+            "startedBy",
+            "createdBy",
         ]:
-            val = obj.get(key)
-            if isinstance(val, str) and val.strip():
-                return val.strip().upper()
+            derived = _to_initials(obj.get(key))
+            if derived:
+                return derived
 
     def deep(o: Any):
         if isinstance(o, dict):
             for k, v in o.items():
-                if isinstance(k, str) and "initial" in k.lower():
-                    if isinstance(v, str) and v.strip():
-                        return v.strip().upper()
+                if isinstance(k, str):
+                    lk = k.lower()
+                    if any(term in lk for term in ("initial", "engineer", "operator", "technician", "username", "user")):
+                        derived = _to_initials(v)
+                        if derived:
+                            return derived
                 res = deep(v)
                 if res:
                     return res
@@ -379,6 +424,13 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
 
         if event in ["success", "connected"]:
             db_module.increment_stat("erased", 1)
+            if initials:
+                try:
+                    # Keep engineer-level rollups live in step with detailed ingest.
+                    db_module.increment_engineer_count(initials, 1)
+                    db_module.increment_engineer_type_count(device_type, initials, 1)
+                except Exception as _e:
+                    print(f"erasure-detail engineer counter update failed: {_e}")
         if job_id:
             db_module.mark_job_seen(job_id)
 
