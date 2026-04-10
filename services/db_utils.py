@@ -14,22 +14,51 @@ DB_LOG_MODE = os.getenv('DB_LOG_MODE', 'minimal')  # 'detailed' or 'minimal'
 DB_FETCH_LOG_ROWS = int(os.getenv('DB_FETCH_LOG_ROWS', '5000'))
 DB_BATCH_LOG_EVERY = int(os.getenv('DB_BATCH_LOG_EVERY', '10'))
 
-# MariaDB Connection Config - read from environment for security
-MARIADB_HOST = os.getenv("MARIADB_HOST", "")
-MARIADB_USER = os.getenv("MARIADB_USER", "")
-MARIADB_PASSWORD = os.getenv("MARIADB_PASSWORD", "")
-MARIADB_DB = os.getenv("MARIADB_DB", "")
-MARIADB_PORT = int(os.getenv("MARIADB_PORT", "3306"))
+def _first_env(*names: str, default: str = "") -> str:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and str(value).strip() != "":
+            return str(value).strip()
+    return default
+
+
+def _get_mariadb_config() -> dict:
+    # Support both project-specific and platform/common variable names.
+    host = _first_env("MARIADB_HOST", "MYSQLHOST", "DB_HOST")
+    user = _first_env("MARIADB_USER", "MYSQLUSER", "DB_USER")
+    password = _first_env("MARIADB_PASSWORD", "MYSQLPASSWORD", "DB_PASSWORD")
+    database = _first_env("MARIADB_DB", "MYSQLDATABASE", "DB_NAME")
+    port_raw = _first_env("MARIADB_PORT", "MYSQLPORT", "DB_PORT", default="3306")
+
+    try:
+        port = int(port_raw)
+    except Exception:
+        port = 3306
+
+    return {
+        "host": host,
+        "user": user,
+        "password": password,
+        "database": database,
+        "port": port,
+    }
 
 def get_mariadb_connection():
     """Create and return a MariaDB connection"""
     try:
+        cfg = _get_mariadb_config()
+        if not cfg["host"] or not cfg["user"] or not cfg["database"]:
+            logger.warning(
+                "MariaDB config incomplete (host/user/database missing). Falling back to mock-dependent paths."
+            )
+            return None
+
         conn = pymysql.connect(
-            host=MARIADB_HOST,
-            user=MARIADB_USER,
-            password=MARIADB_PASSWORD,
-            database=MARIADB_DB,
-            port=MARIADB_PORT,
+            host=cfg["host"],
+            user=cfg["user"],
+            password=cfg["password"],
+            database=cfg["database"],
+            port=cfg["port"],
             connect_timeout=10,
             read_timeout=30,
             write_timeout=30
