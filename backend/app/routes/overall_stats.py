@@ -88,6 +88,8 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
     }
     goods_in_table_raw = os.getenv("OVERALL_GOODS_IN_TABLE", "ITAD_GRN").strip() or "ITAD_GRN"
     goods_in_table = goods_in_table_raw if re.fullmatch(r"[A-Za-z0-9_]+", goods_in_table_raw) else "ITAD_GRN"
+    goods_in_orders_table_raw = os.getenv("OVERALL_GOODS_IN_ORDERS_TABLE", "Automation_AllOrders").strip() or "Automation_AllOrders"
+    goods_in_orders_table = goods_in_orders_table_raw if re.fullmatch(r"[A-Za-z0-9_]+", goods_in_orders_table_raw) else "Automation_AllOrders"
     try:
         goods_in_lookback_days = max(1, int(os.getenv("OVERALL_GOODS_IN_LOOKBACK_DAYS", "90")))
     except Exception:
@@ -119,6 +121,21 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         if not row or row[0] is None:
             return 0
         return int(row[0])
+
+    def _get_table_columns(cur, table_name: str) -> set[str]:
+        try:
+            cur.execute(
+                """
+                SELECT LOWER(column_name)
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = %s
+                """,
+                (table_name,),
+            )
+            return {str(r[0]).lower() for r in cur.fetchall() if r and r[0]}
+        except Exception:
+            return set()
 
     def _parse_ts(value):
         if value is None:
@@ -845,6 +862,87 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             cur = conn.cursor()
             try:
                 try:
+                    # Preferred model for testing: cross-reference GRNs against Automation_AllOrders.
+                    # If an order_number exists in both and receipt_status is Recieved/Received,
+                    # treat it as booked/received and decrement from the queue metric.
+                    grn_cols = _get_table_columns(cur, goods_in_table)
+                    orders_cols = _get_table_columns(cur, goods_in_orders_table)
+
+                    if "order_number" in grn_cols and "order_number" in orders_cols and "receipt_status" in orders_cols:
+                        grn_date_col = next((c for c in ("date_received", "date_added", "added_date") if c in grn_cols), None)
+                        orders_date_col = next((c for c in ("added_date", "date_added", "date_received") if c in orders_cols), None)
+
+                        lookback_clause = ""
+                        if grn_date_col:
+                            lookback_clause = (
+                                f" AND DATE(g.{grn_date_col}) >= DATE_SUB(CURDATE(), INTERVAL {goods_in_lookback_days} DAY)"
+                            )
+
+                        matched_received_exists = (
+                            f"""
+                            EXISTS (
+                                SELECT 1
+                                FROM {goods_in_orders_table} ao
+                                WHERE TRIM(COALESCE(ao.order_number, '')) = TRIM(COALESCE(g.order_number, ''))
+                                  AND UPPER(TRIM(COALESCE(ao.receipt_status, ''))) IN ('RECIEVED', 'RECEIVED')
+                            )
+                            """
+                        )
+
+                        total_not_received = _run_scalar_query(
+                            cur,
+                            f"""
+                            SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, '')))
+                            FROM {goods_in_table} g
+                            WHERE TRIM(COALESCE(g.order_number, '')) <> ''
+                              {lookback_clause}
+                              AND NOT {matched_received_exists}
+                            """,
+                        )
+
+                        booked_and_received_today = 0
+                        if orders_date_col:
+                            booked_and_received_today = _run_scalar_query(
+                                cur,
+                                f"""
+                                SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, '')))
+                                FROM {goods_in_table} g
+                                WHERE TRIM(COALESCE(g.order_number, '')) <> ''
+                                  {lookback_clause}
+                                  AND EXISTS (
+                                      SELECT 1
+                                      FROM {goods_in_orders_table} ao
+                                      WHERE TRIM(COALESCE(ao.order_number, '')) = TRIM(COALESCE(g.order_number, ''))
+                                        AND UPPER(TRIM(COALESCE(ao.receipt_status, ''))) IN ('RECIEVED', 'RECEIVED')
+                                        AND DATE(ao.{orders_date_col}) = CURDATE()
+                                  )
+                                """,
+                            )
+
+                        source = f"mariadb:{goods_in_table}+{goods_in_orders_table}"
+
+                        trend = 0
+                        if total_not_received > 0:
+                            trend = int(round((booked_and_received_today / max(1, total_not_received)) * 100))
+
+                        return {
+                            "sectionKey": "goods_in",
+                            "sectionName": "Goods In",
+                            "targetQueue": 90,
+                            "currentQueue": max(0, total_not_received),
+                            "trendPctHour": trend,
+                            "owner": "Inbound Team",
+                            "queueLabel": f"GRNs (Last {goods_in_lookback_days} Days)",
+                            "subMetrics": [
+                                {"label": "Total Booked In", "value": max(0, total_not_received)},
+                                {"label": "Booked and Recieved Today", "value": max(0, booked_and_received_today)},
+                                {"label": "Awaiting IA", "value": 0},
+                            ],
+                            "updatedAt": now_iso,
+                            "isLive": True,
+                            "source": source,
+                        }
+
                     default_received_today = _run_query_variants(cur, [
                         f"""
                         SELECT COUNT(*)

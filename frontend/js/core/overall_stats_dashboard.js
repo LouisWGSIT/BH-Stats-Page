@@ -102,7 +102,7 @@
 
     function getDoneCount(section) {
       if (section.key === 'goods_in') {
-        return getSubMetric(section, [/booked in today/, /^booked in$/]);
+        return getSubMetric(section, [/booked in today/, /booked and rec/i, /received today/, /^booked in$/]);
       }
       if (section.key === 'ia') {
         return getSubMetric(section, [/completed ia/, /ready for erasure/]);
@@ -121,7 +121,7 @@
 
     function getOutstandingCount(section) {
       if (section.key === 'goods_in') {
-        return getSubMetric(section, [/total received \(not booked in\)/, /not booked in/, /awaiting ia/]);
+        return getSubMetric(section, [/total booked in/, /total received \(not booked in\)/, /not booked in/, /awaiting ia/]);
       }
       if (section.key === 'ia') {
         return getSubMetric(section, [/awaiting ia/]);
