@@ -114,10 +114,17 @@ def take_tracemalloc_snapshot(reason: str = "threshold", meta: dict | None = Non
 
 # Configure root logger to emit structured JSON logs (includes request_id)
 configure_logging(level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")))
+startup_logger = logging.getLogger("startup")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    startup_logger.info(
+        "Startup storage paths: stats_db=%s device_tokens_db=%s",
+        db.DB_PATH,
+        DEVICE_TOKENS_DB,
+    )
+
     activity_logging.start_activity_writer(
         app,
         db_path=os.getenv('ACTIVITY_DB_PATH', 'logs/activity.sqlite'),

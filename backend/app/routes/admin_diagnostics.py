@@ -265,6 +265,24 @@ def create_admin_diagnostics_router(
             if mariadb_conn:
                 mcur = mariadb_conn.cursor()
                 try:
+                    # Schema-safe serial mapping for ITAD_asset_info_blancco.
+                    blancco_serial_col = None
+                    try:
+                        mcur.execute(
+                            """
+                            SELECT LOWER(COLUMN_NAME)
+                            FROM information_schema.columns
+                            WHERE table_schema = DATABASE() AND table_name = 'ITAD_asset_info_blancco'
+                            """
+                        )
+                        blancco_cols = {str(r[0]).lower() for r in (mcur.fetchall() or []) if r and r[0]}
+                        for candidate in ("serial", "serialnumber", "system_serial"):
+                            if candidate in blancco_cols:
+                                blancco_serial_col = candidate
+                                break
+                    except Exception:
+                        blancco_serial_col = None
+
                     vals = list(key_norms.values())
                     placeholders = ",".join(["%s"] * len(vals))
                     q_asset_primary = (
@@ -288,41 +306,24 @@ def create_admin_diagnostics_router(
                             key_to_stockid[_norm(serial)] = sid
 
                     unresolved_vals = [v for v in vals if _norm(v) and _norm(v) not in key_to_stockid]
-                    if unresolved_vals:
+                    if unresolved_vals and blancco_serial_col:
                         ph_un = ",".join(["%s"] * len(unresolved_vals))
-                        q_blancco_variants = [
-                            (
-                                f"SELECT stockid, serial FROM ITAD_asset_info_blancco "
-                                f"WHERE stockid IN ({ph_un}) OR serial IN ({ph_un})",
-                                tuple(unresolved_vals) + tuple(unresolved_vals),
-                            ),
-                            (
-                                f"SELECT stockid, system_serial FROM ITAD_asset_info_blancco "
-                                f"WHERE stockid IN ({ph_un}) OR system_serial IN ({ph_un})",
-                                tuple(unresolved_vals) + tuple(unresolved_vals),
-                            ),
-                            (
-                                f"SELECT stockid, serialnumber FROM ITAD_asset_info_blancco "
-                                f"WHERE stockid IN ({ph_un}) OR serialnumber IN ({ph_un})",
-                                tuple(unresolved_vals) + tuple(unresolved_vals),
-                            ),
-                        ]
-                        for q_bl, p_bl in q_blancco_variants:
-                            try:
-                                mcur.execute(q_bl, p_bl)
-                                bl_rows = mcur.fetchall() or []
-                                if not bl_rows:
-                                    continue
-                                for br in bl_rows:
-                                    bsid = str(br[0]) if br and br[0] is not None else None
-                                    bserial = str(br[1]) if br and len(br) > 1 and br[1] is not None else None
-                                    if bsid:
-                                        key_to_stockid[_norm(bsid)] = bsid
-                                    if bserial and bsid:
-                                        key_to_stockid[_norm(bserial)] = bsid
-                                break
-                            except Exception:
-                                continue
+                        q_bl = (
+                            f"SELECT stockid, `{blancco_serial_col}` FROM ITAD_asset_info_blancco "
+                            f"WHERE stockid IN ({ph_un}) OR `{blancco_serial_col}` IN ({ph_un})"
+                        )
+                        try:
+                            mcur.execute(q_bl, tuple(unresolved_vals) + tuple(unresolved_vals))
+                            bl_rows = mcur.fetchall() or []
+                            for br in bl_rows:
+                                bsid = str(br[0]) if br and br[0] is not None else None
+                                bserial = str(br[1]) if br and len(br) > 1 and br[1] is not None else None
+                                if bsid:
+                                    key_to_stockid[_norm(bsid)] = bsid
+                                if bserial and bsid:
+                                    key_to_stockid[_norm(bserial)] = bsid
+                        except Exception:
+                            pass
 
                     sids = list({v for v in key_to_stockid.values() if v})
                     if sids:
