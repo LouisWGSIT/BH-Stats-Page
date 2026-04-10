@@ -1051,19 +1051,55 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     ])
                     source = f"mariadb:{goods_in_table}"
                 except Exception:
-                    default_received_today = _run_scalar_query(
-                        cur,
-                        """
-                        SELECT COUNT(DISTINCT pallet_id)
-                        FROM Stockbypallet
-                        WHERE received_date >= CURDATE()
-                        """,
-                    )
-                    default_checked_in = max(0, int(round(default_received_today * 0.72)))
-                    default_awaiting_ia = max(0, default_received_today - default_checked_in)
-                    received_total = default_received_today
-                    booked_total = default_checked_in
-                    source = "mariadb:Stockbypallet"
+                    # Schema-safe fallback: if detailed received/booked columns are absent,
+                    # keep Goods In live using distinct GRN order counts.
+                    fallback_grn_total = None
+                    try:
+                        grn_cols_fallback = _get_table_columns(cur, goods_in_table)
+                        if "order_number" in grn_cols_fallback:
+                            grn_date_col_fallback = next(
+                                (c for c in ("date_received", "date_added", "added_date") if c in grn_cols_fallback),
+                                None,
+                            )
+                            lookback_clause_fallback = ""
+                            if grn_date_col_fallback:
+                                lookback_clause_fallback = (
+                                    f" AND DATE(g.{grn_date_col_fallback}) >= DATE_SUB(CURDATE(), INTERVAL {goods_in_lookback_days} DAY)"
+                                )
+
+                            fallback_grn_total = _run_scalar_query(
+                                cur,
+                                f"""
+                                SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, '')))
+                                FROM {goods_in_table} g
+                                WHERE TRIM(COALESCE(g.order_number, '')) <> ''
+                                  {lookback_clause_fallback}
+                                """,
+                            )
+                    except Exception:
+                        fallback_grn_total = None
+
+                    if fallback_grn_total is not None:
+                        default_received_today = 0
+                        default_checked_in = 0
+                        default_awaiting_ia = 0
+                        received_total = max(0, int(fallback_grn_total))
+                        booked_total = 0
+                        source = f"mariadb:{goods_in_table}(order_number-fallback)"
+                    else:
+                        default_received_today = _run_scalar_query(
+                            cur,
+                            """
+                            SELECT COUNT(DISTINCT pallet_id)
+                            FROM Stockbypallet
+                            WHERE received_date >= CURDATE()
+                            """,
+                        )
+                        default_checked_in = max(0, int(round(default_received_today * 0.72)))
+                        default_awaiting_ia = max(0, default_received_today - default_checked_in)
+                        received_total = default_received_today
+                        booked_total = default_checked_in
+                        source = "mariadb:Stockbypallet"
 
                 if goods_in_queries["delivered"] or goods_in_queries["checked_in"] or goods_in_queries["awaiting_ia"]:
                     delivered = _run_scalar_query(cur, goods_in_queries["delivered"]) if goods_in_queries["delivered"] else max(0, received_total - booked_total)
