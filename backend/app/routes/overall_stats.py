@@ -890,7 +890,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             "source": source,
         }
 
-    def _build_goods_in_payload() -> dict:
+    def _build_goods_in_payload(_retried: bool = False) -> dict:
         now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         mock = _mock_goods_in_payload(now_iso)
 
@@ -1157,6 +1157,8 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 "source": source,
             }
         except Exception as exc:
+            if (not _retried) and type(exc).__name__ == "InterfaceError":
+                return _build_goods_in_payload(_retried=True)
             return _mock_goods_in_payload(now_iso, f"mock:build_error:{type(exc).__name__}")
 
     def _build_non_goods_mock(section_key: str) -> dict:
