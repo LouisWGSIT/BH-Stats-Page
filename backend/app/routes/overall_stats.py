@@ -921,25 +921,20 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                                 f" AND DATE(g.{grn_date_col}) >= DATE_SUB(CURDATE(), INTERVAL {goods_in_lookback_days} DAY)"
                             )
 
-                        matched_received_exists = (
-                            f"""
-                            EXISTS (
-                                SELECT 1
-                                FROM {goods_in_orders_table} ao
-                                WHERE TRIM(COALESCE(ao.order_number, '')) = TRIM(COALESCE(g.order_number, ''))
-                                  AND UPPER(TRIM(COALESCE(ao.receipt_status, ''))) IN ('RECIEVED', 'RECEIVED')
-                            )
-                            """
-                        )
-
                         total_not_received = _run_scalar_query(
                             cur,
                             f"""
-                            SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, '')))
+                                                        SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, '')))
                             FROM {goods_in_table} g
+                                                        LEFT JOIN (
+                                                                SELECT DISTINCT TRIM(COALESCE(order_number, '')) AS order_number
+                                                                FROM {goods_in_orders_table}
+                                                                WHERE TRIM(COALESCE(order_number, '')) <> ''
+                                                                    AND UPPER(TRIM(COALESCE(receipt_status, ''))) IN ('RECIEVED', 'RECEIVED')
+                                                        ) r ON r.order_number = TRIM(COALESCE(g.order_number, ''))
                             WHERE TRIM(COALESCE(g.order_number, '')) <> ''
                               {lookback_clause}
-                              AND NOT {matched_received_exists}
+                                                            AND r.order_number IS NULL
                             """,
                         )
 
@@ -950,15 +945,15 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                                 f"""
                                 SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, '')))
                                 FROM {goods_in_table} g
+                                                                INNER JOIN (
+                                                                        SELECT DISTINCT TRIM(COALESCE(order_number, '')) AS order_number
+                                                                        FROM {goods_in_orders_table}
+                                                                        WHERE TRIM(COALESCE(order_number, '')) <> ''
+                                                                            AND UPPER(TRIM(COALESCE(receipt_status, ''))) IN ('RECIEVED', 'RECEIVED')
+                                                                            AND DATE({orders_date_col}) = CURDATE()
+                                                                ) r_today ON r_today.order_number = TRIM(COALESCE(g.order_number, ''))
                                 WHERE TRIM(COALESCE(g.order_number, '')) <> ''
                                   {lookback_clause}
-                                  AND EXISTS (
-                                      SELECT 1
-                                      FROM {goods_in_orders_table} ao
-                                      WHERE TRIM(COALESCE(ao.order_number, '')) = TRIM(COALESCE(g.order_number, ''))
-                                        AND UPPER(TRIM(COALESCE(ao.receipt_status, ''))) IN ('RECIEVED', 'RECEIVED')
-                                        AND DATE(ao.{orders_date_col}) = CURDATE()
-                                  )
                                 """,
                             )
 

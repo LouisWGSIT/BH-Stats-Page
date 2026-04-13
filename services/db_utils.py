@@ -13,6 +13,9 @@ DB_QUERY_ALERT_THRESHOLD = float(os.getenv("DB_QUERY_ALERT_THRESHOLD", "2.0"))
 DB_LOG_MODE = os.getenv('DB_LOG_MODE', 'minimal')  # 'detailed' or 'minimal'
 DB_FETCH_LOG_ROWS = int(os.getenv('DB_FETCH_LOG_ROWS', '5000'))
 DB_BATCH_LOG_EVERY = int(os.getenv('DB_BATCH_LOG_EVERY', '10'))
+DB_CONNECT_TIMEOUT = int(os.getenv("MARIADB_CONNECT_TIMEOUT", "10"))
+DB_READ_TIMEOUT = int(os.getenv("MARIADB_READ_TIMEOUT", "60"))
+DB_WRITE_TIMEOUT = int(os.getenv("MARIADB_WRITE_TIMEOUT", "60"))
 
 def _first_env(*names: str, default: str = "") -> str:
     for name in names:
@@ -59,9 +62,9 @@ def get_mariadb_connection():
             password=cfg["password"],
             database=cfg["database"],
             port=cfg["port"],
-            connect_timeout=10,
-            read_timeout=30,
-            write_timeout=30
+            connect_timeout=DB_CONNECT_TIMEOUT,
+            read_timeout=DB_READ_TIMEOUT,
+            write_timeout=DB_WRITE_TIMEOUT,
         )
         try:
             conn.autocommit(True)
