@@ -179,7 +179,8 @@
         const trendClass = section.trend > 0 ? 'is-up' : section.trend < 0 ? 'is-down' : 'is-flat';
         const sourceLabel = section.isLive ? 'Live' : 'Mock';
         const sourceClass = section.isLive ? 'live' : 'mock';
-        const queryMsLabel = Number.isFinite(section.queryMs) ? `${section.queryMs}ms` : '';
+        const isAdminViewer = (sessionStorage.getItem('userRole') || 'viewer') === 'admin';
+        const queryMsLabel = (isAdminViewer && Number.isFinite(section.queryMs)) ? `${section.queryMs}ms` : '';
         const sourceReason = String(section.sourceReason || '').trim();
         const done = getDoneCount(section);
         let detailRows = '';
@@ -238,7 +239,7 @@
               <span class="owner">${section.owner}</span>
               <span class="trend ${trendClass}">${trendLabel(section.trend)} vs last hour</span>
             </div>
-            <p class="overall-action">${activityText(section)}${(!section.isLive && sourceReason) ? ` (${sourceReason})` : ''}</p>
+            <p class="overall-action">${activityText(section)}${(isAdminViewer && !section.isLive && sourceReason) ? ` (${sourceReason})` : ''}</p>
           </article>
         `;
       }).join('');

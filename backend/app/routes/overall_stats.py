@@ -63,6 +63,15 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         except Exception:
             return _get_refresh_timeout_seconds()
 
+    def _get_section_timeout_seconds(section_key: str) -> float:
+        if section_key == "goods_in":
+            return _get_goods_in_timeout_seconds()
+        env_key = f"OVERALL_{str(section_key or '').upper()}_TIMEOUT_SECONDS"
+        try:
+            return max(0.2, float(os.getenv(env_key, str(_get_refresh_timeout_seconds()))))
+        except Exception:
+            return _get_refresh_timeout_seconds()
+
     def _get_snapshot_payload(snapshot_key: str) -> tuple[dict | None, float | None]:
         try:
             snap = db_module.get_dashboard_snapshot(snapshot_key)
@@ -870,31 +879,82 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             "reason": reason,
         }
 
-    async def _refresh_sections_with_budget() -> dict:
+    def _fallback_section_payload(section_key: str, reason: str) -> dict:
         now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        goods_in_timeout_s = _get_goods_in_timeout_seconds()
+        if section_key == "goods_in":
+            return _mock_goods_in_payload(
+                now_iso,
+                source=f"fallback:{reason}",
+                source_reason=reason,
+            )
+
+        fallback = _build_sections_fallback_payload(reason)
+        for section in fallback.get("sections", []):
+            if str(section.get("sectionKey") or "").lower() == str(section_key or "").lower():
+                section["sourceReason"] = reason
+                return section
+
+        section = _build_non_goods_mock(section_key)
+        if isinstance(section, dict):
+            section["isLive"] = False
+            section["source"] = f"fallback:{reason}"
+            section["sourceReason"] = reason
+            return section
+        return {
+            "sectionKey": str(section_key or ""),
+            "sectionName": str(section_key or "").replace("_", " ").title(),
+            "targetQueue": 0,
+            "currentQueue": 0,
+            "trendPctHour": 0,
+            "owner": "Operations Team",
+            "queueLabel": "Queue",
+            "subMetrics": [],
+            "updatedAt": now_iso,
+            "isLive": False,
+            "source": f"fallback:{reason}",
+            "sourceReason": reason,
+        }
+
+    async def _refresh_one_section_with_budget(section_key: str) -> dict:
+        timeout_s = _get_section_timeout_seconds(section_key)
+        start_t = time.perf_counter()
+
+        if section_key == "goods_in":
+            builder = _build_goods_in_payload
+        else:
+            builder = lambda: _build_non_goods_mock(section_key)
 
         try:
-            goods_in_payload = await asyncio.wait_for(
-                asyncio.to_thread(_build_goods_in_payload),
-                timeout=goods_in_timeout_s,
+            payload = await asyncio.wait_for(
+                asyncio.to_thread(builder),
+                timeout=timeout_s,
             )
+            if not isinstance(payload, dict):
+                payload = _fallback_section_payload(section_key, f"{section_key}_invalid_payload")
         except Exception:
-            goods_in_payload = _mock_goods_in_payload(
-                now_iso,
-                source="fallback:goods_in_timeout_or_error",
-                source_reason="goods_in_timeout_or_error",
-            )
+            payload = _fallback_section_payload(section_key, f"{section_key}_timeout_or_error")
 
-        return {
-            "sections": [
-                goods_in_payload,
-                _build_non_goods_mock("ia"),
-                _build_non_goods_mock("erasure"),
-                _build_non_goods_mock("qa"),
-                _build_non_goods_mock("sorting"),
-            ]
-        }
+        if isinstance(payload, dict) and "queryMs" not in payload:
+            payload["queryMs"] = int(round((time.perf_counter() - start_t) * 1000))
+        return payload
+
+    async def _refresh_sections_with_budget() -> dict:
+        section_order = ["goods_in", "ia", "erasure", "qa", "sorting"]
+        results = await asyncio.gather(
+            *[_refresh_one_section_with_budget(key) for key in section_order],
+            return_exceptions=True,
+        )
+
+        sections = []
+        for key, result in zip(section_order, results):
+            if isinstance(result, Exception):
+                sections.append(_fallback_section_payload(key, f"{key}_build_exception"))
+            elif isinstance(result, dict):
+                sections.append(result)
+            else:
+                sections.append(_fallback_section_payload(key, f"{key}_invalid_result"))
+
+        return {"sections": sections}
 
     async def _refresh_spotlight_with_budget() -> dict:
         timeout_s = _get_refresh_timeout_seconds()

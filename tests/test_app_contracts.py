@@ -368,6 +368,34 @@ def test_overall_sections_endpoint_returns_list(client):
     assert r_export_excel.status_code in (400, 401)
 
 
+def test_overall_sections_unique_keys_and_expected_set(client):
+    r = client.get('/overall/sections')
+    assert r.status_code == 200
+    body = r.json()
+    sections = body.get('sections') or []
+    keys = [s.get('sectionKey') for s in sections if isinstance(s, dict)]
+
+    assert len(keys) == len(set(keys)), 'sectionKey values must be unique'
+    expected = {'goods_in', 'ia', 'erasure', 'qa', 'sorting'}
+    assert set(keys) == expected
+
+
+def test_overall_sections_optional_diagnostics_shape(client):
+    r = client.get('/overall/sections')
+    assert r.status_code == 200
+    body = r.json()
+    sections = body.get('sections') or []
+
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        if 'queryMs' in section and section['queryMs'] is not None:
+            assert isinstance(section['queryMs'], int)
+            assert section['queryMs'] >= 0
+        if 'sourceReason' in section and section['sourceReason'] is not None:
+            assert isinstance(section['sourceReason'], str)
+
+
 def test_overall_spotlight_endpoint_returns_contract_shape(client):
     r = client.get('/overall/spotlight')
     assert r.status_code == 200
