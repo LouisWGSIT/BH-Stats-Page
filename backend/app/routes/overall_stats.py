@@ -871,7 +871,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         timeout_s = _get_refresh_timeout_seconds()
         return await asyncio.wait_for(asyncio.to_thread(_build_spotlight_payload), timeout=timeout_s)
 
-    def _mock_goods_in_payload(now_iso: str) -> dict:
+    def _mock_goods_in_payload(now_iso: str, source: str = "mock") -> dict:
         return {
             "sectionKey": "goods_in",
             "sectionName": "Goods In",
@@ -887,7 +887,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             ],
             "updatedAt": now_iso,
             "isLive": False,
-            "source": "mock",
+            "source": source,
         }
 
     def _build_goods_in_payload() -> dict:
@@ -897,7 +897,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         try:
             conn = qa_export.get_mariadb_connection()
             if not conn:
-                return mock
+                return _mock_goods_in_payload(now_iso, "mock:no_mariadb_connection")
             cur = conn.cursor()
             try:
                 try:
@@ -1156,8 +1156,8 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 "isLive": True,
                 "source": source,
             }
-        except Exception:
-            return mock
+        except Exception as exc:
+            return _mock_goods_in_payload(now_iso, f"mock:build_error:{type(exc).__name__}")
 
     def _build_non_goods_mock(section_key: str) -> dict:
         now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
