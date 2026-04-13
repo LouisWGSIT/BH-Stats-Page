@@ -671,7 +671,14 @@
                                 <option value="last_month">Last Month</option>
                             </select>
                         </div>
-                        <button onclick="downloadQAExport()">📥 Download QA Report</button>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <button id="downloadQaBtn" onclick="downloadQAExport()">📥 Download QA Report</button>
+                            <button id="cancelQaExportBtn" type="button" onclick="cancelQAExport()" style="display:none; background:#dc2626;">✖ Cancel</button>
+                        </div>
+                        <label style="display:flex; gap:8px; align-items:center; margin-top:10px; font-size:13px; color:#444;">
+                            <input type="checkbox" id="qaIncludeDeviceSheets" />
+                            Include Device History + Device Log sheets (slower for monthly exports)
+                        </label>
                         <div id="qaExportResult" class="result"></div>
                     </div>
                 </div>
@@ -683,6 +690,7 @@
         let authToken = null;
         let userRole = null;
         let backfillPoller = null;
+        let qaExportController = null;
 
         function showBackfillStatusHtml(obj) {
             const el = document.getElementById('backfillStatus');
@@ -1536,14 +1544,27 @@
         async function downloadQAExport() {
             const period = document.getElementById('qaExportPeriod').value;
             const resultDiv = document.getElementById('qaExportResult');
+            const includeDeviceSheetsEl = document.getElementById('qaIncludeDeviceSheets');
+            const includeDeviceSheets = !!(includeDeviceSheetsEl && includeDeviceSheetsEl.checked);
+            const downloadBtn = document.getElementById('downloadQaBtn');
+            const cancelBtn = document.getElementById('cancelQaExportBtn');
+
+            if (qaExportController) {
+                qaExportController.abort();
+            }
+            qaExportController = new AbortController();
+
+            if (downloadBtn) downloadBtn.disabled = true;
+            if (cancelBtn) cancelBtn.style.display = 'inline-block';
             
             resultDiv.className = 'result info';
             resultDiv.style.display = 'block';
             resultDiv.innerHTML = '<p>⏳ Generating QA report...</p>';
             
             try {
-                const response = await fetch(`/export/qa-stats?period=${period}`, {
-                    headers: getAuthHeaders(false)
+                const response = await fetch(`/export/qa-stats?period=${period}&include_device_sheets=${includeDeviceSheets ? 'true' : 'false'}`, {
+                    headers: getAuthHeaders(false),
+                    signal: qaExportController.signal,
                 });
                 if (!response.ok) {
                     throw new Error(`Export failed (HTTP ${response.status})`);
@@ -1568,7 +1589,21 @@
                 showResult(resultDiv, 'success', '✅ Download Started', `QA report for ${period.replace('_', ' ')} is downloading.`);
                 setTimeout(() => { resultDiv.style.display = 'none'; }, 3000);
             } catch (error) {
+                if (error && error.name === 'AbortError') {
+                    showResult(resultDiv, 'info', 'Cancelled', 'QA export request cancelled.');
+                    return;
+                }
                 showResult(resultDiv, 'error', '❌ Export Failed', error.message);
+            } finally {
+                qaExportController = null;
+                if (downloadBtn) downloadBtn.disabled = false;
+                if (cancelBtn) cancelBtn.style.display = 'none';
+            }
+        }
+
+        function cancelQAExport() {
+            if (qaExportController) {
+                qaExportController.abort();
             }
         }
 

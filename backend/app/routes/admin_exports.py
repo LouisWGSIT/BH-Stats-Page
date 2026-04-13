@@ -173,6 +173,7 @@ def create_admin_exports_router(
     async def export_qa_stats(
         request: Request,
         period: str = "this_week",
+        include_device_sheets: str = "auto",
         start_year: int = None,
         start_month: int = None,
         end_year: int = None,
@@ -183,6 +184,24 @@ def create_admin_exports_router(
         try:
             period = period.replace("-", "_")
             db_module.init_db()
+
+            def _parse_boolish(value: str | None) -> bool | None:
+                if value is None:
+                    return None
+                raw = str(value).strip().lower()
+                if raw in ("1", "true", "yes", "on"):
+                    return True
+                if raw in ("0", "false", "no", "off"):
+                    return False
+                return None
+
+            async def _raise_if_disconnected() -> None:
+                try:
+                    if await request.is_disconnected():
+                        raise HTTPException(status_code=499, detail="Client disconnected during QA export")
+                except RuntimeError:
+                    # Some test harnesses/request contexts do not support disconnection checks.
+                    return
 
             valid_periods = [
                 "this_week",
@@ -218,6 +237,12 @@ def create_admin_exports_router(
                 "custom_range",
             ]
 
+            include_device_opt = _parse_boolish(include_device_sheets)
+            if include_device_opt is None:
+                include_device_opt = period in ("this_week", "last_week")
+
+            await _raise_if_disconnected()
+
             if period in long_periods:
                 chunks = qa_export.generate_qa_engineer_export_chunked(
                     period,
@@ -225,9 +250,11 @@ def create_admin_exports_router(
                     start_month=start_month,
                     end_year=end_year,
                     end_month=end_month,
+                    include_device_sheets=include_device_opt,
                 )
 
                 if len(chunks) == 1:
+                    await _raise_if_disconnected()
                     suffix, sheets_data = chunks[0]
                     _ = suffix
                     fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
@@ -255,6 +282,7 @@ def create_admin_exports_router(
                 try:
                     with zipfile.ZipFile(tmp_zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
                         for suffix, sheets_data in chunks:
+                            await _raise_if_disconnected()
                             fd, tmp_xlsx = tempfile.mkstemp(suffix=".xlsx")
                             os.close(fd)
                             try:
@@ -280,12 +308,14 @@ def create_admin_exports_router(
                         pass
                     raise
 
+            await _raise_if_disconnected()
             sheets_data = qa_export.generate_qa_engineer_export(
                 period,
                 start_year=start_year,
                 start_month=start_month,
                 end_year=end_year,
                 end_month=end_month,
+                include_device_sheets=include_device_opt,
             )
 
             fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
