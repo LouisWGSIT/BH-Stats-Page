@@ -31,6 +31,10 @@ MANUFACTURER_INVALID_PATTERNS = (
     "n/a",
 )
 
+# Use a resilient event-date expression so exports still include historical rows
+# where `date` was not populated but `ts` exists.
+EVENT_DATE_SQL = "COALESCE(NULLIF(date, ''), substr(ts, 1, 10))"
+
 def normalize_manufacturer(value: str) -> str | None:
     if not value:
         return None
@@ -104,10 +108,10 @@ def get_daily_engineer_data(date_str: str) -> Dict[str, Dict]:
     cursor = conn.cursor()
     
     # Fetch records for this day during work hours (8-16:00)
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT initials, device_type, duration_sec, manufacturer, model, drive_size
         FROM erasures
-        WHERE date = ? AND event = 'success'
+        WHERE {EVENT_DATE_SQL} = ? AND event = 'success'
         ORDER BY initials
     """, (date_str,))
     
@@ -149,10 +153,10 @@ def _get_period_totals(start_date: date, end_date: date) -> Dict[str, float]:
     conn = sqlite3.connect(db.DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        """
+        f"""
         SELECT COUNT(1), AVG(duration_sec), AVG(drive_size)
         FROM erasures
-        WHERE date >= ? AND date <= ? AND event = 'success'
+        WHERE {EVENT_DATE_SQL} >= ? AND {EVENT_DATE_SQL} <= ? AND event = 'success'
         """,
         (start_date.isoformat(), end_date.isoformat())
     )
@@ -168,12 +172,12 @@ def _get_manufacturer_detail_rows(start_date: date, end_date: date) -> Tuple[Lis
     conn = sqlite3.connect(db.DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        """
-        SELECT initials, date, manufacturer, model, system_serial, disk_serial, job_id,
+        f"""
+        SELECT initials, {EVENT_DATE_SQL} as event_date, manufacturer, model, system_serial, disk_serial, job_id,
                drive_size, drive_type, drive_count, duration_sec
         FROM erasures
-        WHERE date >= ? AND date <= ? AND event = 'success'
-        ORDER BY initials, date, manufacturer, model
+        WHERE {EVENT_DATE_SQL} >= ? AND {EVENT_DATE_SQL} <= ? AND event = 'success'
+        ORDER BY initials, event_date, manufacturer, model
         """,
         (start_date.isoformat(), end_date.isoformat())
     )
@@ -254,12 +258,12 @@ def _get_daily_breakdown(start_date: date, end_date: date) -> Dict[str, Dict]:
     conn = sqlite3.connect(db.DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        """
-        SELECT date, device_type, COUNT(1) as cnt, AVG(duration_sec) as avg_dur
+        f"""
+        SELECT {EVENT_DATE_SQL} as event_date, device_type, COUNT(1) as cnt, AVG(duration_sec) as avg_dur
         FROM erasures
-        WHERE date >= ? AND date <= ? AND event = 'success'
-        GROUP BY date, device_type
-        ORDER BY date ASC
+        WHERE {EVENT_DATE_SQL} >= ? AND {EVENT_DATE_SQL} <= ? AND event = 'success'
+        GROUP BY event_date, device_type
+        ORDER BY event_date ASC
         """,
         (start_date.isoformat(), end_date.isoformat())
     )
@@ -289,10 +293,10 @@ def _get_speed_challenge_for_date(date_str: str, time_window: str) -> List[Dict[
         start_hour, end_hour = 13, 16
 
     cursor.execute(
-        """
+        f"""
         SELECT initials, COUNT(*) as count
         FROM erasures
-        WHERE date = ?
+        WHERE {EVENT_DATE_SQL} = ?
           AND event = 'success'
           AND initials IS NOT NULL
           AND CAST(strftime('%H', ts) AS INTEGER) >= ?
