@@ -508,6 +508,284 @@ def create_admin_diagnostics_router(
             "samples": samples,
         }
 
+    @router.get("/admin/goods-in-evidence")
+    def admin_goods_in_evidence(request: Request, days: int = 90, limit: int = 50):
+        """Admin-only diagnostic: prove Goods In queue and received-today matching logic."""
+        require_admin(request)
+        days = max(1, min(int(days or 90), 180))
+        limit = max(10, min(int(limit or 50), 200))
+
+        conn = None
+        try:
+            conn = get_mariadb_connection()
+            if not conn:
+                return JSONResponse(status_code=503, content={"status": "fail", "detail": "MariaDB connection failed"})
+
+            cur = conn.cursor()
+            try:
+                grn_table = "ITAD_GRN"
+                orders_table = "Automation_AllOrders"
+
+                cur.execute(
+                    """
+                    SELECT LOWER(column_name)
+                    FROM information_schema.columns
+                    WHERE table_schema = DATABASE()
+                      AND table_name = %s
+                    """,
+                    (grn_table,),
+                )
+                grn_cols = {str(r[0]).lower() for r in (cur.fetchall() or []) if r and r[0]}
+
+                cur.execute(
+                    """
+                    SELECT LOWER(column_name)
+                    FROM information_schema.columns
+                    WHERE table_schema = DATABASE()
+                      AND table_name = %s
+                    """,
+                    (orders_table,),
+                )
+                orders_cols = {str(r[0]).lower() for r in (cur.fetchall() or []) if r and r[0]}
+
+                if "order_number" not in grn_cols or "order_number" not in orders_cols:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Goods In evidence requires order_number in both ITAD_GRN and Automation_AllOrders",
+                    )
+
+                status_col = "receipt_status" if "receipt_status" in orders_cols else None
+                if not status_col:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Goods In evidence requires receipt_status in Automation_AllOrders",
+                    )
+
+                grn_date_col = next((c for c in ("date_received", "date_added", "added_date") if c in grn_cols), None)
+                orders_date_col = next((c for c in ("added_date", "date_added", "date_received") if c in orders_cols), None)
+
+                lookback_clause = ""
+                if grn_date_col:
+                    lookback_clause = f" AND DATE(g.{grn_date_col}) >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)"
+
+                q_total_grn = (
+                    "SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, ''))) "
+                    f"FROM {grn_table} g "
+                    "WHERE TRIM(COALESCE(g.order_number, '')) <> ''"
+                    f"{lookback_clause}"
+                )
+                cur.execute(q_total_grn)
+                row = cur.fetchone()
+                total_grn_orders = int(row[0]) if row and row[0] is not None else 0
+
+                q_unmatched = (
+                    "SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, ''))) "
+                    f"FROM {grn_table} g "
+                    "LEFT JOIN ("
+                    "    SELECT DISTINCT TRIM(COALESCE(order_number, '')) AS order_number "
+                    f"    FROM {orders_table} "
+                    "    WHERE TRIM(COALESCE(order_number, '')) <> '' "
+                    f"      AND UPPER(TRIM(COALESCE({status_col}, ''))) IN ('RECIEVED', 'RECEIVED')"
+                    ") r ON r.order_number = TRIM(COALESCE(g.order_number, '')) "
+                    "WHERE TRIM(COALESCE(g.order_number, '')) <> ''"
+                    f"{lookback_clause} "
+                    "AND r.order_number IS NULL"
+                )
+                cur.execute(q_unmatched)
+                row = cur.fetchone()
+                queue_unmatched = int(row[0]) if row and row[0] is not None else 0
+
+                received_today_matched = 0
+                if orders_date_col:
+                    q_received_today = (
+                        "SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, ''))) "
+                        f"FROM {grn_table} g "
+                        "INNER JOIN ("
+                        "    SELECT DISTINCT TRIM(COALESCE(order_number, '')) AS order_number "
+                        f"    FROM {orders_table} "
+                        "    WHERE TRIM(COALESCE(order_number, '')) <> '' "
+                        f"      AND UPPER(TRIM(COALESCE({status_col}, ''))) IN ('RECIEVED', 'RECEIVED') "
+                        f"      AND DATE({orders_date_col}) = CURDATE()"
+                        ") rt ON rt.order_number = TRIM(COALESCE(g.order_number, '')) "
+                        "WHERE TRIM(COALESCE(g.order_number, '')) <> ''"
+                        f"{lookback_clause}"
+                    )
+                    cur.execute(q_received_today)
+                    row = cur.fetchone()
+                    received_today_matched = int(row[0]) if row and row[0] is not None else 0
+
+                grn_date_select = f"MAX(g.{grn_date_col})" if grn_date_col else "NULL"
+                order_status_col = "order_status" if "order_status" in orders_cols else None
+                date_added_col = "date_added" if "date_added" in orders_cols else None
+                date_required_col = "date_required" if "date_required" in orders_cols else None
+                ship_date_col = "ship_date" if "ship_date" in orders_cols else None
+                added_date_col = "added_date" if "added_date" in orders_cols else None
+
+                sort_candidates = [c for c in (added_date_col, date_added_col, ship_date_col, date_required_col) if c]
+                sort_expr = (", ".join([f"COALESCE(o.{c}, '')" for c in sort_candidates]) if sort_candidates else "TRIM(COALESCE(o.order_number, ''))")
+
+                def _latest_field_expr(column_name: str | None, alias: str) -> str:
+                    if not column_name:
+                        return f"NULL AS {alias}"
+                    return (
+                        "SUBSTRING_INDEX("
+                        f"GROUP_CONCAT(COALESCE(o.{column_name}, '') ORDER BY {sort_expr} DESC SEPARATOR '||'), "
+                        "'||', "
+                        "1"
+                        f") AS {alias}"
+                    )
+
+                q_automation_latest = (
+                    "SELECT "
+                    "    TRIM(COALESCE(o.order_number, '')) AS order_number, "
+                    f"    {_latest_field_expr(status_col, 'receipt_status')}, "
+                    f"    {_latest_field_expr(order_status_col, 'order_status')}, "
+                    f"    {_latest_field_expr(date_added_col, 'date_added')}, "
+                    f"    {_latest_field_expr(date_required_col, 'date_required')}, "
+                    f"    {_latest_field_expr(ship_date_col, 'ship_date')}, "
+                    f"    {_latest_field_expr(added_date_col, 'added_date')} "
+                    f"FROM {orders_table} o "
+                    "WHERE TRIM(COALESCE(o.order_number, '')) <> '' "
+                    "GROUP BY TRIM(COALESCE(o.order_number, ''))"
+                )
+
+                q_unmatched_samples = (
+                    "SELECT "
+                    "    TRIM(COALESCE(g.order_number, '')) AS grn_order_number, "
+                    "    ao.order_number AS automation_order_number, "
+                    f"    {grn_date_select} AS last_grn_date, "
+                    "    ao.receipt_status, "
+                    "    ao.order_status, "
+                    "    ao.date_added, "
+                    "    ao.date_required, "
+                    "    ao.ship_date, "
+                    "    ao.added_date "
+                    f"FROM {grn_table} g "
+                    "LEFT JOIN ("
+                    "    SELECT DISTINCT TRIM(COALESCE(order_number, '')) AS order_number "
+                    f"    FROM {orders_table} "
+                    "    WHERE TRIM(COALESCE(order_number, '')) <> '' "
+                    f"      AND UPPER(TRIM(COALESCE({status_col}, ''))) IN ('RECIEVED', 'RECEIVED')"
+                    ") r ON r.order_number = TRIM(COALESCE(g.order_number, '')) "
+                    f"LEFT JOIN ({q_automation_latest}) ao ON ao.order_number = TRIM(COALESCE(g.order_number, '')) "
+                    "WHERE TRIM(COALESCE(g.order_number, '')) <> '' "
+                    f"{lookback_clause} "
+                    "AND r.order_number IS NULL "
+                    "GROUP BY TRIM(COALESCE(g.order_number, '')) "
+                    "ORDER BY last_grn_date DESC "
+                    "LIMIT %s"
+                )
+                cur.execute(q_unmatched_samples, (limit,))
+                unmatched_rows = cur.fetchall() or []
+
+                received_today_rows = []
+                if orders_date_col:
+                    today_clause = f"AND DATE(o.{orders_date_col}) = CURDATE()"
+                    received_date_select = f"MAX(o.{orders_date_col})"
+                    q_received_today_samples = (
+                        "SELECT "
+                        "    TRIM(COALESCE(g.order_number, '')) AS grn_order_number, "
+                        "    ao.order_number AS automation_order_number, "
+                        f"    {grn_date_select} AS last_grn_date, "
+                        f"    {received_date_select} AS last_received_date, "
+                        "    ao.receipt_status, "
+                        "    ao.order_status, "
+                        "    ao.date_added, "
+                        "    ao.date_required, "
+                        "    ao.ship_date, "
+                        "    ao.added_date "
+                        f"FROM {grn_table} g "
+                        f"INNER JOIN {orders_table} o "
+                        "    ON TRIM(COALESCE(o.order_number, '')) = TRIM(COALESCE(g.order_number, '')) "
+                        f"LEFT JOIN ({q_automation_latest}) ao ON ao.order_number = TRIM(COALESCE(g.order_number, '')) "
+                        "WHERE TRIM(COALESCE(g.order_number, '')) <> '' "
+                        "AND TRIM(COALESCE(o.order_number, '')) <> '' "
+                        f"AND UPPER(TRIM(COALESCE(o.{status_col}, ''))) IN ('RECIEVED', 'RECEIVED') "
+                        f"{today_clause} "
+                        f"{lookback_clause} "
+                        "GROUP BY TRIM(COALESCE(g.order_number, '')) "
+                        "ORDER BY last_received_date DESC "
+                        "LIMIT %s"
+                    )
+                    cur.execute(q_received_today_samples, (limit,))
+                    received_today_rows = cur.fetchall() or []
+            finally:
+                cur.close()
+                conn.close()
+
+            def _to_iso(value):
+                if value is None:
+                    return None
+                if isinstance(value, datetime):
+                    dt = value if value.tzinfo else value.replace(tzinfo=UTC)
+                    return dt.isoformat()
+                return str(value)
+
+            unmatched_samples = []
+            for row in unmatched_rows:
+                unmatched_samples.append(
+                    {
+                        "grnOrderNumber": str(row[0]) if row and row[0] is not None else "",
+                        "automationOrderNumber": str(row[1]) if row and len(row) > 1 and row[1] is not None else None,
+                        "lastGrnDate": _to_iso(row[2] if len(row) > 2 else None),
+                        "receiptStatus": str(row[3]) if row and len(row) > 3 and row[3] is not None else None,
+                        "orderStatus": str(row[4]) if row and len(row) > 4 and row[4] is not None else None,
+                        "dateAdded": _to_iso(row[5] if len(row) > 5 else None),
+                        "dateRequired": _to_iso(row[6] if len(row) > 6 else None),
+                        "shipDate": _to_iso(row[7] if len(row) > 7 else None),
+                        "addedDate": _to_iso(row[8] if len(row) > 8 else None),
+                        "matchState": "awaiting_receipt_match",
+                    }
+                )
+
+            received_today_samples = []
+            for row in received_today_rows:
+                received_today_samples.append(
+                    {
+                        "grnOrderNumber": str(row[0]) if row and row[0] is not None else "",
+                        "automationOrderNumber": str(row[1]) if row and len(row) > 1 and row[1] is not None else None,
+                        "lastGrnDate": _to_iso(row[2] if len(row) > 2 else None),
+                        "lastReceivedDate": _to_iso(row[3] if len(row) > 3 else None),
+                        "receiptStatus": str(row[4]) if row and len(row) > 4 and row[4] is not None else None,
+                        "orderStatus": str(row[5]) if row and len(row) > 5 and row[5] is not None else None,
+                        "dateAdded": _to_iso(row[6] if len(row) > 6 else None),
+                        "dateRequired": _to_iso(row[7] if len(row) > 7 else None),
+                        "shipDate": _to_iso(row[8] if len(row) > 8 else None),
+                        "addedDate": _to_iso(row[9] if len(row) > 9 else None),
+                        "matchState": "matched_received_today",
+                    }
+                )
+
+            matched_orders = max(0, total_grn_orders - queue_unmatched)
+
+            return {
+                "summary": {
+                    "windowDays": days,
+                    "totalBookedOrders": total_grn_orders,
+                    "awaitingReceiptMatch": queue_unmatched,
+                    "matchedReceivedAnyDay": matched_orders,
+                    "bookedAndReceivedToday": received_today_matched,
+                    "source": "mariadb:ITAD_GRN+Automation_AllOrders",
+                    "statusField": status_col,
+                    "grnDateField": grn_date_col,
+                    "ordersDateField": orders_date_col,
+                    "sampleAwaitingCount": len(unmatched_samples),
+                    "sampleReceivedTodayCount": len(received_today_samples),
+                    "generatedAt": datetime.now(UTC).isoformat(),
+                },
+                "awaitingSamples": unmatched_samples,
+                "receivedTodaySamples": received_today_samples,
+            }
+        except HTTPException:
+            raise
+        except Exception as exc:
+            try:
+                if conn:
+                    conn.close()
+            except Exception:
+                pass
+            raise HTTPException(status_code=500, detail=str(exc))
+
     @router.get("/admin/sorting-evidence")
     def admin_sorting_evidence(request: Request, days: int = 30, limit: int = 50):
         """Admin-only diagnostic: sampled proof for Awaiting Sorting calculation."""

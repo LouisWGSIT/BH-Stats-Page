@@ -63,6 +63,7 @@ def test_admin_page_collapsible_sections_lazy_init_smoke(client):
     for section_id in [
         "section-fix-initials",
         "section-connected-devices",
+        "section-goods-in-evidence",
         "section-erasure-evidence",
         "section-sorting-evidence",
         "section-dashboard-activity",
@@ -697,6 +698,19 @@ def test_admin_external_access_attempts_returns_shape(client):
 def test_admin_sorting_evidence_requires_admin(client):
     r = client.get("/admin/sorting-evidence")
     assert r.status_code == 401
+
+
+def test_admin_goods_in_evidence_requires_admin(client):
+    r = client.get("/admin/goods-in-evidence")
+    assert r.status_code == 401
+
+
+def test_admin_goods_in_evidence_handles_db_unavailable(client, app_module, monkeypatch):
+    monkeypatch.setattr(app_module.qa_export, "get_mariadb_connection", lambda: None)
+    r = client.get("/admin/goods-in-evidence", headers={"Authorization": "Bearer test-admin-pass"})
+    assert r.status_code == 503
+    body = r.json()
+    assert body["status"] == "fail"
 
 
 def test_admin_sorting_evidence_handles_db_unavailable(client, app_module, monkeypatch):

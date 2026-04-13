@@ -566,6 +566,78 @@
                 </div>
             </div>
 
+            <!-- Section 6.5: Goods In Evidence -->
+            <div class="section admin-only" id="section-goods-in-evidence">
+                <h2>📥 Goods In Evidence</h2>
+                <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
+                    Proves the Goods In card values by showing GRN order numbers that are still unmatched in Automation orders, plus any matched as received today.
+                </p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="font-size:13px;color:#666;">Window:
+                        <select id="goodsInEvidenceDays" style="max-width:120px;">
+                            <option value="30">30d</option>
+                            <option value="60">60d</option>
+                            <option value="90" selected>90d</option>
+                            <option value="120">120d</option>
+                        </select>
+                    </label>
+                    <label style="font-size:13px;color:#666;">Samples:
+                        <select id="goodsInEvidenceLimit" style="max-width:120px;">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </label>
+                    <button onclick="loadGoodsInEvidence()">🔎 Refresh Goods In Evidence</button>
+                </div>
+                <div id="goodsInEvidenceSummary" class="stats" style="display:none;margin-top:12px;"></div>
+                <div id="goodsInEvidenceAwaitingWrap" class="stats" style="display:none;margin-top:12px;">
+                    <h3 style="margin-bottom:8px;">Awaiting Receipt Match Samples</h3>
+                    <div class="table-scroll awaiting">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>GRN Order Number</th>
+                                    <th>Automation Order Number</th>
+                                    <th>Receipt Status</th>
+                                    <th>Order Status</th>
+                                    <th>date_added</th>
+                                    <th>date_required</th>
+                                    <th>ship_date</th>
+                                    <th>added_date</th>
+                                    <th>Latest GRN Date</th>
+                                    <th>Match State</th>
+                                </tr>
+                            </thead>
+                            <tbody id="goodsInEvidenceAwaitingBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="goodsInEvidenceReceivedWrap" class="stats" style="display:none;margin-top:12px;">
+                    <h3 style="margin-bottom:8px;">Booked And Received Today Samples</h3>
+                    <div class="table-scroll decremented">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>GRN Order Number</th>
+                                    <th>Automation Order Number</th>
+                                    <th>Receipt Status</th>
+                                    <th>Order Status</th>
+                                    <th>date_added</th>
+                                    <th>date_required</th>
+                                    <th>ship_date</th>
+                                    <th>added_date</th>
+                                    <th>Latest GRN Date</th>
+                                    <th>Latest Receipt Date</th>
+                                    <th>Match State</th>
+                                </tr>
+                            </thead>
+                            <tbody id="goodsInEvidenceReceivedBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- Section 7: Erasure Evidence -->
             <div class="section admin-only" id="section-erasure-evidence">
                 <h2>🧾 Erasure Evidence</h2>
@@ -847,6 +919,7 @@
             const sectionIds = [
                 'section-fix-initials',
                 'section-connected-devices',
+                'section-goods-in-evidence',
                 'section-erasure-evidence',
                 'section-sorting-evidence',
                 'section-dashboard-activity'
@@ -909,6 +982,10 @@
                 if (userRole === 'admin') {
                     await loadExternalAttempts();
                 }
+            };
+            _sectionLoaders['section-goods-in-evidence'] = async () => {
+                if (userRole !== 'admin') return;
+                await loadGoodsInEvidence();
             };
             _sectionLoaders['section-erasure-evidence'] = async () => {
                 if (userRole !== 'admin') return;
@@ -1613,6 +1690,131 @@
                 content.innerHTML = '<p style="color:#c00;">Error loading external attempts: ' + error.message + '</p>';
                 container.style.display = 'block';
             }
+        }
+
+        let _goodsInAwaitingSamples = [];
+        let _goodsInReceivedTodaySamples = [];
+        let _goodsInEvidenceFilter = 'all';
+
+        async function loadGoodsInEvidence() {
+            const daysSel = document.getElementById('goodsInEvidenceDays');
+            const limitSel = document.getElementById('goodsInEvidenceLimit');
+            const summary = document.getElementById('goodsInEvidenceSummary');
+            const awaitingWrap = document.getElementById('goodsInEvidenceAwaitingWrap');
+            const awaitingBody = document.getElementById('goodsInEvidenceAwaitingBody');
+            const receivedWrap = document.getElementById('goodsInEvidenceReceivedWrap');
+            const receivedBody = document.getElementById('goodsInEvidenceReceivedBody');
+            if (!summary || !awaitingWrap || !awaitingBody || !receivedWrap || !receivedBody) return;
+
+            const days = parseInt((daysSel && daysSel.value) || '90', 10);
+            const limit = parseInt((limitSel && limitSel.value) || '50', 10);
+
+            try {
+                const res = await fetch(`/admin/goods-in-evidence?days=${days}&limit=${limit}`, {
+                    headers: getAuthHeaders(false)
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${res.status}`);
+                }
+
+                const data = await res.json();
+                const s = data.summary || {};
+                const awaiting = Array.isArray(data.awaitingSamples) ? data.awaitingSamples : [];
+                const received = Array.isArray(data.receivedTodaySamples) ? data.receivedTodaySamples : [];
+
+                _goodsInAwaitingSamples = awaiting;
+                _goodsInReceivedTodaySamples = received;
+                _goodsInEvidenceFilter = 'all';
+
+                summary.innerHTML = `
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                        <div class="stat-card filterable-card active" data-goods-filter="all"><div class="stat-value">${s.totalBookedOrders || 0}</div><div class="stat-label">Total Booked In (Distinct Orders)</div></div>
+                        <div class="stat-card filterable-card" data-goods-filter="awaiting"><div class="stat-value">${s.awaitingReceiptMatch || 0}</div><div class="stat-label">Current Queue (Awaiting Receipt Match)</div></div>
+                        <div class="stat-card filterable-card" data-goods-filter="received_today"><div class="stat-value">${s.bookedAndReceivedToday || 0}</div><div class="stat-label">Booked And Recieved Today</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.matchedReceivedAnyDay || 0}</div><div class="stat-label">Matched Received (Any Day)</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.windowDays || days}</div><div class="stat-label">Window Days</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.sampleAwaitingCount || awaiting.length}</div><div class="stat-label">Awaiting Samples</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.sampleReceivedTodayCount || received.length}</div><div class="stat-label">Received Today Samples</div></div>
+                    </div>
+                    <div style="margin-top:8px;font-size:12px;color:#666;">Source: ${s.source || 'unknown'} | GRN date field: ${s.grnDateField || 'n/a'} | Orders date field: ${s.ordersDateField || 'n/a'} | Status field: ${s.statusField || 'n/a'}</div>
+                    <div style="margin-top:8px;font-size:12px;color:#666;">Generated: ${formatActivityTimeUk(s.generatedAt)}</div>
+                `;
+                summary.style.display = 'block';
+
+                summary.querySelectorAll('[data-goods-filter]').forEach((card) => {
+                    card.addEventListener('click', () => {
+                        _goodsInEvidenceFilter = card.getAttribute('data-goods-filter') || 'all';
+                        summary.querySelectorAll('[data-goods-filter]').forEach((el) => el.classList.remove('active'));
+                        card.classList.add('active');
+                        renderGoodsInEvidenceTables();
+                    });
+                });
+
+                renderGoodsInEvidenceTables();
+            } catch (err) {
+                summary.style.display = 'block';
+                summary.innerHTML = `<div class="result error" style="display:block;">Failed to load goods in evidence: ${err.message}</div>`;
+                awaitingWrap.style.display = 'none';
+                receivedWrap.style.display = 'none';
+            }
+        }
+
+        function renderGoodsInEvidenceTables() {
+            const awaitingWrap = document.getElementById('goodsInEvidenceAwaitingWrap');
+            const awaitingBody = document.getElementById('goodsInEvidenceAwaitingBody');
+            const receivedWrap = document.getElementById('goodsInEvidenceReceivedWrap');
+            const receivedBody = document.getElementById('goodsInEvidenceReceivedBody');
+            if (!awaitingWrap || !awaitingBody || !receivedWrap || !receivedBody) return;
+
+            let awaitingRows = _goodsInAwaitingSamples || [];
+            let receivedRows = _goodsInReceivedTodaySamples || [];
+            const filter = _goodsInEvidenceFilter || 'all';
+            if (filter === 'awaiting') {
+                receivedRows = [];
+            } else if (filter === 'received_today') {
+                awaitingRows = [];
+            }
+
+            awaitingBody.innerHTML = '';
+            awaitingRows.forEach((row) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-size:12px;">${row.grnOrderNumber || ''}</td>
+                    <td style="font-size:12px;">${row.automationOrderNumber || ''}</td>
+                    <td style="font-size:12px;">${row.receiptStatus || ''}</td>
+                    <td style="font-size:12px;">${row.orderStatus || ''}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.addedDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastGrnDate)}</td>
+                    <td style="font-size:12px;">${row.matchState || ''}</td>
+                `;
+                awaitingBody.appendChild(tr);
+            });
+
+            receivedBody.innerHTML = '';
+            receivedRows.forEach((row) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-size:12px;">${row.grnOrderNumber || ''}</td>
+                    <td style="font-size:12px;">${row.automationOrderNumber || ''}</td>
+                    <td style="font-size:12px;">${row.receiptStatus || ''}</td>
+                    <td style="font-size:12px;">${row.orderStatus || ''}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.addedDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastGrnDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastReceivedDate)}</td>
+                    <td style="font-size:12px;">${row.matchState || ''}</td>
+                `;
+                receivedBody.appendChild(tr);
+            });
+
+            awaitingWrap.style.display = awaitingRows.length ? 'block' : 'none';
+            receivedWrap.style.display = receivedRows.length ? 'block' : 'none';
         }
 
         async function loadErasureEvidence() {
