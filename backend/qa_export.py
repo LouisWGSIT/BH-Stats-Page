@@ -2222,7 +2222,14 @@ def get_weekly_chunks(start_date: date, end_date: date) -> List[Tuple[date, date
     return chunks
 
 
-def generate_qa_engineer_export_chunked(period: str, start_year: int = None, start_month: int = None, end_year: int = None, end_month: int = None) -> List[Tuple[str, Dict[str, List[List]]]]:
+def generate_qa_engineer_export_chunked(
+    period: str,
+    start_year: int = None,
+    start_month: int = None,
+    end_year: int = None,
+    end_month: int = None,
+    include_device_sheets: bool = True,
+) -> List[Tuple[str, Dict[str, List[List]]]]:
     """
     Generate QA engineer export split into weekly chunks to avoid memory issues.
     Returns list of (filename_suffix, sheets_dict) tuples.
@@ -2239,7 +2246,17 @@ def generate_qa_engineer_export_chunked(period: str, start_year: int = None, sta
     # For short periods (<=7 days), just return single export
     date_span = (end_date - start_date).days
     if date_span <= 7:
-        return [("", generate_qa_engineer_export(period, start_year, start_month, end_year, end_month))]
+        return [(
+            "",
+            generate_qa_engineer_export(
+                period,
+                start_year,
+                start_month,
+                end_year,
+                end_month,
+                include_device_sheets=include_device_sheets,
+            ),
+        )]
     
     # Split into weekly chunks
     chunks = get_weekly_chunks(start_date, end_date)
@@ -2285,11 +2302,12 @@ def generate_qa_engineer_export_chunked(period: str, start_year: int = None, sta
         
         sheets["Overall QA Summary"] = sheet_data
         
-        # ============= SHEET 2: Device History (weekly chunk) =============
-        sheets["Device History"] = _build_device_history_sheet(chunk_start, chunk_end, chunk_label)
-        
-        # ============= SHEET 3: Device Log by Engineer (weekly chunk) =============
-        sheets["Device Log by Engineer"] = _build_device_log_by_engineer_sheet(chunk_start, chunk_end, chunk_label)
+        if include_device_sheets:
+            # ============= SHEET 2: Device History (weekly chunk) =============
+            sheets["Device History"] = _build_device_history_sheet(chunk_start, chunk_end, chunk_label)
+
+            # ============= SHEET 3: Device Log by Engineer (weekly chunk) =============
+            sheets["Device Log by Engineer"] = _build_device_log_by_engineer_sheet(chunk_start, chunk_end, chunk_label)
         
         # Create filename suffix from dates
         suffix = f"_{chunk_start.strftime('%Y%m%d')}-{chunk_end.strftime('%Y%m%d')}"
@@ -2298,7 +2316,14 @@ def generate_qa_engineer_export_chunked(period: str, start_year: int = None, sta
     return results
 
 
-def generate_qa_engineer_export(period: str, start_year: int = None, start_month: int = None, end_year: int = None, end_month: int = None) -> Dict[str, List[List]]:
+def generate_qa_engineer_export(
+    period: str,
+    start_year: int = None,
+    start_month: int = None,
+    end_year: int = None,
+    end_month: int = None,
+    include_device_sheets: bool = True,
+) -> Dict[str, List[List]]:
     """Generate comprehensive QA engineer breakdown export with overall, data-bearing, non-data-bearing, sorting, and comparison sections"""
     
     # Handle custom range
@@ -2560,23 +2585,24 @@ def generate_qa_engineer_export(period: str, start_year: int = None, start_month
     sheets["Daily Breakdown"] = sheet_data
 
     # ============= SHEET 7/8: Device History + Log by Engineer =============
-    if period in ["this_year", "last_year", "last_year_h1", "last_year_h2"]:
-        for month_start, month_end in _iter_month_ranges(start_date, end_date):
-            month_label = month_start.strftime("%b %Y")
-            month_suffix = month_start.strftime("%Y-%m")
-            sheets[f"Device History {month_suffix}"] = _build_device_history_sheet(
-                month_start,
-                month_end,
-                month_label
-            )
-            sheets[f"Device Log by Engineer {month_suffix}"] = _build_device_log_by_engineer_sheet(
-                month_start,
-                month_end,
-                month_label
-            )
-    else:
-        sheets["Device History"] = _build_device_history_sheet(start_date, end_date, period_label)
-        sheets["Device Log by Engineer"] = _build_device_log_by_engineer_sheet(start_date, end_date, period_label)
+    if include_device_sheets:
+        if period in ["this_year", "last_year", "last_year_h1", "last_year_h2"]:
+            for month_start, month_end in _iter_month_ranges(start_date, end_date):
+                month_label = month_start.strftime("%b %Y")
+                month_suffix = month_start.strftime("%Y-%m")
+                sheets[f"Device History {month_suffix}"] = _build_device_history_sheet(
+                    month_start,
+                    month_end,
+                    month_label
+                )
+                sheets[f"Device Log by Engineer {month_suffix}"] = _build_device_log_by_engineer_sheet(
+                    month_start,
+                    month_end,
+                    month_label
+                )
+        else:
+            sheets["Device History"] = _build_device_history_sheet(start_date, end_date, period_label)
+            sheets["Device Log by Engineer"] = _build_device_log_by_engineer_sheet(start_date, end_date, period_label)
     
     # ============= AUDIT SHEETS: Unpalleted + Stale Devices =============
     # Removed per request: do not include Unpalleted Devices and Stale Devices sheets in exports
