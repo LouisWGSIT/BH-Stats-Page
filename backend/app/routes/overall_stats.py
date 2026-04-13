@@ -898,6 +898,10 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             conn = qa_export.get_mariadb_connection()
             if not conn:
                 return _mock_goods_in_payload(now_iso, "mock:no_mariadb_connection")
+            try:
+                conn.ping(reconnect=True)
+            except Exception:
+                return _mock_goods_in_payload(now_iso, "mock:connection_ping_failed")
             cur = conn.cursor()
             try:
                 try:
