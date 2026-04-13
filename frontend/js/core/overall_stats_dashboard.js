@@ -179,6 +179,8 @@
         const trendClass = section.trend > 0 ? 'is-up' : section.trend < 0 ? 'is-down' : 'is-flat';
         const sourceLabel = section.isLive ? 'Live' : 'Mock';
         const sourceClass = section.isLive ? 'live' : 'mock';
+        const queryMsLabel = Number.isFinite(section.queryMs) ? `${section.queryMs}ms` : '';
+        const sourceReason = String(section.sourceReason || '').trim();
         const done = getDoneCount(section);
         let detailRows = '';
         let subMetricClass = 'overall-submetrics';
@@ -213,6 +215,7 @@
               <h3>${section.name}</h3>
               <div class="overall-pill-stack">
                 <span class="overall-source-pill ${sourceClass}">${sourceLabel}</span>
+                ${queryMsLabel ? `<span class="overall-source-pill">${queryMsLabel}</span>` : ''}
               </div>
             </div>
             <div class="overall-metric-row">
@@ -235,7 +238,7 @@
               <span class="owner">${section.owner}</span>
               <span class="trend ${trendClass}">${trendLabel(section.trend)} vs last hour</span>
             </div>
-            <p class="overall-action">${activityText(section)}</p>
+            <p class="overall-action">${activityText(section)}${(!section.isLive && sourceReason) ? ` (${sourceReason})` : ''}</p>
           </article>
         `;
       }).join('');
@@ -528,6 +531,8 @@
         subMetrics: normalizedSubMetrics,
         isLive: section.isLive === true,
         source: section.source || 'mock',
+        queryMs: Number.isFinite(Number(section.queryMs)) ? Number(section.queryMs) : null,
+        sourceReason: section.sourceReason || '',
       };
     }
 

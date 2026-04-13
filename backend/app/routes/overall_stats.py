@@ -4,6 +4,7 @@ import asyncio
 import os
 import re
 import sqlite3
+import time
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request
@@ -55,6 +56,12 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             return max(0.2, float(os.getenv("OVERALL_REFRESH_TIMEOUT_SECONDS", "6.0")))
         except Exception:
             return 6.0
+
+    def _get_goods_in_timeout_seconds() -> float:
+        try:
+            return max(0.2, float(os.getenv("OVERALL_GOODS_IN_TIMEOUT_SECONDS", str(_get_refresh_timeout_seconds()))))
+        except Exception:
+            return _get_refresh_timeout_seconds()
 
     def _get_snapshot_payload(snapshot_key: str) -> tuple[dict | None, float | None]:
         try:
@@ -864,15 +871,42 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         }
 
     async def _refresh_sections_with_budget() -> dict:
-        timeout_s = _get_refresh_timeout_seconds()
-        return await asyncio.wait_for(asyncio.to_thread(_build_sections_payload), timeout=timeout_s)
+        now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        goods_in_timeout_s = _get_goods_in_timeout_seconds()
+
+        try:
+            goods_in_payload = await asyncio.wait_for(
+                asyncio.to_thread(_build_goods_in_payload),
+                timeout=goods_in_timeout_s,
+            )
+        except Exception:
+            goods_in_payload = _mock_goods_in_payload(
+                now_iso,
+                source="fallback:goods_in_timeout_or_error",
+                source_reason="goods_in_timeout_or_error",
+            )
+
+        return {
+            "sections": [
+                goods_in_payload,
+                _build_non_goods_mock("ia"),
+                _build_non_goods_mock("erasure"),
+                _build_non_goods_mock("qa"),
+                _build_non_goods_mock("sorting"),
+            ]
+        }
 
     async def _refresh_spotlight_with_budget() -> dict:
         timeout_s = _get_refresh_timeout_seconds()
         return await asyncio.wait_for(asyncio.to_thread(_build_spotlight_payload), timeout=timeout_s)
 
-    def _mock_goods_in_payload(now_iso: str, source: str = "mock") -> dict:
-        return {
+    def _mock_goods_in_payload(
+        now_iso: str,
+        source: str = "mock",
+        source_reason: str | None = None,
+        query_ms: int | None = None,
+    ) -> dict:
+        payload = {
             "sectionKey": "goods_in",
             "sectionName": "Goods In",
             "targetQueue": 90,
@@ -889,19 +923,41 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             "isLive": False,
             "source": source,
         }
+        if source_reason:
+            payload["sourceReason"] = source_reason
+        if query_ms is not None:
+            payload["queryMs"] = max(0, int(query_ms))
+        return payload
 
     def _build_goods_in_payload(_retried: bool = False) -> dict:
+        start_t = time.perf_counter()
+
+        def _elapsed_ms() -> int:
+            return int(round((time.perf_counter() - start_t) * 1000))
+
+        def _finalize(payload: dict, source_reason: str | None = None) -> dict:
+            if source_reason:
+                payload["sourceReason"] = source_reason
+            payload["queryMs"] = _elapsed_ms()
+            return payload
+
         now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         mock = _mock_goods_in_payload(now_iso)
 
         try:
             conn = qa_export.get_mariadb_connection()
             if not conn:
-                return _mock_goods_in_payload(now_iso, "mock:no_mariadb_connection")
+                return _finalize(
+                    _mock_goods_in_payload(now_iso, "mock:no_mariadb_connection"),
+                    "no_mariadb_connection",
+                )
             try:
                 conn.ping(reconnect=True)
             except Exception:
-                return _mock_goods_in_payload(now_iso, "mock:connection_ping_failed")
+                return _finalize(
+                    _mock_goods_in_payload(now_iso, "mock:connection_ping_failed"),
+                    "connection_ping_failed",
+                )
             cur = conn.cursor()
             try:
                 try:
@@ -963,7 +1019,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                         if total_not_received > 0:
                             trend = int(round((booked_and_received_today / max(1, total_not_received)) * 100))
 
-                        return {
+                        return _finalize({
                             "sectionKey": "goods_in",
                             "sectionName": "Goods In",
                             "targetQueue": 90,
@@ -979,7 +1035,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                             "updatedAt": now_iso,
                             "isLive": True,
                             "source": source,
-                        }
+                        })
 
                     default_received_today = _run_query_variants(cur, [
                         f"""
@@ -1138,7 +1194,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             if delivered > 0:
                 trend = int(round((checked_in / max(1, delivered)) * 100))
 
-            return {
+            return _finalize({
                 "sectionKey": "goods_in",
                 "sectionName": "Goods In",
                 "targetQueue": 90,
@@ -1154,11 +1210,15 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 "updatedAt": now_iso,
                 "isLive": True,
                 "source": source,
-            }
+            })
         except Exception as exc:
             if (not _retried) and type(exc).__name__ == "InterfaceError":
                 return _build_goods_in_payload(_retried=True)
-            return _mock_goods_in_payload(now_iso, f"mock:build_error:{type(exc).__name__}")
+            reason = f"build_error:{type(exc).__name__}"
+            return _finalize(
+                _mock_goods_in_payload(now_iso, f"mock:{reason}"),
+                reason,
+            )
 
     def _build_non_goods_mock(section_key: str) -> dict:
         now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
