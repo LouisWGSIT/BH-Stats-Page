@@ -371,6 +371,7 @@
     function renderRaceTrack(sections) {
       const raceEl = document.getElementById('overallRaceTrack');
       if (!raceEl) return;
+      const MIN_VISIBLE_PROGRESS = 3;
 
       function getErasureTodayFromDashboard() {
         const el = document.getElementById('totalTodayValue');
@@ -414,16 +415,31 @@
           progress: clamp(Math.round((getRaceTrackDone(s) / maxDone) * 100), 0, 100),
         }))
         .sort((a, b) => b.progress - a.progress);
-      raceEl.innerHTML = lanes.map((lane) => `
-        <div class="overall-race-lane">
-          <span class="lane-name">${lane.name}</span>
-          <div class="lane-track">
-            <div class="lane-fill" style="width:${lane.progress}%"></div>
-            <img class="lane-car" src="assets/F1Car.png" alt="" style="left:calc(${lane.progress}% - 10px)" />
-          </div>
-          <span class="lane-value">${lane.done}</span>
+      const totalDone = lanes.reduce((sum, lane) => sum + lane.done, 0);
+      raceEl.innerHTML = `
+        <div class="overall-race-meta">
+          <span>Completed actions today by section</span>
+          <strong>${totalDone}</strong>
         </div>
-      `).join('');
+        <div class="overall-race-lanes">
+          ${lanes.map((lane) => {
+            const visualProgress = lane.done > 0
+              ? Math.max(lane.progress, MIN_VISIBLE_PROGRESS)
+              : 0;
+            const carLeftPct = clamp(visualProgress, 2, 99);
+            return `
+              <div class="overall-race-lane">
+                <span class="lane-name">${lane.name}</span>
+                <div class="lane-track">
+                  <div class="lane-fill" style="width:${visualProgress}%"></div>
+                  <img class="lane-car" src="assets/F1Car.png" alt="" style="left:calc(${carLeftPct}% - 10px)" />
+                </div>
+                <span class="lane-value">${lane.done}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
     }
 
     function renderTrends(sections) {
