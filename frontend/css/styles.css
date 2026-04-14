@@ -3384,7 +3384,7 @@ main.layout {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   grid-auto-rows: minmax(280px, auto);
   min-height: 0;
 }
@@ -3524,11 +3524,18 @@ main.layout {
   min-height: 150px;
 }
 
+.overall-support-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 10px;
+  min-height: 130px;
+}
+
 .overall-visual-card {
   align-items: stretch;
   text-align: left;
   padding: 12px;
-  min-height: 150px;
+  min-height: 130px;
 }
 
 .overall-visual-card h3 {
@@ -3944,7 +3951,8 @@ main.layout {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .overall-bottom-grid {
+  .overall-bottom-grid,
+  .overall-support-grid {
     grid-template-columns: 1fr;
   }
 }

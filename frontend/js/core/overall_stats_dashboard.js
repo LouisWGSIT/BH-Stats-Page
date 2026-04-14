@@ -564,20 +564,14 @@
         }
 
         renderSections(valid);
-        renderSummary(valid);
-        renderMissionBoard(valid);
         renderSpotlight(spotlightData);
         renderTrends(valid);
         renderRaceTrack(valid);
-        renderChallenge(valid);
       } catch (_err) {
         renderSections(mockSections);
-        renderSummary(mockSections);
-        renderMissionBoard(mockSections);
         renderSpotlight(getFallbackSpotlight());
         renderTrends(mockSections);
         renderRaceTrack(mockSections);
-        renderChallenge(mockSections);
       } finally {
         isLoading = false;
       }
