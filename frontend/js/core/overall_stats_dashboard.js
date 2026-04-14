@@ -221,7 +221,6 @@
         const queryMsLabel = (isAdminViewer && Number.isFinite(section.queryMs)) ? `${section.queryMs}ms` : '';
         const sourceReason = String(section.sourceReason || '').trim();
         const done = getDoneCount(section);
-        const outstanding = getOutstandingCount(section);
         const crew = getSectionCrew(section, meta);
         let detailRows = '';
         let subMetricClass = 'overall-submetrics';
@@ -279,16 +278,6 @@
             <div class="overall-queue-label">${section.queueLabel || 'Queue'}</div>
             <div class="${subMetricClass}">${detailRows}</div>
             <div class="overall-department-bay overall-department-bay--${meta.accentClass}">
-              <div class="overall-bay-metrics">
-                <div class="overall-bay-chip overall-bay-chip--needs">
-                  <span>Needs Doing</span>
-                  <strong>${outstanding}</strong>
-                </div>
-                <div class="overall-bay-chip overall-bay-chip--done">
-                  <span>Done Today</span>
-                  <strong>${done}</strong>
-                </div>
-              </div>
               <div class="overall-bay-footer">
                 <div class="overall-bay-crew">
                   <span class="overall-bay-crew-label">Crew Strip</span>

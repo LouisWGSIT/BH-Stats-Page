@@ -3625,7 +3625,7 @@ main.layout {
   position: relative;
   z-index: 1;
   margin-top: auto;
-  padding: 10px 12px;
+  padding: 8px 10px 6px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background:
@@ -3634,45 +3634,7 @@ main.layout {
   overflow: hidden;
 }
 
-.overall-bay-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.overall-bay-chip {
-  background: rgba(4, 14, 26, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
-  padding: 8px 10px;
-}
-
-.overall-bay-chip span {
-  display: block;
-  font-size: 10px;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: #9fb3c8;
-}
-
-.overall-bay-chip strong {
-  display: block;
-  margin-top: 4px;
-  font-size: 26px;
-  line-height: 1;
-  color: #ffffff;
-}
-
-.overall-bay-chip--needs strong {
-  color: #f4fbff;
-}
-
-.overall-bay-chip--done strong {
-  color: var(--ring-secondary);
-}
-
 .overall-bay-footer {
-  margin-top: 10px;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
@@ -3685,7 +3647,7 @@ main.layout {
 
 .overall-bay-crew-label {
   display: block;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.6px;
@@ -3699,13 +3661,13 @@ main.layout {
 }
 
 .overall-bay-crew-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
   color: #07131f;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(215, 232, 247, 0.88));
@@ -3713,38 +3675,33 @@ main.layout {
 }
 
 .overall-bay-watermark {
-  font-size: 48px;
+  font-size: 42px;
   line-height: 1;
   font-weight: 900;
   letter-spacing: -1px;
   color: rgba(255, 255, 255, 0.09);
 }
 
-.overall-department-bay--goods-in .overall-bay-chip--done strong,
 .overall-trend-card--goods-in .overall-trend-head strong,
 .overall-race-lane--goods-in .lane-rank {
   color: #76f0ca;
 }
 
-.overall-department-bay--ia .overall-bay-chip--done strong,
 .overall-trend-card--ia .overall-trend-head strong,
 .overall-race-lane--ia .lane-rank {
   color: #a7b7ff;
 }
 
-.overall-department-bay--erasure .overall-bay-chip--done strong,
 .overall-trend-card--erasure .overall-trend-head strong,
 .overall-race-lane--erasure .lane-rank {
   color: #ff9ad0;
 }
 
-.overall-department-bay--qa .overall-bay-chip--done strong,
 .overall-trend-card--qa .overall-trend-head strong,
 .overall-race-lane--qa .lane-rank {
   color: #8cf04a;
 }
 
-.overall-department-bay--sorting .overall-bay-chip--done strong,
 .overall-trend-card--sorting .overall-trend-head strong,
 .overall-race-lane--sorting .lane-rank {
   color: #ffbf67;
@@ -3759,16 +3716,16 @@ main.layout {
 
 .overall-support-grid {
   display: grid;
-  grid-template-columns: 0.78fr 2.22fr;
+  grid-template-columns: 1fr 1.55fr;
   gap: 10px;
-  min-height: 168px;
+  min-height: 142px;
 }
 
 .overall-visual-card {
   align-items: stretch;
   text-align: left;
   padding: 12px;
-  min-height: 168px;
+  min-height: 142px;
   overflow: hidden;
 }
 
@@ -4060,10 +4017,10 @@ main.layout {
 }
 
 .spotlight-avatar--hero {
-  width: 92px;
-  height: 92px;
-  border-radius: 24px;
-  font-size: 30px;
+  width: 76px;
+  height: 76px;
+  border-radius: 20px;
+  font-size: 24px;
 }
 
 .spotlight-copy {
@@ -4099,11 +4056,11 @@ main.layout {
 }
 
 .spotlight-stage {
-  min-width: 150px;
+  min-width: 124px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .spotlight-stage-stats {
@@ -4193,26 +4150,26 @@ main.layout {
 
 .overall-race-lane {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) 52px;
+  grid-template-columns: 108px minmax(0, 1fr) 44px;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .lane-heading {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .lane-rank {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -4235,13 +4192,13 @@ main.layout {
 }
 
 .lane-name {
-  font-size: 16px;
+  font-size: 14px;
   color: #d4dfeb;
   font-weight: 800;
 }
 
 .lane-track {
-  height: 22px;
+  height: 18px;
   border-radius: 999px;
   background: transparent;
   box-shadow: none;
@@ -4257,7 +4214,7 @@ main.layout {
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  height: 10px;
+  height: 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.14);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
@@ -4269,7 +4226,7 @@ main.layout {
   left: 0;
   top: 50%;
   z-index: 1;
-  height: 10px;
+  height: 8px;
   transform: translateY(-50%);
   border-radius: 999px;
   background: linear-gradient(90deg, var(--ring-secondary), var(--ring-primary));
@@ -4300,8 +4257,8 @@ main.layout {
   position: absolute;
   top: 50%;
   z-index: 2;
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   transform: translateY(-50%);
   border-radius: 999px;
   background: #8cf04a;
@@ -4309,7 +4266,7 @@ main.layout {
 }
 
 .lane-value {
-  font-size: 19px;
+  font-size: 16px;
   text-align: right;
   color: #eef5ff;
   font-weight: 800;
@@ -4317,10 +4274,10 @@ main.layout {
 
 .lane-car {
   position: absolute;
-  top: -2px;
+  top: -4px;
   z-index: 3;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
@@ -4333,13 +4290,13 @@ main.layout {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
-  font-size: 13px;
+  margin-bottom: 8px;
+  font-size: 12px;
   color: #9fb3c8;
 }
 
 .overall-race-meta strong {
-  font-size: 24px;
+  font-size: 18px;
   color: #ffffff;
   letter-spacing: 0.2px;
 }
@@ -4697,10 +4654,6 @@ main.layout {
   .overall-section-card,
   .overall-visual-card {
     padding: 8px;
-  }
-
-  .overall-bay-chip strong {
-    font-size: 22px;
   }
 
   .overall-bay-watermark {
