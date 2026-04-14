@@ -4121,3 +4121,102 @@ main.layout {
   color: #ffffff;
   font-size: 15px;
 }
+
+@media (max-height: 980px) {
+  .overall-stats-view {
+    padding: 6px;
+    gap: 6px;
+  }
+
+  .overall-section-grid {
+    gap: 8px;
+    grid-auto-rows: minmax(250px, auto);
+  }
+
+  .overall-section-card {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .overall-card-top h3 {
+    font-size: 19px;
+  }
+
+  .overall-metric-block strong {
+    font-size: 18px;
+  }
+
+  .overall-action,
+  .overall-metadata-row,
+  .overall-submetric-row {
+    font-size: 12px;
+  }
+
+  .overall-submetric-row strong {
+    font-size: 13px;
+  }
+
+  .overall-queue-label {
+    font-size: 11px;
+  }
+
+  .overall-submetrics {
+    min-height: 88px;
+    gap: 4px;
+    padding: 5px 7px;
+  }
+
+  .overall-trend-grid {
+    min-height: 72px;
+    gap: 8px;
+  }
+
+  .overall-trend-card {
+    padding: 6px 8px;
+  }
+
+  .overall-support-grid {
+    min-height: 96px;
+    gap: 8px;
+  }
+
+  .overall-visual-card {
+    min-height: 96px;
+    padding: 10px;
+  }
+
+  .spotlight-name {
+    font-size: 20px;
+  }
+
+  .lane-track {
+    height: 18px;
+  }
+
+  .lane-track::before {
+    height: 8px;
+  }
+
+  .lane-car {
+    width: 24px;
+    height: 24px;
+    top: -3px;
+  }
+}
+
+@media (max-height: 900px) {
+  .overall-section-grid {
+    grid-auto-rows: minmax(220px, auto);
+  }
+
+  .overall-top-grid,
+  .overall-trend-grid,
+  .overall-support-grid {
+    gap: 6px;
+  }
+
+  .overall-section-card,
+  .overall-visual-card {
+    padding: 8px;
+  }
+}
