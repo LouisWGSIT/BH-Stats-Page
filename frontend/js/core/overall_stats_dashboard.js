@@ -157,9 +157,9 @@
 
     function activityText(section) {
       const done = getDoneCount(section);
-      if (done > 0) return `${section.name} active with ${done} completed actions.`;
-      if (asNumber(section.current) > 0) return `${section.name} has work queued; awaiting completion updates.`;
-      return `${section.name} is quiet right now.`;
+      if (done > 0) return `${done} completed today.`;
+      if (asNumber(section.current) > 0) return `Queue active.`;
+      return `No active work right now.`;
     }
 
     function getFallbackSpotlight() {
@@ -431,7 +431,7 @@
               <div class="overall-race-lane">
                 <span class="lane-name">${lane.name}</span>
                 <div class="lane-track">
-                  <div class="lane-fill" style="width:${visualProgress}%"></div>
+                  <span class="lane-progress-dot" style="left:calc(${carLeftPct}% - 4px)"></span>
                   <img class="lane-car" src="assets/F1Car.png" alt="" style="left:calc(${carLeftPct}% - 10px)" />
                 </div>
                 <span class="lane-value">${lane.done}</span>

@@ -387,24 +387,24 @@ body {
   background: linear-gradient(145deg, rgba(140, 240, 74, 0.2), rgba(140, 240, 74, 0.1));
   border: 1px solid rgba(140, 240, 74, 0.4);
   color: #8cf04a;
-  padding: 6px 12px;
+  padding: 14px;
   border-radius: 6px;
   font-weight: 700;
-  font-size: 12px;
+  gap: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
   white-space: nowrap;
 }
 
-.download-btn:hover {
+  font-size: 30px;
   background: linear-gradient(145deg, rgba(140, 240, 74, 0.3), rgba(140, 240, 74, 0.15));
   box-shadow: 0 4px 12px rgba(140, 240, 74, 0.2);
   transform: translateY(-1px);
 }
-
+  padding: 10px;
 .download-btn:active {
   transform: translateY(0) scale(0.98);
-}
+  font-size: 31px;
 
 .login-upgrade-icon {
   background: linear-gradient(145deg, rgba(255, 193, 7, 0.2), rgba(255, 193, 7, 0.1));
@@ -412,17 +412,17 @@ body {
   color: #ffc107;
   padding: 6px 12px;
   border-radius: 6px;
-  font-weight: 700;
+  font-size: 14px;
   font-size: 16px;
   cursor: pointer;
   transition: all 0.3s ease;
-  white-space: nowrap;
+  font-size: 15px;
   margin-right: 8px;
 }
 
 .login-upgrade-icon:hover {
   background: linear-gradient(145deg, rgba(255, 193, 7, 0.3), rgba(255, 193, 7, 0.15));
-  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+  font-size: 14px;
   transform: translateY(-1px);
 }
 
@@ -432,35 +432,47 @@ body {
 
 .dashboard-nav {
   display: flex;
-  align-items: center;
+  padding: 8px 10px;
   gap: 8px;
   padding: 0 10px;
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-  flex-shrink: 0;
-}
+  gap: 8px;
+  min-height: 108px;
+  justify-content: flex-start;
+  overflow: hidden;
 
 .nav-arrow {
   background: rgba(102, 126, 234, 0.15);
   border: 1px solid rgba(102, 126, 234, 0.3);
   color: #667eea;
   width: 32px;
-  height: 32px;
+  font-size: 14px;
   border-radius: 6px;
   font-size: 16px;
   font-weight: bold;
   cursor: pointer;
-  display: flex;
+  font-size: 18px;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
+  height: 24px;
   padding: 0;
-}
-
+  background: transparent;
+  box-shadow: none;
 .nav-arrow:hover {
   background: rgba(102, 126, 234, 0.25);
   border-color: rgba(102, 126, 234, 0.5);
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+.lane-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
 }
 
 .nav-arrow:active {
@@ -469,16 +481,27 @@ body {
 
 .dashboard-title {
   color: #cfe0ff;
+.lane-progress-dot {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: #8cf04a;
+  box-shadow: 0 0 8px rgba(140, 240, 74, 0.7);
+}
   font-weight: 700;
   font-size: 13px;
-  min-width: 100px;
+  top: -2px;
   text-align: center;
 }
 
 .manager-btn {
   background: linear-gradient(145deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1));
   border: 1px solid rgba(16, 185, 129, 0.4);
-  color: #10b981;
+    height: 26px;
   padding: 6px 12px;
   border-radius: 6px;
   font-weight: 700;
