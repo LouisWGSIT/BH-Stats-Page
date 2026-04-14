@@ -172,10 +172,41 @@
       };
     }
 
+    function getSectionMeta(sectionKey) {
+      const key = String(sectionKey || '');
+      const map = {
+        goods_in: { label: 'Inbound', shortLabel: 'Goods In', icon: 'GI', accentClass: 'goods-in' },
+        ia: { label: 'Assessment', shortLabel: 'IA', icon: 'IA', accentClass: 'ia' },
+        erasure: { label: 'Data Erase', shortLabel: 'Erasure', icon: 'DE', accentClass: 'erasure' },
+        qa: { label: 'Quality', shortLabel: 'QA', icon: 'QA', accentClass: 'qa' },
+        sorting: { label: 'Dispatch', shortLabel: 'Sorting', icon: 'SO', accentClass: 'sorting' },
+      };
+      return map[key] || { label: 'Operations', shortLabel: key || 'Section', icon: 'OP', accentClass: 'generic' };
+    }
+
+    function getSectionStateClass(section) {
+      const queue = Math.max(0, asNumber(section.current));
+      const done = Math.max(0, getDoneCount(section));
+      if (queue === 0 && done === 0) return 'is-idle';
+      if (done > 0 && queue <= Math.max(5, done * 0.2)) return 'is-clearing';
+      if (queue > Math.max(100, done * 12)) return 'is-pressure';
+      return 'is-active';
+    }
+
+    function getMonogram(name) {
+      const cleaned = String(name || '').trim();
+      if (!cleaned || cleaned === '—' || cleaned.toLowerCase().includes('unable')) return '--';
+      const parts = cleaned.split(/\s+/).filter(Boolean);
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+    }
+
     function renderSections(sections) {
       const grid = document.getElementById('overallSectionGrid');
       if (!grid) return;
       grid.innerHTML = sections.map((section) => {
+        const meta = getSectionMeta(section.key);
+        const stateClass = getSectionStateClass(section);
         const trendClass = section.trend > 0 ? 'is-up' : section.trend < 0 ? 'is-down' : 'is-flat';
         const sourceLabel = section.isLive ? 'Live' : 'Mock';
         const sourceClass = section.isLive ? 'live' : 'mock';
@@ -211,9 +242,12 @@
             .join('');
         }
         return `
-          <article class="overall-section-card">
+          <article class="overall-section-card overall-section-card--${meta.accentClass} ${stateClass}" data-section="${meta.accentClass}">
             <div class="overall-card-top">
-              <h3>${section.name}</h3>
+              <div class="overall-card-title-wrap">
+                <span class="overall-card-kicker">${meta.label}</span>
+                <h3>${section.name}</h3>
+              </div>
               <div class="overall-pill-stack">
                 <span class="overall-source-pill ${sourceClass}">${sourceLabel}</span>
                 ${queryMsLabel ? `<span class="overall-source-pill">${queryMsLabel}</span>` : ''}
@@ -338,27 +372,37 @@
       const s = spotlight || getFallbackSpotlight();
 
       const rows = [
-        { section: 'Goods In', name: (s.goodsIn && s.goodsIn.name) || 'Unable to yet', count: (s.goodsIn && s.goodsIn.count) || 0 },
-        { section: 'IA', name: (s.ia && s.ia.name) || 'Unable to yet', count: (s.ia && s.ia.count) || 0 },
-        { section: 'Erasure', name: (s.erasure && s.erasure.name) || '—', count: (s.erasure && s.erasure.count) || 0 },
-        { section: 'QA', name: (s.qa && s.qa.name) || '—', count: (s.qa && s.qa.count) || 0 },
-        { section: 'Sorting', name: (s.sorting && s.sorting.name) || '—', count: (s.sorting && s.sorting.count) || 0 },
+        { key: 'goods_in', section: 'Goods In', name: (s.goodsIn && s.goodsIn.name) || 'Unable to yet', count: (s.goodsIn && s.goodsIn.count) || 0 },
+        { key: 'ia', section: 'IA', name: (s.ia && s.ia.name) || 'Unable to yet', count: (s.ia && s.ia.count) || 0 },
+        { key: 'erasure', section: 'Erasure', name: (s.erasure && s.erasure.name) || '—', count: (s.erasure && s.erasure.count) || 0 },
+        { key: 'qa', section: 'QA', name: (s.qa && s.qa.name) || '—', count: (s.qa && s.qa.count) || 0 },
+        { key: 'sorting', section: 'Sorting', name: (s.sorting && s.sorting.name) || '—', count: (s.sorting && s.sorting.count) || 0 },
       ];
 
       const bestLive = rows
         .filter((r) => r.name !== 'Unable to yet' && r.name !== '—')
         .sort((a, b) => (b.count || 0) - (a.count || 0))[0] || rows[0];
+      const bestMeta = getSectionMeta(bestLive.key);
+      const bestMonogram = getMonogram(bestLive.name);
 
       spotlightEl.innerHTML = `
-        <div class="spotlight-main spotlight-main-compact">
-          <div class="spotlight-badge">Top Efficiency Right Now</div>
-          <div class="spotlight-name">${bestLive.name}</div>
-          <div class="spotlight-owner">${bestLive.section}</div>
-          <div class="spotlight-score">${bestLive.count} actions today</div>
+        <div class="spotlight-main spotlight-main-compact spotlight-main--${bestMeta.accentClass}">
+          <div class="spotlight-main-top">
+            <div class="spotlight-badge">Spotlight Performer</div>
+            <div class="spotlight-medal">${bestMeta.shortLabel}</div>
+          </div>
+          <div class="spotlight-hero">
+            <div class="spotlight-avatar">${bestMonogram}</div>
+            <div class="spotlight-copy">
+              <div class="spotlight-name">${bestLive.name}</div>
+              <div class="spotlight-owner">${bestLive.section}</div>
+              <div class="spotlight-score">${bestLive.count} actions today</div>
+            </div>
+          </div>
         </div>
         <div class="spotlight-grid">
           ${rows.map((row) => `
-            <div class="spotlight-chip">
+            <div class="spotlight-chip spotlight-chip--${getSectionMeta(row.key).accentClass}">
               <span class="chip-section">${row.section}</span>
               <strong>${row.name}</strong>
               <span class="chip-score">${row.count}</span>
@@ -411,6 +455,7 @@
       const lanes = sections
         .map((s) => ({
           ...s,
+          meta: getSectionMeta(s.key),
           done: getRaceTrackDone(s),
           progress: clamp(Math.round((getRaceTrackDone(s) / maxDone) * 100), 0, 100),
         }))
@@ -422,13 +467,13 @@
           <strong>${totalDone}</strong>
         </div>
         <div class="overall-race-lanes">
-          ${lanes.map((lane) => {
+          ${lanes.map((lane, index) => {
             const visualProgress = lane.done > 0
               ? Math.max(lane.progress, MIN_VISIBLE_PROGRESS)
               : 0;
             const carLeftPct = clamp(visualProgress, 2, 99);
             return `
-              <div class="overall-race-lane">
+              <div class="overall-race-lane overall-race-lane--${lane.meta.accentClass} ${index === 0 ? 'is-leading' : ''}">
                 <span class="lane-name">${lane.name}</span>
                 <div class="lane-track">
                   <span class="lane-fill" style="right:calc(100% - ${carLeftPct}%);"></span>
