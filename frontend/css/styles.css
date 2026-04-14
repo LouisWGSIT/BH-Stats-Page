@@ -3657,29 +3657,32 @@ main.layout {
 .overall-bay-crew-icons {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.overall-bay-crew-icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
+.overall-bay-crew-chip {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 5px;
+  padding: 2px 6px 2px 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.overall-bay-crew-text {
   font-size: 10px;
-  font-weight: 900;
-  color: #07131f;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(215, 232, 247, 0.88));
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  font-weight: 800;
+  color: #dce9f7;
 }
 
 .overall-bay-watermark {
-  font-size: 42px;
+  font-size: 26px;
   line-height: 1;
   font-weight: 900;
-  letter-spacing: -1px;
-  color: rgba(255, 255, 255, 0.09);
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.05);
 }
 
 .overall-trend-card--goods-in .overall-trend-head strong,
@@ -3718,20 +3721,20 @@ main.layout {
   display: grid;
   grid-template-columns: 1fr 1.55fr;
   gap: 10px;
-  min-height: 142px;
+  min-height: 112px;
 }
 
 .overall-visual-card {
   align-items: stretch;
   text-align: left;
-  padding: 12px;
-  min-height: 142px;
+  padding: 10px;
+  min-height: 112px;
   overflow: hidden;
 }
 
 .overall-visual-card h3 {
-  margin: 0 0 10px 0;
-  font-size: 20px;
+  margin: 0 0 8px 0;
+  font-size: 17px;
   letter-spacing: 0.2px;
 }
 
@@ -3958,10 +3961,10 @@ main.layout {
 .mission-item strong.is-risk { color: #ff8f8f; }
 
 .spotlight-main {
-  background: radial-gradient(circle at top left, rgba(255, 30, 163, 0.18), rgba(140, 240, 74, 0.08));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.16));
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  padding: 12px;
+  padding: 9px 10px;
 }
 
 .spotlight-main-top {
@@ -3971,60 +3974,87 @@ main.layout {
   gap: 8px;
 }
 
-.spotlight-medal {
+.spotlight-hero {
+  margin-top: 7px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+}
+
+.spotlight-section-badge {
   min-width: 46px;
-  height: 28px;
+  height: 24px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 10px;
-  font-size: 11px;
+  padding: 0 8px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.45px;
+  letter-spacing: 0.35px;
   text-transform: uppercase;
-  background: rgba(255, 255, 255, 0.08);
-  color: #f5fbff;
+  background: rgba(255, 255, 255, 0.06);
+  color: #d8e4f2;
 }
 
-.spotlight-main--goods-in .spotlight-medal { background: rgba(28, 200, 160, 0.18); color: #9ef2d7; }
-.spotlight-main--ia .spotlight-medal { background: rgba(94, 121, 255, 0.18); color: #bccbff; }
-.spotlight-main--erasure .spotlight-medal { background: rgba(255, 88, 188, 0.18); color: #ffc1e3; }
-.spotlight-main--qa .spotlight-medal { background: rgba(87, 214, 120, 0.18); color: #b8f4ca; }
-.spotlight-main--sorting .spotlight-medal { background: rgba(255, 164, 72, 0.18); color: #ffd6a0; }
-
-.spotlight-hero {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-}
-
-.spotlight-avatar {
-  width: 74px;
-  height: 74px;
-  border-radius: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  font-weight: 900;
-  letter-spacing: 1px;
-  color: #081019;
-  background: linear-gradient(135deg, #8cf04a, #00d4ff, #ff1ea3);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
-}
-
-.spotlight-avatar--hero {
-  width: 76px;
-  height: 76px;
-  border-radius: 20px;
-  font-size: 24px;
-}
+.spotlight-main--goods-in .spotlight-section-badge { background: rgba(28, 200, 160, 0.15); color: #9ef2d7; }
+.spotlight-main--ia .spotlight-section-badge { background: rgba(94, 121, 255, 0.15); color: #bccbff; }
+.spotlight-main--erasure .spotlight-section-badge { background: rgba(255, 88, 188, 0.15); color: #ffc1e3; }
+.spotlight-main--qa .spotlight-section-badge { background: rgba(87, 214, 120, 0.15); color: #b8f4ca; }
+.spotlight-main--sorting .spotlight-section-badge { background: rgba(255, 164, 72, 0.15); color: #ffd6a0; }
 
 .spotlight-copy {
   min-width: 0;
+}
+
+.overall-avatar {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  border-radius: 6px;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+  image-rendering: pixelated;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.overall-avatar--fallback {
+  font-size: 9px;
+  font-weight: 900;
+  color: #081019;
+  background-image: none;
+  background: linear-gradient(135deg, #ffffff, #dce9f6);
+}
+
+.overall-avatar--hero {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 10px;
+}
+
+.overall-avatar--chip {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 6px;
+}
+
+.overall-avatar--crew {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  border-radius: 5px;
 }
 
 .spotlight-badge {
@@ -4035,10 +4065,10 @@ main.layout {
 }
 
 .spotlight-name {
-  font-size: 36px;
+  font-size: 28px;
   font-weight: 800;
   margin-top: 2px;
-  color: var(--ring-secondary);
+  color: #f4fbff;
   line-height: 1;
 }
 
@@ -4049,46 +4079,36 @@ main.layout {
 }
 
 .spotlight-score {
-  margin-top: 8px;
-  color: var(--ring-primary);
-  font-size: 19px;
-  font-weight: 700;
+  margin-top: 4px;
+  color: #8cf04a;
+  font-size: 16px;
+  font-weight: 800;
 }
 
-.spotlight-stage {
-  min-width: 124px;
+.spotlight-mini-metric {
+  min-width: 58px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 1px;
 }
 
-.spotlight-stage-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-}
-
-.stage-stat {
-  display: block;
-  text-align: center;
-  border-radius: 999px;
-  padding: 4px 8px;
-  font-size: 11px;
-  color: #d8e4ef;
-  background: rgba(0, 0, 0, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.stage-stat strong {
+.spotlight-mini-metric strong {
+  font-size: 18px;
+  line-height: 1;
   color: #ffffff;
 }
 
-.spotlight-runner {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #b5c4d8;
+.spotlight-mini-metric span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.45px;
+  color: #9fb3c8;
+}
+
+.spotlight-mini-metric small {
+  font-size: 10px;
+  color: #c7d7e8;
 }
 
 .spotlight-main-compact {
@@ -4096,35 +4116,21 @@ main.layout {
 }
 
 .spotlight-grid {
-  margin-top: 8px;
+  margin-top: 6px;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
 }
 
 .spotlight-chip {
-  background: rgba(0, 0, 0, 0.18);
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
-  padding: 7px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 3px;
-}
-
-.spotlight-chip-avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 900;
-  color: #07131f;
-  background: linear-gradient(135deg, #ffffff, #dce9f6);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+  align-items: flex-start;
+  gap: 2px;
 }
 
 .spotlight-chip--goods-in .chip-score { color: #76f0ca; }
@@ -4139,8 +4145,9 @@ main.layout {
 }
 
 .spotlight-chip strong {
-  font-size: 14px;
+  font-size: 13px;
   color: #ffffff;
+  line-height: 1.1;
 }
 
 .chip-score {
@@ -4150,10 +4157,10 @@ main.layout {
 
 .overall-race-lane {
   display: grid;
-  grid-template-columns: 108px minmax(0, 1fr) 44px;
+  grid-template-columns: 96px minmax(0, 1fr) 40px;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 7px;
+  margin-bottom: 6px;
 }
 
 .lane-heading {
@@ -4192,13 +4199,13 @@ main.layout {
 }
 
 .lane-name {
-  font-size: 14px;
+  font-size: 13px;
   color: #d4dfeb;
   font-weight: 800;
 }
 
 .lane-track {
-  height: 18px;
+  height: 16px;
   border-radius: 999px;
   background: transparent;
   box-shadow: none;
@@ -4214,7 +4221,7 @@ main.layout {
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  height: 8px;
+  height: 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.14);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
@@ -4226,7 +4233,7 @@ main.layout {
   left: 0;
   top: 50%;
   z-index: 1;
-  height: 8px;
+  height: 6px;
   transform: translateY(-50%);
   border-radius: 999px;
   background: linear-gradient(90deg, var(--ring-secondary), var(--ring-primary));
@@ -4266,7 +4273,7 @@ main.layout {
 }
 
 .lane-value {
-  font-size: 16px;
+  font-size: 14px;
   text-align: right;
   color: #eef5ff;
   font-weight: 800;
@@ -4274,10 +4281,10 @@ main.layout {
 
 .lane-car {
   position: absolute;
-  top: -4px;
+  top: -5px;
   z-index: 3;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
@@ -4296,7 +4303,7 @@ main.layout {
 }
 
 .overall-race-meta strong {
-  font-size: 18px;
+  font-size: 16px;
   color: #ffffff;
   letter-spacing: 0.2px;
 }
@@ -4605,14 +4612,15 @@ main.layout {
   }
 
   .spotlight-hero {
-    grid-template-columns: minmax(0, 1fr) 120px;
-    gap: 10px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
   }
 
-  .spotlight-avatar {
-    width: 58px;
-    height: 58px;
-    font-size: 19px;
+  .overall-avatar--hero {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    min-height: 38px;
   }
 
   .lane-track {
@@ -4628,17 +4636,17 @@ main.layout {
   }
 
   .lane-car {
-    width: 30px;
-    height: 30px;
-    top: -3px;
+    width: 26px;
+    height: 26px;
+    top: -5px;
   }
 }
 
 @media (max-height: 900px) {
   .lane-car {
-    width: 28px;
-    height: 28px;
-    top: -3px;
+    width: 24px;
+    height: 24px;
+    top: -5px;
   }
 
   .overall-section-grid {
@@ -4657,7 +4665,7 @@ main.layout {
   }
 
   .overall-bay-watermark {
-    font-size: 40px;
+    font-size: 24px;
   }
 }
 

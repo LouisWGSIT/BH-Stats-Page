@@ -201,10 +201,28 @@
       return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
     }
 
+    function getAvatarDataUri(initials) {
+      const provider = window.EngineerAvatar;
+      if (!provider || typeof provider.getAvatarDataUri !== 'function') return null;
+      return provider.getAvatarDataUri(initials);
+    }
+
+    function renderPixelAvatar(value, className) {
+      const initials = getMonogram(value);
+      const avatarUri = getAvatarDataUri(initials);
+      if (!avatarUri) {
+        return `<span class="overall-avatar ${className || ''} overall-avatar--fallback">${initials}</span>`;
+      }
+      return `<span class="overall-avatar ${className || ''}" style="background-image: url(${avatarUri})" aria-hidden="true"></span>`;
+    }
+
     function getSectionCrew(section, meta) {
-      return [meta.icon, meta.shortLabel, section.owner || section.name]
-        .map((value) => getMonogram(value))
-        .filter(Boolean)
+      return [
+        getMonogram(section.owner || section.name),
+        getMonogram(meta.shortLabel),
+        getMonogram(meta.icon),
+      ]
+        .filter((value) => value && value !== '--')
         .slice(0, 3);
     }
 
@@ -282,7 +300,12 @@
                 <div class="overall-bay-crew">
                   <span class="overall-bay-crew-label">Crew Strip</span>
                   <div class="overall-bay-crew-icons">
-                    ${crew.map((member) => `<span class="overall-bay-crew-icon">${member}</span>`).join('')}
+                    ${crew.map((member) => `
+                      <span class="overall-bay-crew-chip">
+                        ${renderPixelAvatar(member, 'overall-avatar--crew')}
+                        <span class="overall-bay-crew-text">${member}</span>
+                      </span>
+                    `).join('')}
                   </div>
                 </div>
                 <div class="overall-bay-watermark">${meta.icon}</div>
@@ -414,27 +437,26 @@
         <div class="spotlight-main spotlight-main-compact spotlight-main--${bestMeta.accentClass}">
           <div class="spotlight-main-top">
             <div class="spotlight-badge">Spotlight Performer</div>
-            <div class="spotlight-medal">${bestMeta.shortLabel}</div>
+            <div class="spotlight-section-badge">${bestMeta.shortLabel}</div>
           </div>
           <div class="spotlight-hero">
+            ${renderPixelAvatar(bestMonogram, 'overall-avatar--hero')}
             <div class="spotlight-copy">
               <div class="spotlight-name">${bestLive.name}</div>
               <div class="spotlight-owner">${bestLive.section}</div>
               <div class="spotlight-score">${bestLive.count} actions today</div>
             </div>
-            <div class="spotlight-stage">
-              <div class="spotlight-avatar spotlight-avatar--hero">${bestMonogram}</div>
-              <div class="spotlight-stage-stats">
-                <span class="stage-stat"><strong>${sharePct}%</strong> of spotlight output</span>
-                <span class="stage-stat"><strong>${leadGap}</strong> ahead of next best</span>
-              </div>
+            <div class="spotlight-mini-metric">
+              <strong>${sharePct}%</strong>
+              <span>share</span>
+              <small>+${leadGap} gap</small>
             </div>
           </div>
         </div>
         <div class="spotlight-grid">
           ${rows.map((row) => `
             <div class="spotlight-chip spotlight-chip--${getSectionMeta(row.key).accentClass}">
-              <span class="spotlight-chip-avatar">${getMonogram(row.name)}</span>
+              ${renderPixelAvatar(row.name, 'overall-avatar--chip')}
               <span class="chip-section">${row.section}</span>
               <strong>${row.name}</strong>
               <span class="chip-score">${row.count}</span>

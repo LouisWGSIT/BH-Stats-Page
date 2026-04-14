@@ -93,3 +93,15 @@ def test_overall_race_track_renders_progress_line_behind_car(client):
     text = js_res.text
 
     assert '<span class="lane-fill" style="right:calc(100% - ${carLeftPct}%);"></span>' in text
+
+
+def test_overall_spotlight_and_crew_use_pixel_avatar_markup(client):
+    js_res = client.get("/core/overall_stats_dashboard.js")
+    assert js_res.status_code == 200
+    text = js_res.text
+
+    assert "window.EngineerAvatar" in text
+    assert "overall-avatar--hero" in text
+    assert "overall-avatar--chip" in text
+    assert "overall-avatar--crew" in text
+    assert "spotlight-section-badge" in text
