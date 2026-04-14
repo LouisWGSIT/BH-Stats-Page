@@ -3385,7 +3385,7 @@ main.layout {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   flex: 1 1 auto;
-  grid-auto-rows: minmax(280px, auto);
+  grid-auto-rows: minmax(320px, auto);
   min-height: 0;
 }
 
@@ -3526,16 +3526,16 @@ main.layout {
 
 .overall-support-grid {
   display: grid;
-  grid-template-columns: 1fr 1.6fr;
+  grid-template-columns: 0.9fr 2.1fr;
   gap: 10px;
-  min-height: 130px;
+  min-height: 112px;
 }
 
 .overall-visual-card {
   align-items: stretch;
   text-align: left;
   padding: 12px;
-  min-height: 130px;
+  min-height: 112px;
 }
 
 .overall-visual-card h3 {
@@ -3951,7 +3951,12 @@ main.layout {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .overall-bottom-grid,
+  .overall-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1200px) {
   .overall-support-grid {
     grid-template-columns: 1fr;
   }
