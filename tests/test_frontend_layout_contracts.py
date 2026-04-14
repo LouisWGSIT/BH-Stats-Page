@@ -92,4 +92,4 @@ def test_overall_race_track_renders_progress_line_behind_car(client):
     assert js_res.status_code == 200
     text = js_res.text
 
-    assert '<span class="lane-fill" style="width:${visualProgress}%"></span>' in text
+    assert '<span class="lane-fill" style="right:calc(100% - ${carLeftPct}%);"></span>' in text

@@ -3843,6 +3843,7 @@ main.layout {
 }
 
 .lane-fill {
+  display: block;
   position: absolute;
   left: 0;
   top: 50%;
@@ -4205,13 +4206,19 @@ main.layout {
   }
 
   .lane-car {
-    width: 24px;
-    height: 24px;
+    width: 30px;
+    height: 30px;
     top: -3px;
   }
 }
 
 @media (max-height: 900px) {
+  .lane-car {
+    width: 28px;
+    height: 28px;
+    top: -3px;
+  }
+
   .overall-section-grid {
     grid-auto-rows: minmax(220px, auto);
   }

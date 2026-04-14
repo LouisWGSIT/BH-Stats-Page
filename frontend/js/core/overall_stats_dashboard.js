@@ -431,7 +431,7 @@
               <div class="overall-race-lane">
                 <span class="lane-name">${lane.name}</span>
                 <div class="lane-track">
-                  <span class="lane-fill" style="width:${visualProgress}%"></span>
+                  <span class="lane-fill" style="right:calc(100% - ${carLeftPct}%);"></span>
                   <span class="lane-progress-dot" style="left:calc(${carLeftPct}% - 4px)"></span>
                   <img class="lane-car" src="assets/F1Car.png" alt="" style="left:calc(${carLeftPct}% - 10px)" />
                 </div>
