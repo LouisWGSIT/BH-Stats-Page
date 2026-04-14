@@ -3843,10 +3843,13 @@ main.layout {
 }
 
 .lane-fill {
-  position: relative;
+  position: absolute;
+  left: 0;
+  top: 50%;
   z-index: 1;
-  height: 100%;
-  border-radius: inherit;
+  height: 10px;
+  transform: translateY(-50%);
+  border-radius: 999px;
   background: linear-gradient(90deg, var(--ring-secondary), var(--ring-primary));
   box-shadow: 0 0 10px rgba(140, 240, 74, 0.22);
 }
@@ -4197,6 +4200,10 @@ main.layout {
     height: 8px;
   }
 
+  .lane-fill {
+    height: 8px;
+  }
+
   .lane-car {
     width: 24px;
     height: 24px;
@@ -4218,5 +4225,109 @@ main.layout {
   .overall-section-card,
   .overall-visual-card {
     padding: 8px;
+  }
+}
+
+/* Erasure view: scale card internals for shorter effective 1080p viewports. */
+#erasureStatsView .top-row {
+  min-height: clamp(140px, 24vh, 180px);
+}
+
+#erasureStatsView .categories-row {
+  min-height: clamp(190px, 34vh, 290px);
+  max-height: none;
+}
+
+#erasureStatsView .bottom-row {
+  min-height: clamp(170px, 30vh, 220px);
+}
+
+#erasureStatsView .rotator-card,
+#erasureStatsView .rotator-card .panel {
+  min-height: clamp(170px, 30vh, 200px);
+}
+
+#erasureStatsView .big-number {
+  font-size: clamp(34px, 5.2vh, 48px);
+}
+
+#erasureStatsView .donut-card .flip-card-front canvas {
+  width: clamp(86px, 11vh, 110px) !important;
+  height: clamp(86px, 11vh, 110px) !important;
+}
+
+#erasureStatsView .top-list {
+  min-height: 0;
+}
+
+@media (max-height: 980px) {
+  #erasureStatsView {
+    gap: 6px;
+    padding: 6px;
+  }
+
+  #erasureStatsView .main-content {
+    gap: 5px;
+  }
+
+  #erasureStatsView .race-section .panel {
+    padding: 12px 10px;
+  }
+
+  #erasureStatsView .race-track {
+    gap: 8px;
+    padding: 3px 6px 10px;
+  }
+
+  #erasureStatsView .race-lane {
+    gap: 6px;
+    padding: 8px 3px 10px;
+  }
+
+  #erasureStatsView .race-car {
+    width: 52px;
+    height: 38px;
+  }
+
+  #erasureStatsView .car-body {
+    width: 38px;
+    height: 38px;
+  }
+
+  #erasureStatsView .categories-row .stat-card.rotator-card .panel {
+    padding: 10px;
+    gap: 6px;
+  }
+
+  #erasureStatsView .stat-card h3 {
+    font-size: 14px;
+  }
+
+  #erasureStatsView .pill {
+    font-size: 12px;
+    padding: 3px 8px;
+  }
+
+  #erasureStatsView .top-list li {
+    font-size: 12px;
+    padding: 5px 7px;
+    margin: 4px 0;
+  }
+}
+
+@media (max-height: 900px) {
+  #erasureStatsView .race-section {
+    width: 350px;
+  }
+
+  #erasureStatsView .card h2,
+  #erasureStatsView .donut-card h2 {
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  #erasureStatsView .target {
+    font-size: 12px;
+    margin-top: 4px;
   }
 }

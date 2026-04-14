@@ -64,3 +64,32 @@ def test_overall_dashboard_has_short_viewport_compaction_rules(client):
         ".overall-submetrics",
     ]:
         assert token in compact_slice
+
+
+def test_erasure_dashboard_has_short_viewport_compaction_rules(client):
+    css_res = client.get("/styles.css")
+    assert css_res.status_code == 200
+    css = css_res.text
+
+    assert "#erasureStatsView .top-row" in css
+    assert "#erasureStatsView .categories-row" in css
+    assert "#erasureStatsView .bottom-row" in css
+    assert "#erasureStatsView .donut-card .flip-card-front canvas" in css
+
+    assert "@media (max-height: 980px)" in css
+    compact_slice = css[css.find("@media (max-height: 980px)"):]
+    for token in [
+        "#erasureStatsView .main-content",
+        "#erasureStatsView .race-track",
+        "#erasureStatsView .race-lane",
+        "#erasureStatsView .top-list li",
+    ]:
+        assert token in compact_slice
+
+
+def test_overall_race_track_renders_progress_line_behind_car(client):
+    js_res = client.get("/core/overall_stats_dashboard.js")
+    assert js_res.status_code == 200
+    text = js_res.text
+
+    assert '<span class="lane-fill" style="width:${visualProgress}%"></span>' in text
