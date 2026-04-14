@@ -201,6 +201,13 @@
       return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
     }
 
+    function getSectionCrew(section, meta) {
+      return [meta.icon, meta.shortLabel, section.owner || section.name]
+        .map((value) => getMonogram(value))
+        .filter(Boolean)
+        .slice(0, 3);
+    }
+
     function renderSections(sections) {
       const grid = document.getElementById('overallSectionGrid');
       if (!grid) return;
@@ -214,6 +221,8 @@
         const queryMsLabel = (isAdminViewer && Number.isFinite(section.queryMs)) ? `${section.queryMs}ms` : '';
         const sourceReason = String(section.sourceReason || '').trim();
         const done = getDoneCount(section);
+        const outstanding = getOutstandingCount(section);
+        const crew = getSectionCrew(section, meta);
         let detailRows = '';
         let subMetricClass = 'overall-submetrics';
         if (section.key === 'erasure') {
@@ -269,6 +278,27 @@
             </div>
             <div class="overall-queue-label">${section.queueLabel || 'Queue'}</div>
             <div class="${subMetricClass}">${detailRows}</div>
+            <div class="overall-department-bay overall-department-bay--${meta.accentClass}">
+              <div class="overall-bay-metrics">
+                <div class="overall-bay-chip overall-bay-chip--needs">
+                  <span>Needs Doing</span>
+                  <strong>${outstanding}</strong>
+                </div>
+                <div class="overall-bay-chip overall-bay-chip--done">
+                  <span>Done Today</span>
+                  <strong>${done}</strong>
+                </div>
+              </div>
+              <div class="overall-bay-footer">
+                <div class="overall-bay-crew">
+                  <span class="overall-bay-crew-label">Crew Strip</span>
+                  <div class="overall-bay-crew-icons">
+                    ${crew.map((member) => `<span class="overall-bay-crew-icon">${member}</span>`).join('')}
+                  </div>
+                </div>
+                <div class="overall-bay-watermark">${meta.icon}</div>
+              </div>
+            </div>
             <div class="overall-metadata-row">
               <span class="owner">${section.owner}</span>
               <span class="trend ${trendClass}">${trendLabel(section.trend)} vs last hour</span>
@@ -384,6 +414,12 @@
         .sort((a, b) => (b.count || 0) - (a.count || 0))[0] || rows[0];
       const bestMeta = getSectionMeta(bestLive.key);
       const bestMonogram = getMonogram(bestLive.name);
+      const totalLiveActions = Math.max(rows.reduce((sum, row) => sum + asNumber(row.count), 0), 1);
+      const sharePct = clamp(Math.round((asNumber(bestLive.count) / totalLiveActions) * 100), 0, 100);
+      const runnerUp = rows
+        .filter((row) => row.key !== bestLive.key)
+        .sort((a, b) => (b.count || 0) - (a.count || 0))[0];
+      const leadGap = Math.max(0, asNumber(bestLive.count) - asNumber(runnerUp && runnerUp.count));
 
       spotlightEl.innerHTML = `
         <div class="spotlight-main spotlight-main-compact spotlight-main--${bestMeta.accentClass}">
@@ -392,17 +428,24 @@
             <div class="spotlight-medal">${bestMeta.shortLabel}</div>
           </div>
           <div class="spotlight-hero">
-            <div class="spotlight-avatar">${bestMonogram}</div>
             <div class="spotlight-copy">
               <div class="spotlight-name">${bestLive.name}</div>
               <div class="spotlight-owner">${bestLive.section}</div>
               <div class="spotlight-score">${bestLive.count} actions today</div>
+            </div>
+            <div class="spotlight-stage">
+              <div class="spotlight-avatar spotlight-avatar--hero">${bestMonogram}</div>
+              <div class="spotlight-stage-stats">
+                <span class="stage-stat"><strong>${sharePct}%</strong> of spotlight output</span>
+                <span class="stage-stat"><strong>${leadGap}</strong> ahead of next best</span>
+              </div>
             </div>
           </div>
         </div>
         <div class="spotlight-grid">
           ${rows.map((row) => `
             <div class="spotlight-chip spotlight-chip--${getSectionMeta(row.key).accentClass}">
+              <span class="spotlight-chip-avatar">${getMonogram(row.name)}</span>
               <span class="chip-section">${row.section}</span>
               <strong>${row.name}</strong>
               <span class="chip-score">${row.count}</span>
@@ -474,7 +517,10 @@
             const carLeftPct = clamp(visualProgress, 2, 99);
             return `
               <div class="overall-race-lane overall-race-lane--${lane.meta.accentClass} ${index === 0 ? 'is-leading' : ''}">
-                <span class="lane-name">${lane.name}</span>
+                <div class="lane-heading">
+                  <span class="lane-rank">${index + 1}</span>
+                  <span class="lane-name">${lane.name}</span>
+                </div>
                 <div class="lane-track">
                   <span class="lane-fill" style="right:calc(100% - ${carLeftPct}%);"></span>
                   <span class="lane-progress-dot" style="left:calc(${carLeftPct}% - 4px)"></span>
@@ -493,8 +539,9 @@
       if (!trendGrid) return;
       trendGrid.innerHTML = sections.map((section) => {
         const snap = getCompletionSnapshot(section);
+        const meta = getSectionMeta(section.key);
         return `
-          <article class="overall-trend-card">
+          <article class="overall-trend-card overall-trend-card--${meta.accentClass}">
             <div class="overall-trend-head">
               <span>${section.name}</span>
               <strong>${snap.done}/${snap.total}</strong>
@@ -505,8 +552,8 @@
               </div>
             </div>
             <div class="overall-trend-meta">
-              <span>${snap.pct}% completed</span>
-              <span>Outstanding ${snap.outstanding}</span>
+              <span>Done Today ${snap.done}</span>
+              <span>Needs Doing ${snap.outstanding}</span>
             </div>
           </article>
         `;
