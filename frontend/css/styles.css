@@ -3393,10 +3393,10 @@ main.layout {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
-  padding: 12px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 11px;
   min-height: 0;
   overflow: hidden;
 }
@@ -3428,11 +3428,12 @@ main.layout {
 
 .overall-source-pill {
   border-radius: 999px;
-  padding: 3px 8px;
+  padding: 4px 10px;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.45px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .overall-source-pill.live {
@@ -3447,7 +3448,9 @@ main.layout {
 
 .overall-card-top h3 {
   margin: 0;
-  font-size: 22px;
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: 0.2px;
 }
 
 .overall-status-pill {
@@ -3482,18 +3485,33 @@ main.layout {
 .overall-metric-block {
   background: rgba(0, 0, 0, 0.22);
   border-radius: 8px;
-  padding: 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .overall-metric-block .label {
   display: block;
-  color: var(--muted);
+  color: #b7c7da;
   font-size: 11px;
-  margin-bottom: 3px;
+  margin-bottom: 4px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
 }
 
 .overall-metric-block strong {
-  font-size: 20px;
+  font-size: 26px;
+  line-height: 1.05;
+}
+
+.overall-metric-block-primary {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.16));
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.overall-metric-block-primary strong {
+  font-size: 34px;
+  color: #ffffff;
 }
 
 .overall-metadata-row {
@@ -3501,8 +3519,9 @@ main.layout {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  color: var(--muted);
-  font-size: 13px;
+  color: #afc3d9;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .overall-metadata-row .trend.is-up { color: #ff9c8d; }
@@ -3511,9 +3530,10 @@ main.layout {
 
 .overall-action {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.35;
-  color: #e9eef5;
+  font-size: 15px;
+  line-height: 1.4;
+  color: #f1f6fc;
+  font-weight: 700;
   margin-top: auto;
 }
 
@@ -3556,7 +3576,7 @@ main.layout {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 10px;
+  padding: 10px 11px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.2);
@@ -3568,13 +3588,14 @@ main.layout {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 4px;
-  font-size: 12px;
-  color: #cfd9e6;
+  font-size: 13px;
+  color: #d6e1ee;
 }
 
 .overall-trend-head strong {
   color: #ffffff;
-  font-size: 13px;
+  font-size: 22px;
+  line-height: 1;
 }
 
 .overall-trend-bar-wrap {
@@ -3610,8 +3631,8 @@ main.layout {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 11px;
-  color: #b8c8d9;
+  font-size: 12px;
+  color: #c4d3e3;
 }
 
 .overall-trend-meta .is-good {
@@ -3728,33 +3749,34 @@ main.layout {
   background: radial-gradient(circle at top left, rgba(255, 30, 163, 0.18), rgba(140, 240, 74, 0.08));
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  padding: 10px;
+  padding: 12px;
 }
 
 .spotlight-badge {
-  font-size: 11px;
-  color: #9fb3c8;
+  font-size: 10px;
+  color: #a9bdd4;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.75px;
 }
 
 .spotlight-name {
-  font-size: 24px;
+  font-size: 36px;
   font-weight: 800;
-  margin-top: 4px;
+  margin-top: 2px;
   color: var(--ring-secondary);
+  line-height: 1;
 }
 
 .spotlight-owner {
-  margin-top: 2px;
+  margin-top: 4px;
   color: #d4dfeb;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .spotlight-score {
   margin-top: 8px;
   color: var(--ring-primary);
-  font-size: 14px;
+  font-size: 19px;
   font-weight: 700;
 }
 
@@ -3776,10 +3798,10 @@ main.layout {
 }
 
 .spotlight-chip {
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
-  padding: 6px;
+  padding: 7px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3814,9 +3836,9 @@ main.layout {
 }
 
 .lane-name {
-  font-size: 14px;
+  font-size: 16px;
   color: #d4dfeb;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .lane-track {
@@ -3868,9 +3890,9 @@ main.layout {
 }
 
 .lane-value {
-  font-size: 15px;
+  font-size: 19px;
   text-align: right;
-  color: #d8e3ef;
+  color: #eef5ff;
   font-weight: 800;
 }
 
@@ -3898,7 +3920,7 @@ main.layout {
 }
 
 .overall-race-meta strong {
-  font-size: 16px;
+  font-size: 24px;
   color: #ffffff;
   letter-spacing: 0.2px;
 }

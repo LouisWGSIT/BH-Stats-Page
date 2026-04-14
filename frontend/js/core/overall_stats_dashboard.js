@@ -220,7 +220,7 @@
               </div>
             </div>
             <div class="overall-metric-row">
-              <div class="overall-metric-block">
+              <div class="overall-metric-block overall-metric-block-primary">
                 <span class="label">Current Queue</span>
                 <strong>${section.current}</strong>
               </div>
