@@ -496,6 +496,52 @@
             font-weight: 700;
         }
         .btn-confirm:hover { background: #10b981; color: white; }
+
+        .payload-library-controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            margin-bottom: 12px;
+        }
+
+        .payload-library-controls .form-group {
+            margin-bottom: 0;
+            min-width: 260px;
+            flex: 1;
+        }
+
+        .payload-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .payload-editor {
+            width: 100%;
+            min-height: 320px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            resize: vertical;
+            background: #f8fafc;
+            color: #1e293b;
+        }
+
+        .payload-editor:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
+        }
+
+        .payload-hint {
+            margin-top: 8px;
+            color: #666;
+            font-size: 12px;
+        }
     </style>
     <!-- Chart.js will be lazy-loaded when the memory chart is first displayed -->
 </head>
@@ -564,6 +610,30 @@
                     <button onclick="loadExternalAttempts()" style="margin-bottom:10px;">🔄 Refresh Attempts</button>
                     <div id="externalAttemptsContent"></div>
                 </div>
+            </div>
+
+            <!-- Section 6.2: Workflow Payload Library -->
+            <div class="section" id="section-workflow-payloads">
+                <h2>🧩 Workflow Payload Library</h2>
+                <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
+                    Copy and paste payload versions directly into your on-premise workflow portal.
+                    Choose a preset, tweak if needed, then copy JSON.
+                </p>
+
+                <div class="payload-library-controls">
+                    <div class="form-group">
+                        <label for="payloadPresetSelect">Payload preset</label>
+                        <select id="payloadPresetSelect"></select>
+                    </div>
+                    <div class="payload-actions">
+                        <button type="button" onclick="copyWorkflowPayloadFromEditor()">📋 Copy JSON</button>
+                        <button type="button" onclick="resetWorkflowPayloadPreset()">↺ Reset Preset</button>
+                    </div>
+                </div>
+
+                <textarea id="payloadPresetEditor" class="payload-editor" spellcheck="false"></textarea>
+                <div class="payload-hint" id="payloadPresetHint"></div>
+                <div id="payloadPresetResult" class="result" style="margin-top:12px;"></div>
             </div>
 
             <!-- Section 6.5: Goods In Evidence -->
@@ -942,6 +1012,104 @@
         let userRole = null;
         const _sectionLoaded = {};
         const _sectionLoaders = {};
+        let _payloadLibraryInitialized = false;
+
+        const WORKFLOW_PAYLOAD_PRESETS = {
+            macs_lean: {
+                label: 'Macs - Lean (Recommended)',
+                hint: 'Use this for reliability. Matches your stable testing payload shape.',
+                payload: {
+                    event: 'success',
+                    jobId: '',
+                    deviceType: 'macs',
+                    assetNumber: '<DEVICECUSTOMFIELD Asset/Stock ID Number>',
+                    initials: '<DEVICECUSTOMFIELD Engineer Initials>',
+                    durationSec: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>',
+                    timestamp: '<Completion Time>',
+                    manufacturer: '<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>',
+                    model: '<REPORTPATH blancco_data.blancco_hardware_report.system.model>',
+                    serial: '<REPORTPATH blancco_data.blancco_hardware_report.system.serial>',
+                    diskSerial: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>',
+                    diskCapacity: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>'
+                }
+            },
+            macs_expanded_fallback: {
+                label: 'Macs - Expanded Fallback Paths',
+                hint: 'Use this only if report path coverage is needed and sender size limits are not an issue.',
+                payload: {
+                    event: 'success',
+                    jobId: '',
+                    deviceType: 'macs',
+                    assetNumber: '<DEVICECUSTOMFIELD Asset/Stock ID Number>',
+                    initials: '<DEVICECUSTOMFIELD Engineer Initials>',
+                    durationSec: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>',
+                    durationSecAlt: '<REPORTPATH blancco_data.blancco_erasure_report.processes.process.elapsed_time>',
+                    timestamp: '<Completion Time>',
+                    timestampAlt: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.end_time>',
+                    manufacturer: '<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>',
+                    manufacturerAlt: '<REPORTPATH blancco_data.blancco_hardware_report.entries.system.manufacturer>',
+                    model: '<REPORTPATH blancco_data.blancco_hardware_report.system.model>',
+                    modelAlt: '<REPORTPATH blancco_data.blancco_hardware_report.entries.system.name>',
+                    serial: '<REPORTPATH blancco_data.blancco_hardware_report.system.serial>',
+                    serialAlt: '<REPORTPATH blancco_data.blancco_hardware_report.entries.system.identifier>',
+                    diskSerial: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>',
+                    diskSerialAlt: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.target.serial>',
+                    diskCapacity: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>',
+                    diskCapacityAlt: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.target.capacity>'
+                }
+            },
+            laptops_desktops: {
+                label: 'Laptops/Desktops',
+                hint: 'Standard payload for laptops and desktops workflow.',
+                payload: {
+                    event: 'success',
+                    jobId: '',
+                    deviceType: 'laptops_desktops',
+                    initials: '<DEVICECUSTOMFIELD Engineer Initials>',
+                    durationSec: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>',
+                    timestamp: '<Completion Time>',
+                    manufacturer: '<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>',
+                    model: '<REPORTPATH blancco_data.blancco_hardware_report.system.model>',
+                    serial: '<REPORTPATH blancco_data.blancco_hardware_report.system.serial>',
+                    diskSerial: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>',
+                    diskCapacity: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>'
+                }
+            },
+            servers: {
+                label: 'Servers',
+                hint: 'Standard payload for servers workflow.',
+                payload: {
+                    event: 'success',
+                    jobId: '',
+                    deviceType: 'servers',
+                    initials: '<DEVICECUSTOMFIELD Engineer Initials>',
+                    durationSec: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>',
+                    timestamp: '<Completion Time>',
+                    manufacturer: '<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>',
+                    model: '<REPORTPATH blancco_data.blancco_hardware_report.system.model>',
+                    serial: '<REPORTPATH blancco_data.blancco_hardware_report.system.serial>',
+                    diskSerial: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>',
+                    diskCapacity: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>'
+                }
+            },
+            mobiles: {
+                label: 'Mobiles',
+                hint: 'Standard payload for mobile workflow.',
+                payload: {
+                    event: 'success',
+                    jobId: '',
+                    deviceType: 'mobiles',
+                    initials: '<DEVICECUSTOMFIELD Engineer Initials>',
+                    durationSec: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>',
+                    timestamp: '<Completion Time>',
+                    manufacturer: '<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>',
+                    model: '<REPORTPATH blancco_data.blancco_hardware_report.system.model>',
+                    serial: '<REPORTPATH blancco_data.blancco_hardware_report.system.serial>',
+                    diskSerial: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>',
+                    diskCapacity: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>'
+                }
+            }
+        };
 
         async function ensureManagerAccess() {
             const existingToken = sessionStorage.getItem('authToken');
@@ -1020,6 +1188,7 @@
             const sectionIds = [
                 'section-fix-initials',
                 'section-connected-devices',
+                'section-workflow-payloads',
                 'section-goods-in-evidence',
                 'section-erasure-evidence',
                 'section-erasure-reconciliation',
@@ -1085,6 +1254,9 @@
                     await loadExternalAttempts();
                 }
             };
+            _sectionLoaders['section-workflow-payloads'] = async () => {
+                initializeWorkflowPayloadLibrary();
+            };
             _sectionLoaders['section-goods-in-evidence'] = async () => {
                 if (userRole !== 'admin') return;
                 await loadGoodsInEvidence();
@@ -1127,6 +1299,76 @@
                 headers['Content-Type'] = 'application/json';
             }
             return headers;
+        }
+
+        function initializeWorkflowPayloadLibrary() {
+            if (_payloadLibraryInitialized) return;
+
+            const select = document.getElementById('payloadPresetSelect');
+            const editor = document.getElementById('payloadPresetEditor');
+            if (!select || !editor) return;
+
+            const presetKeys = Object.keys(WORKFLOW_PAYLOAD_PRESETS);
+            select.innerHTML = '';
+
+            presetKeys.forEach((key) => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = WORKFLOW_PAYLOAD_PRESETS[key].label;
+                select.appendChild(opt);
+            });
+
+            select.addEventListener('change', () => {
+                loadSelectedWorkflowPayloadPreset();
+            });
+
+            loadSelectedWorkflowPayloadPreset();
+            _payloadLibraryInitialized = true;
+        }
+
+        function loadSelectedWorkflowPayloadPreset() {
+            const select = document.getElementById('payloadPresetSelect');
+            const editor = document.getElementById('payloadPresetEditor');
+            const hint = document.getElementById('payloadPresetHint');
+            if (!select || !editor) return;
+
+            const selected = select.value;
+            const preset = WORKFLOW_PAYLOAD_PRESETS[selected];
+            if (!preset) return;
+
+            editor.value = JSON.stringify(preset.payload, null, 2);
+            if (hint) {
+                hint.textContent = preset.hint || '';
+            }
+            const result = document.getElementById('payloadPresetResult');
+            if (result) {
+                result.className = 'result';
+                result.innerHTML = '';
+            }
+        }
+
+        function resetWorkflowPayloadPreset() {
+            loadSelectedWorkflowPayloadPreset();
+            const result = document.getElementById('payloadPresetResult');
+            if (result) {
+                showResult(result, 'info', 'Preset Reset', 'Editor restored to selected payload preset.');
+            }
+        }
+
+        async function copyWorkflowPayloadFromEditor() {
+            const editor = document.getElementById('payloadPresetEditor');
+            const result = document.getElementById('payloadPresetResult');
+            if (!editor || !result) return;
+
+            const raw = editor.value || '';
+            try {
+                const parsed = JSON.parse(raw);
+                const normalized = JSON.stringify(parsed);
+                await navigator.clipboard.writeText(normalized);
+                showResult(result, 'success', 'Copied', 'Payload copied to clipboard in compact JSON format.');
+            } catch (err) {
+                showResult(result, 'error', 'Invalid JSON', 'Fix JSON formatting before copying. ' + (err && err.message ? err.message : ''));
+            }
         }
 
         function formatEvidence(ev) {
