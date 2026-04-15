@@ -11,6 +11,12 @@
     } = deps;
 
     let dashboardLocked = false;
+    let qaLoadInFlight = null;
+    let qaLastLoadedAt = 0;
+    let overallLoadInFlight = null;
+    let overallLastLoadedAt = 0;
+    const QA_MIN_REFRESH_MS = 30000;
+    const OVERALL_MIN_REFRESH_MS = 20000;
     const dashboards = ['erasure', 'qa', 'overall'];
     const dashboardTitles = {
       erasure: 'Erasure Stats',
@@ -46,6 +52,48 @@
       } catch (_err) {
         // No-op if URL APIs are unavailable.
       }
+    }
+
+    function triggerQALoad(period, opts = {}) {
+      const force = !!opts.force;
+      const now = Date.now();
+      if (!force && (now - qaLastLoadedAt) < QA_MIN_REFRESH_MS) {
+        return qaLoadInFlight || Promise.resolve();
+      }
+      if (qaLoadInFlight) {
+        return qaLoadInFlight;
+      }
+      if (typeof loadQADashboard !== 'function') {
+        return Promise.resolve();
+      }
+      qaLoadInFlight = Promise.resolve(loadQADashboard(period))
+        .catch(() => {})
+        .finally(() => {
+          qaLastLoadedAt = Date.now();
+          qaLoadInFlight = null;
+        });
+      return qaLoadInFlight;
+    }
+
+    function triggerOverallLoad(opts = {}) {
+      const force = !!opts.force;
+      const now = Date.now();
+      if (!force && (now - overallLastLoadedAt) < OVERALL_MIN_REFRESH_MS) {
+        return overallLoadInFlight || Promise.resolve();
+      }
+      if (overallLoadInFlight) {
+        return overallLoadInFlight;
+      }
+      if (typeof loadOverallDashboard !== 'function') {
+        return Promise.resolve();
+      }
+      overallLoadInFlight = Promise.resolve(loadOverallDashboard())
+        .catch(() => {})
+        .finally(() => {
+          overallLastLoadedAt = Date.now();
+          overallLoadInFlight = null;
+        });
+      return overallLoadInFlight;
     }
 
     function switchDashboard(index, opts = {}) {
@@ -99,9 +147,7 @@
         const period = periodValue.replace(/-/g, '_');
 
         if (!isInitialRestore) {
-          if (typeof loadQADashboard === 'function') {
-            loadQADashboard(period);
-          }
+          triggerQALoad(period, { force: false });
         } else {
           if (performersGrid) {
             performersGrid.innerHTML = '<div style="grid-column: 1 / -1; padding: 24px; text-align: center; color: #999;">QA data deferred - click to load</div>';
@@ -109,9 +155,7 @@
           const qaViewEl = qaView;
           const oneTimeLoad = () => {
             qaViewEl.removeEventListener('click', oneTimeLoad);
-            if (typeof loadQADashboard === 'function') {
-              loadQADashboard(period);
-            }
+            triggerQALoad(period, { force: true });
           };
           qaViewEl.addEventListener('click', oneTimeLoad);
         }
@@ -121,9 +165,7 @@
         applyViewState(overallView, true, 'flex');
 
         if (titleElem) titleElem.textContent = dashboardTitles.overall;
-        if (typeof loadOverallDashboard === 'function') {
-          loadOverallDashboard();
-        }
+        triggerOverallLoad({ force: false });
       }
 
       localStorage.setItem('currentDashboard', index);
@@ -175,9 +217,9 @@
       const dateSelector = document.getElementById('dateSelector');
       if (dateSelector) {
         dateSelector.addEventListener('change', (e) => {
-          if (currentDashboard() === 1 && typeof loadQADashboard === 'function') {
+          if (currentDashboard() === 1) {
             const period = e.target.value.replace('-', '_');
-            loadQADashboard(period);
+            triggerQALoad(period, { force: true });
           }
         });
       }
@@ -185,11 +227,11 @@
 
     function startQaAutoRefresh() {
       setInterval(() => {
-        if (currentDashboard() === 1 && typeof loadQADashboard === 'function') {
+        if (document.hidden) return;
+        if (currentDashboard() === 1) {
           const periodValue = document.getElementById('dateSelector')?.value || 'this-week';
           const period = periodValue.replace(/-/g, '_');
-          console.log('Auto-refreshing QA data...');
-          loadQADashboard(period);
+          triggerQALoad(period, { force: false });
         }
       }, 2 * 60 * 1000);
     }

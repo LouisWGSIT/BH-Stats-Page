@@ -997,6 +997,64 @@ def test_export_qa_stats_rejects_invalid_period_for_manager(client):
     assert r.status_code == 400
 
 
+def test_export_qa_stats_job_start_rejects_invalid_period_for_manager(client):
+    r = client.post(
+        "/export/qa-stats/jobs?period=not_a_period",
+        headers={"Authorization": "Bearer test-manager-pass"},
+    )
+    assert r.status_code == 400
+
+
+def test_export_qa_stats_async_job_flow(client, app_module, monkeypatch, workspace_temp_dir):
+    def _fake_generate(*_args, **_kwargs):
+        return {
+            "Summary": [["Metric", "Value"], ["Rows", 1]],
+        }
+
+    def _fake_excel_report(sheets_data, output_path=None, write_only_override=None):
+        _ = sheets_data
+        _ = write_only_override
+        if not output_path:
+            return None
+        Path(output_path).write_bytes(b"fake-xlsx")
+        return None
+
+    monkeypatch.setattr(app_module.qa_export, "generate_qa_engineer_export", _fake_generate)
+    monkeypatch.setattr(app_module.excel_export, "create_excel_report", _fake_excel_report)
+    monkeypatch.setenv("QA_EXPORT_CACHE_DIR", str(workspace_temp_dir / "qa_cache"))
+
+    start = client.post(
+        "/export/qa-stats/jobs?period=this_week&include_device_sheets=false",
+        headers={"Authorization": "Bearer test-manager-pass"},
+    )
+    assert start.status_code == 200
+    body = start.json()
+    assert "job_id" in body
+    job_id = body["job_id"]
+
+    final_status = None
+    for _ in range(30):
+        status = client.get(
+            f"/export/qa-stats/jobs/{job_id}",
+            headers={"Authorization": "Bearer test-manager-pass"},
+        )
+        assert status.status_code == 200
+        data = status.json()
+        final_status = data["status"]
+        if final_status in ("completed", "failed"):
+            break
+        time.sleep(0.05)
+
+    assert final_status == "completed"
+
+    download = client.get(
+        f"/export/qa-stats/jobs/{job_id}/download",
+        headers={"Authorization": "Bearer test-manager-pass"},
+    )
+    assert download.status_code == 200
+    assert download.content == b"fake-xlsx"
+
+
 def test_powerbi_endpoints_removed(client):
     r = client.get("/api/powerbi/engineer-stats", headers={"Authorization": "Bearer test-manager-pass"})
     assert r.status_code == 404

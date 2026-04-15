@@ -35,7 +35,11 @@ def _resolve_logo_path() -> str | None:
             return candidate
     return None
 
-def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | None = None) -> BytesIO | None:
+def create_excel_report(
+    sheets_data: Dict[str, List[List]],
+    output_path: str | None = None,
+    write_only_override: bool | None = None,
+) -> BytesIO | None:
     """
     Create a multi-sheet Excel workbook from sheets_data dict.
     
@@ -52,6 +56,10 @@ def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | N
         EXPORT_BATCH_SIZE = int(os.getenv('EXPORT_BATCH_SIZE', '1000'))
     except Exception:
         EXPORT_BATCH_SIZE = 1000
+    try:
+        EXPORT_AUTO_WRITE_ONLY_ROWS = int(os.getenv('EXPORT_AUTO_WRITE_ONLY_ROWS', '25000'))
+    except Exception:
+        EXPORT_AUTO_WRITE_ONLY_ROWS = 25000
     def _get_rss():
         try:
             if psutil:
@@ -72,10 +80,35 @@ def create_excel_report(sheets_data: Dict[str, List[List]], output_path: str | N
             return None
 
     rss_before = _get_rss()
-    logger.info("create_excel_report start: sheets=%d mode=%s batch=%d rss_before=%s", len(sheets_data), EXPORT_WRITE_MODE, EXPORT_BATCH_SIZE, str(rss_before))
+    total_rows_hint = 0
+    for _sheet_name, _data in (sheets_data or {}).items():
+        try:
+            if isinstance(_data, dict) and "rows" in _data and isinstance(_data.get("rows"), list):
+                total_rows_hint += len(_data.get("rows") or [])
+            elif isinstance(_data, list):
+                total_rows_hint += len(_data)
+        except Exception:
+            continue
 
-    # Choose write mode
-    write_only = EXPORT_WRITE_MODE.lower() == 'write_only'
+    # Choose write mode. Explicit override has highest priority.
+    if write_only_override is not None:
+        write_only = bool(write_only_override)
+        mode_label = 'override-write_only' if write_only else 'override-normal'
+    else:
+        write_only = EXPORT_WRITE_MODE.lower() == 'write_only'
+        mode_label = EXPORT_WRITE_MODE
+        if (not write_only) and total_rows_hint >= EXPORT_AUTO_WRITE_ONLY_ROWS:
+            write_only = True
+            mode_label = f'auto-write_only(rows={total_rows_hint})'
+
+    logger.info(
+        "create_excel_report start: sheets=%d mode=%s batch=%d rows_hint=%d rss_before=%s",
+        len(sheets_data),
+        mode_label,
+        EXPORT_BATCH_SIZE,
+        total_rows_hint,
+        str(rss_before),
+    )
     if write_only:
         wb = Workbook(write_only=True)
     else:
