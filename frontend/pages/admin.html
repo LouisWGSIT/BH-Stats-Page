@@ -968,6 +968,7 @@
                     <label style="font-size:13px;color:#666;"><input type="checkbox" id="autoPollActivity"> Auto-refresh every 30s</label>
                 </div>
                 <div id="activitySummary" style="margin-bottom:10px; display:none;"></div>
+                <div id="securityConfigSummary" class="stats" style="margin-bottom:10px; display:none;"></div>
                 <div id="webhookHealthSummary" class="stats" style="margin-bottom:10px; display:none;"></div>
                 <div id="sqliteStorageSummary" class="stats" style="margin-bottom:10px; display:none;"></div>
                 <div id="memoryPanel" style="display:block;margin-bottom:10px;">
@@ -2693,6 +2694,7 @@
 
         async function fetchAdminActivity() {
             const summaryEl = document.getElementById('activitySummary');
+            const securityEl = document.getElementById('securityConfigSummary');
             const webhookEl = document.getElementById('webhookHealthSummary');
             const sqliteEl = document.getElementById('sqliteStorageSummary');
             const container = document.getElementById('activityContainer');
@@ -2710,6 +2712,22 @@
                 // Connected devices summary
                 if (data.connected_devices && data.connected_devices.length) {
                     summaryEl.innerHTML += `<br><strong>Connected devices:</strong> ${data.connected_devices.length}`;
+                }
+
+                const sec = data.security_config || {};
+                if (securityEl) {
+                    securityEl.style.display = 'block';
+                    securityEl.innerHTML = `
+                        <h3 style="margin-bottom:8px;">Security Config Status</h3>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                            <div class="stat-card"><div class="stat-value">${sec.legacy_query_auth_enabled ? 'ON' : 'OFF'}</div><div class="stat-label">Legacy query auth</div></div>
+                            <div class="stat-card"><div class="stat-value">${sec.legacy_basic_auth_enabled ? 'ON' : 'OFF'}</div><div class="stat-label">Legacy basic auth</div></div>
+                            <div class="stat-card"><div class="stat-value">${sec.cors_wildcard_enabled ? 'WILDCARD' : 'RESTRICTED'}</div><div class="stat-label">CORS mode</div></div>
+                            <div class="stat-card"><div class="stat-value">${sec.cors_origin_count || 0}</div><div class="stat-label">CORS origins</div></div>
+                            <div class="stat-card"><div class="stat-value">${sec.webhook_key_count || 0}</div><div class="stat-label">Webhook keys loaded</div></div>
+                            <div class="stat-card"><div class="stat-value">${sec.webhook_multi_key_enabled ? 'YES' : 'NO'}</div><div class="stat-label">Multi-key rotation</div></div>
+                        </div>
+                    `;
                 }
 
                 const webhook = data.webhook_health || {};
@@ -2778,6 +2796,7 @@
             } catch (err) {
                 summaryEl.style.display = 'block';
                 summaryEl.innerHTML = `<span style="color:#c00;">Failed to load activity: ${err.message}</span>`;
+                if (securityEl) securityEl.style.display = 'none';
                 if (webhookEl) webhookEl.style.display = 'none';
                 if (sqliteEl) sqliteEl.style.display = 'none';
                 container.style.display = 'none';

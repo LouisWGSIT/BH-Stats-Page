@@ -718,6 +718,7 @@ def test_admin_activity_returns_recent_events(client, app_module):
     body = r.json()
     assert "counts" in body
     assert "webhook_health" in body
+    assert "security_config" in body
     assert "sqlite_storage" in body
     assert "recent" in body
     assert isinstance(body["recent"], list)
