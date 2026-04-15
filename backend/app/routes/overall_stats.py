@@ -4,6 +4,7 @@ import asyncio
 import os
 import re
 import sqlite3
+import time
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request
@@ -18,7 +19,15 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
     refresh_throttle_state = {
         "sections": datetime.min.replace(tzinfo=UTC),
         "spotlight": datetime.min.replace(tzinfo=UTC),
+        "goods_in_inline": datetime.min.replace(tzinfo=UTC),
     }
+    try:
+        goods_in_inline_refresh_seconds = max(
+            snapshot_ttl_seconds,
+            int(os.getenv("OVERALL_GOODS_IN_INLINE_REFRESH_SECONDS", "300")),
+        )
+    except Exception:
+        goods_in_inline_refresh_seconds = max(snapshot_ttl_seconds, 300)
 
     def _parse_snapshot_ts(value: str | None) -> datetime | None:
         if not value:
@@ -48,6 +57,21 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         except Exception:
             return 6.0
 
+    def _get_goods_in_timeout_seconds() -> float:
+        try:
+            return max(0.2, float(os.getenv("OVERALL_GOODS_IN_TIMEOUT_SECONDS", str(_get_refresh_timeout_seconds()))))
+        except Exception:
+            return _get_refresh_timeout_seconds()
+
+    def _get_section_timeout_seconds(section_key: str) -> float:
+        if section_key == "goods_in":
+            return _get_goods_in_timeout_seconds()
+        env_key = f"OVERALL_{str(section_key or '').upper()}_TIMEOUT_SECONDS"
+        try:
+            return max(0.2, float(os.getenv(env_key, str(_get_refresh_timeout_seconds()))))
+        except Exception:
+            return _get_refresh_timeout_seconds()
+
     def _get_snapshot_payload(snapshot_key: str) -> tuple[dict | None, float | None]:
         try:
             snap = db_module.get_dashboard_snapshot(snapshot_key)
@@ -70,16 +94,19 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         except Exception:
             pass
 
-    def _should_attempt_refresh(kind: str) -> bool:
+    def _should_attempt_refresh_with_interval(kind: str, min_seconds: float) -> bool:
         now = datetime.now(UTC)
         last = refresh_throttle_state.get(kind)
         if not isinstance(last, datetime):
             refresh_throttle_state[kind] = now
             return True
-        if (now - last).total_seconds() < float(snapshot_ttl_seconds):
+        if (now - last).total_seconds() < float(min_seconds):
             return False
         refresh_throttle_state[kind] = now
         return True
+
+    def _should_attempt_refresh(kind: str) -> bool:
+        return _should_attempt_refresh_with_interval(kind, float(snapshot_ttl_seconds))
 
     goods_in_queries = {
         "delivered": os.getenv("OVERALL_GOODS_IN_DELIVERED_QUERY", "").strip(),
@@ -88,6 +115,8 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
     }
     goods_in_table_raw = os.getenv("OVERALL_GOODS_IN_TABLE", "ITAD_GRN").strip() or "ITAD_GRN"
     goods_in_table = goods_in_table_raw if re.fullmatch(r"[A-Za-z0-9_]+", goods_in_table_raw) else "ITAD_GRN"
+    goods_in_orders_table_raw = os.getenv("OVERALL_GOODS_IN_ORDERS_TABLE", "Automation_AllOrders").strip() or "Automation_AllOrders"
+    goods_in_orders_table = goods_in_orders_table_raw if re.fullmatch(r"[A-Za-z0-9_]+", goods_in_orders_table_raw) else "Automation_AllOrders"
     try:
         goods_in_lookback_days = max(1, int(os.getenv("OVERALL_GOODS_IN_LOOKBACK_DAYS", "90")))
     except Exception:
@@ -119,6 +148,21 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         if not row or row[0] is None:
             return 0
         return int(row[0])
+
+    def _get_table_columns(cur, table_name: str) -> set[str]:
+        try:
+            cur.execute(
+                """
+                SELECT LOWER(column_name)
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = %s
+                """,
+                (table_name,),
+            )
+            return {str(r[0]).lower() for r in cur.fetchall() if r and r[0]}
+        except Exception:
+            return set()
 
     def _parse_ts(value):
         if value is None:
@@ -228,6 +272,27 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 samples = []
                 batch_size = 500
 
+                # Some environments expose different serial column names on
+                # ITAD_asset_info_blancco. Detect once to avoid noisy SQL errors.
+                blancco_serial_col = None
+                try:
+                    cur.execute(
+                        """
+                        SELECT LOWER(COLUMN_NAME)
+                        FROM information_schema.columns
+                        WHERE table_schema = DATABASE() AND table_name = 'ITAD_asset_info_blancco'
+                        """
+                    )
+                    blancco_cols = {
+                        str(r[0]).lower() for r in (cur.fetchall() or []) if r and r[0]
+                    }
+                    for candidate in ("serial", "serialnumber", "system_serial"):
+                        if candidate in blancco_cols:
+                            blancco_serial_col = candidate
+                            break
+                except Exception:
+                    blancco_serial_col = None
+
                 for i in range(0, len(keys), batch_size):
                     batch = keys[i:i + batch_size]
                     placeholders = ",".join(["%s"] * len(batch))
@@ -268,47 +333,30 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     # Fallback path: some ITAD devices may only be discoverable via
                     # ITAD_asset_info_blancco serial mappings.
                     unresolved = [k for k in batch if _norm_key(k) and _norm_key(k) not in key_to_stockid_norm]
-                    if unresolved:
+                    if unresolved and blancco_serial_col:
                         ph_un = ",".join(["%s"] * len(unresolved))
-                        q_blancco_variants = [
-                            (
-                                f"SELECT stockid, serial FROM ITAD_asset_info_blancco "
-                                f"WHERE stockid IN ({ph_un}) OR serial IN ({ph_un})",
-                                tuple(unresolved) + tuple(unresolved),
-                            ),
-                            (
-                                f"SELECT stockid, system_serial FROM ITAD_asset_info_blancco "
-                                f"WHERE stockid IN ({ph_un}) OR system_serial IN ({ph_un})",
-                                tuple(unresolved) + tuple(unresolved),
-                            ),
-                            (
-                                f"SELECT stockid, serialnumber FROM ITAD_asset_info_blancco "
-                                f"WHERE stockid IN ({ph_un}) OR serialnumber IN ({ph_un})",
-                                tuple(unresolved) + tuple(unresolved),
-                            ),
-                        ]
-                        for q_bl, p_bl in q_blancco_variants:
-                            try:
-                                cur.execute(q_bl, p_bl)
-                                bl_rows = cur.fetchall() or []
-                                if not bl_rows:
-                                    continue
-                                for br in bl_rows:
-                                    bsid = str(br[0]) if br and br[0] is not None else None
-                                    bserial = str(br[1]) if br and len(br) > 1 and br[1] is not None else None
-                                    if bsid:
-                                        key_to_stockid[bsid] = bsid
-                                        n_bsid = _norm_key(bsid)
-                                        if n_bsid:
-                                            key_to_stockid_norm[n_bsid] = bsid
-                                    if bserial and bsid:
-                                        key_to_stockid[bserial] = bsid
-                                        n_bserial = _norm_key(bserial)
-                                        if n_bserial:
-                                            key_to_stockid_norm[n_bserial] = bsid
-                                break
-                            except Exception:
-                                continue
+                        q_bl = (
+                            f"SELECT stockid, `{blancco_serial_col}` FROM ITAD_asset_info_blancco "
+                            f"WHERE stockid IN ({ph_un}) OR `{blancco_serial_col}` IN ({ph_un})"
+                        )
+                        try:
+                            cur.execute(q_bl, tuple(unresolved) + tuple(unresolved))
+                            bl_rows = cur.fetchall() or []
+                            for br in bl_rows:
+                                bsid = str(br[0]) if br and br[0] is not None else None
+                                bserial = str(br[1]) if br and len(br) > 1 and br[1] is not None else None
+                                if bsid:
+                                    key_to_stockid[bsid] = bsid
+                                    n_bsid = _norm_key(bsid)
+                                    if n_bsid:
+                                        key_to_stockid_norm[n_bsid] = bsid
+                                if bserial and bsid:
+                                    key_to_stockid[bserial] = bsid
+                                    n_bserial = _norm_key(bserial)
+                                    if n_bserial:
+                                        key_to_stockid_norm[n_bserial] = bsid
+                        except Exception:
+                            pass
 
                     canonical = list({key_to_stockid[k] for k in batch if k in key_to_stockid and key_to_stockid[k]})
                     qa_map = {}
@@ -725,6 +773,34 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
 
         return payload
 
+    def _apply_live_goods_in_overlay(payload: dict | None) -> dict | None:
+        if not isinstance(payload, dict):
+            return payload
+        sections = payload.get("sections")
+        if not isinstance(sections, list):
+            return payload
+
+        goods_in_index = -1
+        for idx, section in enumerate(sections):
+            if not isinstance(section, dict):
+                continue
+            if str(section.get("sectionKey") or "").strip().lower() == "goods_in":
+                goods_in_index = idx
+                break
+        if goods_in_index < 0:
+            return payload
+
+        if not _should_attempt_refresh_with_interval("goods_in_inline", goods_in_inline_refresh_seconds):
+            return payload
+
+        try:
+            live_goods_in = _build_goods_in_payload()
+            if isinstance(live_goods_in, dict) and live_goods_in.get("isLive") is True:
+                sections[goods_in_index] = live_goods_in
+        except Exception:
+            pass
+        return payload
+
     def _build_sections_fallback_payload(reason: str) -> dict:
         now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         return {
@@ -803,16 +879,94 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             "reason": reason,
         }
 
+    def _fallback_section_payload(section_key: str, reason: str) -> dict:
+        now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        if section_key == "goods_in":
+            return _mock_goods_in_payload(
+                now_iso,
+                source=f"fallback:{reason}",
+                source_reason=reason,
+            )
+
+        fallback = _build_sections_fallback_payload(reason)
+        for section in fallback.get("sections", []):
+            if str(section.get("sectionKey") or "").lower() == str(section_key or "").lower():
+                section["sourceReason"] = reason
+                return section
+
+        section = _build_non_goods_mock(section_key)
+        if isinstance(section, dict):
+            section["isLive"] = False
+            section["source"] = f"fallback:{reason}"
+            section["sourceReason"] = reason
+            return section
+        return {
+            "sectionKey": str(section_key or ""),
+            "sectionName": str(section_key or "").replace("_", " ").title(),
+            "targetQueue": 0,
+            "currentQueue": 0,
+            "trendPctHour": 0,
+            "owner": "Operations Team",
+            "queueLabel": "Queue",
+            "subMetrics": [],
+            "updatedAt": now_iso,
+            "isLive": False,
+            "source": f"fallback:{reason}",
+            "sourceReason": reason,
+        }
+
+    async def _refresh_one_section_with_budget(section_key: str) -> dict:
+        timeout_s = _get_section_timeout_seconds(section_key)
+        start_t = time.perf_counter()
+
+        if section_key == "goods_in":
+            builder = _build_goods_in_payload
+        else:
+            builder = lambda: _build_non_goods_mock(section_key)
+
+        try:
+            payload = await asyncio.wait_for(
+                asyncio.to_thread(builder),
+                timeout=timeout_s,
+            )
+            if not isinstance(payload, dict):
+                payload = _fallback_section_payload(section_key, f"{section_key}_invalid_payload")
+        except Exception:
+            payload = _fallback_section_payload(section_key, f"{section_key}_timeout_or_error")
+
+        if isinstance(payload, dict) and "queryMs" not in payload:
+            payload["queryMs"] = int(round((time.perf_counter() - start_t) * 1000))
+        return payload
+
     async def _refresh_sections_with_budget() -> dict:
-        timeout_s = _get_refresh_timeout_seconds()
-        return await asyncio.wait_for(asyncio.to_thread(_build_sections_payload), timeout=timeout_s)
+        section_order = ["goods_in", "ia", "erasure", "qa", "sorting"]
+        results = await asyncio.gather(
+            *[_refresh_one_section_with_budget(key) for key in section_order],
+            return_exceptions=True,
+        )
+
+        sections = []
+        for key, result in zip(section_order, results):
+            if isinstance(result, Exception):
+                sections.append(_fallback_section_payload(key, f"{key}_build_exception"))
+            elif isinstance(result, dict):
+                sections.append(result)
+            else:
+                sections.append(_fallback_section_payload(key, f"{key}_invalid_result"))
+
+        return {"sections": sections}
 
     async def _refresh_spotlight_with_budget() -> dict:
         timeout_s = _get_refresh_timeout_seconds()
         return await asyncio.wait_for(asyncio.to_thread(_build_spotlight_payload), timeout=timeout_s)
 
-    def _mock_goods_in_payload(now_iso: str) -> dict:
-        return {
+    def _mock_goods_in_payload(
+        now_iso: str,
+        source: str = "mock",
+        source_reason: str | None = None,
+        query_ms: int | None = None,
+    ) -> dict:
+        payload = {
             "sectionKey": "goods_in",
             "sectionName": "Goods In",
             "targetQueue": 90,
@@ -827,20 +981,122 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             ],
             "updatedAt": now_iso,
             "isLive": False,
-            "source": "mock",
+            "source": source,
         }
+        if source_reason:
+            payload["sourceReason"] = source_reason
+        if query_ms is not None:
+            payload["queryMs"] = max(0, int(query_ms))
+        return payload
 
-    def _build_goods_in_payload() -> dict:
+    def _build_goods_in_payload(_retried: bool = False) -> dict:
+        start_t = time.perf_counter()
+
+        def _elapsed_ms() -> int:
+            return int(round((time.perf_counter() - start_t) * 1000))
+
+        def _finalize(payload: dict, source_reason: str | None = None) -> dict:
+            if source_reason:
+                payload["sourceReason"] = source_reason
+            payload["queryMs"] = _elapsed_ms()
+            return payload
+
         now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         mock = _mock_goods_in_payload(now_iso)
 
         try:
             conn = qa_export.get_mariadb_connection()
             if not conn:
-                return mock
+                return _finalize(
+                    _mock_goods_in_payload(now_iso, "mock:no_mariadb_connection"),
+                    "no_mariadb_connection",
+                )
+            try:
+                conn.ping(reconnect=True)
+            except Exception:
+                return _finalize(
+                    _mock_goods_in_payload(now_iso, "mock:connection_ping_failed"),
+                    "connection_ping_failed",
+                )
             cur = conn.cursor()
             try:
                 try:
+                    # Preferred model for testing: cross-reference GRNs against Automation_AllOrders.
+                    # If an order_number exists in both and receipt_status is Recieved/Received,
+                    # treat it as booked/received and decrement from the queue metric.
+                    grn_cols = _get_table_columns(cur, goods_in_table)
+                    orders_cols = _get_table_columns(cur, goods_in_orders_table)
+
+                    if "order_number" in grn_cols and "order_number" in orders_cols and "receipt_status" in orders_cols:
+                        grn_date_col = next((c for c in ("date_received", "date_added", "added_date") if c in grn_cols), None)
+                        orders_date_col = next((c for c in ("added_date", "date_added", "date_received") if c in orders_cols), None)
+
+                        lookback_clause = ""
+                        if grn_date_col:
+                            lookback_clause = (
+                                f" AND DATE(g.{grn_date_col}) >= DATE_SUB(CURDATE(), INTERVAL {goods_in_lookback_days} DAY)"
+                            )
+
+                        total_not_received = _run_scalar_query(
+                            cur,
+                            f"""
+                                                        SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, '')))
+                            FROM {goods_in_table} g
+                                                        LEFT JOIN (
+                                                                SELECT DISTINCT TRIM(COALESCE(order_number, '')) AS order_number
+                                                                FROM {goods_in_orders_table}
+                                                                WHERE TRIM(COALESCE(order_number, '')) <> ''
+                                                                    AND UPPER(TRIM(COALESCE(receipt_status, ''))) IN ('RECIEVED', 'RECEIVED')
+                                                        ) r ON r.order_number = TRIM(COALESCE(g.order_number, ''))
+                            WHERE TRIM(COALESCE(g.order_number, '')) <> ''
+                              {lookback_clause}
+                                                            AND r.order_number IS NULL
+                            """,
+                        )
+
+                        booked_and_received_today = 0
+                        if orders_date_col:
+                            booked_and_received_today = _run_scalar_query(
+                                cur,
+                                f"""
+                                SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, '')))
+                                FROM {goods_in_table} g
+                                                                INNER JOIN (
+                                                                        SELECT DISTINCT TRIM(COALESCE(order_number, '')) AS order_number
+                                                                        FROM {goods_in_orders_table}
+                                                                        WHERE TRIM(COALESCE(order_number, '')) <> ''
+                                                                            AND UPPER(TRIM(COALESCE(receipt_status, ''))) IN ('RECIEVED', 'RECEIVED')
+                                                                            AND DATE({orders_date_col}) = CURDATE()
+                                                                ) r_today ON r_today.order_number = TRIM(COALESCE(g.order_number, ''))
+                                WHERE TRIM(COALESCE(g.order_number, '')) <> ''
+                                  {lookback_clause}
+                                """,
+                            )
+
+                        source = f"mariadb:{goods_in_table}+{goods_in_orders_table}"
+
+                        trend = 0
+                        if total_not_received > 0:
+                            trend = int(round((booked_and_received_today / max(1, total_not_received)) * 100))
+
+                        return _finalize({
+                            "sectionKey": "goods_in",
+                            "sectionName": "Goods In",
+                            "targetQueue": 90,
+                            "currentQueue": max(0, total_not_received),
+                            "trendPctHour": trend,
+                            "owner": "Inbound Team",
+                            "queueLabel": f"GRNs (Last {goods_in_lookback_days} Days)",
+                            "subMetrics": [
+                                {"label": "Total Booked In", "value": max(0, total_not_received)},
+                                {"label": "Booked and Recieved Today", "value": max(0, booked_and_received_today)},
+                                {"label": "Awaiting IA", "value": 0},
+                            ],
+                            "updatedAt": now_iso,
+                            "isLive": True,
+                            "source": source,
+                        })
+
                     default_received_today = _run_query_variants(cur, [
                         f"""
                         SELECT COUNT(*)
@@ -910,19 +1166,76 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     ])
                     source = f"mariadb:{goods_in_table}"
                 except Exception:
-                    default_received_today = _run_scalar_query(
-                        cur,
-                        """
-                        SELECT COUNT(DISTINCT pallet_id)
-                        FROM Stockbypallet
-                        WHERE received_date >= CURDATE()
-                        """,
-                    )
-                    default_checked_in = max(0, int(round(default_received_today * 0.72)))
-                    default_awaiting_ia = max(0, default_received_today - default_checked_in)
-                    received_total = default_received_today
-                    booked_total = default_checked_in
-                    source = "mariadb:Stockbypallet"
+                    # Schema-safe fallback: if detailed received/booked columns are absent,
+                    # keep Goods In live using distinct GRN order counts.
+                    fallback_grn_total = None
+                    try:
+                        grn_cols_fallback = _get_table_columns(cur, goods_in_table)
+                        if "order_number" in grn_cols_fallback:
+                            grn_date_col_fallback = next(
+                                (c for c in ("date_received", "date_added", "added_date") if c in grn_cols_fallback),
+                                None,
+                            )
+                            lookback_clause_fallback = ""
+                            if grn_date_col_fallback:
+                                lookback_clause_fallback = (
+                                    f" AND DATE(g.{grn_date_col_fallback}) >= DATE_SUB(CURDATE(), INTERVAL {goods_in_lookback_days} DAY)"
+                                )
+
+                            fallback_grn_total = _run_scalar_query(
+                                cur,
+                                f"""
+                                SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, '')))
+                                FROM {goods_in_table} g
+                                WHERE TRIM(COALESCE(g.order_number, '')) <> ''
+                                  {lookback_clause_fallback}
+                                """,
+                            )
+                    except Exception:
+                        fallback_grn_total = None
+
+                    if fallback_grn_total is not None:
+                        default_received_today = 0
+                        default_checked_in = 0
+                        default_awaiting_ia = 0
+                        received_total = max(0, int(fallback_grn_total))
+                        booked_total = 0
+                        source = f"mariadb:{goods_in_table}(order_number-fallback)"
+                    else:
+                        try:
+                            default_received_today = _run_scalar_query(
+                                cur,
+                                """
+                                SELECT COUNT(DISTINCT pallet_id)
+                                FROM Stockbypallet
+                                WHERE received_date >= CURDATE()
+                                """,
+                            )
+                            default_checked_in = max(0, int(round(default_received_today * 0.72)))
+                            default_awaiting_ia = max(0, default_received_today - default_checked_in)
+                            received_total = default_received_today
+                            booked_total = default_checked_in
+                            source = "mariadb:Stockbypallet"
+                        except Exception:
+                            # Final schema-safe fallback: keep data live using generic totals
+                            # from the configured GRN table instead of hardcoded mock values.
+                            generic_total = _run_query_variants(cur, [
+                                f"""
+                                SELECT COUNT(*)
+                                FROM {goods_in_table}
+                                """,
+                                f"""
+                                SELECT COUNT(DISTINCT TRIM(COALESCE(order_number, '')))
+                                FROM {goods_in_table}
+                                WHERE TRIM(COALESCE(order_number, '')) <> ''
+                                """,
+                            ])
+                            default_received_today = 0
+                            default_checked_in = 0
+                            default_awaiting_ia = 0
+                            received_total = max(0, int(generic_total))
+                            booked_total = 0
+                            source = f"mariadb:{goods_in_table}(generic-fallback)"
 
                 if goods_in_queries["delivered"] or goods_in_queries["checked_in"] or goods_in_queries["awaiting_ia"]:
                     delivered = _run_scalar_query(cur, goods_in_queries["delivered"]) if goods_in_queries["delivered"] else max(0, received_total - booked_total)
@@ -941,7 +1254,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
             if delivered > 0:
                 trend = int(round((checked_in / max(1, delivered)) * 100))
 
-            return {
+            return _finalize({
                 "sectionKey": "goods_in",
                 "sectionName": "Goods In",
                 "targetQueue": 90,
@@ -957,9 +1270,15 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 "updatedAt": now_iso,
                 "isLive": True,
                 "source": source,
-            }
-        except Exception:
-            return mock
+            })
+        except Exception as exc:
+            if (not _retried) and type(exc).__name__ == "InterfaceError":
+                return _build_goods_in_payload(_retried=True)
+            reason = f"build_error:{type(exc).__name__}"
+            return _finalize(
+                _mock_goods_in_payload(now_iso, f"mock:{reason}"),
+                reason,
+            )
 
     def _build_non_goods_mock(section_key: str) -> dict:
         now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -1148,20 +1467,20 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         payload, age = _get_snapshot_payload(snapshot_key)
         has_snapshot = isinstance(payload, dict)
         if has_snapshot and age is not None and age <= float(snapshot_ttl_seconds):
-            return _apply_live_daily_totals(payload)
+            return _apply_live_goods_in_overlay(_apply_live_daily_totals(payload))
 
         # If we have a stale snapshot, prefer serving it over returning full mock fallback.
         if has_snapshot and not _should_attempt_refresh("sections"):
-            return _apply_live_daily_totals(payload)
+            return _apply_live_goods_in_overlay(_apply_live_daily_totals(payload))
 
         try:
             fresh_payload = await _refresh_sections_with_budget()
             _store_snapshot_payload(snapshot_key, fresh_payload, "overall_sections_build")
-            return _apply_live_daily_totals(fresh_payload)
+            return _apply_live_goods_in_overlay(_apply_live_daily_totals(fresh_payload))
         except Exception:
             if has_snapshot:
-                return _apply_live_daily_totals(payload)
-            return _apply_live_daily_totals(_build_sections_fallback_payload("refresh_timeout_or_error"))
+                return _apply_live_goods_in_overlay(_apply_live_daily_totals(payload))
+            return _apply_live_goods_in_overlay(_apply_live_daily_totals(_build_sections_fallback_payload("refresh_timeout_or_error")))
 
     @router.get("/overall/qa-awaiting-diagnostics")
     async def overall_qa_awaiting_diagnostics(request: Request):

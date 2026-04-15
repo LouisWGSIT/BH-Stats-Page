@@ -732,70 +732,18 @@
 
     <!-- Overall Stats View (Hidden by default) -->
     <main class="layout overall-stats-view" id="overallStatsView">
-      <section class="overall-top-grid">
-        <article class="card overall-summary-card">
-        <div class="overall-summary-left">
-          <h2>Overall Operations Snapshot</h2>
-          <p id="overallSummaryText">Loading overview...</p>
-          <div class="overall-summary-meta" id="overallSummaryMeta"></div>
-        </div>
-        <div class="overall-summary-right">
-          <div class="overall-kpi">
-            <span class="label">Biggest Bottleneck</span>
-            <strong id="overallBottleneck">—</strong>
-          </div>
-          <div class="overall-kpi">
-            <span class="label">Active Sections</span>
-            <strong id="overallRedCount">0</strong>
-          </div>
-          <div class="overall-kpi">
-            <span class="label">Updated</span>
-            <strong id="overallLastUpdate">—</strong>
-          </div>
-          <div class="overall-kpi">
-            <span class="label">Done Today</span>
-            <strong id="overallDoneToday">0</strong>
-          </div>
-          <div class="overall-kpi">
-            <span class="label">In Queue</span>
-            <strong id="overallQueueTotal">0</strong>
-          </div>
-          <div class="overall-kpi">
-            <span class="label">Most Completed</span>
-            <strong id="overallTopDone">—</strong>
-          </div>
-          <div class="overall-kpi">
-            <span class="label">Largest Queue</span>
-            <strong id="overallQueueLeader">—</strong>
-          </div>
-          <div class="overall-kpi">
-            <span class="label">Live Feeds</span>
-            <strong id="overallLiveFeeds">0/0</strong>
-          </div>
-        </div>
-        </article>
-        <article class="card overall-top-card overall-spotlight-card">
-          <h3>Spotlight</h3>
-          <div id="overallSpotlight"></div>
-        </article>
-        <article class="card overall-top-card overall-mission-card">
-          <h3>Mission Board</h3>
-          <div id="overallMissionBoard"></div>
-        </article>
-      </section>
-
       <section class="overall-section-grid" id="overallSectionGrid"></section>
 
       <section class="overall-trend-grid" id="overallTrendGrid"></section>
 
-      <section class="overall-bottom-grid">
+      <section class="overall-support-grid">
+        <article class="card overall-visual-card overall-spotlight-card">
+          <h3>Spotlight</h3>
+          <div id="overallSpotlight"></div>
+        </article>
         <article class="card overall-visual-card overall-race-card">
           <h3>Operations Race Track</h3>
           <div id="overallRaceTrack"></div>
-        </article>
-        <article class="card overall-visual-card overall-challenge-card">
-          <h3>Challenge</h3>
-          <div id="overallChallengeCard"></div>
         </article>
       </section>
     </main>

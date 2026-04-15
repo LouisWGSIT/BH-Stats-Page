@@ -566,6 +566,78 @@
                 </div>
             </div>
 
+            <!-- Section 6.5: Goods In Evidence -->
+            <div class="section admin-only" id="section-goods-in-evidence">
+                <h2>📥 Goods In Evidence</h2>
+                <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
+                    Proves the Goods In card values by showing GRN order numbers that are still unmatched in Automation orders, plus any matched as received today.
+                </p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="font-size:13px;color:#666;">Window:
+                        <select id="goodsInEvidenceDays" style="max-width:120px;">
+                            <option value="30">30d</option>
+                            <option value="60">60d</option>
+                            <option value="90" selected>90d</option>
+                            <option value="120">120d</option>
+                        </select>
+                    </label>
+                    <label style="font-size:13px;color:#666;">Samples:
+                        <select id="goodsInEvidenceLimit" style="max-width:120px;">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </label>
+                    <button onclick="loadGoodsInEvidence()">🔎 Refresh Goods In Evidence</button>
+                </div>
+                <div id="goodsInEvidenceSummary" class="stats" style="display:none;margin-top:12px;"></div>
+                <div id="goodsInEvidenceAwaitingWrap" class="stats" style="display:none;margin-top:12px;">
+                    <h3 style="margin-bottom:8px;">Awaiting Receipt Match Samples</h3>
+                    <div class="table-scroll awaiting">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>GRN Order Number</th>
+                                    <th>Automation Order Number</th>
+                                    <th>Receipt Status</th>
+                                    <th>Order Status</th>
+                                    <th>date_added</th>
+                                    <th>date_required</th>
+                                    <th>ship_date</th>
+                                    <th>added_date</th>
+                                    <th>Latest GRN Date</th>
+                                    <th>Match State</th>
+                                </tr>
+                            </thead>
+                            <tbody id="goodsInEvidenceAwaitingBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="goodsInEvidenceReceivedWrap" class="stats" style="display:none;margin-top:12px;">
+                    <h3 style="margin-bottom:8px;">Booked And Received Today Samples</h3>
+                    <div class="table-scroll decremented">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>GRN Order Number</th>
+                                    <th>Automation Order Number</th>
+                                    <th>Receipt Status</th>
+                                    <th>Order Status</th>
+                                    <th>date_added</th>
+                                    <th>date_required</th>
+                                    <th>ship_date</th>
+                                    <th>added_date</th>
+                                    <th>Latest GRN Date</th>
+                                    <th>Latest Receipt Date</th>
+                                    <th>Match State</th>
+                                </tr>
+                            </thead>
+                            <tbody id="goodsInEvidenceReceivedBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- Section 7: Erasure Evidence -->
             <div class="section admin-only" id="section-erasure-evidence">
                 <h2>🧾 Erasure Evidence</h2>
@@ -621,6 +693,107 @@
                             <button type="button" id="erasureEvidencePrevBtn">◀ Prev</button>
                             <button type="button" id="erasureEvidenceNextBtn">Next ▶</button>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 7.05: Erasure Reconciliation -->
+            <div class="section admin-only" id="section-erasure-reconciliation">
+                <h2>🧮 Erasure Reconciliation</h2>
+                <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
+                    Reconciles top-card total versus engineer/category cards for a selected day, including missing initials, non-visible types, workday split, and serial duplicate evidence.
+                </p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <label style="font-size:13px;color:#666;">Date:
+                        <input id="erasureReconciliationDate" type="date" style="max-width:180px;" />
+                    </label>
+                    <label style="font-size:13px;color:#666;">Samples:
+                        <select id="erasureReconciliationLimit" style="max-width:120px;">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </label>
+                    <button onclick="loadErasureReconciliation()">🔎 Refresh Reconciliation</button>
+                </div>
+                <div id="erasureReconciliationSummary" class="stats" style="display:none;margin-top:12px;"></div>
+
+                <div id="erasureReconciliationBreakdownWrap" class="stats" style="display:none;margin-top:12px;">
+                    <h3 style="margin-bottom:8px;">Outside Visible Type Breakdown</h3>
+                    <div class="table-scroll" style="max-height:220px;">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>Device Type</th>
+                                    <th>Count</th>
+                                </tr>
+                            </thead>
+                            <tbody id="erasureReconciliationBreakdownBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="erasureReconciliationMissingWrap" class="stats" style="display:none;margin-top:12px;">
+                    <h3 style="margin-bottom:8px;">Missing Initials Samples</h3>
+                    <div class="table-scroll" style="max-height:260px;">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>Time (UK)</th>
+                                    <th>Device Type</th>
+                                    <th>Job ID</th>
+                                </tr>
+                            </thead>
+                            <tbody id="erasureReconciliationMissingBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="erasureReconciliationOutsideWrap" class="stats" style="display:none;margin-top:12px;">
+                    <h3 style="margin-bottom:8px;">Outside Visible Type Samples</h3>
+                    <div class="table-scroll" style="max-height:260px;">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>Time (UK)</th>
+                                    <th>Device Type</th>
+                                    <th>Initials</th>
+                                    <th>Job ID</th>
+                                </tr>
+                            </thead>
+                            <tbody id="erasureReconciliationOutsideBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="erasureReconciliationDuplicatesWrap" class="stats" style="display:none;margin-top:12px;">
+                    <h3 style="margin-bottom:8px;">Failure Duplicate Serials</h3>
+                    <div class="table-scroll" style="max-height:260px;">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>Serial (Normalized)</th>
+                                    <th>Failure Count</th>
+                                </tr>
+                            </thead>
+                            <tbody id="erasureReconciliationDuplicatesBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="erasureReconciliationOverlapWrap" class="stats" style="display:none;margin-top:12px;">
+                    <h3 style="margin-bottom:8px;">Failure Then Success Overlap Serials</h3>
+                    <div class="table-scroll" style="max-height:260px;">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>Serial (Normalized)</th>
+                                    <th>Failure Count</th>
+                                    <th>Success Count</th>
+                                </tr>
+                            </thead>
+                            <tbody id="erasureReconciliationOverlapBody"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -847,7 +1020,9 @@
             const sectionIds = [
                 'section-fix-initials',
                 'section-connected-devices',
+                'section-goods-in-evidence',
                 'section-erasure-evidence',
+                'section-erasure-reconciliation',
                 'section-sorting-evidence',
                 'section-dashboard-activity'
             ];
@@ -910,9 +1085,17 @@
                     await loadExternalAttempts();
                 }
             };
+            _sectionLoaders['section-goods-in-evidence'] = async () => {
+                if (userRole !== 'admin') return;
+                await loadGoodsInEvidence();
+            };
             _sectionLoaders['section-erasure-evidence'] = async () => {
                 if (userRole !== 'admin') return;
                 await loadErasureEvidence();
+            };
+            _sectionLoaders['section-erasure-reconciliation'] = async () => {
+                if (userRole !== 'admin') return;
+                await loadErasureReconciliation();
             };
             _sectionLoaders['section-sorting-evidence'] = async () => {
                 if (userRole !== 'admin') return;
@@ -1612,6 +1795,261 @@
             } catch (error) {
                 content.innerHTML = '<p style="color:#c00;">Error loading external attempts: ' + error.message + '</p>';
                 container.style.display = 'block';
+            }
+        }
+
+        let _goodsInAwaitingSamples = [];
+        let _goodsInReceivedTodaySamples = [];
+        let _goodsInEvidenceFilter = 'all';
+
+        async function loadGoodsInEvidence() {
+            const daysSel = document.getElementById('goodsInEvidenceDays');
+            const limitSel = document.getElementById('goodsInEvidenceLimit');
+            const summary = document.getElementById('goodsInEvidenceSummary');
+            const awaitingWrap = document.getElementById('goodsInEvidenceAwaitingWrap');
+            const awaitingBody = document.getElementById('goodsInEvidenceAwaitingBody');
+            const receivedWrap = document.getElementById('goodsInEvidenceReceivedWrap');
+            const receivedBody = document.getElementById('goodsInEvidenceReceivedBody');
+            if (!summary || !awaitingWrap || !awaitingBody || !receivedWrap || !receivedBody) return;
+
+            const days = parseInt((daysSel && daysSel.value) || '90', 10);
+            const limit = parseInt((limitSel && limitSel.value) || '50', 10);
+
+            try {
+                const res = await fetch(`/admin/goods-in-evidence?days=${days}&limit=${limit}`, {
+                    headers: getAuthHeaders(false)
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${res.status}`);
+                }
+
+                const data = await res.json();
+                const s = data.summary || {};
+                const awaiting = Array.isArray(data.awaitingSamples) ? data.awaitingSamples : [];
+                const received = Array.isArray(data.receivedTodaySamples) ? data.receivedTodaySamples : [];
+
+                _goodsInAwaitingSamples = awaiting;
+                _goodsInReceivedTodaySamples = received;
+                _goodsInEvidenceFilter = 'all';
+
+                summary.innerHTML = `
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                        <div class="stat-card filterable-card active" data-goods-filter="all"><div class="stat-value">${s.totalBookedOrders || 0}</div><div class="stat-label">Total Booked In (Distinct Orders)</div></div>
+                        <div class="stat-card filterable-card" data-goods-filter="awaiting"><div class="stat-value">${s.awaitingReceiptMatch || 0}</div><div class="stat-label">Current Queue (Awaiting Receipt Match)</div></div>
+                        <div class="stat-card filterable-card" data-goods-filter="received_today"><div class="stat-value">${s.bookedAndReceivedToday || 0}</div><div class="stat-label">Booked And Recieved Today</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.matchedReceivedAnyDay || 0}</div><div class="stat-label">Matched Received (Any Day)</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.windowDays || days}</div><div class="stat-label">Window Days</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.sampleAwaitingCount || awaiting.length}</div><div class="stat-label">Awaiting Samples</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.sampleReceivedTodayCount || received.length}</div><div class="stat-label">Received Today Samples</div></div>
+                    </div>
+                    <div style="margin-top:8px;font-size:12px;color:#666;">Source: ${s.source || 'unknown'} | GRN date field: ${s.grnDateField || 'n/a'} | Orders date field: ${s.ordersDateField || 'n/a'} | Status field: ${s.statusField || 'n/a'}</div>
+                    <div style="margin-top:8px;font-size:12px;color:#666;">Generated: ${formatActivityTimeUk(s.generatedAt)}</div>
+                `;
+                summary.style.display = 'block';
+
+                summary.querySelectorAll('[data-goods-filter]').forEach((card) => {
+                    card.addEventListener('click', () => {
+                        _goodsInEvidenceFilter = card.getAttribute('data-goods-filter') || 'all';
+                        summary.querySelectorAll('[data-goods-filter]').forEach((el) => el.classList.remove('active'));
+                        card.classList.add('active');
+                        renderGoodsInEvidenceTables();
+                    });
+                });
+
+                renderGoodsInEvidenceTables();
+            } catch (err) {
+                summary.style.display = 'block';
+                summary.innerHTML = `<div class="result error" style="display:block;">Failed to load goods in evidence: ${err.message}</div>`;
+                awaitingWrap.style.display = 'none';
+                receivedWrap.style.display = 'none';
+            }
+        }
+
+        function renderGoodsInEvidenceTables() {
+            const awaitingWrap = document.getElementById('goodsInEvidenceAwaitingWrap');
+            const awaitingBody = document.getElementById('goodsInEvidenceAwaitingBody');
+            const receivedWrap = document.getElementById('goodsInEvidenceReceivedWrap');
+            const receivedBody = document.getElementById('goodsInEvidenceReceivedBody');
+            if (!awaitingWrap || !awaitingBody || !receivedWrap || !receivedBody) return;
+
+            let awaitingRows = _goodsInAwaitingSamples || [];
+            let receivedRows = _goodsInReceivedTodaySamples || [];
+            const filter = _goodsInEvidenceFilter || 'all';
+            if (filter === 'awaiting') {
+                receivedRows = [];
+            } else if (filter === 'received_today') {
+                awaitingRows = [];
+            }
+
+            awaitingBody.innerHTML = '';
+            awaitingRows.forEach((row) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-size:12px;">${row.grnOrderNumber || ''}</td>
+                    <td style="font-size:12px;">${row.automationOrderNumber || ''}</td>
+                    <td style="font-size:12px;">${row.receiptStatus || ''}</td>
+                    <td style="font-size:12px;">${row.orderStatus || ''}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.addedDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastGrnDate)}</td>
+                    <td style="font-size:12px;">${row.matchState || ''}</td>
+                `;
+                awaitingBody.appendChild(tr);
+            });
+
+            receivedBody.innerHTML = '';
+            receivedRows.forEach((row) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-size:12px;">${row.grnOrderNumber || ''}</td>
+                    <td style="font-size:12px;">${row.automationOrderNumber || ''}</td>
+                    <td style="font-size:12px;">${row.receiptStatus || ''}</td>
+                    <td style="font-size:12px;">${row.orderStatus || ''}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.addedDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastGrnDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastReceivedDate)}</td>
+                    <td style="font-size:12px;">${row.matchState || ''}</td>
+                `;
+                receivedBody.appendChild(tr);
+            });
+
+            awaitingWrap.style.display = awaitingRows.length ? 'block' : 'none';
+            receivedWrap.style.display = receivedRows.length ? 'block' : 'none';
+        }
+
+        async function loadErasureReconciliation() {
+            const dateInput = document.getElementById('erasureReconciliationDate');
+            const limitSel = document.getElementById('erasureReconciliationLimit');
+            const summary = document.getElementById('erasureReconciliationSummary');
+            const breakdownWrap = document.getElementById('erasureReconciliationBreakdownWrap');
+            const breakdownBody = document.getElementById('erasureReconciliationBreakdownBody');
+            const missingWrap = document.getElementById('erasureReconciliationMissingWrap');
+            const missingBody = document.getElementById('erasureReconciliationMissingBody');
+            const outsideWrap = document.getElementById('erasureReconciliationOutsideWrap');
+            const outsideBody = document.getElementById('erasureReconciliationOutsideBody');
+            const dupWrap = document.getElementById('erasureReconciliationDuplicatesWrap');
+            const dupBody = document.getElementById('erasureReconciliationDuplicatesBody');
+            const overlapWrap = document.getElementById('erasureReconciliationOverlapWrap');
+            const overlapBody = document.getElementById('erasureReconciliationOverlapBody');
+            if (!summary || !dateInput || !limitSel || !breakdownWrap || !breakdownBody || !missingWrap || !missingBody || !outsideWrap || !outsideBody || !dupWrap || !dupBody || !overlapWrap || !overlapBody) {
+                return;
+            }
+
+            if (!dateInput.value) {
+                dateInput.value = new Date().toISOString().slice(0, 10);
+            }
+
+            const targetDate = dateInput.value;
+            const limit = parseInt(limitSel.value || '50', 10);
+
+            try {
+                const res = await fetch(`/admin/erasure-reconciliation?date=${encodeURIComponent(targetDate)}&limit=${limit}`, {
+                    headers: getAuthHeaders(false)
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${res.status}`);
+                }
+
+                const data = await res.json();
+                const s = data.summary || {};
+                const recon = s.reconciliation || {};
+                const outsideTypeBreakdown = Array.isArray(data.outsideTypeBreakdown) ? data.outsideTypeBreakdown : [];
+                const missingInitials = Array.isArray(data.missingInitialsSamples) ? data.missingInitialsSamples : [];
+                const outsideType = Array.isArray(data.outsideVisibleTypeSamples) ? data.outsideVisibleTypeSamples : [];
+                const dupes = Array.isArray(data.failedDuplicateSerials) ? data.failedDuplicateSerials : [];
+                const overlap = Array.isArray(data.failureThenSuccessSerials) ? data.failureThenSuccessSerials : [];
+
+                summary.innerHTML = `
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                        <div class="stat-card"><div class="stat-value">${s.dayTotalAllEvents || 0}</div><div class="stat-label">Total Events (Top Card Basis)</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.daySuccessTotal || 0}</div><div class="stat-label">Success Total</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.dayFailureTotal || 0}</div><div class="stat-label">Failure Total</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.daySuccessVisibleWithInitials || 0}</div><div class="stat-label">Visible Types + Initials</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.daySuccessMissingInitials || 0}</div><div class="stat-label">Missing Initials Gap</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.daySuccessOutsideVisibleTypes || 0}</div><div class="stat-label">Outside Visible Type Gap</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.daySuccessWorkday8To16 || 0}</div><div class="stat-label">Workday Success (08:00-16:00)</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.daySuccessOutsideWorkday || 0}</div><div class="stat-label">Outside Workday Success</div></div>
+                        <div class="stat-card"><div class="stat-value">${recon.successMinusVisibleWithInitials || 0}</div><div class="stat-label">Success - Visible+Initials Gap</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.failedDuplicateSerialCount || 0}</div><div class="stat-label">Duplicate Failure Serials</div></div>
+                        <div class="stat-card"><div class="stat-value">${s.failureThenSuccessSerialCount || 0}</div><div class="stat-label">Failure Then Success Serials</div></div>
+                    </div>
+                    <div style="margin-top:8px;font-size:12px;color:#666;">Date: ${s.date || targetDate} | Visible Types: ${(s.visibleTypes || []).join(', ') || 'n/a'} | Generated: ${formatActivityTimeUk(s.generatedAt)}</div>
+                `;
+                summary.style.display = 'block';
+
+                breakdownBody.innerHTML = '';
+                outsideTypeBreakdown.forEach((row) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-size:12px;">${row.deviceType || ''}</td>
+                        <td style="font-size:12px;">${row.count || 0}</td>
+                    `;
+                    breakdownBody.appendChild(tr);
+                });
+                breakdownWrap.style.display = outsideTypeBreakdown.length ? 'block' : 'none';
+
+                missingBody.innerHTML = '';
+                missingInitials.forEach((row) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.ts)}</td>
+                        <td style="font-size:12px;">${row.device_type || ''}</td>
+                        <td style="font-size:12px;">${row.job_id || ''}</td>
+                    `;
+                    missingBody.appendChild(tr);
+                });
+                missingWrap.style.display = missingInitials.length ? 'block' : 'none';
+
+                outsideBody.innerHTML = '';
+                outsideType.forEach((row) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-size:12px;">${formatActivityTimeUk(row.ts)}</td>
+                        <td style="font-size:12px;">${row.device_type || ''}</td>
+                        <td style="font-size:12px;">${row.initials || ''}</td>
+                        <td style="font-size:12px;">${row.job_id || ''}</td>
+                    `;
+                    outsideBody.appendChild(tr);
+                });
+                outsideWrap.style.display = outsideType.length ? 'block' : 'none';
+
+                dupBody.innerHTML = '';
+                dupes.forEach((row) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-size:12px;">${row.serial || ''}</td>
+                        <td style="font-size:12px;">${row.failureCount || 0}</td>
+                    `;
+                    dupBody.appendChild(tr);
+                });
+                dupWrap.style.display = dupes.length ? 'block' : 'none';
+
+                overlapBody.innerHTML = '';
+                overlap.forEach((row) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-size:12px;">${row.serial || ''}</td>
+                        <td style="font-size:12px;">${row.failureCount || 0}</td>
+                        <td style="font-size:12px;">${row.successCount || 0}</td>
+                    `;
+                    overlapBody.appendChild(tr);
+                });
+                overlapWrap.style.display = overlap.length ? 'block' : 'none';
+            } catch (err) {
+                summary.style.display = 'block';
+                summary.innerHTML = `<div class="result error" style="display:block;">Failed to load erasure reconciliation: ${err.message}</div>`;
+                breakdownWrap.style.display = 'none';
+                missingWrap.style.display = 'none';
+                outsideWrap.style.display = 'none';
+                dupWrap.style.display = 'none';
+                overlapWrap.style.display = 'none';
             }
         }
 

@@ -636,6 +636,11 @@
     return uri;
   }
 
+  window.EngineerAvatar = {
+    getEngineerColor,
+    getAvatarDataUri,
+  };
+
   function formatTimeAgo(timestamp) {
     if (!timestamp) return '—';
     const now = new Date();

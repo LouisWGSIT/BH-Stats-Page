@@ -102,7 +102,7 @@
 
     function getDoneCount(section) {
       if (section.key === 'goods_in') {
-        return getSubMetric(section, [/booked in today/, /^booked in$/]);
+        return getSubMetric(section, [/booked in today/, /booked and rec/i, /received today/, /^booked in$/]);
       }
       if (section.key === 'ia') {
         return getSubMetric(section, [/completed ia/, /ready for erasure/]);
@@ -121,7 +121,7 @@
 
     function getOutstandingCount(section) {
       if (section.key === 'goods_in') {
-        return getSubMetric(section, [/total received \(not booked in\)/, /not booked in/, /awaiting ia/]);
+        return getSubMetric(section, [/total booked in/, /total received \(not booked in\)/, /not booked in/, /awaiting ia/]);
       }
       if (section.key === 'ia') {
         return getSubMetric(section, [/awaiting ia/]);
@@ -157,9 +157,9 @@
 
     function activityText(section) {
       const done = getDoneCount(section);
-      if (done > 0) return `${section.name} active with ${done} completed actions.`;
-      if (asNumber(section.current) > 0) return `${section.name} has work queued; awaiting completion updates.`;
-      return `${section.name} is quiet right now.`;
+      if (done > 0) return `${done} completed today.`;
+      if (asNumber(section.current) > 0) return `Queue active.`;
+      return `No active work right now.`;
     }
 
     function getFallbackSpotlight() {
@@ -172,14 +172,74 @@
       };
     }
 
+    function getSectionMeta(sectionKey) {
+      const key = String(sectionKey || '');
+      const map = {
+        goods_in: { label: 'Inbound', shortLabel: 'Goods In', icon: 'GI', accentClass: 'goods-in' },
+        ia: { label: 'Assessment', shortLabel: 'IA', icon: 'IA', accentClass: 'ia' },
+        erasure: { label: 'Data Erase', shortLabel: 'Erasure', icon: 'DE', accentClass: 'erasure' },
+        qa: { label: 'Quality', shortLabel: 'QA', icon: 'QA', accentClass: 'qa' },
+        sorting: { label: 'Dispatch', shortLabel: 'Sorting', icon: 'SO', accentClass: 'sorting' },
+      };
+      return map[key] || { label: 'Operations', shortLabel: key || 'Section', icon: 'OP', accentClass: 'generic' };
+    }
+
+    function getSectionStateClass(section) {
+      const queue = Math.max(0, asNumber(section.current));
+      const done = Math.max(0, getDoneCount(section));
+      if (queue === 0 && done === 0) return 'is-idle';
+      if (done > 0 && queue <= Math.max(5, done * 0.2)) return 'is-clearing';
+      if (queue > Math.max(100, done * 12)) return 'is-pressure';
+      return 'is-active';
+    }
+
+    function getMonogram(name) {
+      const cleaned = String(name || '').trim();
+      if (!cleaned || cleaned === '—' || cleaned.toLowerCase().includes('unable')) return '--';
+      const parts = cleaned.split(/\s+/).filter(Boolean);
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+    }
+
+    function getAvatarDataUri(initials) {
+      const provider = window.EngineerAvatar;
+      if (!provider || typeof provider.getAvatarDataUri !== 'function') return null;
+      return provider.getAvatarDataUri(initials);
+    }
+
+    function renderPixelAvatar(value, className) {
+      const initials = getMonogram(value);
+      const avatarUri = getAvatarDataUri(initials);
+      if (!avatarUri) {
+        return `<span class="overall-avatar ${className || ''} overall-avatar--fallback">${initials}</span>`;
+      }
+      return `<span class="overall-avatar ${className || ''}" style="background-image: url(${avatarUri})" aria-hidden="true"></span>`;
+    }
+
+    function getSectionCrew(section, meta) {
+      return [
+        getMonogram(section.owner || section.name),
+        getMonogram(meta.shortLabel),
+        getMonogram(meta.icon),
+      ]
+        .filter((value) => value && value !== '--')
+        .slice(0, 3);
+    }
+
     function renderSections(sections) {
       const grid = document.getElementById('overallSectionGrid');
       if (!grid) return;
       grid.innerHTML = sections.map((section) => {
+        const meta = getSectionMeta(section.key);
+        const stateClass = getSectionStateClass(section);
         const trendClass = section.trend > 0 ? 'is-up' : section.trend < 0 ? 'is-down' : 'is-flat';
         const sourceLabel = section.isLive ? 'Live' : 'Mock';
         const sourceClass = section.isLive ? 'live' : 'mock';
+        const isAdminViewer = (sessionStorage.getItem('userRole') || 'viewer') === 'admin';
+        const queryMsLabel = (isAdminViewer && Number.isFinite(section.queryMs)) ? `${section.queryMs}ms` : '';
+        const sourceReason = String(section.sourceReason || '').trim();
         const done = getDoneCount(section);
+        const crew = getSectionCrew(section, meta);
         let detailRows = '';
         let subMetricClass = 'overall-submetrics';
         if (section.key === 'erasure') {
@@ -208,15 +268,19 @@
             .join('');
         }
         return `
-          <article class="overall-section-card">
+          <article class="overall-section-card overall-section-card--${meta.accentClass} ${stateClass}" data-section="${meta.accentClass}">
             <div class="overall-card-top">
-              <h3>${section.name}</h3>
+              <div class="overall-card-title-wrap">
+                <span class="overall-card-kicker">${meta.label}</span>
+                <h3>${section.name}</h3>
+              </div>
               <div class="overall-pill-stack">
                 <span class="overall-source-pill ${sourceClass}">${sourceLabel}</span>
+                ${queryMsLabel ? `<span class="overall-source-pill">${queryMsLabel}</span>` : ''}
               </div>
             </div>
             <div class="overall-metric-row">
-              <div class="overall-metric-block">
+              <div class="overall-metric-block overall-metric-block-primary">
                 <span class="label">Current Queue</span>
                 <strong>${section.current}</strong>
               </div>
@@ -231,11 +295,27 @@
             </div>
             <div class="overall-queue-label">${section.queueLabel || 'Queue'}</div>
             <div class="${subMetricClass}">${detailRows}</div>
+            <div class="overall-department-bay overall-department-bay--${meta.accentClass}">
+              <div class="overall-bay-footer">
+                <div class="overall-bay-crew">
+                  <span class="overall-bay-crew-label">Crew Strip</span>
+                  <div class="overall-bay-crew-icons">
+                    ${crew.map((member) => `
+                      <span class="overall-bay-crew-chip">
+                        ${renderPixelAvatar(member, 'overall-avatar--crew')}
+                        <span class="overall-bay-crew-text">${member}</span>
+                      </span>
+                    `).join('')}
+                  </div>
+                </div>
+                <div class="overall-bay-watermark">${meta.icon}</div>
+              </div>
+            </div>
             <div class="overall-metadata-row">
               <span class="owner">${section.owner}</span>
               <span class="trend ${trendClass}">${trendLabel(section.trend)} vs last hour</span>
             </div>
-            <p class="overall-action">${activityText(section)}</p>
+            <p class="overall-action">${activityText(section)}${(isAdminViewer && !section.isLive && sourceReason) ? ` (${sourceReason})` : ''}</p>
           </article>
         `;
       }).join('');
@@ -334,27 +414,49 @@
       const s = spotlight || getFallbackSpotlight();
 
       const rows = [
-        { section: 'Goods In', name: (s.goodsIn && s.goodsIn.name) || 'Unable to yet', count: (s.goodsIn && s.goodsIn.count) || 0 },
-        { section: 'IA', name: (s.ia && s.ia.name) || 'Unable to yet', count: (s.ia && s.ia.count) || 0 },
-        { section: 'Erasure', name: (s.erasure && s.erasure.name) || '—', count: (s.erasure && s.erasure.count) || 0 },
-        { section: 'QA', name: (s.qa && s.qa.name) || '—', count: (s.qa && s.qa.count) || 0 },
-        { section: 'Sorting', name: (s.sorting && s.sorting.name) || '—', count: (s.sorting && s.sorting.count) || 0 },
+        { key: 'goods_in', section: 'Goods In', name: (s.goodsIn && s.goodsIn.name) || 'Unable to yet', count: (s.goodsIn && s.goodsIn.count) || 0 },
+        { key: 'ia', section: 'IA', name: (s.ia && s.ia.name) || 'Unable to yet', count: (s.ia && s.ia.count) || 0 },
+        { key: 'erasure', section: 'Erasure', name: (s.erasure && s.erasure.name) || '—', count: (s.erasure && s.erasure.count) || 0 },
+        { key: 'qa', section: 'QA', name: (s.qa && s.qa.name) || '—', count: (s.qa && s.qa.count) || 0 },
+        { key: 'sorting', section: 'Sorting', name: (s.sorting && s.sorting.name) || '—', count: (s.sorting && s.sorting.count) || 0 },
       ];
 
       const bestLive = rows
         .filter((r) => r.name !== 'Unable to yet' && r.name !== '—')
         .sort((a, b) => (b.count || 0) - (a.count || 0))[0] || rows[0];
+      const bestMeta = getSectionMeta(bestLive.key);
+      const bestMonogram = getMonogram(bestLive.name);
+      const totalLiveActions = Math.max(rows.reduce((sum, row) => sum + asNumber(row.count), 0), 1);
+      const sharePct = clamp(Math.round((asNumber(bestLive.count) / totalLiveActions) * 100), 0, 100);
+      const runnerUp = rows
+        .filter((row) => row.key !== bestLive.key)
+        .sort((a, b) => (b.count || 0) - (a.count || 0))[0];
+      const leadGap = Math.max(0, asNumber(bestLive.count) - asNumber(runnerUp && runnerUp.count));
 
       spotlightEl.innerHTML = `
-        <div class="spotlight-main spotlight-main-compact">
-          <div class="spotlight-badge">Top Efficiency Right Now</div>
-          <div class="spotlight-name">${bestLive.name}</div>
-          <div class="spotlight-owner">${bestLive.section}</div>
-          <div class="spotlight-score">${bestLive.count} actions today</div>
+        <div class="spotlight-main spotlight-main-compact spotlight-main--${bestMeta.accentClass}">
+          <div class="spotlight-main-top">
+            <div class="spotlight-badge">Spotlight Performer</div>
+            <div class="spotlight-section-badge">${bestMeta.shortLabel}</div>
+          </div>
+          <div class="spotlight-hero">
+            ${renderPixelAvatar(bestMonogram, 'overall-avatar--hero')}
+            <div class="spotlight-copy">
+              <div class="spotlight-name">${bestLive.name}</div>
+              <div class="spotlight-owner">${bestLive.section}</div>
+              <div class="spotlight-score">${bestLive.count} actions today</div>
+            </div>
+            <div class="spotlight-mini-metric">
+              <strong>${sharePct}%</strong>
+              <span>share</span>
+              <small>+${leadGap} gap</small>
+            </div>
+          </div>
         </div>
         <div class="spotlight-grid">
           ${rows.map((row) => `
-            <div class="spotlight-chip">
+            <div class="spotlight-chip spotlight-chip--${getSectionMeta(row.key).accentClass}">
+              ${renderPixelAvatar(row.name, 'overall-avatar--chip')}
               <span class="chip-section">${row.section}</span>
               <strong>${row.name}</strong>
               <span class="chip-score">${row.count}</span>
@@ -367,6 +469,7 @@
     function renderRaceTrack(sections) {
       const raceEl = document.getElementById('overallRaceTrack');
       if (!raceEl) return;
+      const MIN_VISIBLE_PROGRESS = 3;
 
       function getErasureTodayFromDashboard() {
         const el = document.getElementById('totalTodayValue');
@@ -406,20 +509,40 @@
       const lanes = sections
         .map((s) => ({
           ...s,
+          meta: getSectionMeta(s.key),
           done: getRaceTrackDone(s),
           progress: clamp(Math.round((getRaceTrackDone(s) / maxDone) * 100), 0, 100),
         }))
         .sort((a, b) => b.progress - a.progress);
-      raceEl.innerHTML = lanes.map((lane) => `
-        <div class="overall-race-lane">
-          <span class="lane-name">${lane.name}</span>
-          <div class="lane-track">
-            <div class="lane-fill" style="width:${lane.progress}%"></div>
-            <img class="lane-car" src="assets/F1Car.png" alt="" style="left:calc(${lane.progress}% - 10px)" />
-          </div>
-          <span class="lane-value">${lane.done}</span>
+      const totalDone = lanes.reduce((sum, lane) => sum + lane.done, 0);
+      raceEl.innerHTML = `
+        <div class="overall-race-meta">
+          <span>Completed actions today by section</span>
+          <strong>${totalDone}</strong>
         </div>
-      `).join('');
+        <div class="overall-race-lanes">
+          ${lanes.map((lane, index) => {
+            const visualProgress = lane.done > 0
+              ? Math.max(lane.progress, MIN_VISIBLE_PROGRESS)
+              : 0;
+            const carLeftPct = clamp(visualProgress, 2, 99);
+            return `
+              <div class="overall-race-lane overall-race-lane--${lane.meta.accentClass} ${index === 0 ? 'is-leading' : ''}">
+                <div class="lane-heading">
+                  <span class="lane-rank">${index + 1}</span>
+                  <span class="lane-name">${lane.name}</span>
+                </div>
+                <div class="lane-track">
+                  <span class="lane-fill" style="right:calc(100% - ${carLeftPct}%);"></span>
+                  <span class="lane-progress-dot" style="left:calc(${carLeftPct}% - 4px)"></span>
+                  <img class="lane-car" src="assets/F1Car.png" alt="" style="left:calc(${carLeftPct}% - 10px)" />
+                </div>
+                <span class="lane-value">${lane.done}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
     }
 
     function renderTrends(sections) {
@@ -427,8 +550,9 @@
       if (!trendGrid) return;
       trendGrid.innerHTML = sections.map((section) => {
         const snap = getCompletionSnapshot(section);
+        const meta = getSectionMeta(section.key);
         return `
-          <article class="overall-trend-card">
+          <article class="overall-trend-card overall-trend-card--${meta.accentClass}">
             <div class="overall-trend-head">
               <span>${section.name}</span>
               <strong>${snap.done}/${snap.total}</strong>
@@ -439,8 +563,8 @@
               </div>
             </div>
             <div class="overall-trend-meta">
-              <span>${snap.pct}% completed</span>
-              <span>Outstanding ${snap.outstanding}</span>
+              <span>Done Today ${snap.done}</span>
+              <span>Needs Doing ${snap.outstanding}</span>
             </div>
           </article>
         `;
@@ -528,6 +652,8 @@
         subMetrics: normalizedSubMetrics,
         isLive: section.isLive === true,
         source: section.source || 'mock',
+        queryMs: Number.isFinite(Number(section.queryMs)) ? Number(section.queryMs) : null,
+        sourceReason: section.sourceReason || '',
       };
     }
 
@@ -558,20 +684,14 @@
         }
 
         renderSections(valid);
-        renderSummary(valid);
-        renderMissionBoard(valid);
         renderSpotlight(spotlightData);
         renderTrends(valid);
         renderRaceTrack(valid);
-        renderChallenge(valid);
       } catch (_err) {
         renderSections(mockSections);
-        renderSummary(mockSections);
-        renderMissionBoard(mockSections);
         renderSpotlight(getFallbackSpotlight());
         renderTrends(mockSections);
         renderRaceTrack(mockSections);
-        renderChallenge(mockSections);
       } finally {
         isLoading = false;
       }

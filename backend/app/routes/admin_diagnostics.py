@@ -265,6 +265,24 @@ def create_admin_diagnostics_router(
             if mariadb_conn:
                 mcur = mariadb_conn.cursor()
                 try:
+                    # Schema-safe serial mapping for ITAD_asset_info_blancco.
+                    blancco_serial_col = None
+                    try:
+                        mcur.execute(
+                            """
+                            SELECT LOWER(COLUMN_NAME)
+                            FROM information_schema.columns
+                            WHERE table_schema = DATABASE() AND table_name = 'ITAD_asset_info_blancco'
+                            """
+                        )
+                        blancco_cols = {str(r[0]).lower() for r in (mcur.fetchall() or []) if r and r[0]}
+                        for candidate in ("serial", "serialnumber", "system_serial"):
+                            if candidate in blancco_cols:
+                                blancco_serial_col = candidate
+                                break
+                    except Exception:
+                        blancco_serial_col = None
+
                     vals = list(key_norms.values())
                     placeholders = ",".join(["%s"] * len(vals))
                     q_asset_primary = (
@@ -288,41 +306,24 @@ def create_admin_diagnostics_router(
                             key_to_stockid[_norm(serial)] = sid
 
                     unresolved_vals = [v for v in vals if _norm(v) and _norm(v) not in key_to_stockid]
-                    if unresolved_vals:
+                    if unresolved_vals and blancco_serial_col:
                         ph_un = ",".join(["%s"] * len(unresolved_vals))
-                        q_blancco_variants = [
-                            (
-                                f"SELECT stockid, serial FROM ITAD_asset_info_blancco "
-                                f"WHERE stockid IN ({ph_un}) OR serial IN ({ph_un})",
-                                tuple(unresolved_vals) + tuple(unresolved_vals),
-                            ),
-                            (
-                                f"SELECT stockid, system_serial FROM ITAD_asset_info_blancco "
-                                f"WHERE stockid IN ({ph_un}) OR system_serial IN ({ph_un})",
-                                tuple(unresolved_vals) + tuple(unresolved_vals),
-                            ),
-                            (
-                                f"SELECT stockid, serialnumber FROM ITAD_asset_info_blancco "
-                                f"WHERE stockid IN ({ph_un}) OR serialnumber IN ({ph_un})",
-                                tuple(unresolved_vals) + tuple(unresolved_vals),
-                            ),
-                        ]
-                        for q_bl, p_bl in q_blancco_variants:
-                            try:
-                                mcur.execute(q_bl, p_bl)
-                                bl_rows = mcur.fetchall() or []
-                                if not bl_rows:
-                                    continue
-                                for br in bl_rows:
-                                    bsid = str(br[0]) if br and br[0] is not None else None
-                                    bserial = str(br[1]) if br and len(br) > 1 and br[1] is not None else None
-                                    if bsid:
-                                        key_to_stockid[_norm(bsid)] = bsid
-                                    if bserial and bsid:
-                                        key_to_stockid[_norm(bserial)] = bsid
-                                break
-                            except Exception:
-                                continue
+                        q_bl = (
+                            f"SELECT stockid, `{blancco_serial_col}` FROM ITAD_asset_info_blancco "
+                            f"WHERE stockid IN ({ph_un}) OR `{blancco_serial_col}` IN ({ph_un})"
+                        )
+                        try:
+                            mcur.execute(q_bl, tuple(unresolved_vals) + tuple(unresolved_vals))
+                            bl_rows = mcur.fetchall() or []
+                            for br in bl_rows:
+                                bsid = str(br[0]) if br and br[0] is not None else None
+                                bserial = str(br[1]) if br and len(br) > 1 and br[1] is not None else None
+                                if bsid:
+                                    key_to_stockid[_norm(bsid)] = bsid
+                                if bserial and bsid:
+                                    key_to_stockid[_norm(bserial)] = bsid
+                        except Exception:
+                            pass
 
                     sids = list({v for v in key_to_stockid.values() if v})
                     if sids:
@@ -506,6 +507,552 @@ def create_admin_diagnostics_router(
             "summary": summary,
             "samples": samples,
         }
+
+    @router.get("/admin/erasure-reconciliation")
+    def admin_erasure_reconciliation(request: Request, date: str | None = None, limit: int = 50):
+        """Admin-only diagnostic: reconcile top total vs engineer/category cards for a specific day."""
+        require_admin(request)
+        sample_limit = max(10, min(int(limit or 50), 200))
+        target_date = (str(date).strip() if date else "") or datetime.now(UTC).date().isoformat()
+
+        visible_types = ("laptops_desktops", "servers", "macs", "mobiles")
+        type_placeholders = ",".join(["?"] * len(visible_types))
+
+        import sqlite3
+
+        conn = sqlite3.connect(db_module.DB_PATH)
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT COUNT(1) FROM erasures WHERE date = ?", (target_date,))
+            day_total_all_events = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute("SELECT COUNT(1) FROM erasures WHERE date = ? AND event = 'success'", (target_date,))
+            day_success_total = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute("SELECT COUNT(1) FROM erasures WHERE date = ? AND event = 'failure'", (target_date,))
+            day_failure_total = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                """
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND TRIM(COALESCE(initials, '')) <> ''
+                """,
+                (target_date,),
+            )
+            day_success_with_initials = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                """
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND TRIM(COALESCE(initials, '')) = ''
+                """,
+                (target_date,),
+            )
+            day_success_missing_initials = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                f"""
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND LOWER(TRIM(COALESCE(device_type, ''))) IN ({type_placeholders})
+                """,
+                (target_date, *visible_types),
+            )
+            day_success_visible_types = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                f"""
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND LOWER(TRIM(COALESCE(device_type, ''))) IN ({type_placeholders})
+                  AND TRIM(COALESCE(initials, '')) <> ''
+                """,
+                (target_date, *visible_types),
+            )
+            day_success_visible_with_initials = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                f"""
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND LOWER(TRIM(COALESCE(device_type, ''))) NOT IN ({type_placeholders})
+                """,
+                (target_date, *visible_types),
+            )
+            day_success_outside_visible_types = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                """
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND CAST(SUBSTR(COALESCE(ts, ''), 12, 2) AS INTEGER) BETWEEN 8 AND 15
+                """,
+                (target_date,),
+            )
+            day_success_workday_8_to_16 = int((cur.fetchone() or [0])[0] or 0)
+            day_success_outside_workday = max(0, day_success_total - day_success_workday_8_to_16)
+
+            cur.execute(
+                f"""
+                SELECT COALESCE(NULLIF(LOWER(TRIM(device_type)), ''), '(blank)') AS device_type_key, COUNT(1) AS total
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND LOWER(TRIM(COALESCE(device_type, ''))) NOT IN ({type_placeholders})
+                GROUP BY device_type_key
+                ORDER BY total DESC
+                LIMIT ?
+                """,
+                (target_date, *visible_types, sample_limit),
+            )
+            outside_type_breakdown = [
+                {"deviceType": row[0], "count": int(row[1] or 0)}
+                for row in (cur.fetchall() or [])
+            ]
+
+            cur.execute(
+                """
+                SELECT ts, job_id, initials, device_type
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND TRIM(COALESCE(initials, '')) = ''
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (target_date, sample_limit),
+            )
+            missing_initials_samples = [
+                {
+                    "ts": row[0],
+                    "job_id": row[1],
+                    "initials": row[2],
+                    "device_type": row[3],
+                }
+                for row in (cur.fetchall() or [])
+            ]
+
+            cur.execute(
+                f"""
+                SELECT ts, job_id, initials, device_type
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND LOWER(TRIM(COALESCE(device_type, ''))) NOT IN ({type_placeholders})
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (target_date, *visible_types, sample_limit),
+            )
+            outside_visible_type_samples = [
+                {
+                    "ts": row[0],
+                    "job_id": row[1],
+                    "initials": row[2],
+                    "device_type": row[3],
+                }
+                for row in (cur.fetchall() or [])
+            ]
+
+            cur.execute(
+                """
+                SELECT
+                    serial_norm,
+                    COUNT(1) AS failure_count
+                FROM (
+                    SELECT UPPER(
+                        REPLACE(REPLACE(REPLACE(TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))), '-', ''), ' ', ''), ':', '')
+                    ) AS serial_norm
+                    FROM erasures
+                    WHERE date = ?
+                      AND event = 'failure'
+                      AND TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))) <> ''
+                ) f
+                WHERE serial_norm <> ''
+                GROUP BY serial_norm
+                HAVING failure_count > 1
+                ORDER BY failure_count DESC, serial_norm
+                LIMIT ?
+                """,
+                (target_date, sample_limit),
+            )
+            failed_duplicate_serials = [
+                {"serial": row[0], "failureCount": int(row[1] or 0)}
+                for row in (cur.fetchall() or [])
+            ]
+
+            cur.execute(
+                """
+                SELECT
+                    f.serial_norm,
+                    f.failure_count,
+                    COALESCE(s.success_count, 0) AS success_count
+                FROM (
+                    SELECT
+                        UPPER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))), '-', ''), ' ', ''), ':', '')) AS serial_norm,
+                        COUNT(1) AS failure_count
+                    FROM erasures
+                    WHERE date = ?
+                      AND event = 'failure'
+                      AND TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))) <> ''
+                    GROUP BY serial_norm
+                ) f
+                INNER JOIN (
+                    SELECT
+                        UPPER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))), '-', ''), ' ', ''), ':', '')) AS serial_norm,
+                        COUNT(1) AS success_count
+                    FROM erasures
+                    WHERE date = ?
+                      AND event = 'success'
+                      AND TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))) <> ''
+                    GROUP BY serial_norm
+                ) s ON s.serial_norm = f.serial_norm
+                WHERE f.serial_norm <> ''
+                ORDER BY f.failure_count DESC, s.success_count DESC, f.serial_norm
+                LIMIT ?
+                """,
+                (target_date, target_date, sample_limit),
+            )
+            failure_then_success_serials = [
+                {
+                    "serial": row[0],
+                    "failureCount": int(row[1] or 0),
+                    "successCount": int(row[2] or 0),
+                }
+                for row in (cur.fetchall() or [])
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+        reconciliation = {
+            "totalMinusSuccess": max(0, day_total_all_events - day_success_total),
+            "successMinusVisibleWithInitials": max(0, day_success_total - day_success_visible_with_initials),
+            "missingInitialsGap": day_success_missing_initials,
+            "outsideVisibleTypeGap": day_success_outside_visible_types,
+            "overlapGap": max(
+                0,
+                day_success_missing_initials + day_success_outside_visible_types - (day_success_total - day_success_visible_with_initials),
+            ),
+        }
+
+        return {
+            "summary": {
+                "date": target_date,
+                "visibleTypes": list(visible_types),
+                "dayTotalAllEvents": day_total_all_events,
+                "daySuccessTotal": day_success_total,
+                "dayFailureTotal": day_failure_total,
+                "daySuccessWithInitials": day_success_with_initials,
+                "daySuccessMissingInitials": day_success_missing_initials,
+                "daySuccessVisibleTypes": day_success_visible_types,
+                "daySuccessVisibleWithInitials": day_success_visible_with_initials,
+                "daySuccessOutsideVisibleTypes": day_success_outside_visible_types,
+                "daySuccessWorkday8To16": day_success_workday_8_to_16,
+                "daySuccessOutsideWorkday": day_success_outside_workday,
+                "failedDuplicateSerialCount": len(failed_duplicate_serials),
+                "failureThenSuccessSerialCount": len(failure_then_success_serials),
+                "reconciliation": reconciliation,
+                "generatedAt": datetime.now(UTC).isoformat(),
+            },
+            "outsideTypeBreakdown": outside_type_breakdown,
+            "missingInitialsSamples": missing_initials_samples,
+            "outsideVisibleTypeSamples": outside_visible_type_samples,
+            "failedDuplicateSerials": failed_duplicate_serials,
+            "failureThenSuccessSerials": failure_then_success_serials,
+        }
+
+    @router.get("/admin/goods-in-evidence")
+    def admin_goods_in_evidence(request: Request, days: int = 90, limit: int = 50):
+        """Admin-only diagnostic: prove Goods In queue and received-today matching logic."""
+        require_admin(request)
+        days = max(1, min(int(days or 90), 180))
+        limit = max(10, min(int(limit or 50), 200))
+
+        conn = None
+        try:
+            conn = get_mariadb_connection()
+            if not conn:
+                return JSONResponse(status_code=503, content={"status": "fail", "detail": "MariaDB connection failed"})
+
+            cur = conn.cursor()
+            try:
+                grn_table = "ITAD_GRN"
+                orders_table = "Automation_AllOrders"
+
+                cur.execute(
+                    """
+                    SELECT LOWER(column_name)
+                    FROM information_schema.columns
+                    WHERE table_schema = DATABASE()
+                      AND table_name = %s
+                    """,
+                    (grn_table,),
+                )
+                grn_cols = {str(r[0]).lower() for r in (cur.fetchall() or []) if r and r[0]}
+
+                cur.execute(
+                    """
+                    SELECT LOWER(column_name)
+                    FROM information_schema.columns
+                    WHERE table_schema = DATABASE()
+                      AND table_name = %s
+                    """,
+                    (orders_table,),
+                )
+                orders_cols = {str(r[0]).lower() for r in (cur.fetchall() or []) if r and r[0]}
+
+                if "order_number" not in grn_cols or "order_number" not in orders_cols:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Goods In evidence requires order_number in both ITAD_GRN and Automation_AllOrders",
+                    )
+
+                status_col = "receipt_status" if "receipt_status" in orders_cols else None
+                if not status_col:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Goods In evidence requires receipt_status in Automation_AllOrders",
+                    )
+
+                grn_date_col = next((c for c in ("date_received", "date_added", "added_date") if c in grn_cols), None)
+                orders_date_col = next((c for c in ("added_date", "date_added", "date_received") if c in orders_cols), None)
+
+                lookback_clause = ""
+                if grn_date_col:
+                    lookback_clause = f" AND DATE(g.{grn_date_col}) >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)"
+
+                q_total_grn = (
+                    "SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, ''))) "
+                    f"FROM {grn_table} g "
+                    "WHERE TRIM(COALESCE(g.order_number, '')) <> ''"
+                    f"{lookback_clause}"
+                )
+                cur.execute(q_total_grn)
+                row = cur.fetchone()
+                total_grn_orders = int(row[0]) if row and row[0] is not None else 0
+
+                q_unmatched = (
+                    "SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, ''))) "
+                    f"FROM {grn_table} g "
+                    "LEFT JOIN ("
+                    "    SELECT DISTINCT TRIM(COALESCE(order_number, '')) AS order_number "
+                    f"    FROM {orders_table} "
+                    "    WHERE TRIM(COALESCE(order_number, '')) <> '' "
+                    f"      AND UPPER(TRIM(COALESCE({status_col}, ''))) IN ('RECIEVED', 'RECEIVED')"
+                    ") r ON r.order_number = TRIM(COALESCE(g.order_number, '')) "
+                    "WHERE TRIM(COALESCE(g.order_number, '')) <> ''"
+                    f"{lookback_clause} "
+                    "AND r.order_number IS NULL"
+                )
+                cur.execute(q_unmatched)
+                row = cur.fetchone()
+                queue_unmatched = int(row[0]) if row and row[0] is not None else 0
+
+                received_today_matched = 0
+                if orders_date_col:
+                    q_received_today = (
+                        "SELECT COUNT(DISTINCT TRIM(COALESCE(g.order_number, ''))) "
+                        f"FROM {grn_table} g "
+                        "INNER JOIN ("
+                        "    SELECT DISTINCT TRIM(COALESCE(order_number, '')) AS order_number "
+                        f"    FROM {orders_table} "
+                        "    WHERE TRIM(COALESCE(order_number, '')) <> '' "
+                        f"      AND UPPER(TRIM(COALESCE({status_col}, ''))) IN ('RECIEVED', 'RECEIVED') "
+                        f"      AND DATE({orders_date_col}) = CURDATE()"
+                        ") rt ON rt.order_number = TRIM(COALESCE(g.order_number, '')) "
+                        "WHERE TRIM(COALESCE(g.order_number, '')) <> ''"
+                        f"{lookback_clause}"
+                    )
+                    cur.execute(q_received_today)
+                    row = cur.fetchone()
+                    received_today_matched = int(row[0]) if row and row[0] is not None else 0
+
+                grn_date_select = f"MAX(g.{grn_date_col})" if grn_date_col else "NULL"
+                order_status_col = "order_status" if "order_status" in orders_cols else None
+                date_added_col = "date_added" if "date_added" in orders_cols else None
+                date_required_col = "date_required" if "date_required" in orders_cols else None
+                ship_date_col = "ship_date" if "ship_date" in orders_cols else None
+                added_date_col = "added_date" if "added_date" in orders_cols else None
+
+                sort_candidates = [c for c in (added_date_col, date_added_col, ship_date_col, date_required_col) if c]
+                sort_expr = (", ".join([f"COALESCE(o.{c}, '')" for c in sort_candidates]) if sort_candidates else "TRIM(COALESCE(o.order_number, ''))")
+
+                def _latest_field_expr(column_name: str | None, alias: str) -> str:
+                    if not column_name:
+                        return f"NULL AS {alias}"
+                    return (
+                        "SUBSTRING_INDEX("
+                        f"GROUP_CONCAT(COALESCE(o.{column_name}, '') ORDER BY {sort_expr} DESC SEPARATOR '||'), "
+                        "'||', "
+                        "1"
+                        f") AS {alias}"
+                    )
+
+                q_automation_latest = (
+                    "SELECT "
+                    "    TRIM(COALESCE(o.order_number, '')) AS order_number, "
+                    f"    {_latest_field_expr(status_col, 'receipt_status')}, "
+                    f"    {_latest_field_expr(order_status_col, 'order_status')}, "
+                    f"    {_latest_field_expr(date_added_col, 'date_added')}, "
+                    f"    {_latest_field_expr(date_required_col, 'date_required')}, "
+                    f"    {_latest_field_expr(ship_date_col, 'ship_date')}, "
+                    f"    {_latest_field_expr(added_date_col, 'added_date')} "
+                    f"FROM {orders_table} o "
+                    "WHERE TRIM(COALESCE(o.order_number, '')) <> '' "
+                    "GROUP BY TRIM(COALESCE(o.order_number, ''))"
+                )
+
+                q_unmatched_samples = (
+                    "SELECT "
+                    "    TRIM(COALESCE(g.order_number, '')) AS grn_order_number, "
+                    "    ao.order_number AS automation_order_number, "
+                    f"    {grn_date_select} AS last_grn_date, "
+                    "    ao.receipt_status, "
+                    "    ao.order_status, "
+                    "    ao.date_added, "
+                    "    ao.date_required, "
+                    "    ao.ship_date, "
+                    "    ao.added_date "
+                    f"FROM {grn_table} g "
+                    "LEFT JOIN ("
+                    "    SELECT DISTINCT TRIM(COALESCE(order_number, '')) AS order_number "
+                    f"    FROM {orders_table} "
+                    "    WHERE TRIM(COALESCE(order_number, '')) <> '' "
+                    f"      AND UPPER(TRIM(COALESCE({status_col}, ''))) IN ('RECIEVED', 'RECEIVED')"
+                    ") r ON r.order_number = TRIM(COALESCE(g.order_number, '')) "
+                    f"LEFT JOIN ({q_automation_latest}) ao ON ao.order_number = TRIM(COALESCE(g.order_number, '')) "
+                    "WHERE TRIM(COALESCE(g.order_number, '')) <> '' "
+                    f"{lookback_clause} "
+                    "AND r.order_number IS NULL "
+                    "GROUP BY TRIM(COALESCE(g.order_number, '')) "
+                    "ORDER BY last_grn_date DESC "
+                    "LIMIT %s"
+                )
+                cur.execute(q_unmatched_samples, (limit,))
+                unmatched_rows = cur.fetchall() or []
+
+                received_today_rows = []
+                if orders_date_col:
+                    today_clause = f"AND DATE(o.{orders_date_col}) = CURDATE()"
+                    received_date_select = f"MAX(o.{orders_date_col})"
+                    q_received_today_samples = (
+                        "SELECT "
+                        "    TRIM(COALESCE(g.order_number, '')) AS grn_order_number, "
+                        "    ao.order_number AS automation_order_number, "
+                        f"    {grn_date_select} AS last_grn_date, "
+                        f"    {received_date_select} AS last_received_date, "
+                        "    ao.receipt_status, "
+                        "    ao.order_status, "
+                        "    ao.date_added, "
+                        "    ao.date_required, "
+                        "    ao.ship_date, "
+                        "    ao.added_date "
+                        f"FROM {grn_table} g "
+                        f"INNER JOIN {orders_table} o "
+                        "    ON TRIM(COALESCE(o.order_number, '')) = TRIM(COALESCE(g.order_number, '')) "
+                        f"LEFT JOIN ({q_automation_latest}) ao ON ao.order_number = TRIM(COALESCE(g.order_number, '')) "
+                        "WHERE TRIM(COALESCE(g.order_number, '')) <> '' "
+                        "AND TRIM(COALESCE(o.order_number, '')) <> '' "
+                        f"AND UPPER(TRIM(COALESCE(o.{status_col}, ''))) IN ('RECIEVED', 'RECEIVED') "
+                        f"{today_clause} "
+                        f"{lookback_clause} "
+                        "GROUP BY TRIM(COALESCE(g.order_number, '')) "
+                        "ORDER BY last_received_date DESC "
+                        "LIMIT %s"
+                    )
+                    cur.execute(q_received_today_samples, (limit,))
+                    received_today_rows = cur.fetchall() or []
+            finally:
+                cur.close()
+                conn.close()
+
+            def _to_iso(value):
+                if value is None:
+                    return None
+                if isinstance(value, datetime):
+                    dt = value if value.tzinfo else value.replace(tzinfo=UTC)
+                    return dt.isoformat()
+                return str(value)
+
+            unmatched_samples = []
+            for row in unmatched_rows:
+                unmatched_samples.append(
+                    {
+                        "grnOrderNumber": str(row[0]) if row and row[0] is not None else "",
+                        "automationOrderNumber": str(row[1]) if row and len(row) > 1 and row[1] is not None else None,
+                        "lastGrnDate": _to_iso(row[2] if len(row) > 2 else None),
+                        "receiptStatus": str(row[3]) if row and len(row) > 3 and row[3] is not None else None,
+                        "orderStatus": str(row[4]) if row and len(row) > 4 and row[4] is not None else None,
+                        "dateAdded": _to_iso(row[5] if len(row) > 5 else None),
+                        "dateRequired": _to_iso(row[6] if len(row) > 6 else None),
+                        "shipDate": _to_iso(row[7] if len(row) > 7 else None),
+                        "addedDate": _to_iso(row[8] if len(row) > 8 else None),
+                        "matchState": "awaiting_receipt_match",
+                    }
+                )
+
+            received_today_samples = []
+            for row in received_today_rows:
+                received_today_samples.append(
+                    {
+                        "grnOrderNumber": str(row[0]) if row and row[0] is not None else "",
+                        "automationOrderNumber": str(row[1]) if row and len(row) > 1 and row[1] is not None else None,
+                        "lastGrnDate": _to_iso(row[2] if len(row) > 2 else None),
+                        "lastReceivedDate": _to_iso(row[3] if len(row) > 3 else None),
+                        "receiptStatus": str(row[4]) if row and len(row) > 4 and row[4] is not None else None,
+                        "orderStatus": str(row[5]) if row and len(row) > 5 and row[5] is not None else None,
+                        "dateAdded": _to_iso(row[6] if len(row) > 6 else None),
+                        "dateRequired": _to_iso(row[7] if len(row) > 7 else None),
+                        "shipDate": _to_iso(row[8] if len(row) > 8 else None),
+                        "addedDate": _to_iso(row[9] if len(row) > 9 else None),
+                        "matchState": "matched_received_today",
+                    }
+                )
+
+            matched_orders = max(0, total_grn_orders - queue_unmatched)
+
+            return {
+                "summary": {
+                    "windowDays": days,
+                    "totalBookedOrders": total_grn_orders,
+                    "awaitingReceiptMatch": queue_unmatched,
+                    "matchedReceivedAnyDay": matched_orders,
+                    "bookedAndReceivedToday": received_today_matched,
+                    "source": "mariadb:ITAD_GRN+Automation_AllOrders",
+                    "statusField": status_col,
+                    "grnDateField": grn_date_col,
+                    "ordersDateField": orders_date_col,
+                    "sampleAwaitingCount": len(unmatched_samples),
+                    "sampleReceivedTodayCount": len(received_today_samples),
+                    "generatedAt": datetime.now(UTC).isoformat(),
+                },
+                "awaitingSamples": unmatched_samples,
+                "receivedTodaySamples": received_today_samples,
+            }
+        except HTTPException:
+            raise
+        except Exception as exc:
+            try:
+                if conn:
+                    conn.close()
+            except Exception:
+                pass
+            raise HTTPException(status_code=500, detail=str(exc))
 
     @router.get("/admin/sorting-evidence")
     def admin_sorting_evidence(request: Request, days: int = 30, limit: int = 50):
