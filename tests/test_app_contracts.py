@@ -65,6 +65,7 @@ def test_admin_page_collapsible_sections_lazy_init_smoke(client):
         "section-connected-devices",
         "section-goods-in-evidence",
         "section-erasure-evidence",
+        "section-erasure-reconciliation",
         "section-sorting-evidence",
         "section-dashboard-activity",
     ]:
@@ -703,6 +704,67 @@ def test_admin_sorting_evidence_requires_admin(client):
 def test_admin_goods_in_evidence_requires_admin(client):
     r = client.get("/admin/goods-in-evidence")
     assert r.status_code == 401
+
+
+def test_admin_erasure_reconciliation_requires_admin(client):
+    r = client.get("/admin/erasure-reconciliation")
+    assert r.status_code == 401
+
+
+def test_admin_erasure_reconciliation_contract_shape_and_counts(client, app_module):
+    target_date = "2026-02-03"
+    with app_module.db.sqlite_transaction() as (_, cur):
+        cur.execute("DELETE FROM erasures")
+        rows = [
+            ("2026-02-03T09:00:00", target_date, "2026-02", "success", "laptops_desktops", "AA", "job-1", "S1", None),
+            ("2026-02-03T10:00:00", target_date, "2026-02", "success", "servers", "", "job-2", "S2", None),
+            ("2026-02-03T11:00:00", target_date, "2026-02", "success", "loose_drives", "BB", "job-3", "S3", None),
+            ("2026-02-03T17:30:00", target_date, "2026-02", "success", "macs", "", "job-4", "S4", None),
+            ("2026-02-03T09:10:00", target_date, "2026-02", "failure", "laptops_desktops", "AA", "job-5", "DUP1", None),
+            ("2026-02-03T09:11:00", target_date, "2026-02", "failure", "laptops_desktops", "AA", "job-6", "DUP1", None),
+            ("2026-02-03T09:12:00", target_date, "2026-02", "success", "laptops_desktops", "AA", "job-7", "DUP1", None),
+        ]
+        cur.executemany(
+            """
+            INSERT INTO erasures (ts, date, month, event, device_type, initials, job_id, system_serial, disk_serial)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+
+    r = client.get(
+        f"/admin/erasure-reconciliation?date={target_date}&limit=50",
+        headers={"Authorization": "Bearer test-admin-pass"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+
+    assert "summary" in body
+    assert "outsideTypeBreakdown" in body
+    assert "missingInitialsSamples" in body
+    assert "outsideVisibleTypeSamples" in body
+    assert "failedDuplicateSerials" in body
+    assert "failureThenSuccessSerials" in body
+
+    summary = body["summary"]
+    assert summary["date"] == target_date
+    assert summary["dayTotalAllEvents"] == 7
+    assert summary["daySuccessTotal"] == 5
+    assert summary["dayFailureTotal"] == 2
+    assert summary["daySuccessWithInitials"] == 3
+    assert summary["daySuccessMissingInitials"] == 2
+    assert summary["daySuccessVisibleTypes"] == 4
+    assert summary["daySuccessVisibleWithInitials"] == 2
+    assert summary["daySuccessOutsideVisibleTypes"] == 1
+    assert summary["daySuccessWorkday8To16"] == 4
+    assert summary["daySuccessOutsideWorkday"] == 1
+    assert summary["failedDuplicateSerialCount"] == 1
+    assert summary["failureThenSuccessSerialCount"] == 1
+
+    recon = summary.get("reconciliation") or {}
+    assert recon["successMinusVisibleWithInitials"] == 3
+    assert recon["missingInitialsGap"] == 2
+    assert recon["outsideVisibleTypeGap"] == 1
 
 
 def test_admin_goods_in_evidence_handles_db_unavailable(client, app_module, monkeypatch):

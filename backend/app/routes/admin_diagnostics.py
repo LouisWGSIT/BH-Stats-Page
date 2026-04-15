@@ -508,6 +508,274 @@ def create_admin_diagnostics_router(
             "samples": samples,
         }
 
+    @router.get("/admin/erasure-reconciliation")
+    def admin_erasure_reconciliation(request: Request, date: str | None = None, limit: int = 50):
+        """Admin-only diagnostic: reconcile top total vs engineer/category cards for a specific day."""
+        require_admin(request)
+        sample_limit = max(10, min(int(limit or 50), 200))
+        target_date = (str(date).strip() if date else "") or datetime.now(UTC).date().isoformat()
+
+        visible_types = ("laptops_desktops", "servers", "macs", "mobiles")
+        type_placeholders = ",".join(["?"] * len(visible_types))
+
+        import sqlite3
+
+        conn = sqlite3.connect(db_module.DB_PATH)
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT COUNT(1) FROM erasures WHERE date = ?", (target_date,))
+            day_total_all_events = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute("SELECT COUNT(1) FROM erasures WHERE date = ? AND event = 'success'", (target_date,))
+            day_success_total = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute("SELECT COUNT(1) FROM erasures WHERE date = ? AND event = 'failure'", (target_date,))
+            day_failure_total = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                """
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND TRIM(COALESCE(initials, '')) <> ''
+                """,
+                (target_date,),
+            )
+            day_success_with_initials = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                """
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND TRIM(COALESCE(initials, '')) = ''
+                """,
+                (target_date,),
+            )
+            day_success_missing_initials = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                f"""
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND LOWER(TRIM(COALESCE(device_type, ''))) IN ({type_placeholders})
+                """,
+                (target_date, *visible_types),
+            )
+            day_success_visible_types = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                f"""
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND LOWER(TRIM(COALESCE(device_type, ''))) IN ({type_placeholders})
+                  AND TRIM(COALESCE(initials, '')) <> ''
+                """,
+                (target_date, *visible_types),
+            )
+            day_success_visible_with_initials = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                f"""
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND LOWER(TRIM(COALESCE(device_type, ''))) NOT IN ({type_placeholders})
+                """,
+                (target_date, *visible_types),
+            )
+            day_success_outside_visible_types = int((cur.fetchone() or [0])[0] or 0)
+
+            cur.execute(
+                """
+                SELECT COUNT(1)
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND CAST(SUBSTR(COALESCE(ts, ''), 12, 2) AS INTEGER) BETWEEN 8 AND 15
+                """,
+                (target_date,),
+            )
+            day_success_workday_8_to_16 = int((cur.fetchone() or [0])[0] or 0)
+            day_success_outside_workday = max(0, day_success_total - day_success_workday_8_to_16)
+
+            cur.execute(
+                f"""
+                SELECT COALESCE(NULLIF(LOWER(TRIM(device_type)), ''), '(blank)') AS device_type_key, COUNT(1) AS total
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND LOWER(TRIM(COALESCE(device_type, ''))) NOT IN ({type_placeholders})
+                GROUP BY device_type_key
+                ORDER BY total DESC
+                LIMIT ?
+                """,
+                (target_date, *visible_types, sample_limit),
+            )
+            outside_type_breakdown = [
+                {"deviceType": row[0], "count": int(row[1] or 0)}
+                for row in (cur.fetchall() or [])
+            ]
+
+            cur.execute(
+                """
+                SELECT ts, job_id, initials, device_type
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND TRIM(COALESCE(initials, '')) = ''
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (target_date, sample_limit),
+            )
+            missing_initials_samples = [
+                {
+                    "ts": row[0],
+                    "job_id": row[1],
+                    "initials": row[2],
+                    "device_type": row[3],
+                }
+                for row in (cur.fetchall() or [])
+            ]
+
+            cur.execute(
+                f"""
+                SELECT ts, job_id, initials, device_type
+                FROM erasures
+                WHERE date = ?
+                  AND event = 'success'
+                  AND LOWER(TRIM(COALESCE(device_type, ''))) NOT IN ({type_placeholders})
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (target_date, *visible_types, sample_limit),
+            )
+            outside_visible_type_samples = [
+                {
+                    "ts": row[0],
+                    "job_id": row[1],
+                    "initials": row[2],
+                    "device_type": row[3],
+                }
+                for row in (cur.fetchall() or [])
+            ]
+
+            cur.execute(
+                """
+                SELECT
+                    serial_norm,
+                    COUNT(1) AS failure_count
+                FROM (
+                    SELECT UPPER(
+                        REPLACE(REPLACE(REPLACE(TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))), '-', ''), ' ', ''), ':', '')
+                    ) AS serial_norm
+                    FROM erasures
+                    WHERE date = ?
+                      AND event = 'failure'
+                      AND TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))) <> ''
+                ) f
+                WHERE serial_norm <> ''
+                GROUP BY serial_norm
+                HAVING failure_count > 1
+                ORDER BY failure_count DESC, serial_norm
+                LIMIT ?
+                """,
+                (target_date, sample_limit),
+            )
+            failed_duplicate_serials = [
+                {"serial": row[0], "failureCount": int(row[1] or 0)}
+                for row in (cur.fetchall() or [])
+            ]
+
+            cur.execute(
+                """
+                SELECT
+                    f.serial_norm,
+                    f.failure_count,
+                    COALESCE(s.success_count, 0) AS success_count
+                FROM (
+                    SELECT
+                        UPPER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))), '-', ''), ' ', ''), ':', '')) AS serial_norm,
+                        COUNT(1) AS failure_count
+                    FROM erasures
+                    WHERE date = ?
+                      AND event = 'failure'
+                      AND TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))) <> ''
+                    GROUP BY serial_norm
+                ) f
+                INNER JOIN (
+                    SELECT
+                        UPPER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))), '-', ''), ' ', ''), ':', '')) AS serial_norm,
+                        COUNT(1) AS success_count
+                    FROM erasures
+                    WHERE date = ?
+                      AND event = 'success'
+                      AND TRIM(COALESCE(NULLIF(system_serial, ''), NULLIF(disk_serial, ''))) <> ''
+                    GROUP BY serial_norm
+                ) s ON s.serial_norm = f.serial_norm
+                WHERE f.serial_norm <> ''
+                ORDER BY f.failure_count DESC, s.success_count DESC, f.serial_norm
+                LIMIT ?
+                """,
+                (target_date, target_date, sample_limit),
+            )
+            failure_then_success_serials = [
+                {
+                    "serial": row[0],
+                    "failureCount": int(row[1] or 0),
+                    "successCount": int(row[2] or 0),
+                }
+                for row in (cur.fetchall() or [])
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+        reconciliation = {
+            "totalMinusSuccess": max(0, day_total_all_events - day_success_total),
+            "successMinusVisibleWithInitials": max(0, day_success_total - day_success_visible_with_initials),
+            "missingInitialsGap": day_success_missing_initials,
+            "outsideVisibleTypeGap": day_success_outside_visible_types,
+            "overlapGap": max(
+                0,
+                day_success_missing_initials + day_success_outside_visible_types - (day_success_total - day_success_visible_with_initials),
+            ),
+        }
+
+        return {
+            "summary": {
+                "date": target_date,
+                "visibleTypes": list(visible_types),
+                "dayTotalAllEvents": day_total_all_events,
+                "daySuccessTotal": day_success_total,
+                "dayFailureTotal": day_failure_total,
+                "daySuccessWithInitials": day_success_with_initials,
+                "daySuccessMissingInitials": day_success_missing_initials,
+                "daySuccessVisibleTypes": day_success_visible_types,
+                "daySuccessVisibleWithInitials": day_success_visible_with_initials,
+                "daySuccessOutsideVisibleTypes": day_success_outside_visible_types,
+                "daySuccessWorkday8To16": day_success_workday_8_to_16,
+                "daySuccessOutsideWorkday": day_success_outside_workday,
+                "failedDuplicateSerialCount": len(failed_duplicate_serials),
+                "failureThenSuccessSerialCount": len(failure_then_success_serials),
+                "reconciliation": reconciliation,
+                "generatedAt": datetime.now(UTC).isoformat(),
+            },
+            "outsideTypeBreakdown": outside_type_breakdown,
+            "missingInitialsSamples": missing_initials_samples,
+            "outsideVisibleTypeSamples": outside_visible_type_samples,
+            "failedDuplicateSerials": failed_duplicate_serials,
+            "failureThenSuccessSerials": failure_then_success_serials,
+        }
+
     @router.get("/admin/goods-in-evidence")
     def admin_goods_in_evidence(request: Request, days: int = 90, limit: int = 50):
         """Admin-only diagnostic: prove Goods In queue and received-today matching logic."""
