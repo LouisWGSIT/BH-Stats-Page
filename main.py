@@ -263,6 +263,8 @@ auth_binding_funcs = auth_bindings_module.create_auth_bindings(
     admin_password=ADMIN_PASSWORD,
     manager_password=MANAGER_PASSWORD,
     dashboard_public=DASHBOARD_PUBLIC,
+    legacy_query_auth_enabled=runtime_state.is_legacy_query_auth_enabled(),
+    legacy_basic_auth_enabled=runtime_state.is_legacy_basic_auth_enabled(),
 )
 
 load_device_tokens = auth_binding_funcs["load_device_tokens"]
@@ -322,10 +324,13 @@ db.init_db()
 BACKFILL_PROGRESS = runtime_state.initial_backfill_progress()
 
 # Enable CORS for TV access from network (more restricted now with auth middleware)
+CORS_ALLOW_ORIGINS = runtime_state.get_cors_allow_origins()
+CORS_ALLOW_CREDENTIALS = "*" not in CORS_ALLOW_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Still allow all origins, but auth middleware controls actual access
-    allow_credentials=True,
+    allow_origins=CORS_ALLOW_ORIGINS,
+    allow_credentials=CORS_ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

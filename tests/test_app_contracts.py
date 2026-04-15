@@ -239,6 +239,28 @@ def test_auth_status_external_tv_user_agent_not_auto_authenticated(client):
     assert body["access_type"] == "external"
 
 
+def test_metrics_does_not_allow_query_auth_by_default(client):
+    r = client.get(
+        "/metrics/summary?auth=test-admin-pass",
+        headers={"X-Forwarded-For": "82.163.130.162"},
+    )
+    assert r.status_code == 401
+
+
+def test_metrics_does_not_allow_basic_auth_by_default(client):
+    import base64
+
+    basic = "Basic " + base64.b64encode(b"ignored:test-admin-pass").decode("ascii")
+    r = client.get(
+        "/metrics/summary",
+        headers={
+            "X-Forwarded-For": "82.163.130.162",
+            "Authorization": basic,
+        },
+    )
+    assert r.status_code == 401
+
+
 def test_external_tv_user_agent_without_token_cannot_read_metrics(client):
     r = client.get(
         "/metrics/summary",

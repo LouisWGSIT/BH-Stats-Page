@@ -221,6 +221,8 @@ async def auth_middleware(
     touch_token_fn,
     get_client_ip_fn,
     get_client_ips_fn,
+    legacy_query_auth_enabled: bool = False,
+    legacy_basic_auth_enabled: bool = False,
 ):
     client_ip = get_client_ip_fn(request)
 
@@ -280,13 +282,14 @@ async def auth_middleware(
                 return JSONResponse(status_code=403, content={"detail": "Admin access required."})
             return await call_next(request)
 
-    query_auth = request.query_params.get("auth")
-    if query_auth and (hmac.compare_digest(query_auth, admin_password) or hmac.compare_digest(query_auth, manager_password)):
-        if hmac.compare_digest(query_auth, manager_password) and request.url.path.startswith("/admin"):
-            return JSONResponse(status_code=403, content={"detail": "Admin access required."})
-        return await call_next(request)
+    if legacy_query_auth_enabled:
+        query_auth = request.query_params.get("auth")
+        if query_auth and (hmac.compare_digest(query_auth, admin_password) or hmac.compare_digest(query_auth, manager_password)):
+            if hmac.compare_digest(query_auth, manager_password) and request.url.path.startswith("/admin"):
+                return JSONResponse(status_code=403, content={"detail": "Admin access required."})
+            return await call_next(request)
 
-    if auth_header.startswith("Basic "):
+    if legacy_basic_auth_enabled and auth_header.startswith("Basic "):
         try:
             decoded = base64.b64decode(auth_header[6:]).decode()
             if ":" in decoded:

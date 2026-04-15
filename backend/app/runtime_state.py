@@ -104,3 +104,23 @@ def get_frontend_paths() -> Tuple[str, str, str]:
         os.path.join("frontend", "js"),
         os.path.join("frontend", "css"),
     )
+
+
+def get_cors_allow_origins() -> list[str]:
+    raw = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
+    if not raw:
+        return ["*"]
+    origins: list[str] = []
+    for part in raw.split(","):
+        value = part.strip()
+        if value and value not in origins:
+            origins.append(value)
+    return origins or ["*"]
+
+
+def is_legacy_query_auth_enabled() -> bool:
+    return os.getenv("LEGACY_QUERY_AUTH_ENABLED", "false").strip().lower() in ("1", "true", "yes")
+
+
+def is_legacy_basic_auth_enabled() -> bool:
+    return os.getenv("LEGACY_BASIC_AUTH_ENABLED", "false").strip().lower() in ("1", "true", "yes")
