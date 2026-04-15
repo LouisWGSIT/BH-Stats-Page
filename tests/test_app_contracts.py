@@ -208,6 +208,12 @@ def test_auth_login_admin_returns_admin_role(client, app_module, workspace_temp_
     assert "device_token" in body
 
 
+def test_auth_login_invalid_password_rejected_even_on_local_network(client):
+    r = client.post("/auth/login", json={"password": "definitely-wrong"})
+    assert r.status_code == 401
+    assert r.json().get("detail") == "Invalid password"
+
+
 def test_auth_status_with_manager_bearer(client):
     r = client.get("/auth/status", headers={"Authorization": "Bearer test-manager-pass"})
     assert r.status_code == 200
