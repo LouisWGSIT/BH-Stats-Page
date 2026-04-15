@@ -1,10 +1,25 @@
 import os
 import re
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+import backend.request_context as request_context
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+
+
+logger = logging.getLogger(__name__)
+
+
+def _request_id(req: Request) -> str:
+    try:
+        rid = request_context.request_id.get()
+        if rid:
+            return str(rid)
+    except Exception:
+        pass
+    return req.headers.get("x-request-id") or "n/a"
 
 
 def _normalize_webhook_keys(webhook_api_keys: list[str] | None) -> list[str]:
@@ -38,10 +53,14 @@ def _is_authorized_webhook_request(req: Request, webhook_api_keys: list[str], *,
         if len(str(provided)) > 16:
             preview += "..."
 
-    print(
-        f"[WEBHOOK AUTH] Unauthorized {route_label}: source={source}, "
-        f"configured_keys={configured_key_count}, header_preview={preview!r}, "
-        f"client={(req.client.host if req.client else 'unknown')}"
+    logger.warning(
+        "[WEBHOOK AUTH] Unauthorized %s rid=%s source=%s configured_keys=%s header_preview=%r client=%s",
+        route_label,
+        _request_id(req),
+        source,
+        configured_key_count,
+        preview,
+        (req.client.host if req.client else "unknown"),
     )
     return False
 
@@ -365,7 +384,13 @@ def create_webhooks_router(*, db_module, webhook_api_keys: list[str]) -> APIRout
         payload = await req.json()
         event = payload.get("event", "success")
         job_id = payload.get("jobId") or payload.get("assetTag") or payload.get("id") or "unknown"
-        print(f"Received webhook: event={event}, jobId={job_id}, payload={payload}")
+        logger.info(
+            "Received webhook rid=%s event=%s jobId=%s keys=%s",
+            _request_id(req),
+            event,
+            job_id,
+            sorted(list(payload.keys())) if isinstance(payload, dict) else [],
+        )
 
         if job_id != "unknown" and db_module.is_job_seen(job_id):
             return JSONResponse({"status": "ignored", "reason": "duplicate"})
@@ -412,13 +437,17 @@ def create_webhooks_router(*, db_module, webhook_api_keys: list[str]) -> APIRout
         if req.query_params:
             payload = {**payload, **dict(req.query_params)}
 
-        print("[WEBHOOK DEBUG] Full payload received:")
-        print(f"  Headers: Content-Type={req.headers.get('content-type', '')}")
-        print(f"  Payload keys: {list(payload.keys())}")
-        print(f"  Full payload: {payload}")
+        rid = _request_id(req)
+        logger.info(
+            "[WEBHOOK DEBUG] Payload received rid=%s route=/hooks/erasure-detail content_type=%s key_count=%s keys=%s",
+            rid,
+            req.headers.get("content-type", ""),
+            len(payload.keys()) if isinstance(payload, dict) else 0,
+            sorted(list(payload.keys())) if isinstance(payload, dict) else [],
+        )
         try:
             asset_like_keys = _collect_asset_like_keys(payload)
-            print(f"  Asset-like keys discovered: {asset_like_keys}")
+            logger.info("[WEBHOOK DEBUG] rid=%s asset_like_keys=%s", rid, asset_like_keys)
         except Exception:
             pass
 
@@ -596,7 +625,12 @@ def create_webhooks_router(*, db_module, webhook_api_keys: list[str]) -> APIRout
                 pass
 
         if manufacturer or model:
-            print(f"[DEVICE DETAILS] Captured from payload: manufacturer={manufacturer}, model={model}")
+            logger.info(
+                "[DEVICE DETAILS] rid=%s manufacturer_present=%s model_present=%s",
+                _request_id(req),
+                bool(manufacturer),
+                bool(model),
+            )
 
         db_module.add_erasure_event(
             event=event,
@@ -628,7 +662,10 @@ def create_webhooks_router(*, db_module, webhook_api_keys: list[str]) -> APIRout
             if not stockid:
                 stockid = _extract_stockid_from_obj(payload)
             if not stockid:
-                print("[WEBHOOK DEBUG] No stock/asset ID resolved from payload (including alias scan).")
+                logger.info(
+                    "[WEBHOOK DEBUG] rid=%s no stock/asset ID resolved from payload",
+                    _request_id(req),
+                )
             db_module.add_local_erasure(
                 stockid=stockid,
                 system_serial=system_serial,
@@ -650,12 +687,17 @@ def create_webhooks_router(*, db_module, webhook_api_keys: list[str]) -> APIRout
             pass
         try:
             dbg = db_module.get_summary_today_month()
-            print(
-                f"erasure-detail wrote event={event} type={device_type} jobId={job_id} -> "
-                f"todayTotal={dbg.get('todayTotal')} avg={dbg.get('avgDurationSec')}"
+            logger.info(
+                "erasure-detail wrote rid=%s event=%s type=%s jobId=%s todayTotal=%s avg=%s",
+                _request_id(req),
+                event,
+                device_type,
+                job_id,
+                dbg.get("todayTotal"),
+                dbg.get("avgDurationSec"),
             )
         except Exception as _e:
-            print(f"erasure-detail post-insert check failed: {_e}")
+            logger.warning("erasure-detail post-insert check failed rid=%s err=%s", _request_id(req), _e)
 
         if event in ["success", "connected"]:
             db_module.increment_stat("erased", 1)
@@ -665,7 +707,7 @@ def create_webhooks_router(*, db_module, webhook_api_keys: list[str]) -> APIRout
                     db_module.increment_engineer_count(initials, 1)
                     db_module.increment_engineer_type_count(device_type, initials, 1)
                 except Exception as _e:
-                    print(f"erasure-detail engineer counter update failed: {_e}")
+                    logger.warning("erasure-detail engineer counter update failed rid=%s err=%s", _request_id(req), _e)
         if job_id:
             db_module.mark_job_seen(job_id)
 
@@ -688,7 +730,12 @@ def create_webhooks_router(*, db_module, webhook_api_keys: list[str]) -> APIRout
 
         initials = _extract_initials_from_obj(payload) or ""
         device_type = (payload.get("deviceType") or payload.get("device_type") or payload.get("type") or "laptops_desktops").strip().lower()
-        print(f"Received engineer erasure: initials={initials}, payload={payload}")
+        logger.info(
+            "Received engineer erasure rid=%s initials=%s keys=%s",
+            _request_id(req),
+            initials,
+            sorted(list(payload.keys())) if isinstance(payload, dict) else [],
+        )
 
         if not initials:
             return JSONResponse({"status": "error", "reason": "missing initials"}, status_code=400)
@@ -715,7 +762,7 @@ def create_webhooks_router(*, db_module, webhook_api_keys: list[str]) -> APIRout
                     ts=ts,
                 )
             except Exception as _e:
-                print(f"[engineer_erasure] failed to add detailed erasure event: {_e}")
+                logger.warning("[engineer_erasure] add_erasure_event failed rid=%s err=%s", _request_id(req), _e)
 
             db_module.increment_stat("erased", 1)
             if job_id:
@@ -726,7 +773,7 @@ def create_webhooks_router(*, db_module, webhook_api_keys: list[str]) -> APIRout
             db_module.increment_engineer_count(initials, 1)
             db_module.increment_engineer_type_count(device_type, initials, 1)
         except Exception as e:
-            print(f"[engineer_erasure] error updating counts: {e}")
+            logger.warning("[engineer_erasure] counter update failed rid=%s err=%s", _request_id(req), e)
         engineers = db_module.get_top_engineers(limit=10)
         engineer_count = next((e["count"] for e in engineers if e["initials"] == initials), 0)
 

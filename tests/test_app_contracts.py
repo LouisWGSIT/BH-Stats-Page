@@ -206,6 +206,8 @@ def test_auth_login_admin_returns_admin_role(client, app_module, workspace_temp_
     assert body["authenticated"] is True
     assert body["role"] == "admin"
     assert "device_token" in body
+    assert body.get("token") == body.get("device_token")
+    assert body.get("token") != "test-admin-pass"
 
 
 def test_auth_login_invalid_password_rejected_even_on_local_network(client):
@@ -693,6 +695,7 @@ def test_admin_activity_returns_recent_events(client, app_module):
     assert r.status_code == 200
     body = r.json()
     assert "counts" in body
+    assert "webhook_health" in body
     assert "sqlite_storage" in body
     assert "recent" in body
     assert isinstance(body["recent"], list)

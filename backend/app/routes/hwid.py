@@ -1,8 +1,23 @@
 import json
 import os
+import logging
 from datetime import datetime, UTC
 
+import backend.request_context as request_context
 from fastapi import APIRouter, HTTPException, Request
+
+
+logger = logging.getLogger(__name__)
+
+
+def _request_id(req: Request) -> str:
+    try:
+        rid = request_context.request_id.get()
+        if rid:
+            return str(rid)
+    except Exception:
+        pass
+    return req.headers.get("x-request-id") or "n/a"
 
 
 def _normalize_webhook_keys(webhook_api_keys: list[str] | None) -> list[str]:
@@ -35,9 +50,13 @@ def _is_authorized_hwid_request(req: Request, webhook_api_keys: list[str]) -> bo
         if len(str(provided)) > 16:
             preview += "..."
 
-    print(
-        f"[HWID AUTH] Unauthorized /hwid: source={source}, configured_keys={configured_key_count}, "
-        f"header_preview={preview!r}, client={(req.client.host if req.client else 'unknown')}"
+    logger.warning(
+        "[HWID AUTH] Unauthorized /hwid rid=%s source=%s configured_keys=%s header_preview=%r client=%s",
+        _request_id(req),
+        source,
+        configured_key_count,
+        preview,
+        (req.client.host if req.client else "unknown"),
     )
     return False
 
@@ -74,6 +93,13 @@ def create_hwid_router(*, webhook_api_keys: list[str], hwid_log_path: str) -> AP
             "source_ip": req.client.host if req.client else "unknown",
             **payload,
         }
+
+        logger.info(
+            "HWID capture accepted rid=%s keys=%s source_ip=%s",
+            _request_id(req),
+            sorted(list(payload.keys())) if isinstance(payload, dict) else [],
+            (req.client.host if req.client else "unknown"),
+        )
 
         try:
             os.makedirs(os.path.dirname(hwid_log_path), exist_ok=True)

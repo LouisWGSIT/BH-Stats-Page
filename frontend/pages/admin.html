@@ -968,6 +968,7 @@
                     <label style="font-size:13px;color:#666;"><input type="checkbox" id="autoPollActivity"> Auto-refresh every 30s</label>
                 </div>
                 <div id="activitySummary" style="margin-bottom:10px; display:none;"></div>
+                <div id="webhookHealthSummary" class="stats" style="margin-bottom:10px; display:none;"></div>
                 <div id="sqliteStorageSummary" class="stats" style="margin-bottom:10px; display:none;"></div>
                 <div id="memoryPanel" style="display:block;margin-bottom:10px;">
                     <div style="display:flex;align-items:center;gap:12px;">
@@ -2692,6 +2693,7 @@
 
         async function fetchAdminActivity() {
             const summaryEl = document.getElementById('activitySummary');
+            const webhookEl = document.getElementById('webhookHealthSummary');
             const sqliteEl = document.getElementById('sqliteStorageSummary');
             const container = document.getElementById('activityContainer');
             const tbody = document.getElementById('activityTableBody');
@@ -2708,6 +2710,39 @@
                 // Connected devices summary
                 if (data.connected_devices && data.connected_devices.length) {
                     summaryEl.innerHTML += `<br><strong>Connected devices:</strong> ${data.connected_devices.length}`;
+                }
+
+                const webhook = data.webhook_health || {};
+                const byPath = webhook.by_path || {};
+                const byPathRows = Object.keys(byPath)
+                    .sort((a, b) => Number(byPath[b] || 0) - Number(byPath[a] || 0))
+                    .map((path) => `<div class="stat-card"><div class="stat-value">${byPath[path]}</div><div class="stat-label">${path}</div></div>`)
+                    .join('');
+                const recentWebhookRows = (webhook.recent || []).map((ev) => {
+                    return `<tr>
+                        <td style="font-size:12px;">${formatActivityTimeUk(ev.ts)}</td>
+                        <td style="font-size:12px;">${ev.path || ''}</td>
+                        <td style="font-size:12px;">${ev.method || ''}</td>
+                        <td style="font-size:12px;">${ev.client_ip || ''}</td>
+                        <td style="font-size:12px;">${ev.duration_ms || ''}</td>
+                    </tr>`;
+                }).join('');
+                if (webhookEl) {
+                    webhookEl.style.display = 'block';
+                    webhookEl.innerHTML = `
+                        <h3 style="margin-bottom:8px;">Webhook Health (24h)</h3>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                            <div class="stat-card"><div class="stat-value">${webhook.events_24h || 0}</div><div class="stat-label">Webhook events</div></div>
+                            <div class="stat-card"><div class="stat-value">${webhook.unique_client_ips || 0}</div><div class="stat-label">Webhook client IPs</div></div>
+                        </div>
+                        ${byPathRows ? `<div style="margin-top:10px;" class="stats-grid">${byPathRows}</div>` : ''}
+                        <div style="margin-top:10px; max-height:220px; overflow:auto;">
+                            <table class="table" style="width:100%;">
+                                <thead><tr><th>Time (UK)</th><th>Path</th><th>Method</th><th>Client IP</th><th>Duration ms</th></tr></thead>
+                                <tbody>${recentWebhookRows || '<tr><td colspan="5" style="font-size:12px;color:#777;">No recent webhook requests in activity log.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    `;
                 }
 
                 const sqlite = data.sqlite_storage || {};
@@ -2743,6 +2778,7 @@
             } catch (err) {
                 summaryEl.style.display = 'block';
                 summaryEl.innerHTML = `<span style="color:#c00;">Failed to load activity: ${err.message}</span>`;
+                if (webhookEl) webhookEl.style.display = 'none';
                 if (sqliteEl) sqliteEl.style.display = 'none';
                 container.style.display = 'none';
             } finally {
