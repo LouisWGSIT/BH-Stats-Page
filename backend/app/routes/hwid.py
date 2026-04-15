@@ -5,18 +5,30 @@ from datetime import datetime, UTC
 from fastapi import APIRouter, HTTPException, Request
 
 
-def _is_authorized_hwid_request(req: Request, webhook_api_key: str) -> bool:
+def _normalize_webhook_keys(webhook_api_keys: list[str] | None) -> list[str]:
+    keys: list[str] = []
+    for raw in webhook_api_keys or []:
+        key = str(raw).strip()
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
+def _is_authorized_hwid_request(req: Request, webhook_api_keys: list[str]) -> bool:
     api_header = req.headers.get("x-api-key")
     auth_header = req.headers.get("Authorization")
     provided = api_header or auth_header
 
-    expected_bearer = f"Bearer {webhook_api_key}"
-    is_authorized = bool(provided) and (provided == webhook_api_key or provided == expected_bearer)
+    keys = _normalize_webhook_keys(webhook_api_keys)
+    expected_values = set(keys)
+    expected_values.update({f"Bearer {key}" for key in keys})
+
+    is_authorized = bool(provided) and (provided in expected_values)
     if is_authorized:
         return True
 
     source = "x-api-key" if api_header else ("authorization" if auth_header else "none")
-    has_key = bool(webhook_api_key)
+    configured_key_count = len(keys)
     preview = ""
     if provided:
         preview = str(provided)[:16]
@@ -24,13 +36,13 @@ def _is_authorized_hwid_request(req: Request, webhook_api_key: str) -> bool:
             preview += "..."
 
     print(
-        f"[HWID AUTH] Unauthorized /hwid: source={source}, configured_key={has_key}, "
+        f"[HWID AUTH] Unauthorized /hwid: source={source}, configured_keys={configured_key_count}, "
         f"header_preview={preview!r}, client={(req.client.host if req.client else 'unknown')}"
     )
     return False
 
 
-def create_hwid_router(*, webhook_api_key: str, hwid_log_path: str) -> APIRouter:
+def create_hwid_router(*, webhook_api_keys: list[str], hwid_log_path: str) -> APIRouter:
     router = APIRouter()
 
     @router.get("/hwid")
@@ -49,7 +61,7 @@ def create_hwid_router(*, webhook_api_key: str, hwid_log_path: str) -> APIRouter
         Receives HWID data posted from a USB boot script.
         Validates x-api-key header, then appends the payload to a JSONL log file.
         """
-        if not _is_authorized_hwid_request(req, webhook_api_key):
+        if not _is_authorized_hwid_request(req, webhook_api_keys):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         try:

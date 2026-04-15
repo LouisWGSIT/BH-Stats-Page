@@ -7,19 +7,31 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 
-def _is_authorized_webhook_request(req: Request, webhook_api_key: str, *, route_label: str) -> bool:
+def _normalize_webhook_keys(webhook_api_keys: list[str] | None) -> list[str]:
+    keys: list[str] = []
+    for raw in webhook_api_keys or []:
+        key = str(raw).strip()
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
+def _is_authorized_webhook_request(req: Request, webhook_api_keys: list[str], *, route_label: str) -> bool:
     auth_header = req.headers.get("Authorization")
     api_header = req.headers.get("x-api-key")
     provided = auth_header or api_header
 
-    expected_bearer = f"Bearer {webhook_api_key}"
-    is_authorized = bool(provided) and (provided == webhook_api_key or provided == expected_bearer)
+    keys = _normalize_webhook_keys(webhook_api_keys)
+    expected_values = set(keys)
+    expected_values.update({f"Bearer {key}" for key in keys})
+
+    is_authorized = bool(provided) and (provided in expected_values)
     if is_authorized:
         return True
 
     # Intentionally avoid logging secrets; only report source/header shape.
     source = "authorization" if auth_header else ("x-api-key" if api_header else "none")
-    has_key = bool(webhook_api_key)
+    configured_key_count = len(keys)
     preview = ""
     if provided:
         preview = str(provided)[:16]
@@ -28,7 +40,7 @@ def _is_authorized_webhook_request(req: Request, webhook_api_key: str, *, route_
 
     print(
         f"[WEBHOOK AUTH] Unauthorized {route_label}: source={source}, "
-        f"configured_key={has_key}, header_preview={preview!r}, "
+        f"configured_keys={configured_key_count}, header_preview={preview!r}, "
         f"client={(req.client.host if req.client else 'unknown')}"
     )
     return False
@@ -274,7 +286,7 @@ def _collect_asset_like_keys(obj: Any) -> list[str]:
     return hits[:50]
 
 
-def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
+def create_webhooks_router(*, db_module, webhook_api_keys: list[str]) -> APIRouter:
     router = APIRouter()
 
     @router.post("/api/ingest/local-erasure")
@@ -347,7 +359,7 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
 
     @router.post("/hooks/erasure")
     async def erasure_hook(req: Request):
-        if not _is_authorized_webhook_request(req, webhook_api_key, route_label="/hooks/erasure"):
+        if not _is_authorized_webhook_request(req, webhook_api_keys, route_label="/hooks/erasure"):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         payload = await req.json()
@@ -374,7 +386,7 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
 
     @router.api_route("/hooks/erasure-detail", methods=["GET", "POST"])
     async def erasure_detail(req: Request):
-        if not _is_authorized_webhook_request(req, webhook_api_key, route_label="/hooks/erasure-detail"):
+        if not _is_authorized_webhook_request(req, webhook_api_keys, route_label="/hooks/erasure-detail"):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         payload: Dict[str, Any] = {}
@@ -661,7 +673,7 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
 
     @router.api_route("/hooks/engineer-erasure", methods=["GET", "POST"])
     async def engineer_erasure_hook(req: Request):
-        if not _is_authorized_webhook_request(req, webhook_api_key, route_label="/hooks/engineer-erasure"):
+        if not _is_authorized_webhook_request(req, webhook_api_keys, route_label="/hooks/engineer-erasure"):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         payload: Dict[str, Any] = {}

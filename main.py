@@ -330,7 +330,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-WEBHOOK_API_KEY = runtime_state.get_webhook_api_key()
+WEBHOOK_API_KEYS = runtime_state.get_webhook_api_keys()
+# Backward-compat alias for older tests/modules that still reference a single key name.
+WEBHOOK_API_KEY = WEBHOOK_API_KEYS[0] if WEBHOOK_API_KEYS else ""
 
 HWID_LOG_PATH = runtime_state.get_hwid_log_path()
 FRONTEND_PAGES_DIR, FRONTEND_JS_DIR, FRONTEND_CSS_DIR = runtime_state.get_frontend_paths()
@@ -379,7 +381,7 @@ router_wiring.register_routes(
     set_last_server_error=lambda payload: globals().__setitem__("LAST_SERVER_ERROR", payload),
     cache_get=_get_cached_response,
     cache_set=_set_cached_response,
-    webhook_api_key=WEBHOOK_API_KEY,
+    webhook_api_keys=WEBHOOK_API_KEYS,
     hwid_log_path=HWID_LOG_PATH,
     get_role_from_request=get_role_from_request,
     ttl_cache_cls=TTLCache,
