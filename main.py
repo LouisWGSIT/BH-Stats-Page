@@ -311,7 +311,7 @@ async def static_cache_headers_middleware(request: Request, call_next):
 
     if path.endswith(static_exts):
         response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=600"
-    elif path in ("/", "/index.html", "/admin.html", "/manager.html", "/qr-code-generator.html"):
+    elif path in ("/", "/index.html", "/admin.html", "/manager.html"):
         response.headers["Cache-Control"] = "no-cache"
     elif path.endswith(".json"):
         response.headers["Cache-Control"] = "no-cache"
