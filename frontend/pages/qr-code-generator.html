@@ -239,9 +239,7 @@
                 <span class="device-type macs">🖥️ Apple Macs</span>
                 <h2>Macs Workflow</h2>
                 <div class="qr-container" id="qr-macs"></div>
-                <div class="json-payload macs" id="payload-macs-display">
-                    {"event":"success","jobId":"","deviceType":"macs","initials":"&lt;DEVICECUSTOMFIELD Engineer Initials&gt;","durationSec":"&lt;REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time&gt;","timestamp":"&lt;Completion Time&gt;","manufacturer":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer&gt;","model":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.model&gt;","serial":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.serial&gt;","diskSerial":"&lt;REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial&gt;","diskCapacity":"&lt;REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity&gt;"}
-                </div>
+                <div class="json-payload macs" id="payload-macs-display"></div>
                 <div class="button-group">
                     <button class="btn-copy" onclick="copyPayload('macs')">📋 Copy JSON</button>
                     <button class="btn-print" onclick="window.print()">🖨️ Print</button>
@@ -253,9 +251,7 @@
                 <span class="device-type mobiles">📱 Mobiles</span>
                 <h2>Mobiles Workflow</h2>
                 <div class="qr-container" id="qr-mobiles"></div>
-                <div class="json-payload" id="payload-mobiles-display">
-                    {"event":"success","jobId":"","deviceType":"mobiles","initials":"&lt;DEVICECUSTOMFIELD Engineer Initials&gt;","durationSec":"&lt;REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time&gt;","timestamp":"&lt;Completion Time&gt;","manufacturer":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer&gt;","model":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.model&gt;","serial":"&lt;REPORTPATH blancco_data.blancco_hardware_report.system.serial&gt;","diskSerial":"&lt;REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial&gt;","diskCapacity":"&lt;REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity&gt;"}
-                </div>
+                <div class="json-payload" id="payload-mobiles-display"></div>
                 <div class="button-group">
                     <button class="btn-copy" onclick="copyPayload('mobiles')">📋 Copy JSON</button>
                     <button class="btn-print" onclick="window.print()">🖨️ Print</button>
@@ -315,6 +311,10 @@
 
         // Initialize QR codes on page load
         document.addEventListener('DOMContentLoaded', () => {
+            const macDisplay = document.getElementById('payload-macs-display');
+            const mobilesDisplay = document.getElementById('payload-mobiles-display');
+            if (macDisplay) macDisplay.textContent = payloads.macs;
+            if (mobilesDisplay) mobilesDisplay.textContent = payloads.mobiles;
             generateQRCode('macs');
             generateQRCode('mobiles');
         });
