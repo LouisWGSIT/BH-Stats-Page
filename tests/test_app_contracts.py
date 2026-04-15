@@ -104,6 +104,66 @@ def test_hwid_accepts_key_and_writes_log(client, app_module, workspace_temp_dir,
     assert Path(log_path).exists()
 
 
+def test_erasure_detail_falls_back_to_nested_hardware_fields(client, app_module):
+    with app_module.db.sqlite_transaction() as (_, cur):
+        cur.execute("DELETE FROM erasures")
+
+    payload = {
+        "event": "success",
+        "deviceType": "macs",
+        "initials": "BP",
+        "manufacturer": "<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>",
+        "model": "<REPORTPATH blancco_data.blancco_hardware_report.system.model>",
+        "serial": "<REPORTPATH blancco_data.blancco_hardware_report.system.serial>",
+        "diskSerial": "<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>",
+        "durationSec": "<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>",
+        "timestamp": "<Completion Time>",
+        "blancco_data": {
+            "blancco_hardware_report": {
+                "system": {
+                    "manufacturer": "Apple, Inc.",
+                    "model": "MacBook Pro 16",
+                    "serial": "MACSYS-123",
+                },
+                "disks": {
+                    "disk": {
+                        "serial": "MACDISK-456",
+                        "capacity": "500107862016",
+                    }
+                },
+            }
+        },
+    }
+
+    r = client.post(
+        "/hooks/erasure-detail",
+        headers={"x-api-key": "test-webhook-key"},
+        json=payload,
+    )
+    assert r.status_code == 200
+    assert r.json().get("status") == "ok"
+
+    with app_module.db.sqlite_transaction() as (_, cur):
+        cur.execute(
+            """
+            SELECT device_type, initials, manufacturer, model, system_serial, disk_serial, drive_size
+            FROM erasures
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+
+    assert row is not None
+    assert row[0] == "macs"
+    assert row[1] == "BP"
+    assert row[2] == "Apple, Inc."
+    assert row[3] == "MacBook Pro 16"
+    assert row[4] == "MACSYS-123"
+    assert row[5] == "MACDISK-456"
+    assert row[6] == 500107862016
+
+
 def test_auth_login_admin_returns_admin_role(client, app_module, workspace_temp_dir, monkeypatch):
     tokens_path = workspace_temp_dir / "device_tokens_test.json"
     monkeypatch.setattr(app_module, "DEVICE_TOKENS_FILE", str(tokens_path))
