@@ -143,13 +143,25 @@ def _extract_stockid_from_obj(obj: Any):
     candidate_keys = [
         "stockid",
         "stock_id",
+        "stock id",
         "assetNumber",
+        "assetnumber",
+        "asset_number",
+        "asset number",
+        "assetNo",
+        "asset_no",
+        "asset no",
         "assetStockId",
+        "assetstockid",
+        "asset stock id",
+        "assetstockidnumber",
         "asset_stock_id",
         "assetTag",
         "asset_tag",
+        "asset tag",
         "assetid",
         "asset_id",
+        "asset id",
         "Asset/Stock ID Number",
         "Asset/Stock ID",
     ]
@@ -181,6 +193,10 @@ def _extract_stockid_from_obj(obj: Any):
                     found = _is_valid(v)
                     if found:
                         return found
+                if "asset" in lk and "number" in lk:
+                    found = _is_valid(v)
+                    if found:
+                        return found
             for _, v in o.items():
                 found = _walk(v)
                 if found:
@@ -193,6 +209,29 @@ def _extract_stockid_from_obj(obj: Any):
         return None
 
     return _walk(obj)
+
+
+def _collect_asset_like_keys(obj: Any) -> list[str]:
+    """Collect key paths related to asset/stock identifiers for debug visibility."""
+    hits: list[str] = []
+
+    def _walk(node: Any, path: list[str]):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                key = str(k)
+                next_path = [*path, key]
+                lk = key.lower().replace("_", " ").replace("/", " ")
+                if any(term in lk for term in ("asset", "stock", "tag", "id", "number")):
+                    joined = ".".join(next_path)
+                    if joined not in hits:
+                        hits.append(joined)
+                _walk(v, next_path)
+        elif isinstance(node, list):
+            for idx, item in enumerate(node):
+                _walk(item, [*path, str(idx)])
+
+    _walk(obj, [])
+    return hits[:50]
 
 
 def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
@@ -327,6 +366,11 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
         print(f"  Headers: Content-Type={req.headers.get('content-type', '')}")
         print(f"  Payload keys: {list(payload.keys())}")
         print(f"  Full payload: {payload}")
+        try:
+            asset_like_keys = _collect_asset_like_keys(payload)
+            print(f"  Asset-like keys discovered: {asset_like_keys}")
+        except Exception:
+            pass
 
         event = (payload.get("event") or "success").strip().lower()
         job_id = payload.get("jobId") or payload.get("assetTag") or payload.get("id")
@@ -471,11 +515,17 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             stockid = _clean_placeholder(
                 payload.get("stockid")
                 or payload.get("stock_id")
+                or payload.get("stock id")
                 or payload.get("assetNumber")
+                or payload.get("assetnumber")
+                or payload.get("asset_number")
+                or payload.get("asset number")
                 or payload.get("assetTag")
             )
             if not stockid:
                 stockid = _extract_stockid_from_obj(payload)
+            if not stockid:
+                print("[WEBHOOK DEBUG] No stock/asset ID resolved from payload (including alias scan).")
             db_module.add_local_erasure(
                 stockid=stockid,
                 system_serial=system_serial,

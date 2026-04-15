@@ -164,6 +164,38 @@ def test_erasure_detail_falls_back_to_nested_hardware_fields(client, app_module)
     assert row[6] == 500107862016
 
 
+def test_erasure_detail_accepts_assetnumber_alias_for_stockid(client, app_module):
+    with app_module.db.sqlite_transaction() as (_, cur):
+        cur.execute("DELETE FROM local_erasures")
+
+    payload = {
+        "event": "success",
+        "deviceType": "macs",
+        "initials": "BP",
+        "assetnumber": "A1234567",
+        "serial": "MACSYS-ALIAS",
+        "diskSerial": "MACDISK-ALIAS",
+    }
+
+    r = client.post(
+        "/hooks/erasure-detail",
+        headers={"x-api-key": "test-webhook-key"},
+        json=payload,
+    )
+    assert r.status_code == 200
+    assert r.json().get("status") == "ok"
+
+    with app_module.db.sqlite_transaction() as (_, cur):
+        cur.execute(
+            "SELECT stockid, system_serial FROM local_erasures ORDER BY ts DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+
+    assert row is not None
+    assert row[0] == "A1234567"
+    assert row[1] == "MACSYS-ALIAS"
+
+
 def test_auth_login_admin_returns_admin_role(client, app_module, workspace_temp_dir, monkeypatch):
     tokens_path = workspace_temp_dir / "device_tokens_test.json"
     monkeypatch.setattr(app_module, "DEVICE_TOKENS_FILE", str(tokens_path))
