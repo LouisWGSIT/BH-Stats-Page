@@ -101,6 +101,19 @@ def _clean_placeholder(value):
     return value
 
 
+def _normalize_serial_value(value: Any) -> str:
+    cleaned = _clean_placeholder(value)
+    if cleaned is None:
+        return ""
+    text = str(cleaned).strip()
+    if not text:
+        return ""
+    upper = text.upper()
+    if upper.startswith("SERIAL:"):
+        return text.split(":", 1)[1].strip()
+    return text
+
+
 def _normalize_key_token(value: str) -> str:
     return re.sub(r"[^a-z0-9]", "", str(value).lower())
 
@@ -378,7 +391,13 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
         initials_raw = payload.get("initials") or payload.get("Engineer Initals") or payload.get("Engineer Initials") or ""
         initials = (initials_raw or "").strip().upper() or None
 
-        duration_sec = _clean_placeholder(payload.get("durationSec") or payload.get("duration"))
+        duration_sec = _clean_placeholder(
+            payload.get("durationSec")
+            or payload.get("duration")
+            or payload.get("durationSecAlt")
+            or payload.get("duration_alt")
+            or payload.get("durationAlt")
+        )
         try:
             if isinstance(duration_sec, str) and ":" in duration_sec:
                 parts = duration_sec.split(":")
@@ -393,7 +412,13 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             duration_sec = None
 
         error_type = payload.get("errorType") or payload.get("error")
-        ts_in = payload.get("timestamp")
+        ts_in = (
+            payload.get("timestamp")
+            or payload.get("timestampAlt")
+            or payload.get("timestamp_alt")
+            or payload.get("completionTime")
+            or payload.get("end_time")
+        )
         ts = None
         if isinstance(ts_in, (int, float)):
             try:
@@ -420,51 +445,86 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
         if job_id and db_module.is_job_seen(job_id):
             return {"status": "ignored", "reason": "duplicate"}
 
-        manufacturer = _clean_placeholder(payload.get("manufacturer")) or _extract_clean_from_obj(
+        manufacturer = _clean_placeholder(
+            payload.get("manufacturer")
+            or payload.get("manufacturerAlt")
+            or payload.get("manufacturer_alt")
+            or payload.get("systemManufacturer")
+            or payload.get("system_manufacturer")
+        ) or _extract_clean_from_obj(
             payload,
             [
                 "manufacturer",
                 "system.manufacturer",
                 "blancco_data.blancco_hardware_report.system.manufacturer",
+                "blancco_data.blancco_hardware_report.entries.system.manufacturer",
             ],
         )
-        model = _clean_placeholder(payload.get("model")) or _extract_clean_from_obj(
+        model = _clean_placeholder(
+            payload.get("model")
+            or payload.get("modelAlt")
+            or payload.get("model_alt")
+            or payload.get("systemModel")
+            or payload.get("system_model")
+            or payload.get("name")
+            or payload.get("market_name")
+        ) or _extract_clean_from_obj(
             payload,
             [
                 "model",
+                "name",
+                "market_name",
                 "system.model",
                 "blancco_data.blancco_hardware_report.system.model",
+                "blancco_data.blancco_hardware_report.entries.system.model",
+                "blancco_data.blancco_hardware_report.entries.system.name",
+                "blancco_data.blancco_hardware_report.entries.system.market_name",
             ],
         )
-        system_serial = _clean_placeholder(
+        system_serial = _normalize_serial_value(
             payload.get("system_serial")
             or payload.get("systemSerial")
             or payload.get("system-serial")
             or payload.get("systemSerialNumber")
+            or payload.get("serialAlt")
+            or payload.get("serial_alt")
+            or payload.get("systemIdentifier")
+            or payload.get("identifier")
+            or payload.get("imei")
             or payload.get("serial")
-        ) or _extract_clean_from_obj(
+        ) or _normalize_serial_value(_extract_clean_from_obj(
             payload,
             [
                 "system_serial",
                 "systemSerial",
                 "system.serial",
+                "identifier",
+                "imei",
                 "blancco_data.blancco_hardware_report.system.serial",
+                "blancco_data.blancco_hardware_report.entries.system.serial",
+                "blancco_data.blancco_hardware_report.entries.system.identifier",
                 "serial",
             ],
             allow_leaf_match=False,
-        ) or ""
+        )) or ""
         disk_serial = _clean_placeholder(
             payload.get("disk_serial")
             or payload.get("diskSerial")
             or payload.get("disk-serial")
             or payload.get("diskSerialNumber")
+            or payload.get("diskSerialAlt")
+            or payload.get("disk_serial_alt")
+            or payload.get("erasureTargetSerial")
         ) or _extract_clean_from_obj(
             payload,
             [
                 "disk_serial",
                 "diskSerial",
                 "disk.serial",
+                "target.serial",
                 "blancco_data.blancco_hardware_report.disks.disk.serial",
+                "blancco_data.blancco_hardware_report.entries.disks.disk.serial",
+                "blancco_data.blancco_erasure_report.erasures.erasure.target.serial",
             ],
             allow_leaf_match=False,
         ) or ""
@@ -473,6 +533,9 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             or payload.get("diskCapacity")
             or payload.get("drive_size")
             or payload.get("driveSize")
+            or payload.get("diskCapacityAlt")
+            or payload.get("disk_capacity_alt")
+            or payload.get("erasureTargetCapacity")
         ) or _extract_clean_from_obj(
             payload,
             [
@@ -480,8 +543,11 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
                 "diskCapacity",
                 "drive_size",
                 "driveSize",
+                "target.capacity",
                 "disks.disk.capacity",
                 "blancco_data.blancco_hardware_report.disks.disk.capacity",
+                "blancco_data.blancco_hardware_report.entries.disks.disk.capacity",
+                "blancco_data.blancco_erasure_report.erasures.erasure.target.capacity",
             ],
             allow_leaf_match=False,
         ) or ""
