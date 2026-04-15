@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -98,6 +99,43 @@ def _clean_placeholder(value):
             return None
         return cleaned
     return value
+
+
+def _normalize_key_token(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value).lower())
+
+
+def _extract_clean_from_obj(obj: Any, candidate_keys: list[str], *, allow_leaf_match: bool = True):
+    """Best-effort deep extraction for values that may be nested or flattened with dotted keys."""
+    wanted_paths = {_normalize_key_token(k) for k in (candidate_keys or []) if k}
+    wanted_leafs = {_normalize_key_token(str(k).split(".")[-1]) for k in (candidate_keys or []) if k}
+
+    def _walk(node: Any, path_parts: list[str]):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                key = str(k)
+                key_parts = [p for p in key.split(".") if p]
+                next_path = [*path_parts, *key_parts]
+
+                path_norm = _normalize_key_token("".join(next_path))
+                leaf_norm = _normalize_key_token(next_path[-1]) if next_path else ""
+
+                if path_norm in wanted_paths or (allow_leaf_match and leaf_norm in wanted_leafs):
+                    cleaned = _clean_placeholder(v)
+                    if cleaned is not None:
+                        return cleaned
+
+                nested = _walk(v, next_path)
+                if nested is not None:
+                    return nested
+        elif isinstance(node, list):
+            for item in node:
+                nested = _walk(item, path_parts)
+                if nested is not None:
+                    return nested
+        return None
+
+    return _walk(obj, [])
 
 
 def _extract_stockid_from_obj(obj: Any):
@@ -338,26 +376,70 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
         if job_id and db_module.is_job_seen(job_id):
             return {"status": "ignored", "reason": "duplicate"}
 
-        manufacturer = _clean_placeholder(payload.get("manufacturer"))
-        model = _clean_placeholder(payload.get("model"))
+        manufacturer = _clean_placeholder(payload.get("manufacturer")) or _extract_clean_from_obj(
+            payload,
+            [
+                "manufacturer",
+                "system.manufacturer",
+                "blancco_data.blancco_hardware_report.system.manufacturer",
+            ],
+        )
+        model = _clean_placeholder(payload.get("model")) or _extract_clean_from_obj(
+            payload,
+            [
+                "model",
+                "system.model",
+                "blancco_data.blancco_hardware_report.system.model",
+            ],
+        )
         system_serial = _clean_placeholder(
             payload.get("system_serial")
             or payload.get("systemSerial")
             or payload.get("system-serial")
             or payload.get("systemSerialNumber")
             or payload.get("serial")
+        ) or _extract_clean_from_obj(
+            payload,
+            [
+                "system_serial",
+                "systemSerial",
+                "system.serial",
+                "blancco_data.blancco_hardware_report.system.serial",
+                "serial",
+            ],
+            allow_leaf_match=False,
         ) or ""
         disk_serial = _clean_placeholder(
             payload.get("disk_serial")
             or payload.get("diskSerial")
             or payload.get("disk-serial")
             or payload.get("diskSerialNumber")
+        ) or _extract_clean_from_obj(
+            payload,
+            [
+                "disk_serial",
+                "diskSerial",
+                "disk.serial",
+                "blancco_data.blancco_hardware_report.disks.disk.serial",
+            ],
+            allow_leaf_match=False,
         ) or ""
         disk_capacity = _clean_placeholder(
             payload.get("disk_capacity")
             or payload.get("diskCapacity")
             or payload.get("drive_size")
             or payload.get("driveSize")
+        ) or _extract_clean_from_obj(
+            payload,
+            [
+                "disk_capacity",
+                "diskCapacity",
+                "drive_size",
+                "driveSize",
+                "disks.disk.capacity",
+                "blancco_data.blancco_hardware_report.disks.disk.capacity",
+            ],
+            allow_leaf_match=False,
         ) or ""
 
         if isinstance(disk_capacity, str):
