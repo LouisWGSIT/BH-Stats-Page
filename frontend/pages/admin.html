@@ -2087,7 +2087,7 @@
                         <div class="stat-card"><div class="stat-value">${s.sampleAwaitingCount || awaiting.length}</div><div class="stat-label">Awaiting Samples</div></div>
                         <div class="stat-card"><div class="stat-value">${s.sampleReceivedTodayCount || received.length}</div><div class="stat-label">Received Today Samples</div></div>
                     </div>
-                    <div style="margin-top:8px;font-size:12px;color:#666;">Source: ${s.source || 'unknown'} | GRN date field: ${s.grnDateField || 'n/a'} | Orders date field: ${s.ordersDateField || 'n/a'} | Status field: ${s.statusField || 'n/a'}</div>
+                    <div style="margin-top:8px;font-size:12px;color:#666;">Source: ${s.source || 'unknown'} | Token mode: ${s.apiTokenMode || 'n/a'} | GRN date field: ${s.grnDateField || 'n/a'} | Orders date field: ${s.ordersDateField || 'n/a'} | Status field: ${s.statusField || 'n/a'}</div>
                     ${s.apiFallbackError ? `<div style="margin-top:6px;font-size:12px;color:#b45309;">API fallback active: ${s.apiFallbackError}</div>` : ''}
                     <div style="margin-top:8px;font-size:12px;color:#666;">Generated: ${formatActivityTimeUk(s.generatedAt)}</div>
                 `;

@@ -4,6 +4,7 @@ import os
 import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
+from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -792,6 +793,7 @@ def create_admin_diagnostics_router(
         goods_in_api_token = str(os.getenv("GOODS_IN_API_TOKEN", "")).strip()
         goods_in_auth_header = str(os.getenv("GOODS_IN_API_AUTH_HEADER", "Authorization")).strip() or "Authorization"
         goods_in_auth_scheme_raw = str(os.getenv("GOODS_IN_API_AUTH_SCHEME", "bearer")).strip().lower() or "bearer"
+        goods_in_token_mode = str(os.getenv("GOODS_IN_API_TOKEN_MODE", "auto")).strip().lower() or "auto"
         goods_in_auth_scheme_key = goods_in_auth_scheme_raw.replace(" ", "").replace("_", "").replace("-", "")
 
         if goods_in_auth_scheme_key in ("secrettoken", "token"):
@@ -834,24 +836,58 @@ def create_admin_diagnostics_router(
                 return None
             return dt.astimezone(UTC).isoformat()
 
+        def _build_auth_value() -> str:
+            if goods_in_auth_scheme in ("raw",):
+                return goods_in_api_token
+            if goods_in_auth_scheme in ("token",):
+                return f"Token {goods_in_api_token}"
+            if goods_in_auth_scheme in ("apikey", "api_key"):
+                return goods_in_api_token
+            if goods_in_api_token.lower().startswith("bearer "):
+                return goods_in_api_token
+            return f"Bearer {goods_in_api_token}"
+
+        def _request_goods_in_payload(mode: str) -> bytes:
+            mode_key = (mode or "").strip().lower()
+            if mode_key == "xml":
+                xml_body = f"<traderapi><token>{xml_escape(goods_in_api_token)}</token></traderapi>".encode("utf-8")
+                req = urllib.request.Request(goods_in_api_url, data=xml_body, method="POST")
+                req.add_header("Content-Type", "application/xml")
+                req.add_header("Accept", "application/xml, text/xml")
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    return resp.read()
+
+            # Default header mode uses GET.
+            req = urllib.request.Request(goods_in_api_url, method="GET")
+            req.add_header(goods_in_auth_header, _build_auth_value())
+            req.add_header("Accept", "application/xml, text/xml")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return resp.read()
+
         if goods_in_enabled and goods_in_api_url and goods_in_api_token:
             try:
-                req = urllib.request.Request(goods_in_api_url, method="GET")
-                if goods_in_auth_scheme in ("raw",):
-                    auth_value = goods_in_api_token
-                elif goods_in_auth_scheme in ("token",):
-                    auth_value = f"Token {goods_in_api_token}"
-                elif goods_in_auth_scheme in ("apikey", "api_key"):
-                    auth_value = goods_in_api_token
-                elif goods_in_api_token.lower().startswith("bearer "):
-                    auth_value = goods_in_api_token
+                payload = b""
+                attempted_modes = []
+                mode = goods_in_token_mode
+                if mode in ("xml", "header"):
+                    attempted_modes = [mode]
                 else:
-                    auth_value = f"Bearer {goods_in_api_token}"
-                req.add_header(goods_in_auth_header, auth_value)
-                req.add_header("Accept", "application/xml, text/xml")
+                    attempted_modes = ["header", "xml"]
 
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    payload = resp.read()
+                last_err = None
+                for attempt_mode in attempted_modes:
+                    try:
+                        payload = _request_goods_in_payload(attempt_mode)
+                        mode = attempt_mode
+                        break
+                    except Exception as exc:
+                        last_err = exc
+                        continue
+
+                if not payload:
+                    if last_err:
+                        raise last_err
+                    raise RuntimeError("Goods In API returned empty payload")
 
                 root = ET.fromstring(payload)
                 all_rows = []
@@ -965,6 +1001,7 @@ def create_admin_diagnostics_router(
                         "source": "goods-in-api",
                         "apiAuthHeader": goods_in_auth_header,
                         "apiAuthScheme": goods_in_auth_scheme,
+                        "apiTokenMode": mode,
                         "statusField": "finish_time",
                         "grnDateField": "arrival_date",
                         "ordersDateField": "start_time/finish_time",
@@ -1248,6 +1285,7 @@ def create_admin_diagnostics_router(
                     "apiFallbackError": api_fallback_error,
                     "apiAuthHeader": goods_in_auth_header,
                     "apiAuthScheme": goods_in_auth_scheme,
+                    "apiTokenMode": goods_in_token_mode,
                     "statusField": status_col,
                     "grnDateField": grn_date_col,
                     "ordersDateField": orders_date_col,
