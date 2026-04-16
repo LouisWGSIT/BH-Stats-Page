@@ -1,5 +1,9 @@
 from typing import Callable
 from datetime import UTC, datetime
+import os
+import urllib.request
+import urllib.error
+import xml.etree.ElementTree as ET
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -783,6 +787,181 @@ def create_admin_diagnostics_router(
         days = max(1, min(int(days or 90), 180))
         limit = max(10, min(int(limit or 50), 200))
 
+        goods_in_enabled = str(os.getenv("GOODS_IN_ENABLED", "false")).strip().lower() in ("1", "true", "yes", "on")
+        goods_in_api_url = str(os.getenv("GOODS_IN_API_BASE_URL", "")).strip()
+        goods_in_api_token = str(os.getenv("GOODS_IN_API_TOKEN", "")).strip()
+        api_fallback_error = None
+
+        def _parse_goods_in_dt(raw_value: str | None):
+            if raw_value is None:
+                return None
+            value = str(raw_value).strip()
+            if not value:
+                return None
+
+            normalized = value.replace("T", " ").replace("Z", "").strip()
+            for fmt in (
+                "%d-%m-%Y %H:%M:%S",
+                "%d/%m/%Y %H:%M:%S",
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d",
+                "%d/%m/%Y",
+            ):
+                try:
+                    return datetime.strptime(normalized, fmt).replace(tzinfo=UTC)
+                except Exception:
+                    continue
+            try:
+                dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+            except Exception:
+                return None
+
+        def _iso(dt):
+            if dt is None:
+                return None
+            return dt.astimezone(UTC).isoformat()
+
+        if goods_in_enabled and goods_in_api_url and goods_in_api_token:
+            try:
+                req = urllib.request.Request(goods_in_api_url, method="GET")
+                if goods_in_api_token.lower().startswith("bearer "):
+                    auth_value = goods_in_api_token
+                else:
+                    auth_value = f"Bearer {goods_in_api_token}"
+                req.add_header("Authorization", auth_value)
+                req.add_header("Accept", "application/xml, text/xml")
+
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    payload = resp.read()
+
+                root = ET.fromstring(payload)
+                all_rows = []
+                for grn in root.findall(".//grn"):
+                    order_number = (grn.findtext("order_number") or "").strip()
+                    order_type = (grn.findtext("order_type") or "").strip()
+                    operator = (grn.findtext("operator") or "").strip()
+                    total_items_raw = (grn.findtext("total_items") or "").strip()
+                    arrival_raw = (grn.findtext("arrival_date") or "").strip()
+                    start_raw = (grn.findtext("start_time") or "").strip()
+                    finish_raw = (grn.findtext("finish_time") or "").strip()
+
+                    arrival_dt = _parse_goods_in_dt(arrival_raw)
+                    start_dt = _parse_goods_in_dt(start_raw)
+                    finish_dt = _parse_goods_in_dt(finish_raw)
+                    event_dt = finish_dt or start_dt or arrival_dt
+
+                    all_rows.append(
+                        {
+                            "orderNumber": order_number,
+                            "orderType": order_type,
+                            "operator": operator,
+                            "totalItems": int(total_items_raw) if total_items_raw.isdigit() else None,
+                            "arrivalRaw": arrival_raw,
+                            "startRaw": start_raw,
+                            "finishRaw": finish_raw,
+                            "arrivalDt": arrival_dt,
+                            "startDt": start_dt,
+                            "finishDt": finish_dt,
+                            "eventDt": event_dt,
+                        }
+                    )
+
+                cutoff = datetime.now(UTC).timestamp() - (days * 86400)
+                filtered_rows = []
+                for row in all_rows:
+                    dt = row.get("eventDt")
+                    if dt is None:
+                        filtered_rows.append(row)
+                        continue
+                    if dt.timestamp() >= cutoff:
+                        filtered_rows.append(row)
+
+                latest_by_order = {}
+                for row in filtered_rows:
+                    key = row.get("orderNumber") or ""
+                    if not key:
+                        key = f"__row__{id(row)}"
+                    prev = latest_by_order.get(key)
+                    prev_dt = prev.get("eventDt") if isinstance(prev, dict) else None
+                    row_dt = row.get("eventDt")
+                    if prev is None:
+                        latest_by_order[key] = row
+                        continue
+                    if row_dt and (not prev_dt or row_dt > prev_dt):
+                        latest_by_order[key] = row
+
+                latest_rows = list(latest_by_order.values())
+                latest_rows.sort(key=lambda r: (r.get("eventDt") or datetime.min.replace(tzinfo=UTC)), reverse=True)
+
+                today_date = datetime.now(UTC).date()
+                awaiting_rows = [r for r in latest_rows if not r.get("finishDt")]
+                received_today_rows = [r for r in latest_rows if r.get("finishDt") and r.get("finishDt").date() == today_date]
+
+                awaiting_samples = []
+                for row in awaiting_rows[:limit]:
+                    awaiting_samples.append(
+                        {
+                            "grnOrderNumber": row.get("orderNumber") or "",
+                            "automationOrderNumber": row.get("orderNumber") or "",
+                            "lastGrnDate": _iso(row.get("arrivalDt") or row.get("startDt")),
+                            "receiptStatus": "PENDING",
+                            "orderStatus": row.get("orderType") or None,
+                            "dateAdded": _iso(row.get("startDt")),
+                            "dateRequired": _iso(row.get("arrivalDt")),
+                            "shipDate": _iso(row.get("finishDt")),
+                            "addedDate": _iso(row.get("startDt")),
+                            "matchState": "awaiting_receipt_match",
+                        }
+                    )
+
+                received_today_samples = []
+                for row in received_today_rows[:limit]:
+                    received_today_samples.append(
+                        {
+                            "grnOrderNumber": row.get("orderNumber") or "",
+                            "automationOrderNumber": row.get("orderNumber") or "",
+                            "lastGrnDate": _iso(row.get("arrivalDt") or row.get("startDt")),
+                            "lastReceivedDate": _iso(row.get("finishDt")),
+                            "receiptStatus": "RECEIVED",
+                            "orderStatus": row.get("orderType") or None,
+                            "dateAdded": _iso(row.get("startDt")),
+                            "dateRequired": _iso(row.get("arrivalDt")),
+                            "shipDate": _iso(row.get("finishDt")),
+                            "addedDate": _iso(row.get("startDt")),
+                            "matchState": "matched_received_today",
+                        }
+                    )
+
+                total_orders = len(latest_rows)
+                awaiting_count = len(awaiting_rows)
+                matched_count = max(0, total_orders - awaiting_count)
+
+                return {
+                    "summary": {
+                        "windowDays": days,
+                        "totalBookedOrders": total_orders,
+                        "awaitingReceiptMatch": awaiting_count,
+                        "matchedReceivedAnyDay": matched_count,
+                        "bookedAndReceivedToday": len(received_today_rows),
+                        "source": "goods-in-api",
+                        "statusField": "finish_time",
+                        "grnDateField": "arrival_date",
+                        "ordersDateField": "start_time/finish_time",
+                        "sampleAwaitingCount": len(awaiting_samples),
+                        "sampleReceivedTodayCount": len(received_today_samples),
+                        "generatedAt": datetime.now(UTC).isoformat(),
+                    },
+                    "awaitingSamples": awaiting_samples,
+                    "receivedTodaySamples": received_today_samples,
+                }
+            except urllib.error.HTTPError as exc:
+                api_fallback_error = f"Goods In API HTTP {exc.code}"
+            except urllib.error.URLError:
+                api_fallback_error = "Goods In API unavailable"
+            except Exception:
+                api_fallback_error = "Goods In API parse failure"
+
         conn = None
         try:
             conn = get_mariadb_connection()
@@ -1034,6 +1213,7 @@ def create_admin_diagnostics_router(
                     "matchedReceivedAnyDay": matched_orders,
                     "bookedAndReceivedToday": received_today_matched,
                     "source": "mariadb:ITAD_GRN+Automation_AllOrders",
+                    "apiFallbackError": api_fallback_error,
                     "statusField": status_col,
                     "grnDateField": grn_date_col,
                     "ordersDateField": orders_date_col,

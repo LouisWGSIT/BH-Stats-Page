@@ -640,7 +640,7 @@
             <div class="section admin-only" id="section-goods-in-evidence">
                 <h2>📥 Goods In Evidence</h2>
                 <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
-                    Proves the Goods In card values by showing GRN order numbers that are still unmatched in Automation orders, plus any matched as received today.
+                    Validates Goods In card values using the external Goods In API when enabled, with automatic fallback to legacy MariaDB evidence if the API is unavailable.
                 </p>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                     <label style="font-size:13px;color:#666;">Window:
@@ -2088,6 +2088,7 @@
                         <div class="stat-card"><div class="stat-value">${s.sampleReceivedTodayCount || received.length}</div><div class="stat-label">Received Today Samples</div></div>
                     </div>
                     <div style="margin-top:8px;font-size:12px;color:#666;">Source: ${s.source || 'unknown'} | GRN date field: ${s.grnDateField || 'n/a'} | Orders date field: ${s.ordersDateField || 'n/a'} | Status field: ${s.statusField || 'n/a'}</div>
+                    ${s.apiFallbackError ? `<div style="margin-top:6px;font-size:12px;color:#b45309;">API fallback active: ${s.apiFallbackError}</div>` : ''}
                     <div style="margin-top:8px;font-size:12px;color:#666;">Generated: ${formatActivityTimeUk(s.generatedAt)}</div>
                 `;
                 summary.style.display = 'block';
