@@ -790,6 +790,8 @@ def create_admin_diagnostics_router(
         goods_in_enabled = str(os.getenv("GOODS_IN_ENABLED", "false")).strip().lower() in ("1", "true", "yes", "on")
         goods_in_api_url = str(os.getenv("GOODS_IN_API_BASE_URL", "")).strip()
         goods_in_api_token = str(os.getenv("GOODS_IN_API_TOKEN", "")).strip()
+        goods_in_auth_header = str(os.getenv("GOODS_IN_API_AUTH_HEADER", "Authorization")).strip() or "Authorization"
+        goods_in_auth_scheme = str(os.getenv("GOODS_IN_API_AUTH_SCHEME", "bearer")).strip().lower() or "bearer"
         api_fallback_error = None
 
         def _parse_goods_in_dt(raw_value: str | None):
@@ -825,11 +827,17 @@ def create_admin_diagnostics_router(
         if goods_in_enabled and goods_in_api_url and goods_in_api_token:
             try:
                 req = urllib.request.Request(goods_in_api_url, method="GET")
-                if goods_in_api_token.lower().startswith("bearer "):
+                if goods_in_auth_scheme in ("none", "raw"):
+                    auth_value = goods_in_api_token
+                elif goods_in_auth_scheme in ("token",):
+                    auth_value = f"Token {goods_in_api_token}"
+                elif goods_in_auth_scheme in ("apikey", "api_key"):
+                    auth_value = goods_in_api_token
+                elif goods_in_api_token.lower().startswith("bearer "):
                     auth_value = goods_in_api_token
                 else:
                     auth_value = f"Bearer {goods_in_api_token}"
-                req.add_header("Authorization", auth_value)
+                req.add_header(goods_in_auth_header, auth_value)
                 req.add_header("Accept", "application/xml, text/xml")
 
                 with urllib.request.urlopen(req, timeout=15) as resp:
@@ -948,6 +956,8 @@ def create_admin_diagnostics_router(
                         "statusField": "finish_time",
                         "grnDateField": "arrival_date",
                         "ordersDateField": "start_time/finish_time",
+                        "apiAuthHeader": goods_in_auth_header,
+                        "apiAuthScheme": goods_in_auth_scheme,
                         "sampleAwaitingCount": len(awaiting_samples),
                         "sampleReceivedTodayCount": len(received_today_samples),
                         "generatedAt": datetime.now(UTC).isoformat(),
@@ -956,7 +966,17 @@ def create_admin_diagnostics_router(
                     "receivedTodaySamples": received_today_samples,
                 }
             except urllib.error.HTTPError as exc:
-                api_fallback_error = f"Goods In API HTTP {exc.code}"
+                err_snippet = ""
+                try:
+                    body = exc.read()
+                    if body:
+                        err_snippet = body.decode("utf-8", errors="ignore").strip().replace("\n", " ")[:180]
+                except Exception:
+                    err_snippet = ""
+                if err_snippet:
+                    api_fallback_error = f"Goods In API HTTP {exc.code}: {err_snippet}"
+                else:
+                    api_fallback_error = f"Goods In API HTTP {exc.code}"
             except urllib.error.URLError:
                 api_fallback_error = "Goods In API unavailable"
             except Exception:
