@@ -791,7 +791,17 @@ def create_admin_diagnostics_router(
         goods_in_api_url = str(os.getenv("GOODS_IN_API_BASE_URL", "")).strip()
         goods_in_api_token = str(os.getenv("GOODS_IN_API_TOKEN", "")).strip()
         goods_in_auth_header = str(os.getenv("GOODS_IN_API_AUTH_HEADER", "Authorization")).strip() or "Authorization"
-        goods_in_auth_scheme = str(os.getenv("GOODS_IN_API_AUTH_SCHEME", "bearer")).strip().lower() or "bearer"
+        goods_in_auth_scheme_raw = str(os.getenv("GOODS_IN_API_AUTH_SCHEME", "bearer")).strip().lower() or "bearer"
+        goods_in_auth_scheme_key = goods_in_auth_scheme_raw.replace(" ", "").replace("_", "").replace("-", "")
+
+        if goods_in_auth_scheme_key in ("secrettoken", "token"):
+            goods_in_auth_scheme = "token"
+        elif goods_in_auth_scheme_key in ("apikey", "api", "api_key"):
+            goods_in_auth_scheme = "apikey"
+        elif goods_in_auth_scheme_key in ("raw", "none"):
+            goods_in_auth_scheme = "raw"
+        else:
+            goods_in_auth_scheme = "bearer"
         api_fallback_error = None
 
         def _parse_goods_in_dt(raw_value: str | None):
@@ -827,7 +837,7 @@ def create_admin_diagnostics_router(
         if goods_in_enabled and goods_in_api_url and goods_in_api_token:
             try:
                 req = urllib.request.Request(goods_in_api_url, method="GET")
-                if goods_in_auth_scheme in ("none", "raw"):
+                if goods_in_auth_scheme in ("raw",):
                     auth_value = goods_in_api_token
                 elif goods_in_auth_scheme in ("token",):
                     auth_value = f"Token {goods_in_api_token}"
@@ -953,6 +963,8 @@ def create_admin_diagnostics_router(
                         "matchedReceivedAnyDay": matched_count,
                         "bookedAndReceivedToday": len(received_today_rows),
                         "source": "goods-in-api",
+                        "apiAuthHeader": goods_in_auth_header,
+                        "apiAuthScheme": goods_in_auth_scheme,
                         "statusField": "finish_time",
                         "grnDateField": "arrival_date",
                         "ordersDateField": "start_time/finish_time",
@@ -1234,6 +1246,8 @@ def create_admin_diagnostics_router(
                     "bookedAndReceivedToday": received_today_matched,
                     "source": "mariadb:ITAD_GRN+Automation_AllOrders",
                     "apiFallbackError": api_fallback_error,
+                    "apiAuthHeader": goods_in_auth_header,
+                    "apiAuthScheme": goods_in_auth_scheme,
                     "statusField": status_col,
                     "grnDateField": grn_date_col,
                     "ordersDateField": orders_date_col,
