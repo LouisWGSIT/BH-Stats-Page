@@ -32,39 +32,46 @@
       const metricsCard = document.querySelector('.qa-metrics-card');
       let currentView = 0;
 
+      const summaryRows = [
+        { label: 'Weekly Avg', value: `${avgDaily.toLocaleString()}/day` },
+        { label: 'Active Engineers', value: `${engineerCount}` },
+        { label: 'Avg per Engineer', value: `${avgPerEngineer.toLocaleString()}` },
+        { label: 'Consistency', value: `${Math.round(avgConsistency)}%` },
+        { label: 'Week Total', value: `${weeklyTotal.toLocaleString()}` },
+      ];
+
+      const summaryPages = [];
+      for (let i = 0; i < summaryRows.length; i += 3) {
+        summaryPages.push(summaryRows.slice(i, i + 3));
+      }
+      if (!summaryPages.length) {
+        summaryPages.push([]);
+      }
+
       function updateMetricsView() {
         if (metricsCard) {
           metricsCard.classList.add('flipping');
           setTimeout(() => metricsCard.classList.remove('flipping'), 600);
         }
 
-        if (currentView === 0) {
-          metricsValue.textContent = todayTotal.toLocaleString();
-          metricsLabel.textContent = 'QA Summary';
+        const summaryPageCount = summaryPages.length;
+        const dbViewIndex = summaryPageCount;
+        const nonDbViewIndex = summaryPageCount + 1;
 
-          metricsContent.innerHTML = `
+        if (currentView < summaryPageCount) {
+          metricsValue.textContent = todayTotal.toLocaleString();
+          metricsLabel.textContent = summaryPageCount > 1
+            ? `QA Summary ${currentView + 1}/${summaryPageCount}`
+            : 'QA Summary';
+
+          const page = summaryPages[currentView] || [];
+          metricsContent.innerHTML = page.map((row) => `
             <div class="qa-metric-item">
-              <span class="qa-metric-label">Weekly Avg</span>
-              <span class="qa-metric-value">${avgDaily.toLocaleString()}/day</span>
+              <span class="qa-metric-label">${row.label}</span>
+              <span class="qa-metric-value">${row.value}</span>
             </div>
-            <div class="qa-metric-item">
-              <span class="qa-metric-label">Active Engineers</span>
-              <span class="qa-metric-value">${engineerCount}</span>
-            </div>
-            <div class="qa-metric-item">
-              <span class="qa-metric-label">Avg per Engineer</span>
-              <span class="qa-metric-value">${avgPerEngineer.toLocaleString()}</span>
-            </div>
-            <div class="qa-metric-item">
-              <span class="qa-metric-label">Consistency</span>
-              <span class="qa-metric-value">${Math.round(avgConsistency)}%</span>
-            </div>
-            <div class="qa-metric-item">
-              <span class="qa-metric-label">Week Total</span>
-              <span class="qa-metric-value">${weeklyTotal.toLocaleString()}</span>
-            </div>
-          `;
-        } else if (currentView === 1) {
+          `).join('');
+        } else if (currentView === dbViewIndex) {
           metricsValue.innerHTML = '<img class="qa-metrics-icon" src="assets/trophy-gold.svg" alt="Record">';
           metricsLabel.textContent = "Data Bearing - Most QA'd in 1 Day!";
 
@@ -80,7 +87,7 @@
               </div>
             `).join('');
           }
-        } else if (currentView === 2) {
+        } else if (currentView === nonDbViewIndex) {
           metricsValue.innerHTML = '<img class="qa-metrics-icon" src="assets/trophy-silver.svg" alt="Record">';
           metricsLabel.textContent = "Non-Data Bearing - Most QA'd in 1 Day!";
 
@@ -98,7 +105,7 @@
           }
         }
 
-        currentView = (currentView + 1) % 3;
+        currentView = (currentView + 1) % (summaryPageCount + 2);
       }
 
       updateMetricsView();
