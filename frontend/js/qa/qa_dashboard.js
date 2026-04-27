@@ -98,7 +98,7 @@
       const datasets = [
         { period: 'today', title: "Today's", data: todayData, maxItems: 4 },
         { period: 'this_week', title: 'This Week', data: weeklyData, maxItems: 4 },
-        { period: 'all_time', title: 'All Time', data: allTimeData, maxItems: 5 },
+        { period: 'all_time', title: 'All Time', data: allTimeData, maxItems: 3 },
       ];
 
       const titleEl = document.getElementById('qaAppRotatingTitle');
@@ -243,25 +243,6 @@
       setTrendText('qaFlowQATrend', qaTrend);
       setTrendText('qaFlowSortedTrend', sortedTrend);
 
-      const checkupMessageEl = document.getElementById('qaGreenieCheckupMessage');
-      if (checkupMessageEl) {
-        if (qaDone >= erased && sorted >= qaDone) {
-          checkupMessageEl.textContent = 'Flow is healthy. Teams are keeping pace today.';
-        } else if (qaDone < erased) {
-          checkupMessageEl.textContent = 'QA is trailing erasure. Check support for QA lane.';
-        } else {
-          checkupMessageEl.textContent = 'Sorting output is behind QA. Dispatch may need support.';
-        }
-      }
-
-      const pointsEl = document.getElementById('qaGreenieCheckupPoints');
-      if (pointsEl) {
-        pointsEl.innerHTML = `
-          <div class="qa-greenie-point">Erasure to QA gap: <strong>${Math.max(0, erased - qaDone)}</strong></div>
-          <div class="qa-greenie-point">QA to Sorting gap: <strong>${Math.max(0, qaDone - sorted)}</strong></div>
-          <div class="qa-greenie-point">Sorting throughput: <strong>${sorted.toLocaleString()}</strong> scans today</div>
-        `;
-      }
     }
 
     async function loadQADashboard(period = 'this_week') {

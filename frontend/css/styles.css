@@ -2602,7 +2602,7 @@ main.layout {
 
 .qa-insight-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 10px;
   flex: 0 0 auto;
   min-height: 120px;
@@ -2615,7 +2615,7 @@ main.layout {
 
 .qa-app-section {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 0.9fr);
   gap: 10px;
   overflow: hidden;
   padding-left: 8px;
@@ -3040,6 +3040,15 @@ main.layout {
 
 .qa-app-section .qa-engineer-count {
   color: #ffc107;
+  font-size: 15px;
+}
+
+.qa-app-section .qa-engineer-item {
+  padding: 7px 9px;
+}
+
+.qa-app-section .qa-engineer-name {
+  max-width: 96px;
 }
 
 /* Medal colors for top 3 */
@@ -3205,10 +3214,20 @@ main.layout {
   border-radius: 10px;
   border: 1px solid rgba(126, 171, 210, 0.26);
   background: rgba(7, 28, 48, 0.62);
-  padding: 10px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+.qa-flow-mascot {
+  width: 26px;
+  height: 26px;
+  image-rendering: pixelated;
+  margin-bottom: 2px;
+  opacity: 0.95;
 }
 
 .qa-flow-stat-erasure {
