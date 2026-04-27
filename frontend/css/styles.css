@@ -2548,7 +2548,7 @@ main.layout {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
   grid-column: 1 / -1;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   height: 100%;
   flex: 1 1 auto;
@@ -2573,8 +2573,8 @@ main.layout {
 .qa-de-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  overflow: auto;
+  gap: 10px;
+  overflow: hidden;
   padding-right: 8px;
   min-width: 0;
   height: 100%;
@@ -2586,33 +2586,33 @@ main.layout {
 .qa-cards-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 10px;
   flex: 0 0 auto;
   min-height: 0;
   overflow: hidden;
 }
 
 .qa-cards-grid-top .qa-top-flip-card {
-  min-height: 250px;
+  min-height: 210px;
 }
 
 .qa-cards-grid-mid .qa-de-card {
-  min-height: 260px;
+  min-height: 180px;
 }
 
 .qa-insight-row {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  gap: 12px;
+  gap: 10px;
   flex: 0 0 auto;
-  min-height: 0;
+  min-height: 120px;
 }
 
 .qa-app-section {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  overflow: auto;
+  gap: 10px;
+  overflow: hidden;
   padding-left: 8px;
   border-left: 2px solid rgba(102, 126, 234, 0.3);
   min-width: 0;
@@ -2631,6 +2631,16 @@ main.layout {
   border-bottom: 2px solid rgba(141, 210, 255, 0.4);
   letter-spacing: 0.35px;
   text-shadow: 0 0 16px rgba(89, 188, 255, 0.35);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qa-section-mascot {
+  width: 20px;
+  height: 20px;
+  image-rendering: pixelated;
+  flex: 0 0 auto;
 }
 
 /* DE QA Cards */
@@ -2657,7 +2667,7 @@ main.layout {
   right: 0;
   top: 0;
   height: 3px;
-  background: linear-gradient(90deg, #33e4bf, #83f95a 35%, #54d6ff 72%, #ff4fae);
+  background: linear-gradient(90deg, #67b4ff, #4f91ff 45%, #54e0ff);
   opacity: 0.85;
 }
 
@@ -2915,7 +2925,7 @@ main.layout {
   gap: 8px;
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -2985,6 +2995,7 @@ main.layout {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 140px;
 }
 
 .qa-engineer-count {
@@ -3108,32 +3119,32 @@ main.layout {
 /* Color coding for different card types */
 /* Today's cards - Green (GSIT accent) */
 .qa-card-today {
-  background: linear-gradient(135deg, rgba(140, 240, 74, 0.15) 0%, rgba(140, 240, 74, 0.05) 100%);
-  border-color: rgba(140, 240, 74, 0.3);
+  background: linear-gradient(135deg, rgba(79, 145, 255, 0.19) 0%, rgba(79, 145, 255, 0.07) 100%);
+  border-color: rgba(103, 180, 255, 0.38);
 }
 
 .qa-card-today .qa-de-total span:first-child {
-  color: #8cf04a;
-  text-shadow: 0 2px 8px rgba(140, 240, 74, 0.4);
+  color: #8ed1ff;
+  text-shadow: 0 2px 8px rgba(103, 180, 255, 0.4);
 }
 
 .qa-card-today .qa-engineer-count {
-  color: #8cf04a;
+  color: #8ed1ff;
 }
 
 /* This Week's cards - Blue */
 .qa-card-week {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(102, 126, 234, 0.05) 100%);
-  border-color: rgba(102, 126, 234, 0.3);
+  background: linear-gradient(135deg, rgba(58, 111, 214, 0.2) 0%, rgba(58, 111, 214, 0.07) 100%);
+  border-color: rgba(89, 145, 255, 0.36);
 }
 
 .qa-card-week .qa-de-total span:first-child {
-  color: #667eea;
-  text-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+  color: #6ab0ff;
+  text-shadow: 0 2px 8px rgba(89, 145, 255, 0.4);
 }
 
 .qa-card-week .qa-engineer-count {
-  color: #667eea;
+  color: #6ab0ff;
 }
 
 .qa-flow-strip-card,
@@ -3184,6 +3195,30 @@ main.layout {
   gap: 4px;
 }
 
+.qa-flow-stat-erasure {
+  border-color: rgba(120, 242, 112, 0.34);
+}
+
+.qa-flow-stat-erasure strong {
+  color: #8cf46f;
+}
+
+.qa-flow-stat-qa {
+  border-color: rgba(98, 173, 255, 0.35);
+}
+
+.qa-flow-stat-qa strong {
+  color: #67b4ff;
+}
+
+.qa-flow-stat-sorting {
+  border-color: rgba(255, 183, 88, 0.38);
+}
+
+.qa-flow-stat-sorting strong {
+  color: #ffb64c;
+}
+
 .qa-flow-label {
   color: #b2c8df;
   font-size: 12px;
@@ -3231,7 +3266,7 @@ main.layout {
 .qa-greenie-head h3 {
   margin: 0;
   font-size: 15px;
-  color: #e9f7a7;
+  color: #a7d5ff;
 }
 
 .qa-greenie-head p {
@@ -3348,29 +3383,29 @@ main.layout {
 
 /* All Time cards - Purple */
 .qa-card-alltime {
-  background: linear-gradient(135deg, rgba(155, 89, 182, 0.15) 0%, rgba(155, 89, 182, 0.05) 100%);
-  border-color: rgba(155, 89, 182, 0.3);
+  background: linear-gradient(135deg, rgba(52, 96, 188, 0.2) 0%, rgba(52, 96, 188, 0.08) 100%);
+  border-color: rgba(90, 147, 255, 0.34);
 }
 
 .qa-card-alltime .qa-de-total span:first-child {
-  color: #9b59b6;
-  text-shadow: 0 2px 8px rgba(155, 89, 182, 0.4);
+  color: #69abff;
+  text-shadow: 0 2px 8px rgba(90, 147, 255, 0.4);
 }
 
 .qa-card-alltime .qa-engineer-count {
-  color: #9b59b6;
+  color: #69abff;
 }
 
 .qa-card-today .qa-engineer-meter-fill {
-  background: linear-gradient(90deg, #89ff5a, #2de8c3);
+  background: linear-gradient(90deg, #74bdff, #49a5ff);
 }
 
 .qa-card-week .qa-engineer-meter-fill {
-  background: linear-gradient(90deg, #5ea7ff, #7a75ff);
+  background: linear-gradient(90deg, #5fa7ff, #6bd2ff);
 }
 
 .qa-card-alltime .qa-engineer-meter-fill {
-  background: linear-gradient(90deg, #a36bff, #ff54b2);
+  background: linear-gradient(90deg, #5c97ff, #52c4ff);
 }
 
 /* Data Bearing cards - Teal */
@@ -3844,30 +3879,30 @@ main.layout {
     linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 42%);
 }
 
-.overall-section-card--goods-in::before { background: linear-gradient(180deg, #5ce1a6, #1cc8a0); }
-.overall-section-card--ia::before { background: linear-gradient(180deg, #8fb4ff, #5e79ff); }
-.overall-section-card--erasure::before { background: linear-gradient(180deg, #ff58bc, #ff9b3d); }
-.overall-section-card--qa::before { background: linear-gradient(180deg, #97f44a, #26d07c); }
-.overall-section-card--sorting::before { background: linear-gradient(180deg, #ffd84d, #ff8e3c); }
+.overall-section-card--goods-in::before { background: linear-gradient(180deg, #b079ff, #7d4bff); }
+.overall-section-card--ia::before { background: linear-gradient(180deg, #ffe77a, #ffc535); }
+.overall-section-card--erasure::before { background: linear-gradient(180deg, #89f96a, #35c96d); }
+.overall-section-card--qa::before { background: linear-gradient(180deg, #7dbaff, #3d7fff); }
+.overall-section-card--sorting::before { background: linear-gradient(180deg, #ffc87a, #ff9630); }
 
 .overall-section-card--goods-in {
-  background: linear-gradient(180deg, rgba(30, 105, 95, 0.18), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(180deg, rgba(94, 56, 170, 0.2), rgba(255, 255, 255, 0.03));
 }
 
 .overall-section-card--ia {
-  background: linear-gradient(180deg, rgba(63, 86, 188, 0.16), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(180deg, rgba(166, 132, 34, 0.2), rgba(255, 255, 255, 0.03));
 }
 
 .overall-section-card--erasure {
-  background: linear-gradient(180deg, rgba(138, 43, 118, 0.14), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(180deg, rgba(44, 128, 68, 0.2), rgba(255, 255, 255, 0.03));
 }
 
 .overall-section-card--qa {
-  background: linear-gradient(180deg, rgba(61, 159, 103, 0.14), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(180deg, rgba(44, 91, 176, 0.2), rgba(255, 255, 255, 0.03));
 }
 
 .overall-section-card--sorting {
-  background: linear-gradient(180deg, rgba(156, 102, 38, 0.14), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(180deg, rgba(171, 96, 25, 0.2), rgba(255, 255, 255, 0.03));
 }
 
 .overall-section-card.is-idle {
@@ -5195,3 +5230,4 @@ main.layout {
     margin-top: 4px;
   }
 }
+

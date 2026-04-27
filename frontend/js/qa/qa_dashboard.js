@@ -96,9 +96,9 @@
 
     function startSortingCardRotator(todayData, weeklyData, allTimeData) {
       const datasets = [
-        { period: 'today', title: "Today's", data: todayData, maxItems: 6 },
-        { period: 'this_week', title: 'This Week', data: weeklyData, maxItems: 8 },
-        { period: 'all_time', title: 'All Time', data: allTimeData, maxItems: 10 },
+        { period: 'today', title: "Today's", data: todayData, maxItems: 4 },
+        { period: 'this_week', title: 'This Week', data: weeklyData, maxItems: 4 },
+        { period: 'all_time', title: 'All Time', data: allTimeData, maxItems: 5 },
       ];
 
       const titleEl = document.getElementById('qaAppRotatingTitle');
@@ -195,7 +195,7 @@
 
       return rows
         .sort((a, b) => (b.score - a.score) || (b.todayCount - a.todayCount))
-        .slice(0, 5);
+        .slice(0, 4);
     }
 
     function renderTopMovers(todayData, weeklyData) {
@@ -279,9 +279,9 @@
 
         const { todayData, weeklyData, allTimeData } = dashboardData;
 
-        populateQACard('qaTodayTotal', 'qaTodayEngineers', todayData, 'qa', 6);
-        populateQACard('qaWeekTotal', 'qaWeeklyEngineers', weeklyData, 'qa', 6);
-        populateQACard('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 'qa', 8);
+        populateQACard('qaTodayTotal', 'qaTodayEngineers', todayData, 'qa', 4);
+        populateQACard('qaWeekTotal', 'qaWeeklyEngineers', weeklyData, 'qa', 4);
+        populateQACard('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 'qa', 5);
 
         startQARotator(todayData, weeklyData, allTimeData);
         populateMetricsCard(todayData, weeklyData);
