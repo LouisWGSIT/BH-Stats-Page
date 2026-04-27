@@ -105,10 +105,61 @@
       };
     }
 
+    function asNumber(value) {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : 0;
+    }
+
+    function getSectionDone(section) {
+      const key = String(section && section.key ? section.key : '').toLowerCase();
+      const rows = Array.isArray(section && section.subMetrics) ? section.subMetrics : [];
+      const findValue = (patterns) => {
+        for (const row of rows) {
+          const label = String(row && row.label ? row.label : '').toLowerCase();
+          if (patterns.some((pattern) => pattern.test(label))) {
+            return asNumber(row.value);
+          }
+        }
+        return 0;
+      };
+
+      if (key === 'erasure') {
+        return findValue([/erased today/, /processed today/, /completed erasure/]);
+      }
+      if (key === 'qa') {
+        return findValue([/completed qa today/, /qa complete/]);
+      }
+      if (key === 'sorting') {
+        return findValue([/sorted today/, /sorted this morning/]);
+      }
+      return 0;
+    }
+
+    async function loadFlowSummaryData() {
+      try {
+        const res = await fetch('/overall/sections');
+        if (!res.ok) return null;
+        const payload = await res.json();
+        const sections = Array.isArray(payload && payload.sections) ? payload.sections : [];
+        const byKey = new Map();
+        for (const section of sections) {
+          byKey.set(String(section && section.key ? section.key : '').toLowerCase(), section || {});
+        }
+        return {
+          erasedToday: getSectionDone(byKey.get('erasure')),
+          qaToday: getSectionDone(byKey.get('qa')),
+          sortedToday: getSectionDone(byKey.get('sorting')),
+        };
+      } catch (_err) {
+        return null;
+      }
+    }
+
     return {
       loadDashboardData,
       loadTrendAndInsightsData,
       loadBootstrapData,
+      loadFlowSummaryData,
     };
   }
 

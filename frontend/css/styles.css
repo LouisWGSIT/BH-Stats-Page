@@ -2574,7 +2574,7 @@ main.layout {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow: hidden;
+  overflow: auto;
   padding-right: 8px;
   min-width: 0;
   height: 100%;
@@ -2587,16 +2587,24 @@ main.layout {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-height: 0;
   overflow: hidden;
+}
+
+.qa-insight-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 12px;
+  flex: 0 0 auto;
+  min-height: 0;
 }
 
 .qa-app-section {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  overflow: hidden;
+  overflow: auto;
   padding-left: 8px;
   border-left: 2px solid rgba(102, 126, 234, 0.3);
   min-width: 0;
@@ -2860,6 +2868,37 @@ main.layout {
   margin-top: 4px;
 }
 
+.qa-app-total-lite span:first-child {
+  font-size: 24px;
+}
+
+.qa-app-rotator-card.flipping {
+  animation: cardFlip 0.4s ease;
+}
+
+.qa-app-period-pills {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px 0;
+}
+
+.qa-period-pill {
+  border: 1px solid rgba(164, 192, 224, 0.35);
+  background: rgba(18, 45, 77, 0.7);
+  color: #b8d3ef;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.qa-period-pill.is-active {
+  background: linear-gradient(90deg, rgba(255, 206, 76, 0.25), rgba(255, 149, 0, 0.2));
+  color: #ffe69a;
+  border-color: rgba(255, 206, 76, 0.65);
+}
+
 /* Engineers List */
 .qa-engineers-list {
   display: flex;
@@ -3086,6 +3125,216 @@ main.layout {
 
 .qa-card-week .qa-engineer-count {
   color: #667eea;
+}
+
+.qa-flow-strip-card,
+.qa-greenie-checkup-card {
+  background: linear-gradient(160deg, rgba(8, 47, 70, 0.94), rgba(10, 32, 58, 0.94));
+  border: 1px solid rgba(86, 193, 241, 0.34);
+  border-radius: 14px;
+  padding: 14px;
+  min-height: 0;
+}
+
+.qa-flow-strip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.qa-flow-strip-header h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #e6f4ff;
+}
+
+.qa-flow-strip-tag {
+  border-radius: 999px;
+  border: 1px solid rgba(109, 230, 255, 0.4);
+  padding: 3px 9px;
+  font-size: 11px;
+  color: #9be9ff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.qa-flow-strip-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.qa-flow-stat {
+  border-radius: 10px;
+  border: 1px solid rgba(126, 171, 210, 0.26);
+  background: rgba(7, 28, 48, 0.62);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.qa-flow-label {
+  color: #b2c8df;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.qa-flow-stat strong {
+  color: #ffffff;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.qa-flow-trend {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.qa-flow-trend.is-up {
+  color: #7bff78;
+}
+
+.qa-flow-trend.is-down {
+  color: #ff7f93;
+}
+
+.qa-flow-trend.is-flat {
+  color: #9cb7d2;
+}
+
+.qa-greenie-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.qa-greenie-mini {
+  width: 54px;
+  height: 54px;
+  image-rendering: pixelated;
+  flex: 0 0 auto;
+}
+
+.qa-greenie-head h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #e9f7a7;
+}
+
+.qa-greenie-head p {
+  margin: 4px 0 0 0;
+  color: #d7e3f2;
+  font-size: 13px;
+}
+
+.qa-greenie-points {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qa-greenie-point {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 199, 137, 0.3);
+  background: rgba(47, 88, 44, 0.2);
+  color: #d5f0d1;
+  font-size: 13px;
+}
+
+.qa-throughput-list,
+.qa-movers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.qa-throughput-item {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.qa-throughput-label {
+  color: #9fb9d6;
+  font-size: 12px;
+}
+
+.qa-throughput-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(30, 55, 82, 0.7);
+  overflow: hidden;
+}
+
+.qa-throughput-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #60e5ff, #9af865);
+}
+
+.qa-throughput-value {
+  color: #d9f5ff;
+  font-size: 13px;
+}
+
+.qa-throughput-empty {
+  color: #8aa4bf;
+  font-size: 13px;
+  text-align: center;
+  padding: 12px 0;
+}
+
+.qa-mover-item {
+  display: grid;
+  grid-template-columns: 24px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  border-radius: 8px;
+  border: 1px solid rgba(118, 167, 210, 0.24);
+  background: rgba(8, 28, 48, 0.55);
+  padding: 8px 10px;
+}
+
+.qa-mover-rank {
+  color: #9bb9d5;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.qa-mover-name {
+  color: #eff6ff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.qa-mover-delta {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.qa-mover-delta.is-up {
+  color: #8cff81;
+}
+
+.qa-mover-delta.is-down {
+  color: #ff8594;
+}
+
+.qa-mover-delta.is-flat {
+  color: #a7bfd7;
+}
+
+.qa-mover-count {
+  color: #ffd774;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 /* All Time cards - Purple */
@@ -3389,6 +3638,33 @@ main.layout {
 
   .qa-technicians-grid {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 1500px) {
+  .qa-flow-strip-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .qa-insight-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1200px) {
+  .qa-main-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .qa-app-section {
+    border-left: none;
+    border-top: 2px solid rgba(102, 126, 234, 0.3);
+    padding-left: 0;
+    padding-top: 10px;
+  }
+
+  .qa-cards-grid {
+    grid-template-columns: 1fr;
   }
 }
 

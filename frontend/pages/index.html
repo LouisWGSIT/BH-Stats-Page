@@ -681,48 +681,90 @@
           </div>
         </div>
 
+          <div class="qa-insight-row">
+            <div class="qa-flow-strip-card">
+              <div class="qa-flow-strip-header">
+                <h3>Today's Throughput</h3>
+                <span class="qa-flow-strip-tag">Live Snapshot</span>
+              </div>
+              <div class="qa-flow-strip-grid">
+                <div class="qa-flow-stat qa-flow-stat-erasure">
+                  <span class="qa-flow-label">Erased Today</span>
+                  <strong id="qaFlowErasedToday">-</strong>
+                  <span class="qa-flow-trend" id="qaFlowErasedTrend">--</span>
+                </div>
+                <div class="qa-flow-stat qa-flow-stat-qa">
+                  <span class="qa-flow-label">QA'd Today</span>
+                  <strong id="qaFlowQAToday">-</strong>
+                  <span class="qa-flow-trend" id="qaFlowQATrend">--</span>
+                </div>
+                <div class="qa-flow-stat qa-flow-stat-sorting">
+                  <span class="qa-flow-label">Sorted Today</span>
+                  <strong id="qaFlowSortedToday">-</strong>
+                  <span class="qa-flow-trend" id="qaFlowSortedTrend">--</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="qa-greenie-checkup-card">
+              <div class="qa-greenie-head">
+                <img src="assets/Greenie.png" alt="Greenie" class="qa-greenie-mini">
+                <div>
+                  <h3>Greenie Daily Check-Up</h3>
+                  <p id="qaGreenieCheckupMessage">Warming up stats...</p>
+                </div>
+              </div>
+              <div class="qa-greenie-points" id="qaGreenieCheckupPoints">
+                <div class="qa-greenie-point">Waiting for live snapshot...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Right Side: Sorting (25%) -->
         <div class="qa-app-section">
           <h2 class="qa-section-header">🔄 Sorting</h2>
-          
-          <!-- Today's QA App -->
-          <div class="qa-app-card">
+
+          <div class="qa-app-card qa-app-rotator-card" id="qaAppRotatingCard">
             <div class="qa-app-card-header">
-              <h3>Today's</h3>
+              <h3 id="qaAppRotatingTitle">Today's</h3>
               <div class="qa-app-total">
-                <span id="qaAppTodayTotal">-</span>
+                <span id="qaAppRotatingTotal">-</span>
                 <span class="qa-app-label">Scans</span>
               </div>
             </div>
-            <div class="qa-engineers-list" id="qaAppTodayEngineers">
-              <!-- Populated by JavaScript -->
+            <div class="qa-app-period-pills" id="qaAppPeriodPills">
+              <button class="qa-period-pill is-active" type="button" data-period="today">Today</button>
+              <button class="qa-period-pill" type="button" data-period="this_week">This Week</button>
+              <button class="qa-period-pill" type="button" data-period="all_time">All Time</button>
             </div>
-          </div>
-          
-          <!-- This Week's QA App -->
-          <div class="qa-app-card">
-            <div class="qa-app-card-header">
-              <h3>This Week</h3>
-              <div class="qa-app-total">
-                <span id="qaAppWeekTotal">-</span>
-                <span class="qa-app-label">Scans</span>
-              </div>
-            </div>
-            <div class="qa-engineers-list" id="qaAppWeeklyEngineers">
+            <div class="qa-engineers-list" id="qaAppRotatingEngineers">
               <!-- Populated by JavaScript -->
             </div>
           </div>
 
-          <!-- All Time QA App -->
-          <div class="qa-app-card">
+          <div class="qa-app-card qa-throughput-card">
             <div class="qa-app-card-header">
-              <h3>All Time</h3>
-              <div class="qa-app-total">
-                <span id="qaAppAllTimeTotal">-</span>
-                <span class="qa-app-label">Scans</span>
+              <h3>Throughput Pulse</h3>
+              <div class="qa-app-total qa-app-total-lite">
+                <span id="qaThroughputPeak">-</span>
+                <span class="qa-app-label">Peak Hour</span>
               </div>
             </div>
-            <div class="qa-engineers-list" id="qaAppAllTimeEngineers">
+            <div class="qa-throughput-list" id="qaThroughputTimeline">
+              <!-- Populated by JavaScript -->
+            </div>
+          </div>
+
+          <div class="qa-app-card qa-movers-card">
+            <div class="qa-app-card-header">
+              <h3>Top Movers (vs weekly pace)</h3>
+              <div class="qa-app-total qa-app-total-lite">
+                <span id="qaMoversLead">-</span>
+                <span class="qa-app-label">Best Lift</span>
+              </div>
+            </div>
+            <div class="qa-movers-list" id="qaTopMovers">
               <!-- Populated by JavaScript -->
             </div>
           </div>

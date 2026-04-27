@@ -122,6 +122,8 @@
     return {
       populateQACard,
       populateQAAppCard,
+      renderEngineersList,
+      formatQaName,
     };
   }
 
