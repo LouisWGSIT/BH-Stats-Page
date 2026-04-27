@@ -71,45 +71,53 @@
         startQARotator(todayData, weeklyData, allTimeData);
         populateMetricsCard(todayData, weeklyData);
 
-        const {
-          todayTrend,
-          weekTrend,
-          allTimeTrend,
-          todayInsights,
-          weekInsights,
-          allTimeInsights,
-        } = await qaDataLoaderApi.loadTrendAndInsightsData();
-
-        updateQATrendPanel({
-          totalId: 'qaTodayTrendTotal',
-          sparklineId: 'qaTodaySparkline',
-          metricsId: 'qaTodayMetrics',
-          trend: todayTrend,
-          insights: todayInsights,
-          mode: 'today'
-        });
-        updateQATrendPanel({
-          totalId: 'qaWeekTrendTotal',
-          sparklineId: 'qaWeekSparkline',
-          metricsId: 'qaWeekMetrics',
-          trend: weekTrend,
-          insights: weekInsights,
-          mode: 'week'
-        });
-        updateQATrendPanel({
-          totalId: 'qaAllTimeTrendTotal',
-          sparklineId: 'qaAllTimeSparkline',
-          metricsId: 'qaAllTimeMetrics',
-          trend: allTimeTrend,
-          insights: allTimeInsights,
-          mode: 'all_time'
-        });
-
-        startQATopFlipRotation();
-
         populateQAAppCard('qaAppTodayTotal', 'qaAppTodayEngineers', todayData, 6);
         populateQAAppCard('qaAppWeekTotal', 'qaAppWeeklyEngineers', weeklyData, 8);
         populateQAAppCard('qaAppAllTimeTotal', 'qaAppAllTimeEngineers', allTimeData, 10);
+
+        startQATopFlipRotation();
+
+        // Load trend/insight panels asynchronously so the main QA cards paint first.
+        qaDataLoaderApi.loadTrendAndInsightsData()
+          .then((trendData) => {
+            if (!trendData) return;
+            const {
+              todayTrend,
+              weekTrend,
+              allTimeTrend,
+              todayInsights,
+              weekInsights,
+              allTimeInsights,
+            } = trendData;
+
+            updateQATrendPanel({
+              totalId: 'qaTodayTrendTotal',
+              sparklineId: 'qaTodaySparkline',
+              metricsId: 'qaTodayMetrics',
+              trend: todayTrend,
+              insights: todayInsights,
+              mode: 'today'
+            });
+            updateQATrendPanel({
+              totalId: 'qaWeekTrendTotal',
+              sparklineId: 'qaWeekSparkline',
+              metricsId: 'qaWeekMetrics',
+              trend: weekTrend,
+              insights: weekInsights,
+              mode: 'week'
+            });
+            updateQATrendPanel({
+              totalId: 'qaAllTimeTrendTotal',
+              sparklineId: 'qaAllTimeSparkline',
+              metricsId: 'qaAllTimeMetrics',
+              trend: allTimeTrend,
+              insights: allTimeInsights,
+              mode: 'all_time'
+            });
+          })
+          .catch(() => {
+            // Keep existing panel state on background trend refresh errors.
+          });
       } catch (error) {
         console.error('Failed to load QA dashboard:', error);
         showQAError('Connection error: ' + error.message);

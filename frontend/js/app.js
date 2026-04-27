@@ -77,17 +77,40 @@
   }
 
   async function ensureQAModulesLoaded() {
-    await loadScriptOnce('core/qa_trend_panel.js');
-    await loadScriptOnce('core/qa_metrics_rotator.js');
-    await loadScriptOnce('core/qa_cards_renderer.js');
-    await loadScriptOnce('core/qa_card_rotator.js');
-    await loadScriptOnce('core/qa_dashboard_ui.js');
-    await loadScriptOnce('core/qa_data_loader.js');
-    await loadScriptOnce('qa/qa_dashboard.js');
+    await Promise.all([
+      loadScriptOnce('core/qa_trend_panel.js'),
+      loadScriptOnce('core/qa_metrics_rotator.js'),
+      loadScriptOnce('core/qa_cards_renderer.js'),
+      loadScriptOnce('core/qa_card_rotator.js'),
+      loadScriptOnce('core/qa_dashboard_ui.js'),
+      loadScriptOnce('core/qa_data_loader.js'),
+      loadScriptOnce('qa/qa_dashboard.js'),
+    ]);
   }
 
   async function ensureOverallModuleLoaded() {
     await loadScriptOnce('core/overall_stats_dashboard.js');
+  }
+
+  function prewarmQADashboardAssets() {
+    const warm = async () => {
+      try {
+        await ensureQAModulesLoaded();
+      } catch (_err) {
+        // Non-blocking warm path
+      }
+      try {
+        fetch('/api/qa-bootstrap').catch(() => {});
+      } catch (_err) {
+        // Ignore warm failures; real loads still happen on demand.
+      }
+    };
+
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(() => { warm(); }, { timeout: 2500 });
+    } else {
+      setTimeout(() => { warm(); }, 900);
+    }
   }
 
   const keepAliveApi = (window.DisplayKeepAlive && typeof window.DisplayKeepAlive.init === 'function')
@@ -1470,6 +1493,7 @@
   refreshAggregated();
   refreshAllTimeTotals();
   refreshAllTopLists();
+  prewarmQADashboardAssets();
   
   // Initialize new flip cards
   updateRecordsMilestones();

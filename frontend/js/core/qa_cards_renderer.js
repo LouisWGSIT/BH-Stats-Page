@@ -26,17 +26,26 @@
         return;
       }
 
-      listEl.innerHTML = rows.map((eng) => {
+      const maxValue = rows.reduce((max, eng) => {
+        const val = Number(eng[countKey] || 0);
+        return val > max ? val : max;
+      }, 0) || 1;
+
+      listEl.innerHTML = rows.map((eng, index) => {
         const displayName = formatQaName(eng.name);
         const avatarKey = eng.name || displayName || 'QA';
         const avatar = deps.getAvatarDataUri(avatarKey);
+        const value = Number(eng[countKey] || 0);
+        const widthPct = Math.max(6, Math.round((value / maxValue) * 100));
         return `
           <div class="qa-engineer-item">
             <div class="qa-engineer-left">
+              <span class="qa-engineer-rank">${index + 1}</span>
               <span class="qa-engineer-avatar" style="background-image: url(${avatar})"></span>
               <span class="qa-engineer-name">${deps.escapeHtml(displayName)}</span>
             </div>
-            <span class="qa-engineer-count">${eng[countKey].toLocaleString()}</span>
+            <span class="qa-engineer-count">${value.toLocaleString()}</span>
+            <span class="qa-engineer-meter"><span class="qa-engineer-meter-fill" style="width:${widthPct}%"></span></span>
           </div>
         `;
       }).join('');
