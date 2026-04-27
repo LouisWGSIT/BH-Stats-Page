@@ -665,16 +665,16 @@
               </div>
             </div>
 
-            <!-- Metrics Card (Flip) -->
-            <div class="qa-de-card qa-metrics-card">
+            <!-- Top QA Leaderboard -->
+            <div class="qa-de-card qa-leaderboard-card">
               <div class="qa-de-card-header">
-                <h3>Metrics</h3>
+                <h3>Top QA Today</h3>
                 <div class="qa-de-total">
-                  <span id="metricsValue">-</span>
-                  <span class="qa-de-label" id="metricsLabel">Total</span>
+                  <span id="qaLeaderboardTotal">-</span>
+                  <span class="qa-de-label">Total QA'd</span>
                 </div>
               </div>
-              <div class="qa-metrics-content" id="metricsContent">
+              <div class="qa-engineers-list" id="qaLeaderboardEngineers">
                 <!-- Populated by JavaScript -->
               </div>
             </div>
@@ -734,14 +734,15 @@
 
           <div class="qa-app-card qa-throughput-card">
             <div class="qa-app-card-header">
-              <h3>Throughput Pulse</h3>
+              <h3>Throughput (QA'd per Hour)</h3>
               <div class="qa-app-total qa-app-total-lite">
                 <span id="qaThroughputPeak">-</span>
-                <span class="qa-app-label">Peak Hour</span>
+                <span class="qa-app-label">Now</span>
               </div>
             </div>
-            <div class="qa-throughput-list" id="qaThroughputTimeline">
-              <!-- Populated by JavaScript -->
+            <div class="qa-throughput-chart-wrap" id="qaThroughputTimeline">
+              <svg id="qaSortingThroughputSpark" class="qa-sorting-throughput-spark" viewBox="0 0 400 120" preserveAspectRatio="none"></svg>
+              <div class="qa-throughput-xlabels" id="qaThroughputXAxis"></div>
             </div>
           </div>
 

@@ -24,6 +24,13 @@
       }, 35000);
     }
 
+    function lockQATopCardsToCharts() {
+      const cards = document.querySelectorAll('.qa-top-flip-card');
+      if (!cards.length) return;
+      stop();
+      cards.forEach((card) => card.classList.add('flipped'));
+    }
+
     function showQAError(message) {
       const qaTodayEngineers = document.getElementById('qaTodayEngineers');
       const qaWeeklyEngineers = document.getElementById('qaWeeklyEngineers');
@@ -48,6 +55,7 @@
 
     return {
       startQATopFlipRotation,
+      lockQATopCardsToCharts,
       showQAError,
       stop,
     };

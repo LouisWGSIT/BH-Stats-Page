@@ -145,26 +145,71 @@
     }
 
     function renderThroughputPulse(todayTrend) {
-      const listEl = document.getElementById('qaThroughputTimeline');
-      if (!listEl) return;
+      const chartWrapEl = document.getElementById('qaThroughputTimeline');
+      const sparklineEl = document.getElementById('qaSortingThroughputSpark');
+      const xAxisEl = document.getElementById('qaThroughputXAxis');
+      if (!chartWrapEl || !sparklineEl || !xAxisEl) return;
+
       const points = parseTrendSeries(todayTrend).slice(-8);
       const peak = points.reduce((max, p) => (p.value > max ? p.value : max), 0);
-      setText('qaThroughputPeak', peak > 0 ? peak.toLocaleString() : '--');
+      const latest = points.length ? points[points.length - 1].value : 0;
+      setText('qaThroughputPeak', latest > 0 ? latest.toLocaleString() : '--');
+
       if (!points.length) {
-        listEl.innerHTML = '<div class="qa-throughput-empty">No hourly data yet.</div>';
+        sparklineEl.innerHTML = '';
+        xAxisEl.innerHTML = '';
+        chartWrapEl.classList.add('is-empty');
+        chartWrapEl.dataset.emptyText = 'No hourly data yet.';
         return;
       }
-      const maxValue = peak || 1;
-      listEl.innerHTML = points.map((p) => {
-        const pct = Math.max(6, Math.round((p.value / maxValue) * 100));
-        return `
-          <div class="qa-throughput-item">
-            <span class="qa-throughput-label">${escapeHtml(p.label)}</span>
-            <span class="qa-throughput-bar"><span class="qa-throughput-fill" style="width:${pct}%"></span></span>
-            <strong class="qa-throughput-value">${p.value.toLocaleString()}</strong>
-          </div>
-        `;
-      }).join('');
+
+      chartWrapEl.classList.remove('is-empty');
+      chartWrapEl.dataset.emptyText = '';
+
+      const values = points.map((p) => p.value);
+      const width = 400;
+      const height = 120;
+      const paddingX = 16;
+      const paddingY = 16;
+      const chartWidth = width - (paddingX * 2);
+      const chartHeight = height - (paddingY * 2);
+      const maxValue = Math.max(...values, 1);
+      const stepX = points.length > 1 ? chartWidth / (points.length - 1) : chartWidth;
+      const coords = values.map((value, index) => {
+        const x = paddingX + (index * stepX);
+        const y = height - paddingY - ((value / maxValue) * chartHeight);
+        return { x, y, value };
+      });
+
+      const linePath = coords.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
+      const areaPath = `${linePath} L${(paddingX + chartWidth).toFixed(2)},${(height - paddingY).toFixed(2)} L${paddingX.toFixed(2)},${(height - paddingY).toFixed(2)} Z`;
+
+      sparklineEl.innerHTML = `
+        <defs>
+          <linearGradient id="qaSortingThroughputFill" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="rgba(158,255,106,0.45)"></stop>
+            <stop offset="100%" stop-color="rgba(158,255,106,0.03)"></stop>
+          </linearGradient>
+          <linearGradient id="qaSortingThroughputStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#7ef4b3"></stop>
+            <stop offset="100%" stop-color="#d1ff65"></stop>
+          </linearGradient>
+        </defs>
+        <line class="qa-throughput-gridline" x1="${paddingX}" y1="${height - paddingY}" x2="${width - paddingX}" y2="${height - paddingY}"></line>
+        <line class="qa-throughput-gridline qa-throughput-gridline-mid" x1="${paddingX}" y1="${paddingY + (chartHeight / 2)}" x2="${width - paddingX}" y2="${paddingY + (chartHeight / 2)}"></line>
+        <path class="qa-throughput-area" d="${areaPath}"></path>
+        <path class="qa-throughput-line" d="${linePath}"></path>
+        <circle class="qa-throughput-point" cx="${coords[coords.length - 1].x.toFixed(2)}" cy="${coords[coords.length - 1].y.toFixed(2)}" r="4"></circle>
+      `;
+
+      xAxisEl.style.gridTemplateColumns = `repeat(${points.length}, minmax(0, 1fr))`;
+      xAxisEl.innerHTML = points.map((point) => (
+        `<span class="qa-throughput-xlabel">${escapeHtml(point.label)}</span>`
+      )).join('');
+    }
+
+    function populateMiddleLeaderboard(todayData) {
+      populateQACard('qaLeaderboardTotal', 'qaLeaderboardEngineers', todayData, 'qa', 5);
     }
 
     function buildTopMovers(todayData, weeklyData) {
@@ -263,14 +308,14 @@
         populateQACard('qaTodayTotal', 'qaTodayEngineers', todayData, 'qa', 4);
         populateQACard('qaWeekTotal', 'qaWeeklyEngineers', weeklyData, 'qa', 4);
         populateQACard('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 'qa', 5);
+        populateMiddleLeaderboard(todayData);
 
         startQARotator(todayData, weeklyData, allTimeData);
-        populateMetricsCard(todayData, weeklyData);
 
         startSortingCardRotator(todayData, weeklyData, allTimeData);
         renderTopMovers(todayData, weeklyData);
 
-        startQATopFlipRotation();
+        lockQATopCardsToCharts();
 
         qaDataLoaderApi.loadFlowSummaryData()
           .then((flowData) => renderFlowStrip(flowData, todayData, weeklyData))
@@ -332,6 +377,13 @@
       }
     }
 
+    function lockQATopCardsToCharts() {
+      if (qaDashboardUiApi && typeof qaDashboardUiApi.lockQATopCardsToCharts === 'function') {
+        return qaDashboardUiApi.lockQATopCardsToCharts();
+      }
+      startQATopFlipRotation();
+    }
+
     function updateQATrendPanel(params) {
       if (qaTrendPanelApi && typeof qaTrendPanelApi.updateQATrendPanel === 'function') {
         return qaTrendPanelApi.updateQATrendPanel(params);
@@ -353,12 +405,6 @@
     function populateQAAppCard(totalId, listId, data, maxItems = 8) {
       if (qaCardsRendererApi && typeof qaCardsRendererApi.populateQAAppCard === 'function') {
         return qaCardsRendererApi.populateQAAppCard(totalId, listId, data, maxItems);
-      }
-    }
-
-    function populateMetricsCard(todayData, weeklyData) {
-      if (qaMetricsRotatorApi && typeof qaMetricsRotatorApi.populateMetricsCard === 'function') {
-        return qaMetricsRotatorApi.populateMetricsCard(todayData, weeklyData);
       }
     }
 
