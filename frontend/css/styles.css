@@ -2571,8 +2571,8 @@ main.layout {
 }
 
 .qa-de-section {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.78fr);
   gap: 10px;
   overflow: hidden;
   padding-right: 8px;
@@ -2587,17 +2587,17 @@ main.layout {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  flex: 0 0 auto;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }
 
 .qa-cards-grid-top .qa-top-flip-card {
-  min-height: 210px;
+  min-height: 0;
 }
 
 .qa-cards-grid-mid .qa-de-card {
-  min-height: 180px;
+  min-height: 0;
 }
 
 .qa-insight-row {
@@ -2608,9 +2608,14 @@ main.layout {
   min-height: 120px;
 }
 
+.qa-insight-row > * {
+  min-height: 0;
+  height: 100%;
+}
+
 .qa-app-section {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
   overflow: hidden;
   padding-left: 8px;
@@ -2656,6 +2661,7 @@ main.layout {
   justify-content: flex-start;
   flex: 1 1 0;
   min-height: 0;
+  height: 100%;
   position: relative;
   overflow: hidden;
 }
@@ -2693,6 +2699,7 @@ main.layout {
   perspective: 1000px;
   position: relative;
   overflow: hidden;
+  height: 100%;
 }
 
 .qa-flip-inner {
@@ -2714,7 +2721,7 @@ main.layout {
   inset: 0;
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 12px;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
@@ -2768,16 +2775,20 @@ main.layout {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 10px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
   border-bottom: 1px solid rgba(102, 126, 234, 0.2);
 }
 
 .qa-de-card-header h3 {
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 62%;
 }
 
 .qa-de-total {
@@ -2788,7 +2799,7 @@ main.layout {
 
 .qa-de-total span:first-child {
   color: #1abc9c;
-  font-size: 38px;
+  font-size: 34px;
   font-weight: 800;
   line-height: 1;
   text-shadow: 0 2px 8px rgba(26, 188, 156, 0.4);
@@ -2814,6 +2825,7 @@ main.layout {
   flex-direction: column;
   flex: 1 1 0;
   min-height: 0;
+  height: 100%;
   position: relative;
   overflow: hidden;
 }
@@ -2853,16 +2865,20 @@ main.layout {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 10px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
   border-bottom: 1px solid rgba(255, 193, 7, 0.2);
 }
 
 .qa-app-card-header h3 {
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 66%;
 }
 
 .qa-app-total {
@@ -2873,7 +2889,7 @@ main.layout {
 
 .qa-app-total span:first-child {
   color: #ffc107;
-  font-size: 38px;
+  font-size: 34px;
   font-weight: 800;
   line-height: 1;
   text-shadow: 0 2px 8px rgba(255, 193, 7, 0.4);
@@ -2939,7 +2955,7 @@ main.layout {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
+  padding: 8px 10px;
   background: linear-gradient(92deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02));
   border-radius: 8px;
   border: 1px solid rgba(113, 154, 197, 0.14);
@@ -2995,12 +3011,12 @@ main.layout {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 140px;
+  max-width: 122px;
 }
 
 .qa-engineer-count {
   color: #1abc9c;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 700;
   position: relative;
   z-index: 2;
@@ -3701,10 +3717,17 @@ main.layout {
   }
 
   .qa-app-section {
+    display: flex;
+    flex-direction: column;
     border-left: none;
     border-top: 2px solid rgba(102, 126, 234, 0.3);
     padding-left: 0;
     padding-top: 10px;
+  }
+
+  .qa-de-section {
+    display: flex;
+    flex-direction: column;
   }
 
   .qa-cards-grid {
