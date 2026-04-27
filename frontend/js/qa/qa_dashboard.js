@@ -66,27 +66,14 @@
       el.textContent = value;
     }
 
-    function setFlowComparisonText(id, todayValue, previousValue, compareDayShort, deltaPct) {
+    function setFlowComparisonText(id, todayValue, previousValue, compareDayShort) {
       const el = document.getElementById(id);
       if (!el) return;
 
       const today = asNumber(todayValue);
       const previous = asNumber(previousValue);
-      let pct = Number(deltaPct);
-      if (!Number.isFinite(pct) && previous > 0) {
-        pct = ((today - previous) / previous) * 100;
-      }
 
       el.classList.remove('is-up', 'is-down', 'is-flat');
-      if (Number.isFinite(pct)) {
-        const rounded = Math.round(pct * 10) / 10;
-        const sign = rounded > 0 ? '+' : '';
-        el.textContent = `${sign}${rounded.toFixed(1)}% vs ${compareDayShort || 'prev'}`;
-        if (rounded > 0) el.classList.add('is-up');
-        else if (rounded < 0) el.classList.add('is-down');
-        else el.classList.add('is-flat');
-        return;
-      }
 
       const delta = today - previous;
       const sign = delta > 0 ? '+' : '';
@@ -288,12 +275,10 @@
       const erased = asNumber(flowData && flowData.erased && flowData.erased.today);
       const erasedPrev = asNumber(flowData && flowData.erased && flowData.erased.previous);
 
-      const qaDoneRaw = flowData && flowData.qa ? Number(flowData.qa.today) : NaN;
-      const qaDone = asNumber(qaDoneRaw);
+      const qaDone = asNumber(flowData && flowData.qa && flowData.qa.today);
       const qaPrev = asNumber(flowData && flowData.qa && flowData.qa.previous);
 
-      const sortedRaw = flowData && flowData.sorting ? Number(flowData.sorting.today) : NaN;
-      const sorted = asNumber(sortedRaw);
+      const sorted = asNumber(flowData && flowData.sorting && flowData.sorting.today);
       const sortedPrev = asNumber(flowData && flowData.sorting && flowData.sorting.previous);
 
       const fallbackQa = asNumber(todayData && todayData.summary && (
@@ -301,8 +286,8 @@
       ));
       const fallbackSorted = asNumber(todayData && todayData.summary && todayData.summary.totalScans);
 
-      const finalQa = Number.isFinite(qaDoneRaw) ? qaDone : fallbackQa;
-      const finalSorted = Number.isFinite(sortedRaw) ? sorted : fallbackSorted;
+      const finalQa = fallbackQa > 0 ? fallbackQa : qaDone;
+      const finalSorted = fallbackSorted > 0 ? fallbackSorted : sorted;
 
       setText('qaFlowErasedToday', erased.toLocaleString());
       setText('qaFlowQAToday', finalQa.toLocaleString());
@@ -312,22 +297,19 @@
         'qaFlowErasedTrend',
         erased,
         erasedPrev,
-        compareDayShort,
-        flowData && flowData.erased ? flowData.erased.deltaPct : null
+        compareDayShort
       );
       setFlowComparisonText(
         'qaFlowQATrend',
         finalQa,
         qaPrev,
-        compareDayShort,
-        flowData && flowData.qa ? flowData.qa.deltaPct : null
+        compareDayShort
       );
       setFlowComparisonText(
         'qaFlowSortedTrend',
         finalSorted,
         sortedPrev,
-        compareDayShort,
-        flowData && flowData.sorting ? flowData.sorting.deltaPct : null
+        compareDayShort
       );
 
     }

@@ -3243,24 +3243,27 @@ main.layout {
   border-color: rgba(120, 242, 112, 0.34);
 }
 
-.qa-flow-stat-erasure strong {
+.qa-flow-stat-erasure .qa-flow-copy strong {
   color: #8cf46f;
+  text-shadow: 0 0 16px rgba(123, 255, 120, 0.22);
 }
 
 .qa-flow-stat-qa {
   border-color: rgba(98, 173, 255, 0.35);
 }
 
-.qa-flow-stat-qa strong {
+.qa-flow-stat-qa .qa-flow-copy strong {
   color: #67b4ff;
+  text-shadow: 0 0 16px rgba(103, 180, 255, 0.28);
 }
 
 .qa-flow-stat-sorting {
   border-color: rgba(255, 183, 88, 0.38);
 }
 
-.qa-flow-stat-sorting strong {
+.qa-flow-stat-sorting .qa-flow-copy strong {
   color: #ffb64c;
+  text-shadow: 0 0 16px rgba(255, 182, 76, 0.25);
 }
 
 .qa-flow-label {
@@ -3272,11 +3275,9 @@ main.layout {
 }
 
 .qa-flow-stat strong {
-  color: #ffffff;
   font-size: 52px;
   line-height: 1;
   letter-spacing: 0.4px;
-  text-shadow: 0 0 14px rgba(120, 204, 255, 0.25);
 }
 
 .qa-flow-trend {
