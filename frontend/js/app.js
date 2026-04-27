@@ -134,8 +134,30 @@
 
   let greenieHideTimer = null;
   let lastGreeniePulse = '';
+  let currentDashboard = 0;
+
+  function isErasureDashboardActive() {
+    return currentDashboard === 0;
+  }
+
+  function hideGreenie() {
+    const container = document.getElementById('greenieContainer');
+    const wrapper = container ? container.querySelector('.greenie-wrapper') : null;
+    if (!container || !wrapper) return;
+    container.classList.add('hidden');
+    wrapper.classList.remove('exit');
+    if (greenieHideTimer) {
+      clearTimeout(greenieHideTimer);
+      greenieHideTimer = null;
+    }
+  }
 
   function triggerGreenie(message) {
+    if (!isErasureDashboardActive()) {
+      hideGreenie();
+      return;
+    }
+
     const container = document.getElementById('greenieContainer');
     const wrapper = container ? container.querySelector('.greenie-wrapper') : null;
     const quote = document.getElementById('greenieQuote');
@@ -161,6 +183,7 @@
   }
 
   function checkGreenieTime() {
+    if (!isErasureDashboardActive()) return;
     const now = new Date();
     if (now.getMinutes() !== 0) return;
     const pulseKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
@@ -238,8 +261,17 @@
   const totalTodayChart = createDonutChart('chartTotalToday');
   const monthChart = createDonutChart('chartMonthToday');
 
+  let erasureCategoryCardsApi = null;
+
   async function refreshSummary() {}
-  async function refreshAllTopLists() {}
+  async function refreshAllTopLists() {
+    if (erasureCategoryCardsApi && typeof erasureCategoryCardsApi.refreshCategoryRotatorCards === 'function') {
+      return erasureCategoryCardsApi.refreshCategoryRotatorCards();
+    }
+    if (window.refreshAllTopLists && typeof window.refreshAllTopLists === 'function') {
+      return window.refreshAllTopLists();
+    }
+  }
   async function refreshByTypeCounts() {}
 
   function animateNumberUpdate(elementId) {
@@ -1301,8 +1333,6 @@
 
   // ==================== DASHBOARD SWITCHING ====================
   
-  let currentDashboard = 0;
-
   let qaAdapterApi = null;
 
   async function ensureQaAdapterApi() {
@@ -1368,6 +1398,9 @@
         if (toIndex === 0) {
           setupFlipCards();
           setupRotatorCards();
+          refreshAllTopLists();
+        } else {
+          hideGreenie();
         }
       },
       setCurrentDashboard: (index) => {
@@ -1436,6 +1469,7 @@
   // Kick off using aggregated payload
   refreshAggregated();
   refreshAllTimeTotals();
+  refreshAllTopLists();
   
   // Initialize new flip cards
   updateRecordsMilestones();
@@ -1458,6 +1492,9 @@
     if (currentDashboard === 2 && !document.hidden) {
       loadOverallDashboard();
     }
+    if (currentDashboard === 0 && !document.hidden) {
+      refreshAllTopLists();
+    }
 
     // Update new flip cards
     updateRecordsMilestones();
@@ -1470,14 +1507,14 @@
   }, cfg.refreshSeconds * 1000);
 
   if (window.ErasureCategoryCards && typeof window.ErasureCategoryCards.init === 'function') {
-    const erasureCards = window.ErasureCategoryCards.init({
+    erasureCategoryCardsApi = window.ErasureCategoryCards.init({
       categories,
       renderTopList,
       truncateInitials,
       getAvatarDataUri,
       setupRotatorCards,
     });
-    erasureCards.init();
+    erasureCategoryCardsApi.init();
   }
 
 })();
