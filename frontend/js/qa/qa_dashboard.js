@@ -221,8 +221,10 @@
 
     function renderFlowStrip(flowData, todayData, weeklyData) {
       const erased = asNumber(flowData && flowData.erasedToday);
-      const qaDone = asNumber(flowData && flowData.qaToday);
-      const sorted = asNumber(flowData && flowData.sortedToday);
+      const qaDone = asNumber(todayData && todayData.summary && (
+        asNumber(todayData.summary.deQaScans) + asNumber(todayData.summary.nonDeQaScans)
+      ));
+      const sorted = asNumber(todayData && todayData.summary && todayData.summary.totalScans);
       setText('qaFlowErasedToday', erased.toLocaleString());
       setText('qaFlowQAToday', qaDone.toLocaleString());
       setText('qaFlowSortedToday', sorted.toLocaleString());
@@ -234,7 +236,8 @@
       const sortingBaseline = Math.max(1, Math.round(weekSortingTotal / 5));
       const qaTrend = qaDone - qaBaseline;
       const sortedTrend = sorted - sortingBaseline;
-      const erasedTrend = erased - qaDone;
+      const erasedYesterday = asNumber(flowData && flowData.erasedYesterday);
+      const erasedTrend = erasedYesterday > 0 ? (erased - erasedYesterday) : (erased - qaDone);
 
       setTrendText('qaFlowErasedTrend', erasedTrend);
       setTrendText('qaFlowQATrend', qaTrend);

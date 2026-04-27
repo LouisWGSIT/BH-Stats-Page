@@ -137,18 +137,15 @@
 
     async function loadFlowSummaryData() {
       try {
-        const res = await fetch('/overall/sections');
-        if (!res.ok) return null;
-        const payload = await res.json();
-        const sections = Array.isArray(payload && payload.sections) ? payload.sections : [];
-        const byKey = new Map();
-        for (const section of sections) {
-          byKey.set(String(section && section.key ? section.key : '').toLowerCase(), section || {});
-        }
+        const [todayRes, yesterdayRes] = await Promise.all([
+          fetch('/metrics/today').catch(() => null),
+          fetch('/metrics/yesterday').catch(() => null),
+        ]);
+        const todayPayload = (todayRes && todayRes.ok) ? await todayRes.json() : {};
+        const yesterdayPayload = (yesterdayRes && yesterdayRes.ok) ? await yesterdayRes.json() : {};
         return {
-          erasedToday: getSectionDone(byKey.get('erasure')),
-          qaToday: getSectionDone(byKey.get('qa')),
-          sortedToday: getSectionDone(byKey.get('sorting')),
+          erasedToday: asNumber(todayPayload && todayPayload.erased),
+          erasedYesterday: asNumber(yesterdayPayload && yesterdayPayload.erased),
         };
       } catch (_err) {
         return null;
