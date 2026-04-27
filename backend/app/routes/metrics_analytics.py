@@ -10,6 +10,21 @@ import backend.qa_export as qa_export
 def create_metrics_analytics_router(*, db_module, cache_get, cache_set) -> APIRouter:
     router = APIRouter()
 
+    def _previous_business_day(target: date) -> date:
+        weekday = target.weekday()
+        if weekday == 0:  # Monday -> Friday
+            return target - timedelta(days=3)
+        if weekday == 6:  # Sunday -> Friday
+            return target - timedelta(days=2)
+        if weekday == 5:  # Saturday -> Friday
+            return target - timedelta(days=1)
+        return target - timedelta(days=1)
+
+    def _safe_pct(today_value: int, prev_value: int) -> float | None:
+        if prev_value <= 0:
+            return None
+        return round(((today_value - prev_value) / prev_value) * 100, 1)
+
     @router.get("/metrics/total-by-type")
     async def get_total_by_type(type: str = "laptops_desktops", scope: str = "today"):
         with closing(db_module.sqlite3.connect(db_module.DB_PATH)) as conn:
@@ -73,6 +88,56 @@ def create_metrics_analytics_router(*, db_module, cache_get, cache_set) -> APIRo
     @router.get("/metrics/yesterday")
     async def get_yesterday_metrics():
         return db_module.get_daily_stats(db_module.get_yesterday_str())
+
+    @router.get("/metrics/flow-comparison")
+    async def get_flow_comparison(req: Request):
+        cache_key = f"{req.url.path}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        today_date = date.today()
+        compare_date = _previous_business_day(today_date)
+
+        today_erasure = db_module.get_daily_stats(today_date.isoformat())
+        prev_erasure = db_module.get_daily_stats(compare_date.isoformat())
+
+        today_qa_rows = qa_export.get_qa_daily_totals_range(today_date, today_date) or []
+        prev_qa_rows = qa_export.get_qa_daily_totals_range(compare_date, compare_date) or []
+        today_qa = today_qa_rows[0] if today_qa_rows else {}
+        prev_qa = prev_qa_rows[0] if prev_qa_rows else {}
+
+        erased_today = int((today_erasure or {}).get("erased", 0) or 0)
+        erased_prev = int((prev_erasure or {}).get("erased", 0) or 0)
+        qa_today = int((today_qa or {}).get("qaTotal", 0) or 0)
+        qa_prev = int((prev_qa or {}).get("qaTotal", 0) or 0)
+        sorting_today = int((today_qa or {}).get("qaApp", 0) or 0)
+        sorting_prev = int((prev_qa or {}).get("qaApp", 0) or 0)
+
+        payload = {
+            "currentDate": today_date.isoformat(),
+            "compareDate": compare_date.isoformat(),
+            "compareDayShort": compare_date.strftime("%a"),
+            "erased": {
+                "today": erased_today,
+                "previous": erased_prev,
+                "delta": erased_today - erased_prev,
+                "deltaPct": _safe_pct(erased_today, erased_prev),
+            },
+            "qa": {
+                "today": qa_today,
+                "previous": qa_prev,
+                "delta": qa_today - qa_prev,
+                "deltaPct": _safe_pct(qa_today, qa_prev),
+            },
+            "sorting": {
+                "today": sorting_today,
+                "previous": sorting_prev,
+                "delta": sorting_today - sorting_prev,
+                "deltaPct": _safe_pct(sorting_today, sorting_prev),
+            },
+        }
+        return cache_set(cache_key, payload)
 
     @router.get("/metrics/summary")
     async def metrics_summary(req: Request, date: str = None, startDate: str = None, endDate: str = None):

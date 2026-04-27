@@ -66,15 +66,33 @@
       el.textContent = value;
     }
 
-    function setTrendText(id, delta) {
+    function setFlowComparisonText(id, todayValue, previousValue, compareDayShort, deltaPct) {
       const el = document.getElementById(id);
       if (!el) return;
-      const n = asNumber(delta);
-      const sign = n > 0 ? '+' : '';
-      el.textContent = `${sign}${n}`;
+
+      const today = asNumber(todayValue);
+      const previous = asNumber(previousValue);
+      let pct = Number(deltaPct);
+      if (!Number.isFinite(pct) && previous > 0) {
+        pct = ((today - previous) / previous) * 100;
+      }
+
       el.classList.remove('is-up', 'is-down', 'is-flat');
-      if (n > 0) el.classList.add('is-up');
-      else if (n < 0) el.classList.add('is-down');
+      if (Number.isFinite(pct)) {
+        const rounded = Math.round(pct * 10) / 10;
+        const sign = rounded > 0 ? '+' : '';
+        el.textContent = `${sign}${rounded.toFixed(1)}% vs ${compareDayShort || 'prev'}`;
+        if (rounded > 0) el.classList.add('is-up');
+        else if (rounded < 0) el.classList.add('is-down');
+        else el.classList.add('is-flat');
+        return;
+      }
+
+      const delta = today - previous;
+      const sign = delta > 0 ? '+' : '';
+      el.textContent = `${sign}${delta} vs ${compareDayShort || 'prev'}`;
+      if (delta > 0) el.classList.add('is-up');
+      else if (delta < 0) el.classList.add('is-down');
       else el.classList.add('is-flat');
     }
 
@@ -264,29 +282,53 @@
       `).join('');
     }
 
-    function renderFlowStrip(flowData, todayData, weeklyData) {
-      const erased = asNumber(flowData && flowData.erasedToday);
-      const qaDone = asNumber(todayData && todayData.summary && (
+    function renderFlowStrip(flowData, todayData) {
+      const compareDayShort = String((flowData && flowData.compareDayShort) || 'prev');
+
+      const erased = asNumber(flowData && flowData.erased && flowData.erased.today);
+      const erasedPrev = asNumber(flowData && flowData.erased && flowData.erased.previous);
+
+      const qaDoneRaw = flowData && flowData.qa ? Number(flowData.qa.today) : NaN;
+      const qaDone = asNumber(qaDoneRaw);
+      const qaPrev = asNumber(flowData && flowData.qa && flowData.qa.previous);
+
+      const sortedRaw = flowData && flowData.sorting ? Number(flowData.sorting.today) : NaN;
+      const sorted = asNumber(sortedRaw);
+      const sortedPrev = asNumber(flowData && flowData.sorting && flowData.sorting.previous);
+
+      const fallbackQa = asNumber(todayData && todayData.summary && (
         asNumber(todayData.summary.deQaScans) + asNumber(todayData.summary.nonDeQaScans)
       ));
-      const sorted = asNumber(todayData && todayData.summary && todayData.summary.totalScans);
+      const fallbackSorted = asNumber(todayData && todayData.summary && todayData.summary.totalScans);
+
+      const finalQa = Number.isFinite(qaDoneRaw) ? qaDone : fallbackQa;
+      const finalSorted = Number.isFinite(sortedRaw) ? sorted : fallbackSorted;
+
       setText('qaFlowErasedToday', erased.toLocaleString());
-      setText('qaFlowQAToday', qaDone.toLocaleString());
-      setText('qaFlowSortedToday', sorted.toLocaleString());
+      setText('qaFlowQAToday', finalQa.toLocaleString());
+      setText('qaFlowSortedToday', finalSorted.toLocaleString());
 
-      const weekQaTotal = asNumber(weeklyData && weeklyData.summary && weeklyData.summary.deQaScans)
-        + asNumber(weeklyData && weeklyData.summary && weeklyData.summary.nonDeQaScans);
-      const weekSortingTotal = asNumber(weeklyData && weeklyData.summary && weeklyData.summary.totalScans);
-      const qaBaseline = Math.max(1, Math.round(weekQaTotal / 5));
-      const sortingBaseline = Math.max(1, Math.round(weekSortingTotal / 5));
-      const qaTrend = qaDone - qaBaseline;
-      const sortedTrend = sorted - sortingBaseline;
-      const erasedYesterday = asNumber(flowData && flowData.erasedYesterday);
-      const erasedTrend = erasedYesterday > 0 ? (erased - erasedYesterday) : (erased - qaDone);
-
-      setTrendText('qaFlowErasedTrend', erasedTrend);
-      setTrendText('qaFlowQATrend', qaTrend);
-      setTrendText('qaFlowSortedTrend', sortedTrend);
+      setFlowComparisonText(
+        'qaFlowErasedTrend',
+        erased,
+        erasedPrev,
+        compareDayShort,
+        flowData && flowData.erased ? flowData.erased.deltaPct : null
+      );
+      setFlowComparisonText(
+        'qaFlowQATrend',
+        finalQa,
+        qaPrev,
+        compareDayShort,
+        flowData && flowData.qa ? flowData.qa.deltaPct : null
+      );
+      setFlowComparisonText(
+        'qaFlowSortedTrend',
+        finalSorted,
+        sortedPrev,
+        compareDayShort,
+        flowData && flowData.sorting ? flowData.sorting.deltaPct : null
+      );
 
     }
 
@@ -318,8 +360,8 @@
         lockQATopCardsToCharts();
 
         qaDataLoaderApi.loadFlowSummaryData()
-          .then((flowData) => renderFlowStrip(flowData, todayData, weeklyData))
-          .catch(() => renderFlowStrip(null, todayData, weeklyData));
+          .then((flowData) => renderFlowStrip(flowData, todayData))
+          .catch(() => renderFlowStrip(null, todayData));
 
         // Load trend/insight panels asynchronously so the main QA cards paint first.
         qaDataLoaderApi.loadTrendAndInsightsData()

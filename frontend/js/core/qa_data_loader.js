@@ -137,6 +137,11 @@
 
     async function loadFlowSummaryData() {
       try {
+        const flowRes = await fetch('/metrics/flow-comparison').catch(() => null);
+        if (flowRes && flowRes.ok) {
+          return await flowRes.json();
+        }
+
         const [todayRes, yesterdayRes] = await Promise.all([
           fetch('/metrics/today').catch(() => null),
           fetch('/metrics/yesterday').catch(() => null),
@@ -144,8 +149,15 @@
         const todayPayload = (todayRes && todayRes.ok) ? await todayRes.json() : {};
         const yesterdayPayload = (yesterdayRes && yesterdayRes.ok) ? await yesterdayRes.json() : {};
         return {
-          erasedToday: asNumber(todayPayload && todayPayload.erased),
-          erasedYesterday: asNumber(yesterdayPayload && yesterdayPayload.erased),
+          compareDayShort: 'Prev',
+          erased: {
+            today: asNumber(todayPayload && todayPayload.erased),
+            previous: asNumber(yesterdayPayload && yesterdayPayload.erased),
+            delta: asNumber(todayPayload && todayPayload.erased) - asNumber(yesterdayPayload && yesterdayPayload.erased),
+            deltaPct: null,
+          },
+          qa: { today: 0, previous: 0, delta: 0, deltaPct: null },
+          sorting: { today: 0, previous: 0, delta: 0, deltaPct: null },
         };
       } catch (_err) {
         return null;
