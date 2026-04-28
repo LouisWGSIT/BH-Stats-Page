@@ -44,7 +44,7 @@
   };
 
   const scriptLoadState = Object.create(null);
-  const BUILD_TAG = '20260428-qa-stale-throughput-fix';
+  const BUILD_TAG = '20260428-qa-throughput-time-window-fix';
 
   function withBuildTag(src) {
     if (/^https?:\/\//i.test(src)) return src;

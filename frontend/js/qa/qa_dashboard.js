@@ -170,13 +170,41 @@
     function getThroughputPoints(trendPayload, metricKey) {
       const series = Array.isArray(trendPayload && trendPayload.series) ? trendPayload.series : [];
       return series.map((point, idx) => {
-        const rawLabel = (point && (point.hour || point.day || point.date || point.label));
+        const rawLabel = (point && (point.hour ?? point.day ?? point.date ?? point.label));
         const label = String(rawLabel != null ? rawLabel : `#${idx + 1}`);
         return {
           label,
           value: asNumber(point && (point[metricKey] ?? point.value ?? point.total ?? point.count ?? point.scans)),
         };
       });
+    }
+
+    function selectThroughputWindow(points, maxPoints = 8) {
+      if (!Array.isArray(points) || points.length <= maxPoints) {
+        return Array.isArray(points) ? points : [];
+      }
+
+      const lastActiveIndex = (() => {
+        for (let i = points.length - 1; i >= 0; i -= 1) {
+          if (asNumber(points[i] && points[i].value) > 0) {
+            return i;
+          }
+        }
+        return -1;
+      })();
+
+      if (lastActiveIndex === -1) {
+        // No activity yet today: anchor chart window to current local hour
+        // so x-axis reflects "now" rather than always ending at 23.
+        const nowHour = new Date().getHours();
+        const end = Math.min(points.length, Math.max(maxPoints, nowHour + 1));
+        const start = Math.max(0, end - maxPoints);
+        return points.slice(start, end);
+      }
+
+      const end = Math.min(points.length, lastActiveIndex + 1);
+      const start = Math.max(0, end - maxPoints);
+      return points.slice(start, end);
     }
 
     function renderThroughputPulseWithConfig(trendPayload, metricKey, title) {
@@ -190,7 +218,7 @@
         titleEl.textContent = title || "Throughput";
       }
 
-      const points = getThroughputPoints(trendPayload, metricKey).slice(-8);
+      const points = selectThroughputWindow(getThroughputPoints(trendPayload, metricKey), 8);
       const peak = points.reduce((max, p) => (p.value > max ? p.value : max), 0);
       const latest = points.length ? points[points.length - 1].value : 0;
       setText('qaThroughputPeak', latest > 0 ? latest.toLocaleString() : '--');
