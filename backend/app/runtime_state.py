@@ -77,6 +77,23 @@ def get_webhook_api_key() -> str:
     return os.getenv("WEBHOOK_API_KEY", "")
 
 
+def get_webhook_api_keys() -> list[str]:
+    keys: list[str] = []
+
+    multi = os.getenv("WEBHOOK_API_KEYS", "").strip()
+    if multi:
+        for raw in multi.split(","):
+            key = raw.strip()
+            if key and key not in keys:
+                keys.append(key)
+
+    single = os.getenv("WEBHOOK_API_KEY", "").strip()
+    if single and single not in keys:
+        keys.append(single)
+
+    return keys
+
+
 def get_hwid_log_path() -> str:
     return os.getenv("HWID_LOG_PATH", "logs/hwid_log.jsonl")
 
@@ -87,3 +104,23 @@ def get_frontend_paths() -> Tuple[str, str, str]:
         os.path.join("frontend", "js"),
         os.path.join("frontend", "css"),
     )
+
+
+def get_cors_allow_origins() -> list[str]:
+    raw = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
+    if not raw:
+        return ["*"]
+    origins: list[str] = []
+    for part in raw.split(","):
+        value = part.strip()
+        if value and value not in origins:
+            origins.append(value)
+    return origins or ["*"]
+
+
+def is_legacy_query_auth_enabled() -> bool:
+    return os.getenv("LEGACY_QUERY_AUTH_ENABLED", "false").strip().lower() in ("1", "true", "yes")
+
+
+def is_legacy_basic_auth_enabled() -> bool:
+    return os.getenv("LEGACY_BASIC_AUTH_ENABLED", "false").strip().lower() in ("1", "true", "yes")

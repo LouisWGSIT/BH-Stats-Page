@@ -44,6 +44,13 @@
   };
 
   const scriptLoadState = Object.create(null);
+  const BUILD_TAG = '20260428-qa-strip-fix';
+
+  function withBuildTag(src) {
+    if (/^https?:\/\//i.test(src)) return src;
+    const joiner = src.includes('?') ? '&' : '?';
+    return `${src}${joiner}v=${encodeURIComponent(BUILD_TAG)}`;
+  }
 
   function loadScriptOnce(src) {
     if (scriptLoadState[src]) {
@@ -51,7 +58,7 @@
     }
 
     scriptLoadState[src] = new Promise((resolve, reject) => {
-      const existing = document.querySelector(`script[src="${src}"]`);
+      const existing = document.querySelector(`script[data-src="${src}"]`);
       if (existing) {
         if (existing.dataset.loaded === 'true') {
           resolve();
@@ -63,7 +70,8 @@
       }
 
       const script = document.createElement('script');
-      script.src = src;
+      script.dataset.src = src;
+      script.src = withBuildTag(src);
       script.async = true;
       script.addEventListener('load', () => {
         script.dataset.loaded = 'true';
@@ -77,17 +85,35 @@
   }
 
   async function ensureQAModulesLoaded() {
-    await loadScriptOnce('core/qa_trend_panel.js');
-    await loadScriptOnce('core/qa_metrics_rotator.js');
-    await loadScriptOnce('core/qa_cards_renderer.js');
-    await loadScriptOnce('core/qa_card_rotator.js');
-    await loadScriptOnce('core/qa_dashboard_ui.js');
-    await loadScriptOnce('core/qa_data_loader.js');
-    await loadScriptOnce('qa/qa_dashboard.js');
+    await Promise.all([
+      loadScriptOnce('core/qa_trend_panel.js'),
+      loadScriptOnce('core/qa_metrics_rotator.js'),
+      loadScriptOnce('core/qa_cards_renderer.js'),
+      loadScriptOnce('core/qa_card_rotator.js'),
+      loadScriptOnce('core/qa_dashboard_ui.js'),
+      loadScriptOnce('core/qa_data_loader.js'),
+      loadScriptOnce('qa/qa_dashboard.js'),
+    ]);
   }
 
   async function ensureOverallModuleLoaded() {
     await loadScriptOnce('core/overall_stats_dashboard.js');
+  }
+
+  function prewarmQADashboardAssets() {
+    const warm = async () => {
+      try {
+        await ensureQAModulesLoaded();
+      } catch (_err) {
+        // Non-blocking warm path
+      }
+    };
+
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(() => { warm(); }, { timeout: 2500 });
+    } else {
+      setTimeout(() => { warm(); }, 900);
+    }
   }
 
   const keepAliveApi = (window.DisplayKeepAlive && typeof window.DisplayKeepAlive.init === 'function')
@@ -1180,13 +1206,24 @@
       const li2 = document.createElement('li');
       li2.textContent = `Best hour: --`;
       // Optionally fetch and fill best hour
-      fetch('/analytics/peak-hours').then(r => r.json()).then(data => {
-        const hours = Array.isArray(data) ? data : (data?.hours || []);
-        if (hours.length > 0) {
-          const peak = hours.reduce((max, curr) => curr.count > max.count ? curr : max, hours[0]);
-          li2.textContent = `Best hour: ${peak.hour}:00 (${peak.count})`;
-        }
-      });
+      fetch('/analytics/peak-hours')
+        .then((r) => {
+          if (!r.ok) return null;
+          const contentType = (r.headers.get('content-type') || '').toLowerCase();
+          if (!contentType.includes('application/json')) return null;
+          return r.json();
+        })
+        .then((data) => {
+          if (!data) return;
+          const hours = Array.isArray(data) ? data : (data?.hours || []);
+          if (hours.length > 0) {
+            const peak = hours.reduce((max, curr) => curr.count > max.count ? curr : max, hours[0]);
+            li2.textContent = `Best hour: ${peak.hour}:00 (${peak.count})`;
+          }
+        })
+        .catch(() => {
+          // Non-blocking fallback: keep placeholder when endpoint is unavailable.
+        });
       statList.appendChild(li1);
       statList.appendChild(li2);
     }
@@ -1470,6 +1507,7 @@
   refreshAggregated();
   refreshAllTimeTotals();
   refreshAllTopLists();
+  prewarmQADashboardAssets();
   
   // Initialize new flip cards
   updateRecordsMilestones();

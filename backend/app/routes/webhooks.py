@@ -1,10 +1,68 @@
 import os
 import re
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+import backend.request_context as request_context
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+
+
+logger = logging.getLogger(__name__)
+
+
+def _request_id(req: Request) -> str:
+    try:
+        rid = request_context.request_id.get()
+        if rid:
+            return str(rid)
+    except Exception:
+        pass
+    return req.headers.get("x-request-id") or "n/a"
+
+
+def _normalize_webhook_keys(webhook_api_keys: list[str] | None) -> list[str]:
+    keys: list[str] = []
+    for raw in webhook_api_keys or []:
+        key = str(raw).strip()
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
+def _is_authorized_webhook_request(req: Request, webhook_api_keys: list[str], *, route_label: str) -> bool:
+    auth_header = req.headers.get("Authorization")
+    api_header = req.headers.get("x-api-key")
+    provided = auth_header or api_header
+
+    keys = _normalize_webhook_keys(webhook_api_keys)
+    expected_values = set(keys)
+    expected_values.update({f"Bearer {key}" for key in keys})
+
+    is_authorized = bool(provided) and (provided in expected_values)
+    if is_authorized:
+        return True
+
+    # Intentionally avoid logging secrets; only report source/header shape.
+    source = "authorization" if auth_header else ("x-api-key" if api_header else "none")
+    configured_key_count = len(keys)
+    preview = ""
+    if provided:
+        preview = str(provided)[:16]
+        if len(str(provided)) > 16:
+            preview += "..."
+
+    logger.warning(
+        "[WEBHOOK AUTH] Unauthorized %s rid=%s source=%s configured_keys=%s header_preview=%r client=%s",
+        route_label,
+        _request_id(req),
+        source,
+        configured_key_count,
+        preview,
+        (req.client.host if req.client else "unknown"),
+    )
+    return False
 
 
 def _to_initials(value: Any) -> str | None:
@@ -101,6 +159,19 @@ def _clean_placeholder(value):
     return value
 
 
+def _normalize_serial_value(value: Any) -> str:
+    cleaned = _clean_placeholder(value)
+    if cleaned is None:
+        return ""
+    text = str(cleaned).strip()
+    if not text:
+        return ""
+    upper = text.upper()
+    if upper.startswith("SERIAL:"):
+        return text.split(":", 1)[1].strip()
+    return text
+
+
 def _normalize_key_token(value: str) -> str:
     return re.sub(r"[^a-z0-9]", "", str(value).lower())
 
@@ -143,13 +214,25 @@ def _extract_stockid_from_obj(obj: Any):
     candidate_keys = [
         "stockid",
         "stock_id",
+        "stock id",
         "assetNumber",
+        "assetnumber",
+        "asset_number",
+        "asset number",
+        "assetNo",
+        "asset_no",
+        "asset no",
         "assetStockId",
+        "assetstockid",
+        "asset stock id",
+        "assetstockidnumber",
         "asset_stock_id",
         "assetTag",
         "asset_tag",
+        "asset tag",
         "assetid",
         "asset_id",
+        "asset id",
         "Asset/Stock ID Number",
         "Asset/Stock ID",
     ]
@@ -181,6 +264,10 @@ def _extract_stockid_from_obj(obj: Any):
                     found = _is_valid(v)
                     if found:
                         return found
+                if "asset" in lk and "number" in lk:
+                    found = _is_valid(v)
+                    if found:
+                        return found
             for _, v in o.items():
                 found = _walk(v)
                 if found:
@@ -195,7 +282,30 @@ def _extract_stockid_from_obj(obj: Any):
     return _walk(obj)
 
 
-def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
+def _collect_asset_like_keys(obj: Any) -> list[str]:
+    """Collect key paths related to asset/stock identifiers for debug visibility."""
+    hits: list[str] = []
+
+    def _walk(node: Any, path: list[str]):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                key = str(k)
+                next_path = [*path, key]
+                lk = key.lower().replace("_", " ").replace("/", " ")
+                if any(term in lk for term in ("asset", "stock", "tag", "id", "number")):
+                    joined = ".".join(next_path)
+                    if joined not in hits:
+                        hits.append(joined)
+                _walk(v, next_path)
+        elif isinstance(node, list):
+            for idx, item in enumerate(node):
+                _walk(item, [*path, str(idx)])
+
+    _walk(obj, [])
+    return hits[:50]
+
+
+def create_webhooks_router(*, db_module, webhook_api_keys: list[str]) -> APIRouter:
     router = APIRouter()
 
     @router.post("/api/ingest/local-erasure")
@@ -268,14 +378,19 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
 
     @router.post("/hooks/erasure")
     async def erasure_hook(req: Request):
-        hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
-        if not hdr or (hdr != f"Bearer {webhook_api_key}" and hdr != webhook_api_key):
+        if not _is_authorized_webhook_request(req, webhook_api_keys, route_label="/hooks/erasure"):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         payload = await req.json()
         event = payload.get("event", "success")
         job_id = payload.get("jobId") or payload.get("assetTag") or payload.get("id") or "unknown"
-        print(f"Received webhook: event={event}, jobId={job_id}, payload={payload}")
+        logger.info(
+            "Received webhook rid=%s event=%s jobId=%s keys=%s",
+            _request_id(req),
+            event,
+            job_id,
+            sorted(list(payload.keys())) if isinstance(payload, dict) else [],
+        )
 
         if job_id != "unknown" and db_module.is_job_seen(job_id):
             return JSONResponse({"status": "ignored", "reason": "duplicate"})
@@ -296,8 +411,7 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
 
     @router.api_route("/hooks/erasure-detail", methods=["GET", "POST"])
     async def erasure_detail(req: Request):
-        hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
-        if not hdr or (hdr != f"Bearer {webhook_api_key}" and hdr != webhook_api_key):
+        if not _is_authorized_webhook_request(req, webhook_api_keys, route_label="/hooks/erasure-detail"):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         payload: Dict[str, Any] = {}
@@ -323,10 +437,19 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
         if req.query_params:
             payload = {**payload, **dict(req.query_params)}
 
-        print("[WEBHOOK DEBUG] Full payload received:")
-        print(f"  Headers: Content-Type={req.headers.get('content-type', '')}")
-        print(f"  Payload keys: {list(payload.keys())}")
-        print(f"  Full payload: {payload}")
+        rid = _request_id(req)
+        logger.info(
+            "[WEBHOOK DEBUG] Payload received rid=%s route=/hooks/erasure-detail content_type=%s key_count=%s keys=%s",
+            rid,
+            req.headers.get("content-type", ""),
+            len(payload.keys()) if isinstance(payload, dict) else 0,
+            sorted(list(payload.keys())) if isinstance(payload, dict) else [],
+        )
+        try:
+            asset_like_keys = _collect_asset_like_keys(payload)
+            logger.info("[WEBHOOK DEBUG] rid=%s asset_like_keys=%s", rid, asset_like_keys)
+        except Exception:
+            pass
 
         event = (payload.get("event") or "success").strip().lower()
         job_id = payload.get("jobId") or payload.get("assetTag") or payload.get("id")
@@ -334,7 +457,13 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
         initials_raw = payload.get("initials") or payload.get("Engineer Initals") or payload.get("Engineer Initials") or ""
         initials = (initials_raw or "").strip().upper() or None
 
-        duration_sec = _clean_placeholder(payload.get("durationSec") or payload.get("duration"))
+        duration_sec = _clean_placeholder(
+            payload.get("durationSec")
+            or payload.get("duration")
+            or payload.get("durationSecAlt")
+            or payload.get("duration_alt")
+            or payload.get("durationAlt")
+        )
         try:
             if isinstance(duration_sec, str) and ":" in duration_sec:
                 parts = duration_sec.split(":")
@@ -349,7 +478,13 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             duration_sec = None
 
         error_type = payload.get("errorType") or payload.get("error")
-        ts_in = payload.get("timestamp")
+        ts_in = (
+            payload.get("timestamp")
+            or payload.get("timestampAlt")
+            or payload.get("timestamp_alt")
+            or payload.get("completionTime")
+            or payload.get("end_time")
+        )
         ts = None
         if isinstance(ts_in, (int, float)):
             try:
@@ -376,51 +511,86 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
         if job_id and db_module.is_job_seen(job_id):
             return {"status": "ignored", "reason": "duplicate"}
 
-        manufacturer = _clean_placeholder(payload.get("manufacturer")) or _extract_clean_from_obj(
+        manufacturer = _clean_placeholder(
+            payload.get("manufacturer")
+            or payload.get("manufacturerAlt")
+            or payload.get("manufacturer_alt")
+            or payload.get("systemManufacturer")
+            or payload.get("system_manufacturer")
+        ) or _extract_clean_from_obj(
             payload,
             [
                 "manufacturer",
                 "system.manufacturer",
                 "blancco_data.blancco_hardware_report.system.manufacturer",
+                "blancco_data.blancco_hardware_report.entries.system.manufacturer",
             ],
         )
-        model = _clean_placeholder(payload.get("model")) or _extract_clean_from_obj(
+        model = _clean_placeholder(
+            payload.get("model")
+            or payload.get("modelAlt")
+            or payload.get("model_alt")
+            or payload.get("systemModel")
+            or payload.get("system_model")
+            or payload.get("name")
+            or payload.get("market_name")
+        ) or _extract_clean_from_obj(
             payload,
             [
                 "model",
+                "name",
+                "market_name",
                 "system.model",
                 "blancco_data.blancco_hardware_report.system.model",
+                "blancco_data.blancco_hardware_report.entries.system.model",
+                "blancco_data.blancco_hardware_report.entries.system.name",
+                "blancco_data.blancco_hardware_report.entries.system.market_name",
             ],
         )
-        system_serial = _clean_placeholder(
+        system_serial = _normalize_serial_value(
             payload.get("system_serial")
             or payload.get("systemSerial")
             or payload.get("system-serial")
             or payload.get("systemSerialNumber")
+            or payload.get("serialAlt")
+            or payload.get("serial_alt")
+            or payload.get("systemIdentifier")
+            or payload.get("identifier")
+            or payload.get("imei")
             or payload.get("serial")
-        ) or _extract_clean_from_obj(
+        ) or _normalize_serial_value(_extract_clean_from_obj(
             payload,
             [
                 "system_serial",
                 "systemSerial",
                 "system.serial",
+                "identifier",
+                "imei",
                 "blancco_data.blancco_hardware_report.system.serial",
+                "blancco_data.blancco_hardware_report.entries.system.serial",
+                "blancco_data.blancco_hardware_report.entries.system.identifier",
                 "serial",
             ],
             allow_leaf_match=False,
-        ) or ""
+        )) or ""
         disk_serial = _clean_placeholder(
             payload.get("disk_serial")
             or payload.get("diskSerial")
             or payload.get("disk-serial")
             or payload.get("diskSerialNumber")
+            or payload.get("diskSerialAlt")
+            or payload.get("disk_serial_alt")
+            or payload.get("erasureTargetSerial")
         ) or _extract_clean_from_obj(
             payload,
             [
                 "disk_serial",
                 "diskSerial",
                 "disk.serial",
+                "target.serial",
                 "blancco_data.blancco_hardware_report.disks.disk.serial",
+                "blancco_data.blancco_hardware_report.entries.disks.disk.serial",
+                "blancco_data.blancco_erasure_report.erasures.erasure.target.serial",
             ],
             allow_leaf_match=False,
         ) or ""
@@ -429,6 +599,9 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             or payload.get("diskCapacity")
             or payload.get("drive_size")
             or payload.get("driveSize")
+            or payload.get("diskCapacityAlt")
+            or payload.get("disk_capacity_alt")
+            or payload.get("erasureTargetCapacity")
         ) or _extract_clean_from_obj(
             payload,
             [
@@ -436,8 +609,11 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
                 "diskCapacity",
                 "drive_size",
                 "driveSize",
+                "target.capacity",
                 "disks.disk.capacity",
                 "blancco_data.blancco_hardware_report.disks.disk.capacity",
+                "blancco_data.blancco_hardware_report.entries.disks.disk.capacity",
+                "blancco_data.blancco_erasure_report.erasures.erasure.target.capacity",
             ],
             allow_leaf_match=False,
         ) or ""
@@ -449,7 +625,12 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
                 pass
 
         if manufacturer or model:
-            print(f"[DEVICE DETAILS] Captured from payload: manufacturer={manufacturer}, model={model}")
+            logger.info(
+                "[DEVICE DETAILS] rid=%s manufacturer_present=%s model_present=%s",
+                _request_id(req),
+                bool(manufacturer),
+                bool(model),
+            )
 
         db_module.add_erasure_event(
             event=event,
@@ -471,11 +652,20 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             stockid = _clean_placeholder(
                 payload.get("stockid")
                 or payload.get("stock_id")
+                or payload.get("stock id")
                 or payload.get("assetNumber")
+                or payload.get("assetnumber")
+                or payload.get("asset_number")
+                or payload.get("asset number")
                 or payload.get("assetTag")
             )
             if not stockid:
                 stockid = _extract_stockid_from_obj(payload)
+            if not stockid:
+                logger.info(
+                    "[WEBHOOK DEBUG] rid=%s no stock/asset ID resolved from payload",
+                    _request_id(req),
+                )
             db_module.add_local_erasure(
                 stockid=stockid,
                 system_serial=system_serial,
@@ -497,12 +687,17 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             pass
         try:
             dbg = db_module.get_summary_today_month()
-            print(
-                f"erasure-detail wrote event={event} type={device_type} jobId={job_id} -> "
-                f"todayTotal={dbg.get('todayTotal')} avg={dbg.get('avgDurationSec')}"
+            logger.info(
+                "erasure-detail wrote rid=%s event=%s type=%s jobId=%s todayTotal=%s avg=%s",
+                _request_id(req),
+                event,
+                device_type,
+                job_id,
+                dbg.get("todayTotal"),
+                dbg.get("avgDurationSec"),
             )
         except Exception as _e:
-            print(f"erasure-detail post-insert check failed: {_e}")
+            logger.warning("erasure-detail post-insert check failed rid=%s err=%s", _request_id(req), _e)
 
         if event in ["success", "connected"]:
             db_module.increment_stat("erased", 1)
@@ -512,7 +707,7 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
                     db_module.increment_engineer_count(initials, 1)
                     db_module.increment_engineer_type_count(device_type, initials, 1)
                 except Exception as _e:
-                    print(f"erasure-detail engineer counter update failed: {_e}")
+                    logger.warning("erasure-detail engineer counter update failed rid=%s err=%s", _request_id(req), _e)
         if job_id:
             db_module.mark_job_seen(job_id)
 
@@ -520,8 +715,7 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
 
     @router.api_route("/hooks/engineer-erasure", methods=["GET", "POST"])
     async def engineer_erasure_hook(req: Request):
-        hdr = req.headers.get("Authorization") or req.headers.get("x-api-key")
-        if not hdr or (hdr != f"Bearer {webhook_api_key}" and hdr != webhook_api_key):
+        if not _is_authorized_webhook_request(req, webhook_api_keys, route_label="/hooks/engineer-erasure"):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         payload: Dict[str, Any] = {}
@@ -536,7 +730,12 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
 
         initials = _extract_initials_from_obj(payload) or ""
         device_type = (payload.get("deviceType") or payload.get("device_type") or payload.get("type") or "laptops_desktops").strip().lower()
-        print(f"Received engineer erasure: initials={initials}, payload={payload}")
+        logger.info(
+            "Received engineer erasure rid=%s initials=%s keys=%s",
+            _request_id(req),
+            initials,
+            sorted(list(payload.keys())) if isinstance(payload, dict) else [],
+        )
 
         if not initials:
             return JSONResponse({"status": "error", "reason": "missing initials"}, status_code=400)
@@ -563,7 +762,7 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
                     ts=ts,
                 )
             except Exception as _e:
-                print(f"[engineer_erasure] failed to add detailed erasure event: {_e}")
+                logger.warning("[engineer_erasure] add_erasure_event failed rid=%s err=%s", _request_id(req), _e)
 
             db_module.increment_stat("erased", 1)
             if job_id:
@@ -574,7 +773,7 @@ def create_webhooks_router(*, db_module, webhook_api_key: str) -> APIRouter:
             db_module.increment_engineer_count(initials, 1)
             db_module.increment_engineer_type_count(device_type, initials, 1)
         except Exception as e:
-            print(f"[engineer_erasure] error updating counts: {e}")
+            logger.warning("[engineer_erasure] counter update failed rid=%s err=%s", _request_id(req), e)
         engineers = db_module.get_top_engineers(limit=10)
         engineer_count = next((e["count"] for e in engineers if e["initials"] == initials), 0)
 

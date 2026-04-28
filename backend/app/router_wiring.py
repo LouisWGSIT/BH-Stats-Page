@@ -48,7 +48,7 @@ def register_routes(
     set_last_server_error,
     cache_get,
     cache_set,
-    webhook_api_key,
+    webhook_api_keys,
     hwid_log_path,
     get_role_from_request,
     ttl_cache_cls,
@@ -164,7 +164,7 @@ def register_routes(
     app.include_router(
         create_webhooks_router(
             db_module=db_module,
-            webhook_api_key=webhook_api_key,
+            webhook_api_keys=webhook_api_keys,
         )
     )
     app.include_router(
@@ -200,7 +200,7 @@ def register_routes(
 
     app.include_router(
         create_hwid_router(
-            webhook_api_key=webhook_api_key,
+            webhook_api_keys=webhook_api_keys,
             hwid_log_path=hwid_log_path,
         )
     )

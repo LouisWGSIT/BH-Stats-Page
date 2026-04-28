@@ -96,6 +96,25 @@ def create_admin_activity_router(
             payload["error"] = str(exc)
         return payload
 
+    def _security_config_summary() -> dict:
+        cors_raw = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
+        cors_values = [v.strip() for v in cors_raw.split(",") if v.strip()] if cors_raw else ["*"]
+
+        webhook_multi = [v.strip() for v in (os.getenv("WEBHOOK_API_KEYS", "") or "").split(",") if v.strip()]
+        webhook_single = (os.getenv("WEBHOOK_API_KEY", "") or "").strip()
+        if webhook_single and webhook_single not in webhook_multi:
+            webhook_multi.append(webhook_single)
+
+        return {
+            "legacy_query_auth_enabled": os.getenv("LEGACY_QUERY_AUTH_ENABLED", "false").strip().lower() in ("1", "true", "yes"),
+            "legacy_basic_auth_enabled": os.getenv("LEGACY_BASIC_AUTH_ENABLED", "false").strip().lower() in ("1", "true", "yes"),
+            "cors_allow_origins_configured": bool(cors_raw),
+            "cors_wildcard_enabled": "*" in cors_values,
+            "cors_origin_count": len(cors_values),
+            "webhook_key_count": len(webhook_multi),
+            "webhook_multi_key_enabled": len(webhook_multi) > 1,
+        }
+
     @router.get("/admin/activity")
     def admin_activity(request: Request):
         """Return recent dashboard activity for last 24 hours."""
@@ -141,6 +160,17 @@ def create_admin_activity_router(
             if "/admin/fix-initials" in (x.get("path") or "")
             or "/admin/undo-last-initials" in (x.get("path") or "")
         ]
+        webhook_events = [
+            x for x in recent
+            if (x.get("path") or "").startswith("/hooks/") or (x.get("path") or "") == "/hwid"
+        ]
+        webhook_by_path = {}
+        webhook_clients = set()
+        for event in webhook_events:
+            path = event.get("path") or "unknown"
+            webhook_by_path[path] = webhook_by_path.get(path, 0) + 1
+            if event.get("client_ip"):
+                webhook_clients.add(event.get("client_ip"))
 
         memory_samples = [x.get("rss") for x in recent if x.get("rss")]
         memory_peak = max(memory_samples) if memory_samples else None
@@ -173,6 +203,26 @@ def create_admin_activity_router(
                 "fix_initials": len(fix_initials),
                 "unique_client_ips": len({x.get("client_ip") for x in recent if x.get("client_ip")}),
             },
+            "webhook_health": {
+                "events_24h": len(webhook_events),
+                "unique_client_ips": len(webhook_clients),
+                "by_path": webhook_by_path,
+                "recent": sorted(
+                    [
+                        {
+                            "ts": e.get("ts"),
+                            "path": e.get("path"),
+                            "method": e.get("method"),
+                            "client_ip": e.get("client_ip"),
+                            "duration_ms": e.get("duration_ms"),
+                        }
+                        for e in webhook_events
+                    ],
+                    key=lambda r: r.get("ts", ""),
+                    reverse=True,
+                )[:30],
+            },
+            "security_config": _security_config_summary(),
             "memory_peak_rss": memory_peak,
             "sqlite_storage": _sqlite_storage_monitor(),
             "connected_devices": connected,

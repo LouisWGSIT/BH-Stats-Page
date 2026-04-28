@@ -8,6 +8,8 @@ def create_auth_bindings(
     admin_password: str,
     manager_password: str,
     dashboard_public: bool,
+    legacy_query_auth_enabled: bool = False,
+    legacy_basic_auth_enabled: bool = False,
 ):
     def load_device_tokens():
         return auth_utils.load_device_tokens(
@@ -80,6 +82,8 @@ def create_auth_bindings(
             touch_token_fn=touch_device_token,
             get_client_ip_fn=get_client_ip,
             get_client_ips_fn=get_client_ips,
+            legacy_query_auth_enabled=legacy_query_auth_enabled,
+            legacy_basic_auth_enabled=legacy_basic_auth_enabled,
         )
 
     return {

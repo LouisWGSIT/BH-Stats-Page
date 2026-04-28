@@ -24,11 +24,20 @@
       }, 35000);
     }
 
+    function lockQATopCardsToCharts() {
+      const cards = document.querySelectorAll('.qa-top-flip-card');
+      if (!cards.length) return;
+      stop();
+      cards.forEach((card) => card.classList.add('flipped'));
+    }
+
     function showQAError(message) {
-      const deWeeklyEngineers = document.getElementById('deWeeklyEngineers');
-      const deAllTimeEngineers = document.getElementById('deAllTimeEngineers');
+      const qaTodayEngineers = document.getElementById('qaTodayEngineers');
       const qaWeeklyEngineers = document.getElementById('qaWeeklyEngineers');
       const qaAllTimeEngineers = document.getElementById('qaAllTimeEngineers');
+      const qaAppRotatingEngineers = document.getElementById('qaAppRotatingEngineers');
+      const qaTopMovers = document.getElementById('qaTopMovers');
+      const qaThroughputTimeline = document.getElementById('qaThroughputTimeline');
 
       const errorHtml = `
         <div style="padding: 20px; text-align: center; color: #ff6b6b;">
@@ -36,14 +45,17 @@
         </div>
       `;
 
-      if (deWeeklyEngineers) deWeeklyEngineers.innerHTML = errorHtml;
-      if (deAllTimeEngineers) deAllTimeEngineers.innerHTML = errorHtml;
+      if (qaTodayEngineers) qaTodayEngineers.innerHTML = errorHtml;
       if (qaWeeklyEngineers) qaWeeklyEngineers.innerHTML = errorHtml;
       if (qaAllTimeEngineers) qaAllTimeEngineers.innerHTML = errorHtml;
+      if (qaAppRotatingEngineers) qaAppRotatingEngineers.innerHTML = errorHtml;
+      if (qaTopMovers) qaTopMovers.innerHTML = errorHtml;
+      if (qaThroughputTimeline) qaThroughputTimeline.innerHTML = errorHtml;
     }
 
     return {
       startQATopFlipRotation,
+      lockQATopCardsToCharts,
       showQAError,
       stop,
     };

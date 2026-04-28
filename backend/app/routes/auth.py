@@ -158,7 +158,7 @@ def create_auth_router(
                     "authenticated": True,
                     "role": "admin",
                     "device_token": device_token,
-                    "token": admin_password,
+                    "token": device_token,
                     "message": "Admin access granted",
                 }
 
@@ -194,12 +194,9 @@ def create_auth_router(
                     "authenticated": True,
                     "role": "manager",
                     "device_token": device_token,
-                    "token": manager_password,
+                    "token": device_token,
                     "message": "Manager access granted",
                 }
-
-            if is_local_network(client_ip):
-                return {"authenticated": True, "role": "viewer", "message": "Local network view-only access"}
 
             raise HTTPException(status_code=401, detail="Invalid password")
         except HTTPException:

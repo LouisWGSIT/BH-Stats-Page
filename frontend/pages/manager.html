@@ -691,6 +691,7 @@
         let userRole = null;
         let backfillPoller = null;
         let qaExportController = null;
+        let qaExportPoller = null;
 
         function showBackfillStatusHtml(obj) {
             const el = document.getElementById('backfillStatus');
@@ -1554,29 +1555,128 @@
             }
             qaExportController = new AbortController();
 
+            if (qaExportPoller) {
+                clearInterval(qaExportPoller);
+                qaExportPoller = null;
+            }
+
             if (downloadBtn) downloadBtn.disabled = true;
             if (cancelBtn) cancelBtn.style.display = 'inline-block';
             
             resultDiv.className = 'result info';
             resultDiv.style.display = 'block';
-            resultDiv.innerHTML = '<p>⏳ Generating QA report...</p>';
+            resultDiv.innerHTML = '<p>⏳ Queuing QA export job...</p>';
             
             try {
-                const response = await fetch(`/export/qa-stats?period=${period}&include_device_sheets=${includeDeviceSheets ? 'true' : 'false'}`, {
+                const startResp = await fetch(`/export/qa-stats/jobs?period=${period}&include_device_sheets=${includeDeviceSheets ? 'true' : 'false'}`, {
+                    method: 'POST',
                     headers: getAuthHeaders(false),
                     signal: qaExportController.signal,
                 });
-                if (!response.ok) {
-                    throw new Error(`Export failed (HTTP ${response.status})`);
+
+                // Fallback to direct download if async endpoints are unavailable.
+                if (startResp.status === 404 || startResp.status === 405 || startResp.status === 503) {
+                    const response = await fetch(`/export/qa-stats?period=${period}&include_device_sheets=${includeDeviceSheets ? 'true' : 'false'}`, {
+                        headers: getAuthHeaders(false),
+                        signal: qaExportController.signal,
+                    });
+                    if (!response.ok) {
+                        throw new Error(`Export failed (HTTP ${response.status})`);
+                    }
+                    const blob = await response.blob();
+                    const contentDisposition = response.headers.get('Content-Disposition') || '';
+                    let filename = `qa-stats-${period.replace('_', '-')}.xlsx`;
+                    const filenameMatch = contentDisposition.match(/filename=([^;]+)/);
+                    if (filenameMatch) {
+                        filename = filenameMatch[1].replace(/"/g, '');
+                    }
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    window.URL.revokeObjectURL(url);
+                    showResult(resultDiv, 'success', '✅ Download Started', `QA report for ${period.replace('_', ' ')} is downloading.`);
+                    setTimeout(() => { resultDiv.style.display = 'none'; }, 3000);
+                    return;
                 }
-                const blob = await response.blob();
-                const contentDisposition = response.headers.get('Content-Disposition') || '';
+
+                if (!startResp.ok) {
+                    throw new Error(`Failed to start export job (HTTP ${startResp.status})`);
+                }
+
+                const startData = await startResp.json();
+                const jobId = startData.job_id;
+                if (!jobId) {
+                    throw new Error('Export job did not return a job id');
+                }
+
+                resultDiv.innerHTML = '<p>⏳ Export running... 0%</p>';
+
+                await new Promise((resolve, reject) => {
+                    const onAbort = () => {
+                        if (qaExportPoller) {
+                            clearInterval(qaExportPoller);
+                            qaExportPoller = null;
+                        }
+                        reject(new DOMException('Export cancelled', 'AbortError'));
+                    };
+                    qaExportController.signal.addEventListener('abort', onAbort, { once: true });
+
+                    qaExportPoller = setInterval(async () => {
+                        try {
+                            const statusResp = await fetch(`/export/qa-stats/jobs/${encodeURIComponent(jobId)}`, {
+                                headers: getAuthHeaders(false),
+                                signal: qaExportController.signal,
+                            });
+                            if (!statusResp.ok) {
+                                throw new Error(`Status check failed (HTTP ${statusResp.status})`);
+                            }
+                            const statusData = await statusResp.json();
+                            const pct = Number(statusData.progress_pct || 0);
+                            const msg = statusData.message || 'Running';
+                            resultDiv.innerHTML = `<p>⏳ ${msg}... ${pct}%</p>`;
+
+                            if (statusData.status === 'completed') {
+                                clearInterval(qaExportPoller);
+                                qaExportPoller = null;
+                                resolve();
+                                return;
+                            }
+                            if (statusData.status === 'failed') {
+                                throw new Error(statusData.error || 'Export job failed');
+                            }
+                        } catch (err) {
+                            if (qaExportPoller) {
+                                clearInterval(qaExportPoller);
+                                qaExportPoller = null;
+                            }
+                            reject(err);
+                        }
+                    }, 1500);
+                });
+
+                if (!qaExportController || qaExportController.signal.aborted) {
+                    throw new DOMException('Export cancelled', 'AbortError');
+                }
+
+                const downloadResp = await fetch(`/export/qa-stats/jobs/${encodeURIComponent(jobId)}/download`, {
+                    headers: getAuthHeaders(false),
+                    signal: qaExportController.signal,
+                });
+                if (!downloadResp.ok) {
+                    throw new Error(`Download failed (HTTP ${downloadResp.status})`);
+                }
+
+                const blob = await downloadResp.blob();
+                const contentDisposition = downloadResp.headers.get('Content-Disposition') || '';
                 let filename = `qa-stats-${period.replace('_', '-')}.xlsx`;
                 const filenameMatch = contentDisposition.match(/filename=([^;]+)/);
                 if (filenameMatch) {
                     filename = filenameMatch[1].replace(/"/g, '');
                 }
-                
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
@@ -1596,6 +1696,10 @@
                 showResult(resultDiv, 'error', '❌ Export Failed', error.message);
             } finally {
                 qaExportController = null;
+                if (qaExportPoller) {
+                    clearInterval(qaExportPoller);
+                    qaExportPoller = null;
+                }
                 if (downloadBtn) downloadBtn.disabled = false;
                 if (cancelBtn) cancelBtn.style.display = 'none';
             }

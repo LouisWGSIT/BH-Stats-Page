@@ -164,6 +164,38 @@ def test_erasure_detail_falls_back_to_nested_hardware_fields(client, app_module)
     assert row[6] == 500107862016
 
 
+def test_erasure_detail_accepts_assetnumber_alias_for_stockid(client, app_module):
+    with app_module.db.sqlite_transaction() as (_, cur):
+        cur.execute("DELETE FROM local_erasures")
+
+    payload = {
+        "event": "success",
+        "deviceType": "macs",
+        "initials": "BP",
+        "assetnumber": "A1234567",
+        "serial": "MACSYS-ALIAS",
+        "diskSerial": "MACDISK-ALIAS",
+    }
+
+    r = client.post(
+        "/hooks/erasure-detail",
+        headers={"x-api-key": "test-webhook-key"},
+        json=payload,
+    )
+    assert r.status_code == 200
+    assert r.json().get("status") == "ok"
+
+    with app_module.db.sqlite_transaction() as (_, cur):
+        cur.execute(
+            "SELECT stockid, system_serial FROM local_erasures ORDER BY ts DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+
+    assert row is not None
+    assert row[0] == "A1234567"
+    assert row[1] == "MACSYS-ALIAS"
+
+
 def test_auth_login_admin_returns_admin_role(client, app_module, workspace_temp_dir, monkeypatch):
     tokens_path = workspace_temp_dir / "device_tokens_test.json"
     monkeypatch.setattr(app_module, "DEVICE_TOKENS_FILE", str(tokens_path))
@@ -174,6 +206,14 @@ def test_auth_login_admin_returns_admin_role(client, app_module, workspace_temp_
     assert body["authenticated"] is True
     assert body["role"] == "admin"
     assert "device_token" in body
+    assert body.get("token") == body.get("device_token")
+    assert body.get("token") != "test-admin-pass"
+
+
+def test_auth_login_invalid_password_rejected_even_on_local_network(client):
+    r = client.post("/auth/login", json={"password": "definitely-wrong"})
+    assert r.status_code == 401
+    assert r.json().get("detail") == "Invalid password"
 
 
 def test_auth_status_with_manager_bearer(client):
@@ -197,6 +237,28 @@ def test_auth_status_external_tv_user_agent_not_auto_authenticated(client):
     assert body["authenticated"] is False
     assert body["role"] is None
     assert body["access_type"] == "external"
+
+
+def test_metrics_does_not_allow_query_auth_by_default(client):
+    r = client.get(
+        "/metrics/summary?auth=test-admin-pass",
+        headers={"X-Forwarded-For": "82.163.130.162"},
+    )
+    assert r.status_code == 401
+
+
+def test_metrics_does_not_allow_basic_auth_by_default(client):
+    import base64
+
+    basic = "Basic " + base64.b64encode(b"ignored:test-admin-pass").decode("ascii")
+    r = client.get(
+        "/metrics/summary",
+        headers={
+            "X-Forwarded-For": "82.163.130.162",
+            "Authorization": basic,
+        },
+    )
+    assert r.status_code == 401
 
 
 def test_external_tv_user_agent_without_token_cannot_read_metrics(client):
@@ -655,6 +717,8 @@ def test_admin_activity_returns_recent_events(client, app_module):
     assert r.status_code == 200
     body = r.json()
     assert "counts" in body
+    assert "webhook_health" in body
+    assert "security_config" in body
     assert "sqlite_storage" in body
     assert "recent" in body
     assert isinstance(body["recent"], list)
@@ -931,6 +995,64 @@ def test_export_excel_requires_manager_or_admin(client):
 def test_export_qa_stats_rejects_invalid_period_for_manager(client):
     r = client.get("/export/qa-stats?period=not_a_period", headers={"Authorization": "Bearer test-manager-pass"})
     assert r.status_code == 400
+
+
+def test_export_qa_stats_job_start_rejects_invalid_period_for_manager(client):
+    r = client.post(
+        "/export/qa-stats/jobs?period=not_a_period",
+        headers={"Authorization": "Bearer test-manager-pass"},
+    )
+    assert r.status_code == 400
+
+
+def test_export_qa_stats_async_job_flow(client, app_module, monkeypatch, workspace_temp_dir):
+    def _fake_generate(*_args, **_kwargs):
+        return {
+            "Summary": [["Metric", "Value"], ["Rows", 1]],
+        }
+
+    def _fake_excel_report(sheets_data, output_path=None, write_only_override=None):
+        _ = sheets_data
+        _ = write_only_override
+        if not output_path:
+            return None
+        Path(output_path).write_bytes(b"fake-xlsx")
+        return None
+
+    monkeypatch.setattr(app_module.qa_export, "generate_qa_engineer_export", _fake_generate)
+    monkeypatch.setattr(app_module.excel_export, "create_excel_report", _fake_excel_report)
+    monkeypatch.setenv("QA_EXPORT_CACHE_DIR", str(workspace_temp_dir / "qa_cache"))
+
+    start = client.post(
+        "/export/qa-stats/jobs?period=this_week&include_device_sheets=false",
+        headers={"Authorization": "Bearer test-manager-pass"},
+    )
+    assert start.status_code == 200
+    body = start.json()
+    assert "job_id" in body
+    job_id = body["job_id"]
+
+    final_status = None
+    for _ in range(30):
+        status = client.get(
+            f"/export/qa-stats/jobs/{job_id}",
+            headers={"Authorization": "Bearer test-manager-pass"},
+        )
+        assert status.status_code == 200
+        data = status.json()
+        final_status = data["status"]
+        if final_status in ("completed", "failed"):
+            break
+        time.sleep(0.05)
+
+    assert final_status == "completed"
+
+    download = client.get(
+        f"/export/qa-stats/jobs/{job_id}/download",
+        headers={"Authorization": "Bearer test-manager-pass"},
+    )
+    assert download.status_code == 200
+    assert download.content == b"fake-xlsx"
 
 
 def test_powerbi_endpoints_removed(client):

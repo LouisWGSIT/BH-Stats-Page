@@ -496,6 +496,52 @@
             font-weight: 700;
         }
         .btn-confirm:hover { background: #10b981; color: white; }
+
+        .payload-library-controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            margin-bottom: 12px;
+        }
+
+        .payload-library-controls .form-group {
+            margin-bottom: 0;
+            min-width: 260px;
+            flex: 1;
+        }
+
+        .payload-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .payload-editor {
+            width: 100%;
+            min-height: 320px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            resize: vertical;
+            background: #f8fafc;
+            color: #1e293b;
+        }
+
+        .payload-editor:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
+        }
+
+        .payload-hint {
+            margin-top: 8px;
+            color: #666;
+            font-size: 12px;
+        }
     </style>
     <!-- Chart.js will be lazy-loaded when the memory chart is first displayed -->
 </head>
@@ -566,11 +612,35 @@
                 </div>
             </div>
 
+            <!-- Section 6.2: Workflow Payload Library -->
+            <div class="section" id="section-workflow-payloads">
+                <h2>🧩 Workflow Payload Library</h2>
+                <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
+                    Copy and paste payload versions directly into your on-premise workflow portal.
+                    Choose a preset, tweak if needed, then copy JSON.
+                </p>
+
+                <div class="payload-library-controls">
+                    <div class="form-group">
+                        <label for="payloadPresetSelect">Payload preset</label>
+                        <select id="payloadPresetSelect"></select>
+                    </div>
+                    <div class="payload-actions">
+                        <button type="button" onclick="copyWorkflowPayloadFromEditor()">📋 Copy JSON</button>
+                        <button type="button" onclick="resetWorkflowPayloadPreset()">↺ Reset Preset</button>
+                    </div>
+                </div>
+
+                <textarea id="payloadPresetEditor" class="payload-editor" spellcheck="false"></textarea>
+                <div class="payload-hint" id="payloadPresetHint"></div>
+                <div id="payloadPresetResult" class="result" style="margin-top:12px;"></div>
+            </div>
+
             <!-- Section 6.5: Goods In Evidence -->
             <div class="section admin-only" id="section-goods-in-evidence">
                 <h2>📥 Goods In Evidence</h2>
                 <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
-                    Proves the Goods In card values by showing GRN order numbers that are still unmatched in Automation orders, plus any matched as received today.
+                    Validates Goods In card values using the external Goods In API when enabled, with automatic fallback to legacy MariaDB evidence if the API is unavailable.
                 </p>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                     <label style="font-size:13px;color:#666;">Window:
@@ -898,6 +968,8 @@
                     <label style="font-size:13px;color:#666;"><input type="checkbox" id="autoPollActivity"> Auto-refresh every 30s</label>
                 </div>
                 <div id="activitySummary" style="margin-bottom:10px; display:none;"></div>
+                <div id="securityConfigSummary" class="stats" style="margin-bottom:10px; display:none;"></div>
+                <div id="webhookHealthSummary" class="stats" style="margin-bottom:10px; display:none;"></div>
                 <div id="sqliteStorageSummary" class="stats" style="margin-bottom:10px; display:none;"></div>
                 <div id="memoryPanel" style="display:block;margin-bottom:10px;">
                     <div style="display:flex;align-items:center;gap:12px;">
@@ -942,6 +1014,104 @@
         let userRole = null;
         const _sectionLoaded = {};
         const _sectionLoaders = {};
+        let _payloadLibraryInitialized = false;
+
+        const WORKFLOW_PAYLOAD_PRESETS = {
+            macs_lean: {
+                label: 'Macs - Lean (Recommended)',
+                hint: 'Use this for reliability. Matches your stable testing payload shape.',
+                payload: {
+                    event: 'success',
+                    jobId: '',
+                    deviceType: 'macs',
+                    assetNumber: '<DEVICECUSTOMFIELD Asset/Stock ID Number>',
+                    initials: '<DEVICECUSTOMFIELD Engineer Initials>',
+                    durationSec: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>',
+                    timestamp: '<Completion Time>',
+                    manufacturer: '<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>',
+                    model: '<REPORTPATH blancco_data.blancco_hardware_report.system.model>',
+                    serial: '<REPORTPATH blancco_data.blancco_hardware_report.system.serial>',
+                    diskSerial: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>',
+                    diskCapacity: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>'
+                }
+            },
+            macs_expanded_fallback: {
+                label: 'Macs - Expanded Fallback Paths',
+                hint: 'Use this only if report path coverage is needed and sender size limits are not an issue.',
+                payload: {
+                    event: 'success',
+                    jobId: '',
+                    deviceType: 'macs',
+                    assetNumber: '<DEVICECUSTOMFIELD Asset/Stock ID Number>',
+                    initials: '<DEVICECUSTOMFIELD Engineer Initials>',
+                    durationSec: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>',
+                    durationSecAlt: '<REPORTPATH blancco_data.blancco_erasure_report.processes.process.elapsed_time>',
+                    timestamp: '<Completion Time>',
+                    timestampAlt: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.end_time>',
+                    manufacturer: '<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>',
+                    manufacturerAlt: '<REPORTPATH blancco_data.blancco_hardware_report.entries.system.manufacturer>',
+                    model: '<REPORTPATH blancco_data.blancco_hardware_report.system.model>',
+                    modelAlt: '<REPORTPATH blancco_data.blancco_hardware_report.entries.system.name>',
+                    serial: '<REPORTPATH blancco_data.blancco_hardware_report.system.serial>',
+                    serialAlt: '<REPORTPATH blancco_data.blancco_hardware_report.entries.system.identifier>',
+                    diskSerial: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>',
+                    diskSerialAlt: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.target.serial>',
+                    diskCapacity: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>',
+                    diskCapacityAlt: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.target.capacity>'
+                }
+            },
+            laptops_desktops: {
+                label: 'Laptops/Desktops',
+                hint: 'Standard payload for laptops and desktops workflow.',
+                payload: {
+                    event: 'success',
+                    jobId: '',
+                    deviceType: 'laptops_desktops',
+                    initials: '<DEVICECUSTOMFIELD Engineer Initials>',
+                    durationSec: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>',
+                    timestamp: '<Completion Time>',
+                    manufacturer: '<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>',
+                    model: '<REPORTPATH blancco_data.blancco_hardware_report.system.model>',
+                    serial: '<REPORTPATH blancco_data.blancco_hardware_report.system.serial>',
+                    diskSerial: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>',
+                    diskCapacity: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>'
+                }
+            },
+            servers: {
+                label: 'Servers',
+                hint: 'Standard payload for servers workflow.',
+                payload: {
+                    event: 'success',
+                    jobId: '',
+                    deviceType: 'servers',
+                    initials: '<DEVICECUSTOMFIELD Engineer Initials>',
+                    durationSec: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>',
+                    timestamp: '<Completion Time>',
+                    manufacturer: '<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>',
+                    model: '<REPORTPATH blancco_data.blancco_hardware_report.system.model>',
+                    serial: '<REPORTPATH blancco_data.blancco_hardware_report.system.serial>',
+                    diskSerial: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>',
+                    diskCapacity: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>'
+                }
+            },
+            mobiles: {
+                label: 'Mobiles',
+                hint: 'Standard payload for mobile workflow.',
+                payload: {
+                    event: 'success',
+                    jobId: '',
+                    deviceType: 'mobiles',
+                    initials: '<DEVICECUSTOMFIELD Engineer Initials>',
+                    durationSec: '<REPORTPATH blancco_data.blancco_erasure_report.erasures.erasure.elapsed_time>',
+                    timestamp: '<Completion Time>',
+                    manufacturer: '<REPORTPATH blancco_data.blancco_hardware_report.system.manufacturer>',
+                    model: '<REPORTPATH blancco_data.blancco_hardware_report.system.model>',
+                    serial: '<REPORTPATH blancco_data.blancco_hardware_report.system.serial>',
+                    diskSerial: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.serial>',
+                    diskCapacity: '<REPORTPATH blancco_data.blancco_hardware_report.disks.disk.capacity>'
+                }
+            }
+        };
 
         async function ensureManagerAccess() {
             const existingToken = sessionStorage.getItem('authToken');
@@ -1020,6 +1190,7 @@
             const sectionIds = [
                 'section-fix-initials',
                 'section-connected-devices',
+                'section-workflow-payloads',
                 'section-goods-in-evidence',
                 'section-erasure-evidence',
                 'section-erasure-reconciliation',
@@ -1085,6 +1256,9 @@
                     await loadExternalAttempts();
                 }
             };
+            _sectionLoaders['section-workflow-payloads'] = async () => {
+                initializeWorkflowPayloadLibrary();
+            };
             _sectionLoaders['section-goods-in-evidence'] = async () => {
                 if (userRole !== 'admin') return;
                 await loadGoodsInEvidence();
@@ -1127,6 +1301,76 @@
                 headers['Content-Type'] = 'application/json';
             }
             return headers;
+        }
+
+        function initializeWorkflowPayloadLibrary() {
+            if (_payloadLibraryInitialized) return;
+
+            const select = document.getElementById('payloadPresetSelect');
+            const editor = document.getElementById('payloadPresetEditor');
+            if (!select || !editor) return;
+
+            const presetKeys = Object.keys(WORKFLOW_PAYLOAD_PRESETS);
+            select.innerHTML = '';
+
+            presetKeys.forEach((key) => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = WORKFLOW_PAYLOAD_PRESETS[key].label;
+                select.appendChild(opt);
+            });
+
+            select.addEventListener('change', () => {
+                loadSelectedWorkflowPayloadPreset();
+            });
+
+            loadSelectedWorkflowPayloadPreset();
+            _payloadLibraryInitialized = true;
+        }
+
+        function loadSelectedWorkflowPayloadPreset() {
+            const select = document.getElementById('payloadPresetSelect');
+            const editor = document.getElementById('payloadPresetEditor');
+            const hint = document.getElementById('payloadPresetHint');
+            if (!select || !editor) return;
+
+            const selected = select.value;
+            const preset = WORKFLOW_PAYLOAD_PRESETS[selected];
+            if (!preset) return;
+
+            editor.value = JSON.stringify(preset.payload, null, 2);
+            if (hint) {
+                hint.textContent = preset.hint || '';
+            }
+            const result = document.getElementById('payloadPresetResult');
+            if (result) {
+                result.className = 'result';
+                result.innerHTML = '';
+            }
+        }
+
+        function resetWorkflowPayloadPreset() {
+            loadSelectedWorkflowPayloadPreset();
+            const result = document.getElementById('payloadPresetResult');
+            if (result) {
+                showResult(result, 'info', 'Preset Reset', 'Editor restored to selected payload preset.');
+            }
+        }
+
+        async function copyWorkflowPayloadFromEditor() {
+            const editor = document.getElementById('payloadPresetEditor');
+            const result = document.getElementById('payloadPresetResult');
+            if (!editor || !result) return;
+
+            const raw = editor.value || '';
+            try {
+                const parsed = JSON.parse(raw);
+                const normalized = JSON.stringify(parsed);
+                await navigator.clipboard.writeText(normalized);
+                showResult(result, 'success', 'Copied', 'Payload copied to clipboard in compact JSON format.');
+            } catch (err) {
+                showResult(result, 'error', 'Invalid JSON', 'Fix JSON formatting before copying. ' + (err && err.message ? err.message : ''));
+            }
         }
 
         function formatEvidence(ev) {
@@ -1843,7 +2087,8 @@
                         <div class="stat-card"><div class="stat-value">${s.sampleAwaitingCount || awaiting.length}</div><div class="stat-label">Awaiting Samples</div></div>
                         <div class="stat-card"><div class="stat-value">${s.sampleReceivedTodayCount || received.length}</div><div class="stat-label">Received Today Samples</div></div>
                     </div>
-                    <div style="margin-top:8px;font-size:12px;color:#666;">Source: ${s.source || 'unknown'} | GRN date field: ${s.grnDateField || 'n/a'} | Orders date field: ${s.ordersDateField || 'n/a'} | Status field: ${s.statusField || 'n/a'}</div>
+                    <div style="margin-top:8px;font-size:12px;color:#666;">Source: ${s.source || 'unknown'} | Token mode: ${s.apiTokenMode || 'n/a'} | GRN date field: ${s.grnDateField || 'n/a'} | Orders date field: ${s.ordersDateField || 'n/a'} | Status field: ${s.statusField || 'n/a'}</div>
+                    ${s.apiFallbackError ? `<div style="margin-top:6px;font-size:12px;color:#b45309;">API fallback active: ${s.apiFallbackError}</div>` : ''}
                     <div style="margin-top:8px;font-size:12px;color:#666;">Generated: ${formatActivityTimeUk(s.generatedAt)}</div>
                 `;
                 summary.style.display = 'block';
@@ -2450,6 +2695,8 @@
 
         async function fetchAdminActivity() {
             const summaryEl = document.getElementById('activitySummary');
+            const securityEl = document.getElementById('securityConfigSummary');
+            const webhookEl = document.getElementById('webhookHealthSummary');
             const sqliteEl = document.getElementById('sqliteStorageSummary');
             const container = document.getElementById('activityContainer');
             const tbody = document.getElementById('activityTableBody');
@@ -2466,6 +2713,55 @@
                 // Connected devices summary
                 if (data.connected_devices && data.connected_devices.length) {
                     summaryEl.innerHTML += `<br><strong>Connected devices:</strong> ${data.connected_devices.length}`;
+                }
+
+                const sec = data.security_config || {};
+                if (securityEl) {
+                    securityEl.style.display = 'block';
+                    securityEl.innerHTML = `
+                        <h3 style="margin-bottom:8px;">Security Config Status</h3>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                            <div class="stat-card"><div class="stat-value">${sec.legacy_query_auth_enabled ? 'ON' : 'OFF'}</div><div class="stat-label">Legacy query auth</div></div>
+                            <div class="stat-card"><div class="stat-value">${sec.legacy_basic_auth_enabled ? 'ON' : 'OFF'}</div><div class="stat-label">Legacy basic auth</div></div>
+                            <div class="stat-card"><div class="stat-value">${sec.cors_wildcard_enabled ? 'WILDCARD' : 'RESTRICTED'}</div><div class="stat-label">CORS mode</div></div>
+                            <div class="stat-card"><div class="stat-value">${sec.cors_origin_count || 0}</div><div class="stat-label">CORS origins</div></div>
+                            <div class="stat-card"><div class="stat-value">${sec.webhook_key_count || 0}</div><div class="stat-label">Webhook keys loaded</div></div>
+                            <div class="stat-card"><div class="stat-value">${sec.webhook_multi_key_enabled ? 'YES' : 'NO'}</div><div class="stat-label">Multi-key rotation</div></div>
+                        </div>
+                    `;
+                }
+
+                const webhook = data.webhook_health || {};
+                const byPath = webhook.by_path || {};
+                const byPathRows = Object.keys(byPath)
+                    .sort((a, b) => Number(byPath[b] || 0) - Number(byPath[a] || 0))
+                    .map((path) => `<div class="stat-card"><div class="stat-value">${byPath[path]}</div><div class="stat-label">${path}</div></div>`)
+                    .join('');
+                const recentWebhookRows = (webhook.recent || []).map((ev) => {
+                    return `<tr>
+                        <td style="font-size:12px;">${formatActivityTimeUk(ev.ts)}</td>
+                        <td style="font-size:12px;">${ev.path || ''}</td>
+                        <td style="font-size:12px;">${ev.method || ''}</td>
+                        <td style="font-size:12px;">${ev.client_ip || ''}</td>
+                        <td style="font-size:12px;">${ev.duration_ms || ''}</td>
+                    </tr>`;
+                }).join('');
+                if (webhookEl) {
+                    webhookEl.style.display = 'block';
+                    webhookEl.innerHTML = `
+                        <h3 style="margin-bottom:8px;">Webhook Health (24h)</h3>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                            <div class="stat-card"><div class="stat-value">${webhook.events_24h || 0}</div><div class="stat-label">Webhook events</div></div>
+                            <div class="stat-card"><div class="stat-value">${webhook.unique_client_ips || 0}</div><div class="stat-label">Webhook client IPs</div></div>
+                        </div>
+                        ${byPathRows ? `<div style="margin-top:10px;" class="stats-grid">${byPathRows}</div>` : ''}
+                        <div style="margin-top:10px; max-height:220px; overflow:auto;">
+                            <table class="table" style="width:100%;">
+                                <thead><tr><th>Time (UK)</th><th>Path</th><th>Method</th><th>Client IP</th><th>Duration ms</th></tr></thead>
+                                <tbody>${recentWebhookRows || '<tr><td colspan="5" style="font-size:12px;color:#777;">No recent webhook requests in activity log.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    `;
                 }
 
                 const sqlite = data.sqlite_storage || {};
@@ -2501,6 +2797,8 @@
             } catch (err) {
                 summaryEl.style.display = 'block';
                 summaryEl.innerHTML = `<span style="color:#c00;">Failed to load activity: ${err.message}</span>`;
+                if (securityEl) securityEl.style.display = 'none';
+                if (webhookEl) webhookEl.style.display = 'none';
                 if (sqliteEl) sqliteEl.style.display = 'none';
                 container.style.display = 'none';
             } finally {

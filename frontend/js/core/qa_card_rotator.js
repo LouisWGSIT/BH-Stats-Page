@@ -69,13 +69,13 @@
         if (dataBearingTitle) {
           dataBearingTitle.textContent = `${current.label} Data Bearing`;
         }
-        deps.populateQACard('dataBeringToday', 'dataBeringTodayEngineers', current.data, 'de', 6);
+        deps.populateQACard('dataBeringToday', 'dataBeringTodayEngineers', current.data, 'de', 4);
 
         const nonDataBearingTitle = nonDataBearingCard?.querySelector('h3');
         if (nonDataBearingTitle) {
           nonDataBearingTitle.textContent = `${current.label} Non Data Bearing`;
         }
-        deps.populateQACard('nonDataBeringToday', 'nonDataBeringTodayEngineers', current.data, 'non_de', 6);
+        deps.populateQACard('nonDataBeringToday', 'nonDataBeringTodayEngineers', current.data, 'non_de', 4);
 
         currentIndex = (currentIndex + 1) % datasets.length;
       }

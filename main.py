@@ -263,6 +263,8 @@ auth_binding_funcs = auth_bindings_module.create_auth_bindings(
     admin_password=ADMIN_PASSWORD,
     manager_password=MANAGER_PASSWORD,
     dashboard_public=DASHBOARD_PUBLIC,
+    legacy_query_auth_enabled=runtime_state.is_legacy_query_auth_enabled(),
+    legacy_basic_auth_enabled=runtime_state.is_legacy_basic_auth_enabled(),
 )
 
 load_device_tokens = auth_binding_funcs["load_device_tokens"]
@@ -309,7 +311,7 @@ async def static_cache_headers_middleware(request: Request, call_next):
 
     if path.endswith(static_exts):
         response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=600"
-    elif path in ("/", "/index.html", "/admin.html", "/manager.html", "/qr-code-generator.html"):
+    elif path in ("/", "/index.html", "/admin.html", "/manager.html"):
         response.headers["Cache-Control"] = "no-cache"
     elif path.endswith(".json"):
         response.headers["Cache-Control"] = "no-cache"
@@ -322,15 +324,20 @@ db.init_db()
 BACKFILL_PROGRESS = runtime_state.initial_backfill_progress()
 
 # Enable CORS for TV access from network (more restricted now with auth middleware)
+CORS_ALLOW_ORIGINS = runtime_state.get_cors_allow_origins()
+CORS_ALLOW_CREDENTIALS = "*" not in CORS_ALLOW_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Still allow all origins, but auth middleware controls actual access
-    allow_credentials=True,
+    allow_origins=CORS_ALLOW_ORIGINS,
+    allow_credentials=CORS_ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-WEBHOOK_API_KEY = runtime_state.get_webhook_api_key()
+WEBHOOK_API_KEYS = runtime_state.get_webhook_api_keys()
+# Backward-compat alias for older tests/modules that still reference a single key name.
+WEBHOOK_API_KEY = WEBHOOK_API_KEYS[0] if WEBHOOK_API_KEYS else ""
 
 HWID_LOG_PATH = runtime_state.get_hwid_log_path()
 FRONTEND_PAGES_DIR, FRONTEND_JS_DIR, FRONTEND_CSS_DIR = runtime_state.get_frontend_paths()
@@ -379,7 +386,7 @@ router_wiring.register_routes(
     set_last_server_error=lambda payload: globals().__setitem__("LAST_SERVER_ERROR", payload),
     cache_get=_get_cached_response,
     cache_set=_set_cached_response,
-    webhook_api_key=WEBHOOK_API_KEY,
+    webhook_api_keys=WEBHOOK_API_KEYS,
     hwid_log_path=HWID_LOG_PATH,
     get_role_from_request=get_role_from_request,
     ttl_cache_cls=TTLCache,

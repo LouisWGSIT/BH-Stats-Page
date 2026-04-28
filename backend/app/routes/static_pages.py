@@ -1,7 +1,7 @@
 import os
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 
 def create_static_pages_router(
@@ -31,7 +31,7 @@ def create_static_pages_router(
 
     @router.get("/qr-code-generator.html", include_in_schema=False)
     async def serve_qr_generator_html():
-        return FileResponse(os.path.join(frontend_pages_dir, "qr-code-generator.html"))
+        return RedirectResponse(url="/admin.html#section-workflow-payloads", status_code=307)
 
     @router.get("/app.js", include_in_schema=False)
     async def serve_app_js():

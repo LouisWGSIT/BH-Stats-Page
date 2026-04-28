@@ -2,6 +2,10 @@
 (function () {
   function init() {
     let isLoading = false;
+    let lastLiveSections = null;
+    let lastSpotlightData = null;
+    let lastLiveFetchedAt = 0;
+    const LIVE_CACHE_TTL_MS = 30000;
 
     const mockSections = [
       {
@@ -659,6 +663,14 @@
 
     async function load() {
       if (isLoading) return;
+      const now = Date.now();
+      if (lastLiveSections && (now - lastLiveFetchedAt) < LIVE_CACHE_TTL_MS) {
+        renderSections(lastLiveSections);
+        renderSpotlight(lastSpotlightData || getFallbackSpotlight());
+        renderTrends(lastLiveSections);
+        renderRaceTrack(lastLiveSections);
+        return;
+      }
       isLoading = true;
       try {
         const [sectionsRes, spotlightRes] = await Promise.all([
@@ -683,15 +695,26 @@
           };
         }
 
+        lastLiveSections = valid;
+        lastSpotlightData = spotlightData;
+        lastLiveFetchedAt = Date.now();
+
         renderSections(valid);
         renderSpotlight(spotlightData);
         renderTrends(valid);
         renderRaceTrack(valid);
       } catch (_err) {
-        renderSections(mockSections);
-        renderSpotlight(getFallbackSpotlight());
-        renderTrends(mockSections);
-        renderRaceTrack(mockSections);
+        if (lastLiveSections) {
+          renderSections(lastLiveSections);
+          renderSpotlight(lastSpotlightData || getFallbackSpotlight());
+          renderTrends(lastLiveSections);
+          renderRaceTrack(lastLiveSections);
+        } else {
+          renderSections(mockSections);
+          renderSpotlight(getFallbackSpotlight());
+          renderTrends(mockSections);
+          renderRaceTrack(mockSections);
+        }
       } finally {
         isLoading = false;
       }
