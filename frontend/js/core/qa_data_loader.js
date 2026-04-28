@@ -130,6 +130,7 @@
       if (bootstrap && bootstrap.trends && bootstrap.insights) {
         return {
           todayTrend: bootstrap.trends.today,
+          sortingTodayTrend: null,
           weekTrend: bootstrap.trends.this_week,
           allTimeTrend: bootstrap.trends.all_time,
           todayInsights: bootstrap.insights.today,
@@ -138,8 +139,9 @@
         };
       }
 
-      const [todayTrend, weekTrend, allTimeTrend, todayInsights, weekInsights, allTimeInsights] = await Promise.all([
+      const [todayTrend, sortingTodayTrend, weekTrend, allTimeTrend, todayInsights, weekInsights, allTimeInsights] = await Promise.all([
         fetch('/api/qa-trends?period=today').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        fetch('/api/qa-trends?period=today&type=sorting').then((r) => (r.ok ? r.json() : null)).catch(() => null),
         fetch('/api/qa-trends?period=this_week').then((r) => (r.ok ? r.json() : null)).catch(() => null),
         fetch('/api/qa-trends?period=all_time').then((r) => (r.ok ? r.json() : null)).catch(() => null),
         fetch('/api/insights/qa?period=today').then((r) => (r.ok ? r.json() : null)).catch(() => null),
@@ -149,6 +151,7 @@
 
       return {
         todayTrend,
+        sortingTodayTrend,
         weekTrend,
         allTimeTrend,
         todayInsights,

@@ -38,6 +38,7 @@
       : null;
     let sortingRotateIntervalId = null;
     let sortingViewIndex = 0;
+    let throughputRotateIntervalId = null;
 
     function clearIntervals() {
       if (qaDashboardUiApi && typeof qaDashboardUiApi.stop === 'function') {
@@ -52,6 +53,10 @@
       if (sortingRotateIntervalId) {
         clearInterval(sortingRotateIntervalId);
         sortingRotateIntervalId = null;
+      }
+      if (throughputRotateIntervalId) {
+        clearInterval(throughputRotateIntervalId);
+        throughputRotateIntervalId = null;
       }
     }
 
@@ -155,13 +160,30 @@
       }));
     }
 
-    function renderThroughputPulse(todayTrend) {
+    function getThroughputPoints(trendPayload, metricKey) {
+      const series = Array.isArray(trendPayload && trendPayload.series) ? trendPayload.series : [];
+      return series.map((point, idx) => {
+        const rawLabel = (point && (point.hour || point.day || point.date || point.label));
+        const label = String(rawLabel != null ? rawLabel : `#${idx + 1}`);
+        return {
+          label,
+          value: asNumber(point && (point[metricKey] ?? point.value ?? point.total ?? point.count ?? point.scans)),
+        };
+      });
+    }
+
+    function renderThroughputPulseWithConfig(trendPayload, metricKey, title) {
       const chartWrapEl = document.getElementById('qaThroughputTimeline');
       const sparklineEl = document.getElementById('qaSortingThroughputSpark');
       const xAxisEl = document.getElementById('qaThroughputXAxis');
+      const titleEl = document.getElementById('qaThroughputTitle');
       if (!chartWrapEl || !sparklineEl || !xAxisEl) return;
 
-      const points = parseTrendSeries(todayTrend).slice(-8);
+      if (titleEl) {
+        titleEl.textContent = title || "Throughput";
+      }
+
+      const points = getThroughputPoints(trendPayload, metricKey).slice(-8);
       const peak = points.reduce((max, p) => (p.value > max ? p.value : max), 0);
       const latest = points.length ? points[points.length - 1].value : 0;
       setText('qaThroughputPeak', latest > 0 ? latest.toLocaleString() : '--');
@@ -217,6 +239,28 @@
       xAxisEl.innerHTML = points.map((point) => (
         `<span class="qa-throughput-xlabel">${escapeHtml(point.label)}</span>`
       )).join('');
+    }
+
+    function renderThroughputPulse(todayTrend) {
+      renderThroughputPulseWithConfig(todayTrend, 'qaTotal', "Throughput (QA'd per Hour)");
+    }
+
+    function startThroughputCardRotator(todayTrend, sortingTodayTrend) {
+      const states = [
+        { title: "Throughput (QA'd per Hour)", metricKey: 'qaTotal', trend: todayTrend },
+        { title: "Throughput (Sorted per Hour)", metricKey: 'qaApp', trend: sortingTodayTrend || todayTrend },
+      ];
+      let idx = 0;
+      renderThroughputPulseWithConfig(states[idx].trend, states[idx].metricKey, states[idx].title);
+      if (throughputRotateIntervalId) {
+        clearInterval(throughputRotateIntervalId);
+        throughputRotateIntervalId = null;
+      }
+      throughputRotateIntervalId = setInterval(() => {
+        idx = (idx + 1) % states.length;
+        const current = states[idx];
+        renderThroughputPulseWithConfig(current.trend, current.metricKey, current.title);
+      }, 25000);
     }
 
     function populateMiddleLeaderboard(todayData) {
@@ -407,6 +451,7 @@
             if (!trendData) return;
             const {
               todayTrend,
+              sortingTodayTrend,
               weekTrend,
               allTimeTrend,
               todayInsights,
@@ -439,7 +484,7 @@
               mode: 'all_time'
             });
 
-            renderThroughputPulse(todayTrend);
+            startThroughputCardRotator(todayTrend, sortingTodayTrend);
           })
           .catch(() => {
             // Keep existing panel state on background trend refresh errors.

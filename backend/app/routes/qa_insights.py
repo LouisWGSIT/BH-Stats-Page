@@ -345,15 +345,34 @@ def create_qa_insights_router(*, cache_get, cache_set) -> APIRouter:
         }
         return cache_set(cache_key, result)
 
-    async def _get_qa_trends_payload(period: str = "this_week") -> dict:
+    async def _get_qa_trends_payload(period: str = "this_week", series_type: str = "qa") -> dict:
         today = datetime.now().date()
-        cache_key = f"qa_trends:{period}"
+        trend_type = str(series_type or "qa").strip().lower()
+        if trend_type not in {"qa", "sorting"}:
+            trend_type = "qa"
+        cache_key = f"qa_trends:{period}:{trend_type}"
         cached = cache_get(cache_key)
         if cached is not None:
             return cached
 
         if period == "today":
-            result = {"period": "Today", "granularity": "hour", "series": qa_export.get_qa_hourly_totals(today)}
+            raw_series = qa_export.get_qa_hourly_totals(today)
+            hourly_series = []
+            for row in raw_series or []:
+                hourly_series.append(
+                    {
+                        "hour": row.get("hour"),
+                        "qaTotal": int(row.get("qaTotal", 0) or 0),
+                        "qaApp": int(row.get("qaApp", 0) or 0),
+                        "value": int(row.get("qaApp", 0) or 0) if trend_type == "sorting" else int(row.get("qaTotal", 0) or 0),
+                    }
+                )
+            result = {
+                "period": "Today",
+                "granularity": "hour",
+                "seriesType": trend_type,
+                "series": hourly_series,
+            }
             return cache_set(cache_key, result)
 
         if period == "all_time":
@@ -379,9 +398,9 @@ def create_qa_insights_router(*, cache_get, cache_set) -> APIRouter:
             return {"error": "Failed to compute QA insights"}
 
     @router.get("/api/qa-trends")
-    async def qa_trends(period: str = "this_week"):
+    async def qa_trends(period: str = "this_week", type: str = "qa"):
         try:
-            return await _get_qa_trends_payload(period)
+            return await _get_qa_trends_payload(period, type)
         except Exception:
             return {"error": "Failed to compute QA trends"}
 
