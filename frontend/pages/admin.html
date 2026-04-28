@@ -672,6 +672,7 @@
                                     <th>Order Type/Status</th>
                                     <th>Operator</th>
                                     <th>Total Items</th>
+                                    <th>Location</th>
                                     <th>Arrival</th>
                                     <th>Start</th>
                                     <th>Finish</th>
@@ -693,6 +694,7 @@
                                     <th>Order Type/Status</th>
                                     <th>Operator</th>
                                     <th>Total Items</th>
+                                    <th>Location</th>
                                     <th>Arrival</th>
                                     <th>Start</th>
                                     <th>Finish</th>
@@ -2085,6 +2087,11 @@
                         <div class="stat-card"><div class="stat-value">${s.sampleReceivedTodayCount || received.length}</div><div class="stat-label">Received Today Samples</div></div>
                     </div>
                     <div style="margin-top:8px;font-size:12px;color:#666;">Source: ${s.source || 'unknown'} | Token mode: ${s.apiTokenMode || 'n/a'} | GRN date field: ${s.grnDateField || 'n/a'} | Orders date field: ${s.ordersDateField || 'n/a'} | Status field: ${s.statusField || 'n/a'}</div>
+                    <div style="margin-top:6px;font-size:12px;color:#666;">Site filter: ${(Array.isArray(s.siteFilterTerms) && s.siteFilterTerms.length) ? s.siteFilterTerms.join(', ') : 'none'} | Inferred received since last snapshot: ${s.inferredReceivedSinceLastSnapshot || 0}</div>
+                    ${(Array.isArray(s.inferredReceivedSample) && s.inferredReceivedSample.length)
+                        ? `<div style="margin-top:4px;font-size:12px;color:#666;">Inferred received sample: ${s.inferredReceivedSample.join(', ')}</div>`
+                        : ''
+                    }
                     ${s.apiFallbackError ? `<div style="margin-top:6px;font-size:12px;color:#b45309;">API fallback active: ${s.apiFallbackError}</div>` : ''}
                     <div style="margin-top:8px;font-size:12px;color:#666;">Generated: ${formatActivityTimeUk(s.generatedAt)}</div>
                 `;
@@ -2134,6 +2141,7 @@
                     <td style="font-size:12px;">${row.orderStatus || ''}</td>
                     <td style="font-size:12px;">${row.operator || ''}</td>
                     <td style="font-size:12px;">${row.totalItems ?? ''}</td>
+                    <td style="font-size:12px;">${row.location || row.warehouse || ''}</td>
                     <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired || row.lastGrnDate)}</td>
                     <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded || row.addedDate)}</td>
                     <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate || row.lastReceivedDate)}</td>
@@ -2152,6 +2160,7 @@
                     <td style="font-size:12px;">${row.orderStatus || ''}</td>
                     <td style="font-size:12px;">${row.operator || ''}</td>
                     <td style="font-size:12px;">${row.totalItems ?? ''}</td>
+                    <td style="font-size:12px;">${row.location || row.warehouse || ''}</td>
                     <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired || row.lastGrnDate)}</td>
                     <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded || row.addedDate)}</td>
                     <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate || row.lastReceivedDate)}</td>
