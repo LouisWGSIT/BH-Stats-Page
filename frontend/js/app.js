@@ -44,6 +44,13 @@
   };
 
   const scriptLoadState = Object.create(null);
+  const BUILD_TAG = '20260428-qa-strip-fix';
+
+  function withBuildTag(src) {
+    if (/^https?:\/\//i.test(src)) return src;
+    const joiner = src.includes('?') ? '&' : '?';
+    return `${src}${joiner}v=${encodeURIComponent(BUILD_TAG)}`;
+  }
 
   function loadScriptOnce(src) {
     if (scriptLoadState[src]) {
@@ -51,7 +58,7 @@
     }
 
     scriptLoadState[src] = new Promise((resolve, reject) => {
-      const existing = document.querySelector(`script[src="${src}"]`);
+      const existing = document.querySelector(`script[data-src="${src}"]`);
       if (existing) {
         if (existing.dataset.loaded === 'true') {
           resolve();
@@ -63,7 +70,8 @@
       }
 
       const script = document.createElement('script');
-      script.src = src;
+      script.dataset.src = src;
+      script.src = withBuildTag(src);
       script.async = true;
       script.addEventListener('load', () => {
         script.dataset.loaded = 'true';

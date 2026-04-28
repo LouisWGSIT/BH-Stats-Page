@@ -3266,6 +3266,18 @@ main.layout {
   text-shadow: 0 0 16px rgba(255, 182, 76, 0.25);
 }
 
+#qaFlowErasedToday {
+  color: #8cf46f !important;
+}
+
+#qaFlowQAToday {
+  color: #67b4ff !important;
+}
+
+#qaFlowSortedToday {
+  color: #ffb64c !important;
+}
+
 .qa-flow-label {
   color: #b2c8df;
   font-size: 13px;
@@ -3290,6 +3302,7 @@ main.layout {
   border: 1px solid rgba(160, 184, 214, 0.22);
   background: rgba(12, 36, 58, 0.66);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  font-variant-numeric: tabular-nums;
 }
 
 .qa-flow-trend.is-up {

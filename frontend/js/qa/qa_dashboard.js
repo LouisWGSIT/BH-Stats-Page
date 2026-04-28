@@ -77,10 +77,16 @@
 
       const delta = today - previous;
       const sign = delta > 0 ? '+' : '';
-      el.textContent = `${sign}${delta} vs ${compareDayShort || 'prev'}`;
-      if (delta > 0) el.classList.add('is-up');
-      else if (delta < 0) el.classList.add('is-down');
-      else el.classList.add('is-flat');
+      if (delta > 0) {
+        el.textContent = `▲ ${sign}${delta} vs ${compareDayShort || 'prev'}`;
+        el.classList.add('is-up');
+      } else if (delta < 0) {
+        el.textContent = `▼ ${delta} vs ${compareDayShort || 'prev'}`;
+        el.classList.add('is-down');
+      } else {
+        el.textContent = `• 0 vs ${compareDayShort || 'prev'}`;
+        el.classList.add('is-flat');
+      }
     }
 
     function getTechnicianName(tech) {
