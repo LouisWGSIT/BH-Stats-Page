@@ -83,6 +83,10 @@
         deps.keepScreenAlive();
       } catch (err) {
         console.error('Aggregated refresh error:', err);
+        try {
+          const stale = document.getElementById('stale-indicator');
+          if (stale) stale.classList.remove('hidden');
+        } catch (_ignore) {}
         try { deps.refreshSummary(); } catch (e) {}
         try { deps.refreshAllTopLists(); } catch (e) {}
         try { deps.refreshByTypeCounts(); } catch (e) {}

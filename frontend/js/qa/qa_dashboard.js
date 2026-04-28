@@ -39,6 +39,7 @@
     let sortingRotateIntervalId = null;
     let sortingViewIndex = 0;
     let throughputRotateIntervalId = null;
+    let qaHasRenderedOnce = false;
 
     function clearIntervals() {
       if (qaDashboardUiApi && typeof qaDashboardUiApi.stop === 'function') {
@@ -69,6 +70,12 @@
       const el = document.getElementById(id);
       if (!el) return;
       el.textContent = value;
+    }
+
+    function setStaleIndicator(isStale) {
+      const staleEl = document.getElementById('stale-indicator');
+      if (!staleEl) return;
+      staleEl.classList.toggle('hidden', !isStale);
     }
 
     function setFlowComparisonText(id, todayValue, previousValue, compareDayShort) {
@@ -396,7 +403,10 @@
     async function loadQADashboard(period = 'this_week') {
       try {
         if (!qaDataLoaderApi) {
-          showQAError('Failed to load QA data');
+          if (!qaHasRenderedOnce) {
+            showQAError('Failed to load QA data');
+          }
+          setStaleIndicator(true);
           return;
         }
 
@@ -406,7 +416,10 @@
 
         const dashboardData = quickData;
         if (!dashboardData || !dashboardData.ok) {
-          showQAError((dashboardData && dashboardData.error) || 'Failed to load QA data');
+          if (!qaHasRenderedOnce) {
+            showQAError((dashboardData && dashboardData.error) || 'Failed to load QA data');
+          }
+          setStaleIndicator(true);
           return;
         }
 
@@ -488,11 +501,18 @@
           })
           .catch(() => {
             // Keep existing panel state on background trend refresh errors.
-            renderThroughputPulse(null);
+            if (!qaHasRenderedOnce) {
+              renderThroughputPulse(null);
+            }
           });
+        qaHasRenderedOnce = true;
+        setStaleIndicator(false);
       } catch (error) {
         console.error('Failed to load QA dashboard:', error);
-        showQAError('Connection error: ' + error.message);
+        if (!qaHasRenderedOnce) {
+          showQAError('Connection error: ' + error.message);
+        }
+        setStaleIndicator(true);
       }
     }
 
