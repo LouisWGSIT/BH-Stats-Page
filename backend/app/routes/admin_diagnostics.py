@@ -4,6 +4,7 @@ import os
 import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
+import html
 from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import APIRouter, HTTPException, Request
@@ -851,7 +852,8 @@ def create_admin_diagnostics_router(
             mode_key = (mode or "").strip().lower()
             if mode_key == "xml":
                 xml_body = f"<traderapi><token>{xml_escape(goods_in_api_token)}</token></traderapi>".encode("utf-8")
-                req = urllib.request.Request(goods_in_api_url, data=xml_body, method="POST")
+                # Trader endpoint expects GET with XML payload body.
+                req = urllib.request.Request(goods_in_api_url, data=xml_body, method="GET")
                 req.add_header("Content-Type", "application/xml")
                 req.add_header("Accept", "application/xml, text/xml")
                 with urllib.request.urlopen(req, timeout=15) as resp:
@@ -890,6 +892,10 @@ def create_admin_diagnostics_router(
                     raise RuntimeError("Goods In API returned empty payload")
 
                 root = ET.fromstring(payload)
+                if root.tag.lower().endswith("string"):
+                    wrapped_text = (root.text or "").strip()
+                    if wrapped_text and ("&lt;grns" in wrapped_text.lower() or "<grns" in wrapped_text.lower()):
+                        root = ET.fromstring(html.unescape(wrapped_text))
                 all_rows = []
                 for grn in root.findall(".//grn"):
                     order_number = (grn.findtext("order_number") or "").strip()
@@ -960,7 +966,10 @@ def create_admin_diagnostics_router(
                             "automationOrderNumber": row.get("orderNumber") or "",
                             "lastGrnDate": _iso(row.get("arrivalDt") or row.get("startDt")),
                             "receiptStatus": "PENDING",
+                            "receiptStatusRaw": "",
                             "orderStatus": row.get("orderType") or None,
+                            "operator": row.get("operator") or "",
+                            "totalItems": row.get("totalItems"),
                             "dateAdded": _iso(row.get("startDt")),
                             "dateRequired": _iso(row.get("arrivalDt")),
                             "shipDate": _iso(row.get("finishDt")),
@@ -978,7 +987,10 @@ def create_admin_diagnostics_router(
                             "lastGrnDate": _iso(row.get("arrivalDt") or row.get("startDt")),
                             "lastReceivedDate": _iso(row.get("finishDt")),
                             "receiptStatus": "RECEIVED",
+                            "receiptStatusRaw": "",
                             "orderStatus": row.get("orderType") or None,
+                            "operator": row.get("operator") or "",
+                            "totalItems": row.get("totalItems"),
                             "dateAdded": _iso(row.get("startDt")),
                             "dateRequired": _iso(row.get("arrivalDt")),
                             "shipDate": _iso(row.get("finishDt")),

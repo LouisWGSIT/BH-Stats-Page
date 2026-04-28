@@ -668,14 +668,13 @@
                             <thead>
                                 <tr>
                                     <th>GRN Order Number</th>
-                                    <th>Automation Order Number</th>
                                     <th>Receipt Status</th>
-                                    <th>Order Status</th>
-                                    <th>date_added</th>
-                                    <th>date_required</th>
-                                    <th>ship_date</th>
-                                    <th>added_date</th>
-                                    <th>Latest GRN Date</th>
+                                    <th>Order Type/Status</th>
+                                    <th>Operator</th>
+                                    <th>Total Items</th>
+                                    <th>Arrival</th>
+                                    <th>Start</th>
+                                    <th>Finish</th>
                                     <th>Match State</th>
                                 </tr>
                             </thead>
@@ -690,15 +689,13 @@
                             <thead>
                                 <tr>
                                     <th>GRN Order Number</th>
-                                    <th>Automation Order Number</th>
                                     <th>Receipt Status</th>
-                                    <th>Order Status</th>
-                                    <th>date_added</th>
-                                    <th>date_required</th>
-                                    <th>ship_date</th>
-                                    <th>added_date</th>
-                                    <th>Latest GRN Date</th>
-                                    <th>Latest Receipt Date</th>
+                                    <th>Order Type/Status</th>
+                                    <th>Operator</th>
+                                    <th>Total Items</th>
+                                    <th>Arrival</th>
+                                    <th>Start</th>
+                                    <th>Finish</th>
                                     <th>Match State</th>
                                 </tr>
                             </thead>
@@ -2130,16 +2127,16 @@
             awaitingBody.innerHTML = '';
             awaitingRows.forEach((row) => {
                 const tr = document.createElement('tr');
+                const receiptStatus = row.receiptStatusRaw || row.receiptStatus || '';
                 tr.innerHTML = `
                     <td style="font-size:12px;">${row.grnOrderNumber || ''}</td>
-                    <td style="font-size:12px;">${row.automationOrderNumber || ''}</td>
-                    <td style="font-size:12px;">${row.receiptStatus || ''}</td>
+                    <td style="font-size:12px;">${receiptStatus}</td>
                     <td style="font-size:12px;">${row.orderStatus || ''}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.addedDate)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastGrnDate)}</td>
+                    <td style="font-size:12px;">${row.operator || ''}</td>
+                    <td style="font-size:12px;">${row.totalItems ?? ''}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired || row.lastGrnDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded || row.addedDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate || row.lastReceivedDate)}</td>
                     <td style="font-size:12px;">${row.matchState || ''}</td>
                 `;
                 awaitingBody.appendChild(tr);
@@ -2148,17 +2145,16 @@
             receivedBody.innerHTML = '';
             receivedRows.forEach((row) => {
                 const tr = document.createElement('tr');
+                const receiptStatus = row.receiptStatusRaw || row.receiptStatus || '';
                 tr.innerHTML = `
                     <td style="font-size:12px;">${row.grnOrderNumber || ''}</td>
-                    <td style="font-size:12px;">${row.automationOrderNumber || ''}</td>
-                    <td style="font-size:12px;">${row.receiptStatus || ''}</td>
+                    <td style="font-size:12px;">${receiptStatus}</td>
                     <td style="font-size:12px;">${row.orderStatus || ''}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.addedDate)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastGrnDate)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastReceivedDate)}</td>
+                    <td style="font-size:12px;">${row.operator || ''}</td>
+                    <td style="font-size:12px;">${row.totalItems ?? ''}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired || row.lastGrnDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded || row.addedDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate || row.lastReceivedDate)}</td>
                     <td style="font-size:12px;">${row.matchState || ''}</td>
                 `;
                 receivedBody.appendChild(tr);
