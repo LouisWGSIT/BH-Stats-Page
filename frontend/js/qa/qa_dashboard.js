@@ -223,6 +223,24 @@
       populateQACard('qaLeaderboardTotal', 'qaLeaderboardEngineers', todayData, 'qa', 5);
     }
 
+    function emptyDashboardData(period = 'this_week') {
+      if (qaDataLoaderApi && typeof qaDataLoaderApi.createEmptyDashboardPayload === 'function') {
+        return qaDataLoaderApi.createEmptyDashboardPayload(period);
+      }
+      return {
+        period,
+        dateRange: '',
+        technicians: [],
+        summary: {
+          totalScans: 0,
+          deQaScans: 0,
+          nonDeQaScans: 0,
+          combinedScans: 0,
+        },
+        topPerformers: [],
+      };
+    }
+
     function buildTopMovers(todayData, weeklyData) {
       const todayByName = new Map();
       const weekByName = new Map();
@@ -327,13 +345,19 @@
           return;
         }
 
-        const dashboardData = await qaDataLoaderApi.loadDashboardData();
+        const quickData = (typeof qaDataLoaderApi.loadDashboardDataQuick === 'function')
+          ? await qaDataLoaderApi.loadDashboardDataQuick()
+          : await qaDataLoaderApi.loadDashboardData();
+
+        const dashboardData = quickData;
         if (!dashboardData || !dashboardData.ok) {
           showQAError((dashboardData && dashboardData.error) || 'Failed to load QA data');
           return;
         }
 
-        const { todayData, weeklyData, allTimeData } = dashboardData;
+        const todayData = dashboardData.todayData || emptyDashboardData('today');
+        const weeklyData = dashboardData.weeklyData || emptyDashboardData('this_week');
+        let allTimeData = dashboardData.allTimeData || emptyDashboardData('all_time');
 
         populateQACard('qaTodayTotal', 'qaTodayEngineers', todayData, 'qa', 4);
         populateQACard('qaWeekTotal', 'qaWeeklyEngineers', weeklyData, 'qa', 4);
@@ -350,6 +374,19 @@
         qaDataLoaderApi.loadFlowSummaryData()
           .then((flowData) => renderFlowStrip(flowData, todayData))
           .catch(() => renderFlowStrip(null, todayData));
+
+        // Hydrate all-time data in the background so first paint is not blocked.
+        if (typeof qaDataLoaderApi.loadDashboardPeriod === 'function') {
+          qaDataLoaderApi.loadDashboardPeriod('all_time')
+            .then((allTimePayload) => {
+              if (!allTimePayload || allTimePayload.error) return;
+              allTimeData = allTimePayload;
+              populateQACard('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 'qa', 5);
+              startQARotator(todayData, weeklyData, allTimeData);
+              startSortingCardRotator(todayData, weeklyData, allTimeData);
+            })
+            .catch(() => {});
+        }
 
         // Load trend/insight panels asynchronously so the main QA cards paint first.
         qaDataLoaderApi.loadTrendAndInsightsData()

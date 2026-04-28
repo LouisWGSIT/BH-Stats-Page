@@ -107,11 +107,6 @@
       } catch (_err) {
         // Non-blocking warm path
       }
-      try {
-        fetch('/api/qa-bootstrap').catch(() => {});
-      } catch (_err) {
-        // Ignore warm failures; real loads still happen on demand.
-      }
     };
 
     if (typeof window.requestIdleCallback === 'function') {

@@ -6,6 +6,26 @@
       payload: null,
     };
     const BOOTSTRAP_TTL_MS = 45000;
+    const BOOTSTRAP_FETCH_TIMEOUT_MS = 4000;
+
+    function createEmptyDashboardPayload(period = "this_week") {
+      return {
+        period,
+        dateRange: '',
+        technicians: [],
+        summary: {
+          totalScans: 0,
+          deQaScans: 0,
+          nonDeQaScans: 0,
+          combinedScans: 0,
+          passRate: 0,
+          avgConsistency: 0,
+          topTechnician: 'N/A',
+          techniciansCount: 0,
+        },
+        topPerformers: [],
+      };
+    }
 
     function isUsableBootstrap(payload) {
       return !!(
@@ -24,7 +44,10 @@
       }
 
       try {
-        const res = await fetch('/api/qa-bootstrap');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), BOOTSTRAP_FETCH_TIMEOUT_MS);
+        const res = await fetch('/api/qa-bootstrap', { signal: controller.signal });
+        clearTimeout(timeoutId);
         if (!res.ok) return null;
         const payload = await res.json();
         if (!isUsableBootstrap(payload) || payload.error) return null;
@@ -34,6 +57,35 @@
       } catch (_err) {
         return null;
       }
+    }
+
+    async function loadDashboardPeriod(period = 'this_week') {
+      const bootstrap = await loadBootstrapData();
+      if (bootstrap && bootstrap.dashboard && bootstrap.dashboard[period]) {
+        return bootstrap.dashboard[period];
+      }
+
+      try {
+        const res = await fetch(`/api/qa-dashboard?period=${encodeURIComponent(period)}`);
+        if (!res.ok) return createEmptyDashboardPayload(period);
+        const payload = await res.json();
+        if (!payload || payload.error) return createEmptyDashboardPayload(period);
+        return payload;
+      } catch (_err) {
+        return createEmptyDashboardPayload(period);
+      }
+    }
+
+    async function loadDashboardDataQuick() {
+      const [todayData, weeklyData] = await Promise.all([
+        loadDashboardPeriod('today'),
+        loadDashboardPeriod('this_week'),
+      ]);
+      return {
+        ok: true,
+        todayData: todayData || createEmptyDashboardPayload('today'),
+        weeklyData: weeklyData || createEmptyDashboardPayload('this_week'),
+      };
     }
 
     async function loadDashboardData() {
@@ -166,9 +218,12 @@
 
     return {
       loadDashboardData,
+      loadDashboardDataQuick,
+      loadDashboardPeriod,
       loadTrendAndInsightsData,
       loadBootstrapData,
       loadFlowSummaryData,
+      createEmptyDashboardPayload,
     };
   }
 
