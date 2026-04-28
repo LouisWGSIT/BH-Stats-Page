@@ -223,6 +223,17 @@
       populateQACard('qaLeaderboardTotal', 'qaLeaderboardEngineers', todayData, 'qa', 5);
     }
 
+    function setAllTimeLoadingState(isLoading) {
+      const allTimeLabelEl = document.querySelector('#qaAllTimeCard .qa-flip-front .qa-de-label');
+      const allTimeListEl = document.getElementById('qaAllTimeEngineers');
+      if (allTimeLabelEl) {
+        allTimeLabelEl.textContent = isLoading ? 'Loading all-time…' : "Total QA'd";
+      }
+      if (allTimeListEl && isLoading) {
+        allTimeListEl.innerHTML = '<div style="padding: 12px; text-align: center; color: #8cb2d6;">Loading all-time data…</div>';
+      }
+    }
+
     function emptyDashboardData(period = 'this_week') {
       if (qaDataLoaderApi && typeof qaDataLoaderApi.createEmptyDashboardPayload === 'function') {
         return qaDataLoaderApi.createEmptyDashboardPayload(period);
@@ -363,6 +374,7 @@
         populateQACard('qaWeekTotal', 'qaWeeklyEngineers', weeklyData, 'qa', 4);
         populateQACard('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 'qa', 5);
         populateMiddleLeaderboard(todayData);
+        setAllTimeLoadingState(true);
 
         startQARotator(todayData, weeklyData, allTimeData);
 
@@ -384,6 +396,7 @@
               populateQACard('qaAllTimeTotal', 'qaAllTimeEngineers', allTimeData, 'qa', 5);
               startQARotator(todayData, weeklyData, allTimeData);
               startSortingCardRotator(todayData, weeklyData, allTimeData);
+              setAllTimeLoadingState(false);
             })
             .catch(() => {});
         }

@@ -1206,13 +1206,24 @@
       const li2 = document.createElement('li');
       li2.textContent = `Best hour: --`;
       // Optionally fetch and fill best hour
-      fetch('/analytics/peak-hours').then(r => r.json()).then(data => {
-        const hours = Array.isArray(data) ? data : (data?.hours || []);
-        if (hours.length > 0) {
-          const peak = hours.reduce((max, curr) => curr.count > max.count ? curr : max, hours[0]);
-          li2.textContent = `Best hour: ${peak.hour}:00 (${peak.count})`;
-        }
-      });
+      fetch('/analytics/peak-hours')
+        .then((r) => {
+          if (!r.ok) return null;
+          const contentType = (r.headers.get('content-type') || '').toLowerCase();
+          if (!contentType.includes('application/json')) return null;
+          return r.json();
+        })
+        .then((data) => {
+          if (!data) return;
+          const hours = Array.isArray(data) ? data : (data?.hours || []);
+          if (hours.length > 0) {
+            const peak = hours.reduce((max, curr) => curr.count > max.count ? curr : max, hours[0]);
+            li2.textContent = `Best hour: ${peak.hour}:00 (${peak.count})`;
+          }
+        })
+        .catch(() => {
+          // Non-blocking fallback: keep placeholder when endpoint is unavailable.
+        });
       statList.appendChild(li1);
       statList.appendChild(li2);
     }
