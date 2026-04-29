@@ -168,6 +168,14 @@
       return `No active work right now.`;
     }
 
+    function getErasureTodayFromDashboard() {
+      const el = document.getElementById('totalTodayValue');
+      if (!el) return 0;
+      const raw = String(el.textContent || '').replace(/,/g, '').trim();
+      const parsed = parseInt(raw, 10);
+      return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+    }
+
     function getFallbackSpotlight() {
       return {
         goodsIn: { name: 'Unable to yet', count: 0 },
@@ -508,14 +516,6 @@
       const raceEl = document.getElementById('overallRaceTrack');
       if (!raceEl) return;
       const MIN_VISIBLE_PROGRESS = 3;
-
-      function getErasureTodayFromDashboard() {
-        const el = document.getElementById('totalTodayValue');
-        if (!el) return 0;
-        const raw = String(el.textContent || '').replace(/,/g, '').trim();
-        const parsed = parseInt(raw, 10);
-        return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-      }
 
       function getRaceTrackDone(section) {
         // Erasure is sourced from the Erasure dashboard donut metric.
