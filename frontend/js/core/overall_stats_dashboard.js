@@ -334,8 +334,8 @@
                   <div class="overall-bay-crew-icons">
                     ${crew.map((member) => `
                       <span class="overall-bay-crew-chip">
-                        ${renderPixelAvatar(member.name, 'overall-avatar--crew')}
-                        <span class="overall-bay-crew-text">${member.name}</span>
+                        ${renderPixelAvatar(getMonogram(member.name), 'overall-avatar--crew')}
+                        <span class="overall-bay-crew-text">${getMonogram(member.name)}</span>
                       </span>
                     `).join('')}
                   </div>

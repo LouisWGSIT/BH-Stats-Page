@@ -23,6 +23,11 @@
       qa: 'QA Stats',
       overall: 'Overall Stats',
     };
+    const dashboardLabels = {
+      erasure: 'Erasure',
+      qa: 'QA',
+      overall: 'Overall',
+    };
 
     function currentDashboard() {
       if (typeof getCurrentDashboard === 'function') {
@@ -52,6 +57,24 @@
       } catch (_err) {
         // No-op if URL APIs are unavailable.
       }
+    }
+
+    function updateArrowLabels(currentIndex) {
+      const prevBtn = document.getElementById('prevDashboard');
+      const nextBtn = document.getElementById('nextDashboard');
+      const prevLabelEl = document.getElementById('prevDashboardLabel');
+      const nextLabelEl = document.getElementById('nextDashboardLabel');
+      const prevIndex = (currentIndex - 1 + dashboards.length) % dashboards.length;
+      const nextIndex = (currentIndex + 1) % dashboards.length;
+      const prevKey = dashboards[prevIndex];
+      const nextKey = dashboards[nextIndex];
+      const prevLabel = `To ${dashboardLabels[prevKey] || prevKey}`;
+      const nextLabel = `To ${dashboardLabels[nextKey] || nextKey}`;
+
+      if (prevLabelEl) prevLabelEl.textContent = prevLabel;
+      if (nextLabelEl) nextLabelEl.textContent = nextLabel;
+      if (prevBtn) prevBtn.title = `Go to ${dashboardTitles[prevKey] || prevKey}`;
+      if (nextBtn) nextBtn.title = `Go to ${dashboardTitles[nextKey] || nextKey}`;
     }
 
     function triggerQALoad(period, opts = {}) {
@@ -167,6 +190,8 @@
         if (titleElem) titleElem.textContent = dashboardTitles.overall;
         triggerOverallLoad({ force: false });
       }
+
+      updateArrowLabels(index);
 
       localStorage.setItem('currentDashboard', index);
       persistDashboardInUrl(dashboard);

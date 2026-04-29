@@ -440,6 +440,16 @@ body {
   flex-shrink: 0;
 }
 
+.nav-arrow-label {
+  color: #8fb2e9;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  min-width: 56px;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .nav-arrow {
   background: rgba(102, 126, 234, 0.15);
   border: 1px solid rgba(102, 126, 234, 0.3);
@@ -4278,13 +4288,13 @@ main.layout {
   align-items: center;
   justify-content: flex-start;
   gap: 5px;
-  padding: 2px 6px 2px 2px;
+  padding: 2px 8px 2px 2px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
   flex: 0 0 calc((100% - 32px) / 5);
   max-width: calc((100% - 32px) / 5);
-  min-width: 0;
+  min-width: 44px;
 }
 
 .overall-bay-crew-text {
@@ -4292,10 +4302,12 @@ main.layout {
   font-weight: 800;
   color: #dce9f7;
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
   text-overflow: clip;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   min-width: 2ch;
+  max-width: 3ch;
+  letter-spacing: 0.2px;
 }
 
 .overall-team-mascot--spotlight {
