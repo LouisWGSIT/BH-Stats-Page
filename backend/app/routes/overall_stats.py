@@ -722,6 +722,20 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         return max(0, done_today), trend_pct_hour
 
     def _build_qa_crew_members(limit: int = 10) -> list[dict]:
+        def _to_initials(name_raw: str) -> str:
+            cleaned = " ".join(str(name_raw or "").strip().split())
+            if not cleaned:
+                return ""
+            parts = [p for p in cleaned.split(" ") if p]
+            if not parts:
+                return ""
+            if len(parts) == 1:
+                p = parts[0]
+                return (p[:2] if len(p) >= 2 else p).upper()
+            first = parts[0][:1]
+            last = parts[-1][:1]
+            return f"{first}{last}".upper()
+
         try:
             today = _business_today()
             de_data = qa_export.get_de_qa_comparison(today, today) or {}
@@ -733,7 +747,10 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 count = int((stats or {}).get("total", 0) or 0)
                 if count <= 0:
                     continue
-                out.append({"name": _first_name(name_raw), "count": count})
+                initials = _to_initials(name_raw)
+                if not initials:
+                    continue
+                out.append({"name": initials, "count": count})
             out.sort(key=lambda x: int(x.get("count", 0)), reverse=True)
             return out[:limit]
         except Exception:
