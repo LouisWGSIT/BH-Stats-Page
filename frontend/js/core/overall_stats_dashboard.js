@@ -339,6 +339,7 @@
               <span class="trend ${trendClass}">${trendLabel(section.trend)} vs last hour</span>
             </div>
             <p class="overall-action">${activityText(section)}${(isAdminViewer && !section.isLive && sourceReason) ? ` (${sourceReason})` : ''}</p>
+            <div class="overall-card-mascot-corner" aria-hidden="true">${renderSectionMascot(meta, 'corner')}</div>
           </article>
         `;
       }).join('');

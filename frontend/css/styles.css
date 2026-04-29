@@ -4893,7 +4893,7 @@ main.layout {
 
 .lane-car {
   position: absolute;
-  top: 50%;
+  top: calc(50% + 1px);
   z-index: 3;
   width: 24px;
   height: 24px;
@@ -4909,10 +4909,9 @@ main.layout {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: linear-gradient(160deg, rgba(4, 21, 44, 0.82), rgba(8, 35, 62, 0.82));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -4926,8 +4925,14 @@ main.layout {
 .overall-team-mascot--card,
 .overall-team-mascot--lane,
 .overall-team-mascot--crew {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+}
+
+.overall-team-mascot--corner {
+  width: 30px;
+  height: 30px;
+  opacity: 0.85;
 }
 
 .overall-team-mascot--fallback {
@@ -4936,11 +4941,13 @@ main.layout {
   color: #eaf3ff;
 }
 
-.overall-team-mascot--goods-in { border-color: rgba(176, 121, 255, 0.7); }
-.overall-team-mascot--ia { border-color: rgba(255, 212, 79, 0.7); }
-.overall-team-mascot--erasure { border-color: rgba(103, 234, 117, 0.7); }
-.overall-team-mascot--qa { border-color: rgba(88, 178, 255, 0.7); }
-.overall-team-mascot--sorting { border-color: rgba(255, 171, 68, 0.7); }
+.overall-card-mascot-corner {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  pointer-events: none;
+}
 
 .overall-race-meta {
   display: flex;
