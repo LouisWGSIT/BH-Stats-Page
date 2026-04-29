@@ -647,6 +647,80 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
         except Exception:
             return []
 
+    def _get_erasure_live_done_and_trend() -> tuple[int, int]:
+        """Return (done_today, trend_pct_last_hour) from local erasure events."""
+        done_today = 0
+        trend_pct_hour = 0
+        try:
+            db_path = getattr(db_module, "DB_PATH", None)
+            if not db_path:
+                return done_today, trend_pct_hour
+
+            now_utc = datetime.now(UTC)
+            hour_window_start = now_utc - timedelta(hours=1)
+            prev_hour_window_start = now_utc - timedelta(hours=2)
+            today_key = _business_today().isoformat()
+
+            with sqlite3.connect(db_path, timeout=5.0) as conn:
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        """
+                        SELECT COUNT(1)
+                        FROM erasures
+                        WHERE event = 'success'
+                          AND date = ?
+                        """,
+                        (today_key,),
+                    )
+                    row = cur.fetchone()
+                    done_today = int(row[0] or 0) if row else 0
+
+                    cur.execute(
+                        """
+                        SELECT COUNT(1)
+                        FROM erasures
+                        WHERE event = 'success'
+                          AND ts >= ?
+                          AND ts < ?
+                        """,
+                        (
+                            hour_window_start.isoformat().replace("+00:00", "Z"),
+                            now_utc.isoformat().replace("+00:00", "Z"),
+                        ),
+                    )
+                    row = cur.fetchone()
+                    current_hour = int(row[0] or 0) if row else 0
+
+                    cur.execute(
+                        """
+                        SELECT COUNT(1)
+                        FROM erasures
+                        WHERE event = 'success'
+                          AND ts >= ?
+                          AND ts < ?
+                        """,
+                        (
+                            prev_hour_window_start.isoformat().replace("+00:00", "Z"),
+                            hour_window_start.isoformat().replace("+00:00", "Z"),
+                        ),
+                    )
+                    row = cur.fetchone()
+                    previous_hour = int(row[0] or 0) if row else 0
+                finally:
+                    cur.close()
+
+            if previous_hour > 0:
+                trend_pct_hour = int(round(((current_hour - previous_hour) / previous_hour) * 100))
+            elif current_hour > 0:
+                trend_pct_hour = 100
+            else:
+                trend_pct_hour = 0
+        except Exception:
+            pass
+
+        return max(0, done_today), trend_pct_hour
+
     def _build_qa_crew_members(limit: int = 10) -> list[dict]:
         try:
             today = _business_today()
@@ -1353,21 +1427,25 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                 "crewMembers": [],
             }
         if section_key == "erasure":
+            erased_today, erasure_trend_hour = _get_erasure_live_done_and_trend()
             return {
                 **base,
                 "sectionKey": "erasure",
                 "sectionName": "Erasure",
                 "targetQueue": 140,
                 "currentQueue": 0,
-                "trendPctHour": 0,
+                "trendPctHour": erasure_trend_hour,
                 "owner": "Erasure Team",
                 "queueLabel": "Data-Bearing Awaiting Erasure",
                 "subMetrics": [
+                    {"label": "Erased Today", "value": erased_today},
                     {"label": "Roller 1 Queue", "value": 0},
                     {"label": "Roller 2 Queue", "value": 0},
                     {"label": "Roller 3 Queue", "value": 0},
                 ],
                 "crewMembers": _build_erasure_crew_members(),
+                "isLive": True,
+                "source": "sqlite:erasures",
             }
         if section_key == "qa":
             qa_live = _compute_db_awaiting_qa(include_samples=False)
