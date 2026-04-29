@@ -3,6 +3,7 @@
   function init(deps) {
     const announcementTypes = {
       DAILY_SUMMARY: 'daily-summary',
+      HOURLY_CROSS_SECTION: 'hourly-cross-section',
       DAILY_RACE_WINNER: 'daily-race-winner',
       SPEED_CHALLENGE_AM: 'speed-challenge-am',
       SPEED_CHALLENGE_PM: 'speed-challenge-pm',
@@ -17,6 +18,12 @@
         subtitle: summary.subtitle || '',
         duration: 600000,
         emoji: '🏆🎉',
+      }),
+      'hourly-cross-section': (summary) => ({
+        title: summary.title || '📣 Hourly Team Update',
+        subtitle: summary.subtitle || '',
+        duration: 45000,
+        emoji: '📣📊',
       }),
       'daily-race-winner': (winner) => ({
         title: `🏆 ${winner.initials} WINS THE DAILY RACE! 🏆`,
@@ -55,6 +62,16 @@
         emoji: '👏🔥',
       }),
     };
+    const ERASURE_ONLY_ANNOUNCEMENTS = new Set([
+      announcementTypes.DAILY_RACE_WINNER,
+      announcementTypes.SPEED_CHALLENGE_AM,
+      announcementTypes.SPEED_CHALLENGE_PM,
+      announcementTypes.CATEGORY_SPECIALIST,
+      announcementTypes.CONSISTENCY_KING,
+      announcementTypes.TOP_PERFORMER,
+    ]);
+    const HOURLY_ANNOUNCEMENT_HOURS = new Set([9, 10, 11, 13, 14, 15]);
+    let lastHourlyAnnouncementKey = null;
 
     function triggerConfetti() {
       if (typeof confetti === 'undefined') {
@@ -89,84 +106,101 @@
       }
     }
 
-    async function buildDailySummary() {
-      const raceData = deps.getRaceData();
-      const [leaderboardData, speedAmData, speedPmData, consistencyData, specialistsData] = await Promise.all([
-        safeFetchJson('/metrics/engineers/leaderboard?scope=today&limit=1'),
-        safeFetchJson('/competitions/speed-challenge?window=am'),
-        safeFetchJson('/competitions/speed-challenge?window=pm'),
-        safeFetchJson('/competitions/consistency'),
-        safeFetchJson('/competitions/category-specialists'),
+    function getInitials(value) {
+      const cleaned = String(value || '').trim();
+      if (!cleaned || cleaned === '—' || cleaned.toLowerCase().includes('unable')) return '--';
+      const parts = cleaned.split(/\s+/).filter(Boolean);
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
+    }
+
+    function toInt(value) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function buildTopRows(rows, valueKey, maxRows = 3) {
+      return (Array.isArray(rows) ? rows : [])
+        .map((row) => ({
+          initials: getInitials(row && (row.initials || row.name || row.engineer)),
+          value: toInt(row && row[valueKey]),
+        }))
+        .filter((row) => row.initials !== '--' && row.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, maxRows);
+    }
+
+    function formatTopRows(rows, unit) {
+      if (!rows.length) return ['No activity yet'];
+      return rows.map((row, idx) => `${idx + 1}. ${row.initials} - ${row.value.toLocaleString()} ${unit}`);
+    }
+
+    async function buildCrossSectionStandings() {
+      const [erasureData, qaTodayData] = await Promise.all([
+        safeFetchJson('/metrics/engineers/leaderboard?scope=today&limit=6'),
+        safeFetchJson('/api/qa-dashboard?period=today'),
       ]);
 
-      const items = [];
-      const raceWinner = (leaderboardData && leaderboardData.items && leaderboardData.items[0]) || raceData.engineer1;
-      if (raceWinner) {
-        items.push({
-          icon: '🏁',
-          label: 'Daily Race',
-          winner: raceWinner.initials || '—',
-          value: `${raceWinner.erasures || 0} erasures`,
-        });
-      }
+      const erasureTop = buildTopRows((erasureData && erasureData.items) || [], 'erasures', 3);
+      const technicians = Array.isArray(qaTodayData && qaTodayData.technicians) ? qaTodayData.technicians : [];
 
-      const amWinner = speedAmData && speedAmData.leaderboard && speedAmData.leaderboard[0];
-      if (amWinner) {
-        items.push({
-          icon: '⚡',
-          label: 'Speed Challenge (AM)',
-          winner: amWinner.initials || '—',
-          value: `${amWinner.erasures || 0} erasures`,
-        });
-      }
+      const qaTop = technicians
+        .map((tech) => ({
+          initials: getInitials(tech && tech.name),
+          value: toInt(tech && tech.deQaScans) + toInt(tech && tech.nonDeQaScans),
+        }))
+        .filter((row) => row.initials !== '--' && row.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 3);
 
-      const pmWinner = speedPmData && speedPmData.leaderboard && speedPmData.leaderboard[0];
-      if (pmWinner) {
-        items.push({
-          icon: '🌙',
-          label: 'Speed Challenge (PM)',
-          winner: pmWinner.initials || '—',
-          value: `${pmWinner.erasures || 0} erasures`,
-        });
-      }
+      const sortingTop = technicians
+        .map((tech) => ({
+          initials: getInitials(tech && tech.name),
+          value: toInt(tech && tech.qaScans),
+        }))
+        .filter((row) => row.initials !== '--' && row.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 3);
 
-      const consistencyWinner = consistencyData && consistencyData.leaderboard && consistencyData.leaderboard[0];
-      if (consistencyWinner) {
-        items.push({
-          icon: '⏱️',
-          label: 'Consistency King/Queen',
-          winner: consistencyWinner.initials || '—',
-          value: `${consistencyWinner.erasures || 0} erasures`,
-        });
-      }
+      const erasureTotal = erasureTop.reduce((sum, row) => sum + row.value, 0);
+      const qaTotal = qaTop.reduce((sum, row) => sum + row.value, 0);
+      const sortingTotal = sortingTop.reduce((sum, row) => sum + row.value, 0);
 
-      const specialists = (specialistsData && specialistsData.specialists) || {};
-      const specialistLabels = {
-        laptops_desktops: 'Laptops/Desktops Specialist',
-        servers: 'Servers Specialist',
-        macs: 'Macs Specialist',
-        mobiles: 'Mobiles Specialist',
+      return {
+        erasureTop,
+        qaTop,
+        sortingTop,
+        erasureTotal,
+        qaTotal,
+        sortingTotal,
       };
-      Object.entries(specialistLabels).forEach(([key, label]) => {
-        const row = (specialists[key] || [])[0];
-        if (row) {
-          items.push({
-            icon: '🎯',
-            label,
-            winner: row.initials || '—',
-            value: `${row.count || 0} erasures`,
-          });
-        }
-      });
+    }
 
-      if (items.length === 0) {
-        items.push({
-          icon: 'ℹ️',
-          label: 'No results yet',
-          winner: '—',
-          value: 'Waiting for data',
-        });
-      }
+    async function buildDailySummary() {
+      const standings = await buildCrossSectionStandings();
+      const items = [
+        {
+          icon: '🟢',
+          label: 'Erasure Top 3',
+          winner: (standings.erasureTop[0] && standings.erasureTop[0].initials) || '—',
+          lines: formatTopRows(standings.erasureTop, 'erasures'),
+          value: `${standings.erasureTotal.toLocaleString()} total`,
+        },
+        {
+          icon: '🔵',
+          label: 'QA Top 3',
+          winner: (standings.qaTop[0] && standings.qaTop[0].initials) || '—',
+          lines: formatTopRows(standings.qaTop, "QA'd"),
+          value: `${standings.qaTotal.toLocaleString()} total`,
+        },
+        {
+          icon: '🟠',
+          label: 'Sorting Top 3',
+          winner: (standings.sortingTop[0] && standings.sortingTop[0].initials) || '—',
+          lines: formatTopRows(standings.sortingTop, 'sorted'),
+          value: `${standings.sortingTotal.toLocaleString()} total`,
+        },
+      ];
 
       const todayLabel = new Date().toLocaleDateString(undefined, {
         weekday: 'long',
@@ -181,7 +215,43 @@
       };
     }
 
+    async function buildHourlyCrossSectionSummary() {
+      const standings = await buildCrossSectionStandings();
+      const now = new Date();
+      const hourLabel = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      return {
+        title: '📣 Hourly Top 3 Snapshot',
+        subtitle: `${hourLabel} • Cross-dashboard standings`,
+        items: [
+          {
+            icon: '🟢',
+            label: 'Erasure Top 3',
+            winner: (standings.erasureTop[0] && standings.erasureTop[0].initials) || '—',
+            lines: formatTopRows(standings.erasureTop, 'erasures'),
+            value: `${standings.erasureTotal.toLocaleString()} total`,
+          },
+          {
+            icon: '🔵',
+            label: 'QA Top 3',
+            winner: (standings.qaTop[0] && standings.qaTop[0].initials) || '—',
+            lines: formatTopRows(standings.qaTop, "QA'd"),
+            value: `${standings.qaTotal.toLocaleString()} total`,
+          },
+          {
+            icon: '🟠',
+            label: 'Sorting Top 3',
+            winner: (standings.sortingTop[0] && standings.sortingTop[0].initials) || '—',
+            lines: formatTopRows(standings.sortingTop, 'sorted'),
+            value: `${standings.sortingTotal.toLocaleString()} total`,
+          },
+        ],
+      };
+    }
+
     function showAnnouncement(type, data) {
+      if (ERASURE_ONLY_ANNOUNCEMENTS.has(type) && typeof deps.isErasureDashboardActive === 'function' && !deps.isErasureDashboardActive()) {
+        return;
+      }
       const config = announcementMessages[type];
       if (!config) return;
 
@@ -194,7 +264,8 @@
       const summarySubtitle = document.getElementById('summarySubtitle');
       const summaryGrid = document.getElementById('summaryGrid');
 
-      if (type === announcementTypes.DAILY_SUMMARY && summaryContainer) {
+      const isSummaryType = (type === announcementTypes.DAILY_SUMMARY || type === announcementTypes.HOURLY_CROSS_SECTION);
+      if (isSummaryType && summaryContainer) {
         if (winnerText) winnerText.style.display = 'none';
         if (winnerSubtext) winnerSubtext.style.display = 'none';
         summaryContainer.classList.remove('hidden');
@@ -205,14 +276,19 @@
             <div class="summary-item">
               <div class="summary-item-left">
                 <span class="summary-icon">${item.icon || '🏆'}</span>
-                <div>
-                  <div class="summary-label">${deps.escapeHtml(item.label || '')}</div>
-                  <div class="summary-winner">${deps.escapeHtml(item.winner || '—')}</div>
+                  <div>
+                    <div class="summary-label">${deps.escapeHtml(item.label || '')}</div>
+                    <div class="summary-winner">${deps.escapeHtml(item.winner || '—')}</div>
+                    ${Array.isArray(item.lines) && item.lines.length ? `
+                      <div class="summary-lines">
+                        ${item.lines.map((line) => `<div class="summary-line">${deps.escapeHtml(line)}</div>`).join('')}
+                      </div>
+                    ` : ''}
+                  </div>
                 </div>
+                <div class="summary-value">${deps.escapeHtml(item.value || '')}</div>
               </div>
-              <div class="summary-value">${deps.escapeHtml(item.value || '')}</div>
-            </div>
-          `).join('');
+            `).join('');
         }
       } else {
         if (summaryContainer) summaryContainer.classList.add('hidden');
@@ -247,11 +323,28 @@
       showAnnouncement(announcementTypes.DAILY_SUMMARY, summary);
     }
 
+    async function checkAndTriggerHourlyCrossSectionAnnouncement() {
+      const now = new Date();
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+      if (!HOURLY_ANNOUNCEMENT_HOURS.has(hours)) return;
+      if (minutes > 2) return;
+      const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const announceKey = `${dayKey}-${hours}`;
+      if (lastHourlyAnnouncementKey === announceKey) return;
+
+      lastHourlyAnnouncementKey = announceKey;
+      const summary = await buildHourlyCrossSectionSummary();
+      showAnnouncement(announcementTypes.HOURLY_CROSS_SECTION, summary);
+    }
+
     function checkAndTriggerWinner() {
       const raceData = deps.getRaceData();
       const now = new Date();
       const hours = now.getHours();
       const minutes = now.getMinutes();
+
+      checkAndTriggerHourlyCrossSectionAnnouncement();
 
       if (hours === 15 && minutes === 58 && !raceData.winnerAnnounced) {
         announceWinner();

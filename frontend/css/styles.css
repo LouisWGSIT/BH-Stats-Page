@@ -854,7 +854,7 @@ body {
 
 .summary-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   width: 100%;
   max-width: 280px;
@@ -867,9 +867,10 @@ body {
 
 .summary-item-left {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   text-align: left;
+  min-width: 0;
 }
 
 .summary-icon {
@@ -889,10 +890,27 @@ body {
   color: #ffffff;
 }
 
+.summary-lines {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-line {
+  font-size: 12px;
+  color: #c8d8eb;
+  line-height: 1.25;
+  white-space: normal;
+}
+
 .summary-value {
   font-size: 18px;
   font-weight: 700;
   color: #8cf04a;
+  margin-left: 8px;
+  text-align: right;
+  white-space: nowrap;
 }
 
 /* Custom Range Modal */
