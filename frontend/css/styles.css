@@ -4276,6 +4276,7 @@ main.layout {
 .overall-bay-crew-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 5px;
   padding: 2px 6px 2px 2px;
   border-radius: 999px;
@@ -4291,8 +4292,15 @@ main.layout {
   font-weight: 800;
   color: #dce9f7;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
+  flex: 0 0 auto;
+  min-width: 2ch;
+}
+
+.overall-team-mascot--spotlight {
+  width: 42px;
+  height: 42px;
 }
 
 .overall-bay-watermark {
@@ -4595,9 +4603,15 @@ main.layout {
 .spotlight-hero {
   margin-top: 7px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 9px;
   align-items: center;
+}
+
+.spotlight-mascot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .spotlight-section-badge {
@@ -5275,7 +5289,7 @@ main.layout {
   }
 
   .spotlight-hero {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     gap: 8px;
   }
 

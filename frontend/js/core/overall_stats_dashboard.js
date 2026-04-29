@@ -479,6 +479,9 @@
               <div class="spotlight-owner">${bestLive.section}</div>
               <div class="spotlight-score">${bestLive.count} actions today</div>
             </div>
+            <div class="spotlight-mascot" aria-hidden="true">
+              ${renderSectionMascot(bestMeta, 'spotlight')}
+            </div>
             <div class="spotlight-mini-metric">
               <strong>${sharePct}%</strong>
               <span>share</span>
