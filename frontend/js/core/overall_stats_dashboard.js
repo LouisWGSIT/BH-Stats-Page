@@ -179,8 +179,8 @@
     function getSectionMeta(sectionKey) {
       const key = String(sectionKey || '');
       const map = {
-        goods_in: { label: 'Inbound', shortLabel: 'Goods In', icon: 'GI', accentClass: 'goods-in', mascotName: 'Purpie', mascotSrc: '' },
-        ia: { label: 'Assessment', shortLabel: 'IA', icon: 'IA', accentClass: 'ia', mascotName: 'Yellie', mascotSrc: '' },
+        goods_in: { label: 'Inbound', shortLabel: 'Goods In', icon: 'GI', accentClass: 'goods-in', mascotName: 'Purpie', mascotSrc: 'assets/Purpie.png' },
+        ia: { label: 'Assessment', shortLabel: 'IA', icon: 'IA', accentClass: 'ia', mascotName: 'Yellie', mascotSrc: 'assets/Yellie.png' },
         erasure: { label: 'Data Erase', shortLabel: 'Erasure', icon: 'DE', accentClass: 'erasure', mascotName: 'Greenie', mascotSrc: 'assets/Greenie.png' },
         qa: { label: 'Quality', shortLabel: 'QA', icon: 'QA', accentClass: 'qa', mascotName: 'Bluie', mascotSrc: 'assets/Bluie.png' },
         sorting: { label: 'Dispatch', shortLabel: 'Sorting', icon: 'SO', accentClass: 'sorting', mascotName: 'Orangie', mascotSrc: 'assets/Orangie.png' },
