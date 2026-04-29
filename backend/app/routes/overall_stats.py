@@ -758,6 +758,12 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
 
     def _build_sorting_crew_members(limit: int = 10) -> list[dict]:
         try:
+            # Prefer full active-engineer list from today's QA activity so the
+            # overall crew strip doesn't collapse to only scanner accounts.
+            qa_active = _build_qa_crew_members(limit=limit)
+            if qa_active:
+                return qa_active[:limit]
+
             daily = qa_export.get_daily_qa_data(_business_today()) or {}
             out = []
             for uname, stats in daily.items():

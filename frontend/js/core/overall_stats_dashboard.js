@@ -335,7 +335,7 @@
                     ${crew.map((member) => `
                       <span class="overall-bay-crew-chip">
                         ${renderPixelAvatar(member.name, 'overall-avatar--crew')}
-                        <span class="overall-bay-crew-text">${member.name}${member.count > 0 ? ` ${member.count}` : ''}</span>
+                        <span class="overall-bay-crew-text">${member.name}</span>
                       </span>
                     `).join('')}
                   </div>

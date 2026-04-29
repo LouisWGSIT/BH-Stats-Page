@@ -4901,12 +4901,12 @@ main.layout {
   position: absolute;
   top: 50%;
   z-index: 3;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
-  transform: translate(-50%, -18%) rotate(90deg);
+  transform: translate(-50%, -8%) rotate(90deg);
   margin-top: 0;
   transform-origin: center;
   pointer-events: none;
@@ -5299,17 +5299,19 @@ main.layout {
   }
 
   .lane-car {
-    width: 26px;
-    height: 26px;
-    top: -5px;
+    width: 30px;
+    height: 30px;
+    top: 50%;
+    transform: translate(-50%, -4%) rotate(90deg);
   }
 }
 
 @media (max-height: 900px) {
   .lane-car {
-    width: 24px;
-    height: 24px;
-    top: -5px;
+    width: 28px;
+    height: 28px;
+    top: 50%;
+    transform: translate(-50%, -4%) rotate(90deg);
   }
 
   .overall-section-grid {
