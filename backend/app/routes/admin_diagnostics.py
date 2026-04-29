@@ -1129,6 +1129,35 @@ def create_admin_diagnostics_router(
                 total_orders = len(latest_rows)
                 awaiting_count = len(awaiting_rows)
                 matched_count = max(0, total_orders - awaiting_count)
+                location_counts: dict[str, int] = {}
+                warehouse_counts: dict[str, int] = {}
+                for row in latest_rows:
+                    loc_key = str(row.get("location") or "").strip() or "(blank)"
+                    wh_key = str(row.get("warehouse") or "").strip() or "(blank)"
+                    location_counts[loc_key] = int(location_counts.get(loc_key, 0)) + 1
+                    warehouse_counts[wh_key] = int(warehouse_counts.get(wh_key, 0)) + 1
+                top_locations = [{"value": k, "count": v} for k, v in sorted(location_counts.items(), key=lambda item: item[1], reverse=True)[:20]]
+                top_warehouses = [{"value": k, "count": v} for k, v in sorted(warehouse_counts.items(), key=lambda item: item[1], reverse=True)[:20]]
+                api_all_samples = []
+                for row in latest_rows[:limit]:
+                    status_text = str(row.get("statusRaw") or "").strip()
+                    inferred_status = "OPEN" if str(status_text).lower() == "open" else ("RECEIVED" if row.get("finishDt") else "UNKNOWN")
+                    api_all_samples.append(
+                        {
+                            "grnOrderNumber": row.get("orderNumber") or "",
+                            "statusRaw": status_text,
+                            "inferredStatus": inferred_status,
+                            "orderStatus": row.get("orderType") or None,
+                            "operator": row.get("operator") or "",
+                            "totalItems": row.get("totalItems"),
+                            "location": row.get("location") or "",
+                            "warehouse": row.get("warehouse") or "",
+                            "virtualWarehouse": row.get("virtualWarehouse") or "",
+                            "dateRequired": _iso(row.get("arrivalDt")),
+                            "dateAdded": _iso(row.get("startDt")),
+                            "shipDate": _iso(row.get("finishDt")),
+                        }
+                    )
 
                 return {
                     "summary": {
@@ -1151,10 +1180,13 @@ def create_admin_diagnostics_router(
                         "siteFilterTerms": goods_in_site_filter_terms,
                         "inferredReceivedSinceLastSnapshot": len(inferred_received_since_last_snapshot),
                         "inferredReceivedSample": inferred_received_since_last_snapshot[:limit],
+                        "topLocations": top_locations,
+                        "topWarehouses": top_warehouses,
                         "generatedAt": datetime.now(UTC).isoformat(),
                     },
                     "awaitingSamples": awaiting_samples,
                     "receivedTodaySamples": received_today_samples,
+                    "apiAllSamples": api_all_samples,
                 }
             except urllib.error.HTTPError as exc:
                 err_snippet = ""
