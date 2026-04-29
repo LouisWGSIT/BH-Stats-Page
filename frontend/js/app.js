@@ -44,7 +44,7 @@
   };
 
   const scriptLoadState = Object.create(null);
-  const BUILD_TAG = '20260429-overall-crew-pills-and-nav-labels-v1';
+  const BUILD_TAG = '20260429-overall-crew-pills-and-nav-labels-v2';
 
   function withBuildTag(src) {
     if (/^https?:\/\//i.test(src)) return src;

@@ -25,7 +25,7 @@
     };
     const dashboardLabels = {
       erasure: 'Erasure',
-      qa: 'QA',
+      qa: 'QA/Sorting',
       overall: 'Overall',
     };
 
@@ -248,6 +248,8 @@
           }
         });
       }
+
+      updateArrowLabels(currentDashboard());
     }
 
     function startQaAutoRefresh() {
