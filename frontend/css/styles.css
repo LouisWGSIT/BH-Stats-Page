@@ -3993,6 +3993,14 @@ main.layout {
   min-height: 0;
 }
 
+:root {
+  --team-erasure: #67ea75;
+  --team-qa: #58b2ff;
+  --team-sorting: #ffab44;
+  --team-goods-in: #b079ff;
+  --team-ia: #ffd44f;
+}
+
 .overall-section-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -4291,27 +4299,27 @@ main.layout {
 
 .overall-trend-card--goods-in .overall-trend-head strong,
 .overall-race-lane--goods-in .lane-rank {
-  color: #76f0ca;
+  color: var(--team-goods-in);
 }
 
 .overall-trend-card--ia .overall-trend-head strong,
 .overall-race-lane--ia .lane-rank {
-  color: #a7b7ff;
+  color: var(--team-ia);
 }
 
 .overall-trend-card--erasure .overall-trend-head strong,
 .overall-race-lane--erasure .lane-rank {
-  color: #ff9ad0;
+  color: var(--team-erasure);
 }
 
 .overall-trend-card--qa .overall-trend-head strong,
 .overall-race-lane--qa .lane-rank {
-  color: #8cf04a;
+  color: var(--team-qa);
 }
 
 .overall-trend-card--sorting .overall-trend-head strong,
 .overall-race-lane--sorting .lane-rank {
-  color: #ffbf67;
+  color: var(--team-sorting);
 }
 
 .overall-visual-grid {
@@ -4845,23 +4853,23 @@ main.layout {
 }
 
 .overall-race-lane--goods-in .lane-fill {
-  background: linear-gradient(90deg, #5ce1a6, #1cc8a0);
+  background: linear-gradient(90deg, #c59dff, var(--team-goods-in));
 }
 
 .overall-race-lane--ia .lane-fill {
-  background: linear-gradient(90deg, #8fb4ff, #5e79ff);
+  background: linear-gradient(90deg, #ffe98a, var(--team-ia));
 }
 
 .overall-race-lane--erasure .lane-fill {
-  background: linear-gradient(90deg, #ffb44c, #ff45ba);
+  background: linear-gradient(90deg, #9cff8f, var(--team-erasure));
 }
 
 .overall-race-lane--qa .lane-fill {
-  background: linear-gradient(90deg, #8cf04a, #ff1ea3);
+  background: linear-gradient(90deg, #95d5ff, var(--team-qa));
 }
 
 .overall-race-lane--sorting .lane-fill {
-  background: linear-gradient(90deg, #ffd84d, #ff8e3c);
+  background: linear-gradient(90deg, #ffd07e, var(--team-sorting));
 }
 
 .lane-progress-dot {
@@ -4870,10 +4878,10 @@ main.layout {
   z-index: 2;
   width: 6px;
   height: 6px;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
   border-radius: 999px;
-  background: #8cf04a;
-  box-shadow: 0 0 8px rgba(140, 240, 74, 0.7);
+  background: #d8f7ff;
+  box-shadow: 0 0 8px rgba(155, 226, 255, 0.75);
 }
 
 .lane-value {
@@ -4885,17 +4893,54 @@ main.layout {
 
 .lane-car {
   position: absolute;
-  top: -5px;
+  top: 50%;
   z-index: 3;
   width: 24px;
   height: 24px;
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
-  transform: rotate(90deg);
+  transform: translate(-50%, -50%) rotate(90deg);
   transform-origin: center;
   pointer-events: none;
 }
+
+.overall-team-mascot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(160deg, rgba(4, 21, 44, 0.82), rgba(8, 35, 62, 0.82));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.overall-team-mascot img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.overall-team-mascot--card,
+.overall-team-mascot--lane,
+.overall-team-mascot--crew {
+  width: 20px;
+  height: 20px;
+}
+
+.overall-team-mascot--fallback {
+  font-size: 10px;
+  font-weight: 900;
+  color: #eaf3ff;
+}
+
+.overall-team-mascot--goods-in { border-color: rgba(176, 121, 255, 0.7); }
+.overall-team-mascot--ia { border-color: rgba(255, 212, 79, 0.7); }
+.overall-team-mascot--erasure { border-color: rgba(103, 234, 117, 0.7); }
+.overall-team-mascot--qa { border-color: rgba(88, 178, 255, 0.7); }
+.overall-team-mascot--sorting { border-color: rgba(255, 171, 68, 0.7); }
 
 .overall-race-meta {
   display: flex;

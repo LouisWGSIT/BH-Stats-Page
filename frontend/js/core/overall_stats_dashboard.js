@@ -179,13 +179,31 @@
     function getSectionMeta(sectionKey) {
       const key = String(sectionKey || '');
       const map = {
-        goods_in: { label: 'Inbound', shortLabel: 'Goods In', icon: 'GI', accentClass: 'goods-in' },
-        ia: { label: 'Assessment', shortLabel: 'IA', icon: 'IA', accentClass: 'ia' },
-        erasure: { label: 'Data Erase', shortLabel: 'Erasure', icon: 'DE', accentClass: 'erasure' },
-        qa: { label: 'Quality', shortLabel: 'QA', icon: 'QA', accentClass: 'qa' },
-        sorting: { label: 'Dispatch', shortLabel: 'Sorting', icon: 'SO', accentClass: 'sorting' },
+        goods_in: { label: 'Inbound', shortLabel: 'Goods In', icon: 'GI', accentClass: 'goods-in', mascotName: 'Purpie', mascotSrc: '' },
+        ia: { label: 'Assessment', shortLabel: 'IA', icon: 'IA', accentClass: 'ia', mascotName: 'Yellie', mascotSrc: '' },
+        erasure: { label: 'Data Erase', shortLabel: 'Erasure', icon: 'DE', accentClass: 'erasure', mascotName: 'Greenie', mascotSrc: 'assets/Greenie.png' },
+        qa: { label: 'Quality', shortLabel: 'QA', icon: 'QA', accentClass: 'qa', mascotName: 'Bluie', mascotSrc: 'assets/Bluie.png' },
+        sorting: { label: 'Dispatch', shortLabel: 'Sorting', icon: 'SO', accentClass: 'sorting', mascotName: 'Orangie', mascotSrc: 'assets/Orangie.png' },
       };
-      return map[key] || { label: 'Operations', shortLabel: key || 'Section', icon: 'OP', accentClass: 'generic' };
+      return map[key] || { label: 'Operations', shortLabel: key || 'Section', icon: 'OP', accentClass: 'generic', mascotName: 'Ops', mascotSrc: '' };
+    }
+
+    function renderSectionMascot(meta, variant = 'card') {
+      const name = String(meta.mascotName || meta.shortLabel || '').trim();
+      const src = String(meta.mascotSrc || '').trim();
+      if (src) {
+        return `
+          <span class="overall-team-mascot overall-team-mascot--${variant} overall-team-mascot--${meta.accentClass}" title="${name}">
+            <img src="${src}" alt="${name}" />
+          </span>
+        `;
+      }
+      const initials = getMonogram(name || meta.shortLabel || meta.icon);
+      return `
+        <span class="overall-team-mascot overall-team-mascot--${variant} overall-team-mascot--${meta.accentClass} overall-team-mascot--fallback" title="${name}">
+          ${initials}
+        </span>
+      `;
     }
 
     function getSectionStateClass(section) {
@@ -304,6 +322,7 @@
                 <div class="overall-bay-crew">
                   <span class="overall-bay-crew-label">Crew Strip</span>
                   <div class="overall-bay-crew-icons">
+                    ${renderSectionMascot(meta, 'crew')}
                     ${crew.map((member) => `
                       <span class="overall-bay-crew-chip">
                         ${renderPixelAvatar(member, 'overall-avatar--crew')}
@@ -534,12 +553,13 @@
               <div class="overall-race-lane overall-race-lane--${lane.meta.accentClass} ${index === 0 ? 'is-leading' : ''}">
                 <div class="lane-heading">
                   <span class="lane-rank">${index + 1}</span>
+                  ${renderSectionMascot(lane.meta, 'lane')}
                   <span class="lane-name">${lane.name}</span>
                 </div>
                 <div class="lane-track">
                   <span class="lane-fill" style="right:calc(100% - ${carLeftPct}%);"></span>
-                  <span class="lane-progress-dot" style="left:calc(${carLeftPct}% - 4px)"></span>
-                  <img class="lane-car" src="assets/F1Car.png" alt="" style="left:calc(${carLeftPct}% - 10px)" />
+                  <span class="lane-progress-dot" style="left:${carLeftPct}%"></span>
+                  <img class="lane-car" src="assets/F1Car.png" alt="" style="left:${carLeftPct}%" />
                 </div>
                 <span class="lane-value">${lane.done}</span>
               </div>
