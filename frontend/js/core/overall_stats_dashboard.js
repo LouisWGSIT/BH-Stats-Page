@@ -220,7 +220,7 @@
       if (!cleaned || cleaned === '—' || cleaned.toLowerCase().includes('unable')) return '--';
       const parts = cleaned.split(/\s+/).filter(Boolean);
       if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-      return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+      return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
     }
 
     function getAvatarDataUri(initials) {
@@ -243,10 +243,10 @@
       if (liveCrewKeys.has(section.key) && Array.isArray(section.crewMembers) && section.crewMembers.length) {
         return section.crewMembers
           .map((row) => ({
-            name: String((row && row.name) || '').trim(),
+            name: getMonogram(String((row && row.name) || '').trim()),
             count: Number((row && row.count) || 0),
           }))
-          .filter((row) => row.name)
+          .filter((row) => row.name && row.name !== '--')
           .slice(0, 10);
       }
       return [
