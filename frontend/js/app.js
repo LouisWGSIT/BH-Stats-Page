@@ -44,7 +44,7 @@
   };
 
   const scriptLoadState = Object.create(null);
-  const BUILD_TAG = '20260429-erasure-done-sync-v2';
+  const BUILD_TAG = '20260429-race-track-rank-fix-v1';
 
   function withBuildTag(src) {
     if (/^https?:\/\//i.test(src)) return src;

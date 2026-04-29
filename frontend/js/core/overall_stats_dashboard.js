@@ -551,7 +551,11 @@
           done: getRaceTrackDone(s),
           progress: clamp(Math.round((getRaceTrackDone(s) / maxDone) * 100), 0, 100),
         }))
-        .sort((a, b) => b.progress - a.progress);
+        .sort((a, b) => {
+          const doneDelta = b.done - a.done;
+          if (doneDelta !== 0) return doneDelta;
+          return b.progress - a.progress;
+        });
       const totalDone = lanes.reduce((sum, lane) => sum + lane.done, 0);
       raceEl.innerHTML = `
         <div class="overall-race-meta">
