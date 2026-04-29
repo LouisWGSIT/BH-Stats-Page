@@ -112,7 +112,9 @@
         return getSubMetric(section, [/completed ia/, /ready for erasure/]);
       }
       if (section.key === 'erasure') {
-        return getSubMetric(section, [/erased today/, /processed today/, /completed erasure/]);
+        const fromSubmetrics = getSubMetric(section, [/erased today/, /processed today/, /completed erasure/]);
+        const fromLiveRaceSource = getErasureTodayFromDashboard();
+        return Math.max(fromSubmetrics, fromLiveRaceSource);
       }
       if (section.key === 'qa') {
         return getSubMetric(section, [/completed qa today/, /qa complete/]);

@@ -44,7 +44,7 @@
   };
 
   const scriptLoadState = Object.create(null);
-  const BUILD_TAG = '20260429-hourly-announcements-v1';
+  const BUILD_TAG = '20260429-erasure-done-sync-v1';
 
   function withBuildTag(src) {
     if (/^https?:\/\//i.test(src)) return src;
