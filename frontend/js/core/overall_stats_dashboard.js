@@ -239,12 +239,22 @@
     }
 
     function getSectionCrew(section, meta) {
+      const liveCrewKeys = new Set(['erasure', 'qa', 'sorting']);
+      if (liveCrewKeys.has(section.key) && Array.isArray(section.crewMembers) && section.crewMembers.length) {
+        return section.crewMembers
+          .map((row) => ({
+            name: String((row && row.name) || '').trim(),
+            count: Number((row && row.count) || 0),
+          }))
+          .filter((row) => row.name)
+          .slice(0, 10);
+      }
       return [
-        getMonogram(section.owner || section.name),
-        getMonogram(meta.shortLabel),
-        getMonogram(meta.icon),
+        { name: getMonogram(section.owner || section.name), count: 0 },
+        { name: getMonogram(meta.shortLabel), count: 0 },
+        { name: getMonogram(meta.icon), count: 0 },
       ]
-        .filter((value) => value && value !== '--')
+        .filter((row) => row.name && row.name !== '--')
         .slice(0, 3);
     }
 
@@ -322,11 +332,10 @@
                 <div class="overall-bay-crew">
                   <span class="overall-bay-crew-label">Crew Strip</span>
                   <div class="overall-bay-crew-icons">
-                    ${renderSectionMascot(meta, 'crew')}
                     ${crew.map((member) => `
                       <span class="overall-bay-crew-chip">
-                        ${renderPixelAvatar(member, 'overall-avatar--crew')}
-                        <span class="overall-bay-crew-text">${member}</span>
+                        ${renderPixelAvatar(member.name, 'overall-avatar--crew')}
+                        <span class="overall-bay-crew-text">${member.name}${member.count > 0 ? ` ${member.count}` : ''}</span>
                       </span>
                     `).join('')}
                   </div>
@@ -679,6 +688,7 @@
         source: section.source || 'mock',
         queryMs: Number.isFinite(Number(section.queryMs)) ? Number(section.queryMs) : null,
         sourceReason: section.sourceReason || '',
+        crewMembers: Array.isArray(section.crewMembers) ? section.crewMembers : [],
       };
     }
 

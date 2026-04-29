@@ -4268,7 +4268,7 @@ main.layout {
 
 .overall-bay-crew-icons {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -4281,12 +4281,18 @@ main.layout {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 calc((100% - 32px) / 5);
+  max-width: calc((100% - 32px) / 5);
+  min-width: 0;
 }
 
 .overall-bay-crew-text {
   font-size: 10px;
   font-weight: 800;
   color: #dce9f7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .overall-bay-watermark {
@@ -4893,7 +4899,7 @@ main.layout {
 
 .lane-car {
   position: absolute;
-  top: calc(50% + 1px);
+  top: 50%;
   z-index: 3;
   width: 24px;
   height: 24px;
@@ -4901,6 +4907,7 @@ main.layout {
   image-rendering: pixelated;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
   transform: translate(-50%, -50%) rotate(90deg);
+  margin-top: 4px;
   transform-origin: center;
   pointer-events: none;
 }

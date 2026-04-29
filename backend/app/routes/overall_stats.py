@@ -634,6 +634,54 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
 
         return out
 
+    def _build_erasure_crew_members(limit: int = 10) -> list[dict]:
+        try:
+            rows = db_module.leaderboard(scope="today", limit=limit) or []
+            out = []
+            for row in rows:
+                initials = str((row or {}).get("initials") or (row or {}).get("name") or "").strip()
+                count = int((row or {}).get("erasures") or (row or {}).get("count") or 0)
+                if initials and count > 0:
+                    out.append({"name": initials, "count": count})
+            return out
+        except Exception:
+            return []
+
+    def _build_qa_crew_members(limit: int = 10) -> list[dict]:
+        try:
+            today = _business_today()
+            de_data = qa_export.get_de_qa_comparison(today, today) or {}
+            out = []
+            for uname, stats in de_data.items():
+                name_raw = str(uname or "").strip()
+                if not name_raw or name_raw.lower() == "(unassigned)":
+                    continue
+                count = int((stats or {}).get("total", 0) or 0)
+                if count <= 0:
+                    continue
+                out.append({"name": _first_name(name_raw), "count": count})
+            out.sort(key=lambda x: int(x.get("count", 0)), reverse=True)
+            return out[:limit]
+        except Exception:
+            return []
+
+    def _build_sorting_crew_members(limit: int = 10) -> list[dict]:
+        try:
+            daily = qa_export.get_daily_qa_data(_business_today()) or {}
+            out = []
+            for uname, stats in daily.items():
+                name_raw = str(uname or "").strip()
+                if not name_raw or name_raw.lower() == "(unassigned)":
+                    continue
+                count = int((stats or {}).get("total_scans", 0) or 0)
+                if count <= 0:
+                    continue
+                out.append({"name": _first_name(name_raw), "count": count})
+            out.sort(key=lambda x: int(x.get("count", 0)), reverse=True)
+            return out[:limit]
+        except Exception:
+            return []
+
     def _build_spotlight_fallback_payload(reason: str) -> dict:
         return {
             "generatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -1302,6 +1350,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     {"label": "Completed IA", "value": 0},
                     {"label": "Ready for Erasure", "value": 0},
                 ],
+                "crewMembers": [],
             }
         if section_key == "erasure":
             return {
@@ -1318,6 +1367,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     {"label": "Roller 2 Queue", "value": 0},
                     {"label": "Roller 3 Queue", "value": 0},
                 ],
+                "crewMembers": _build_erasure_crew_members(),
             }
         if section_key == "qa":
             qa_live = _compute_db_awaiting_qa(include_samples=False)
@@ -1350,6 +1400,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     {"label": "Non-DB Awaiting QA", "value": non_db_awaiting},
                     {"label": "Completed QA Today", "value": completed_today},
                 ],
+                "crewMembers": _build_qa_crew_members(),
                 "isLive": is_live,
                 "source": source,
             }
@@ -1438,6 +1489,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     {"label": "Sorted Today", "value": max(0, sorted_today)},
                     {"label": "Sorting Output Last Hour", "value": max(0, sorting_output_last_hour)},
                 ],
+                "crewMembers": _build_sorting_crew_members(),
                 "isLive": is_live,
                 "source": source,
             }
