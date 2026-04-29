@@ -873,6 +873,23 @@ def create_admin_diagnostics_router(
             with urllib.request.urlopen(req, timeout=15) as resp:
                 return resp.read()
 
+        def _parse_goods_in_root(payload_bytes: bytes):
+            root = ET.fromstring(payload_bytes)
+            tag = str(getattr(root, "tag", "") or "").lower()
+            if tag.endswith("string"):
+                wrapped_text = (root.text or "").strip()
+                if wrapped_text:
+                    unwrapped = html.unescape(wrapped_text).strip()
+                    # Some responses are wrapped in quotes: "<grns>...</grns>"
+                    if (unwrapped.startswith('"') and unwrapped.endswith('"')) or (unwrapped.startswith("'") and unwrapped.endswith("'")):
+                        unwrapped = unwrapped[1:-1].strip()
+                    if "<grns" in unwrapped.lower():
+                        start_idx = unwrapped.lower().find("<grns")
+                        if start_idx > 0:
+                            unwrapped = unwrapped[start_idx:]
+                        return ET.fromstring(unwrapped)
+            return root
+
         def _matches_site_filter(row: dict) -> bool:
             if not goods_in_site_filter_terms:
                 return True
@@ -979,11 +996,7 @@ def create_admin_diagnostics_router(
                         raise last_err
                     raise RuntimeError("Goods In API returned empty payload")
 
-                root = ET.fromstring(payload)
-                if root.tag.lower().endswith("string"):
-                    wrapped_text = (root.text or "").strip()
-                    if wrapped_text and ("&lt;grns" in wrapped_text.lower() or "<grns" in wrapped_text.lower()):
-                        root = ET.fromstring(html.unescape(wrapped_text))
+                root = _parse_goods_in_root(payload)
                 all_rows = []
                 for grn in root.findall(".//grn"):
                     order_number = (grn.findtext("order_number") or "").strip()
@@ -1157,8 +1170,8 @@ def create_admin_diagnostics_router(
                     api_fallback_error = f"Goods In API HTTP {exc.code}"
             except urllib.error.URLError:
                 api_fallback_error = "Goods In API unavailable"
-            except Exception:
-                api_fallback_error = "Goods In API parse failure"
+            except Exception as exc:
+                api_fallback_error = f"Goods In API parse failure: {exc}"
 
         conn = None
         try:
