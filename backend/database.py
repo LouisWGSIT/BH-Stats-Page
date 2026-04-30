@@ -24,6 +24,7 @@ from pathlib import Path
 import os
 from collections import defaultdict
 from contextlib import contextmanager
+from zoneinfo import ZoneInfo
 
 
 # SQLite transaction helper to ensure commits/rollbacks and proper closing
@@ -1233,8 +1234,9 @@ def get_records_and_milestones() -> Dict:
 def get_speed_challenge_status(time_window: str = "am") -> Dict:
     """Get current status of speed challenge including time remaining"""
     from datetime import time as dt_time
-    
-    now = datetime.now()
+
+    business_tz = os.getenv("OVERALL_BUSINESS_TZ", "Europe/London")
+    now = datetime.now(ZoneInfo(business_tz))
     current_time = now.time()
     
     if time_window == "am":
