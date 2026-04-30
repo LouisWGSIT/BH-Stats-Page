@@ -72,6 +72,8 @@
     ]);
     const HOURLY_ANNOUNCEMENT_HOURS = new Set([9, 10, 11, 13, 14, 15]);
     let lastHourlyAnnouncementKey = null;
+    let preciseClockIntervalId = null;
+    let preciseClockStartTimeoutId = null;
 
     function triggerConfetti() {
       if (typeof confetti === 'undefined') {
@@ -328,7 +330,7 @@
       const hours = now.getHours();
       const minutes = now.getMinutes();
       if (!HOURLY_ANNOUNCEMENT_HOURS.has(hours)) return;
-      if (minutes > 2) return;
+      if (minutes !== 0) return;
       const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const announceKey = `${dayKey}-${hours}`;
       if (lastHourlyAnnouncementKey === announceKey) return;
@@ -354,6 +356,32 @@
         raceData.winnerAnnounced = false;
         raceData.firstFinisher = null;
       }
+    }
+
+    function stopPreciseAnnouncementClock() {
+      if (preciseClockStartTimeoutId) {
+        clearTimeout(preciseClockStartTimeoutId);
+        preciseClockStartTimeoutId = null;
+      }
+      if (preciseClockIntervalId) {
+        clearInterval(preciseClockIntervalId);
+        preciseClockIntervalId = null;
+      }
+    }
+
+    function startPreciseAnnouncementClock() {
+      stopPreciseAnnouncementClock();
+
+      const start = () => {
+        checkAndTriggerWinner();
+        preciseClockIntervalId = setInterval(() => {
+          checkAndTriggerWinner();
+        }, 1000);
+      };
+
+      // Align the first tick with the next second boundary for near-exact schedule timing.
+      const delayMs = Math.max(1, 1000 - (Date.now() % 1000));
+      preciseClockStartTimeoutId = setTimeout(start, delayMs);
     }
 
     async function refreshSpeedChallenge(windowName, listId, statusId) {
@@ -484,6 +512,8 @@
       refreshConsistency,
       checkAndTriggerWinner,
       announceWinner,
+      startPreciseAnnouncementClock,
+      stopPreciseAnnouncementClock,
     };
   }
 

@@ -431,6 +431,13 @@
     return competitionAnnouncementsApi.announceWinner();
   }
 
+  function startPreciseAnnouncementClock() {
+    if (!competitionAnnouncementsApi || typeof competitionAnnouncementsApi.startPreciseAnnouncementClock !== 'function') {
+      return;
+    }
+    return competitionAnnouncementsApi.startPreciseAnnouncementClock();
+  }
+
   function renderBars(counts) {
     const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
     const defs = categories;
@@ -1360,6 +1367,7 @@
   refreshSpeedChallenge('pm', 'speedPmList', 'speedPmStatus');
   refreshCategorySpecialists();
   refreshConsistency();
+  startPreciseAnnouncementClock();
 
   // Refresh analytics every 5 minutes (adaptive)
   if (createAdaptivePoll) {
