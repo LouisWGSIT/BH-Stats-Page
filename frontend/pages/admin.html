@@ -668,14 +668,14 @@
                             <thead>
                                 <tr>
                                     <th>GRN Order Number</th>
-                                    <th>Automation Order Number</th>
                                     <th>Receipt Status</th>
-                                    <th>Order Status</th>
-                                    <th>date_added</th>
-                                    <th>date_required</th>
-                                    <th>ship_date</th>
-                                    <th>added_date</th>
-                                    <th>Latest GRN Date</th>
+                                    <th>Order Type/Status</th>
+                                    <th>Operator</th>
+                                    <th>Total Items</th>
+                                    <th>Location</th>
+                                    <th>Arrival</th>
+                                    <th>Start</th>
+                                    <th>Finish</th>
                                     <th>Match State</th>
                                 </tr>
                             </thead>
@@ -690,19 +690,42 @@
                             <thead>
                                 <tr>
                                     <th>GRN Order Number</th>
-                                    <th>Automation Order Number</th>
                                     <th>Receipt Status</th>
-                                    <th>Order Status</th>
-                                    <th>date_added</th>
-                                    <th>date_required</th>
-                                    <th>ship_date</th>
-                                    <th>added_date</th>
-                                    <th>Latest GRN Date</th>
-                                    <th>Latest Receipt Date</th>
+                                    <th>Order Type/Status</th>
+                                    <th>Operator</th>
+                                    <th>Total Items</th>
+                                    <th>Location</th>
+                                    <th>Arrival</th>
+                                    <th>Start</th>
+                                    <th>Finish</th>
                                     <th>Match State</th>
                                 </tr>
                             </thead>
                             <tbody id="goodsInEvidenceReceivedBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="goodsInEvidenceAllApiWrap" class="stats" style="display:none;margin-top:12px;">
+                    <h3 style="margin-bottom:8px;">All API Orders Sample (for source validation)</h3>
+                    <div class="table-scroll">
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>GRN Order Number</th>
+                                    <th>Status (Raw)</th>
+                                    <th>Status (Inferred)</th>
+                                    <th>Order Type/Status</th>
+                                    <th>Operator</th>
+                                    <th>Total Items</th>
+                                    <th>Location</th>
+                                    <th>Warehouse</th>
+                                    <th>Virtual Warehouse</th>
+                                    <th>Arrival</th>
+                                    <th>Start</th>
+                                    <th>Finish</th>
+                                </tr>
+                            </thead>
+                            <tbody id="goodsInEvidenceAllApiBody"></tbody>
                         </table>
                     </div>
                 </div>
@@ -2044,6 +2067,7 @@
 
         let _goodsInAwaitingSamples = [];
         let _goodsInReceivedTodaySamples = [];
+        let _goodsInAllApiSamples = [];
         let _goodsInEvidenceFilter = 'all';
 
         async function loadGoodsInEvidence() {
@@ -2054,7 +2078,9 @@
             const awaitingBody = document.getElementById('goodsInEvidenceAwaitingBody');
             const receivedWrap = document.getElementById('goodsInEvidenceReceivedWrap');
             const receivedBody = document.getElementById('goodsInEvidenceReceivedBody');
-            if (!summary || !awaitingWrap || !awaitingBody || !receivedWrap || !receivedBody) return;
+            const allApiWrap = document.getElementById('goodsInEvidenceAllApiWrap');
+            const allApiBody = document.getElementById('goodsInEvidenceAllApiBody');
+            if (!summary || !awaitingWrap || !awaitingBody || !receivedWrap || !receivedBody || !allApiWrap || !allApiBody) return;
 
             const days = parseInt((daysSel && daysSel.value) || '90', 10);
             const limit = parseInt((limitSel && limitSel.value) || '50', 10);
@@ -2072,9 +2098,11 @@
                 const s = data.summary || {};
                 const awaiting = Array.isArray(data.awaitingSamples) ? data.awaitingSamples : [];
                 const received = Array.isArray(data.receivedTodaySamples) ? data.receivedTodaySamples : [];
+                const allApi = Array.isArray(data.apiAllSamples) ? data.apiAllSamples : [];
 
                 _goodsInAwaitingSamples = awaiting;
                 _goodsInReceivedTodaySamples = received;
+                _goodsInAllApiSamples = allApi;
                 _goodsInEvidenceFilter = 'all';
 
                 summary.innerHTML = `
@@ -2088,6 +2116,19 @@
                         <div class="stat-card"><div class="stat-value">${s.sampleReceivedTodayCount || received.length}</div><div class="stat-label">Received Today Samples</div></div>
                     </div>
                     <div style="margin-top:8px;font-size:12px;color:#666;">Source: ${s.source || 'unknown'} | Token mode: ${s.apiTokenMode || 'n/a'} | GRN date field: ${s.grnDateField || 'n/a'} | Orders date field: ${s.ordersDateField || 'n/a'} | Status field: ${s.statusField || 'n/a'}</div>
+                    <div style="margin-top:6px;font-size:12px;color:#666;">Site filter: ${(Array.isArray(s.siteFilterTerms) && s.siteFilterTerms.length) ? s.siteFilterTerms.join(', ') : 'none'} | Inferred received since last snapshot: ${s.inferredReceivedSinceLastSnapshot || 0}</div>
+                    ${(Array.isArray(s.topLocations) && s.topLocations.length)
+                        ? `<div style="margin-top:4px;font-size:12px;color:#666;">Top locations: ${s.topLocations.slice(0, 8).map((x) => `${x.value} (${x.count})`).join(' | ')}</div>`
+                        : ''
+                    }
+                    ${(Array.isArray(s.topWarehouses) && s.topWarehouses.length)
+                        ? `<div style="margin-top:4px;font-size:12px;color:#666;">Top warehouses: ${s.topWarehouses.slice(0, 8).map((x) => `${x.value} (${x.count})`).join(' | ')}</div>`
+                        : ''
+                    }
+                    ${(Array.isArray(s.inferredReceivedSample) && s.inferredReceivedSample.length)
+                        ? `<div style="margin-top:4px;font-size:12px;color:#666;">Inferred received sample: ${s.inferredReceivedSample.join(', ')}</div>`
+                        : ''
+                    }
                     ${s.apiFallbackError ? `<div style="margin-top:6px;font-size:12px;color:#b45309;">API fallback active: ${s.apiFallbackError}</div>` : ''}
                     <div style="margin-top:8px;font-size:12px;color:#666;">Generated: ${formatActivityTimeUk(s.generatedAt)}</div>
                 `;
@@ -2108,6 +2149,7 @@
                 summary.innerHTML = `<div class="result error" style="display:block;">Failed to load goods in evidence: ${err.message}</div>`;
                 awaitingWrap.style.display = 'none';
                 receivedWrap.style.display = 'none';
+                allApiWrap.style.display = 'none';
             }
         }
 
@@ -2116,7 +2158,9 @@
             const awaitingBody = document.getElementById('goodsInEvidenceAwaitingBody');
             const receivedWrap = document.getElementById('goodsInEvidenceReceivedWrap');
             const receivedBody = document.getElementById('goodsInEvidenceReceivedBody');
-            if (!awaitingWrap || !awaitingBody || !receivedWrap || !receivedBody) return;
+            const allApiWrap = document.getElementById('goodsInEvidenceAllApiWrap');
+            const allApiBody = document.getElementById('goodsInEvidenceAllApiBody');
+            if (!awaitingWrap || !awaitingBody || !receivedWrap || !receivedBody || !allApiWrap || !allApiBody) return;
 
             let awaitingRows = _goodsInAwaitingSamples || [];
             let receivedRows = _goodsInReceivedTodaySamples || [];
@@ -2130,16 +2174,17 @@
             awaitingBody.innerHTML = '';
             awaitingRows.forEach((row) => {
                 const tr = document.createElement('tr');
+                const receiptStatus = row.receiptStatusRaw || row.receiptStatus || '';
                 tr.innerHTML = `
                     <td style="font-size:12px;">${row.grnOrderNumber || ''}</td>
-                    <td style="font-size:12px;">${row.automationOrderNumber || ''}</td>
-                    <td style="font-size:12px;">${row.receiptStatus || ''}</td>
+                    <td style="font-size:12px;">${receiptStatus}</td>
                     <td style="font-size:12px;">${row.orderStatus || ''}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.addedDate)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastGrnDate)}</td>
+                    <td style="font-size:12px;">${row.operator || ''}</td>
+                    <td style="font-size:12px;">${row.totalItems ?? ''}</td>
+                    <td style="font-size:12px;">${row.location || row.warehouse || ''}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired || row.lastGrnDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded || row.addedDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate || row.lastReceivedDate)}</td>
                     <td style="font-size:12px;">${row.matchState || ''}</td>
                 `;
                 awaitingBody.appendChild(tr);
@@ -2148,24 +2193,46 @@
             receivedBody.innerHTML = '';
             receivedRows.forEach((row) => {
                 const tr = document.createElement('tr');
+                const receiptStatus = row.receiptStatusRaw || row.receiptStatus || '';
                 tr.innerHTML = `
                     <td style="font-size:12px;">${row.grnOrderNumber || ''}</td>
-                    <td style="font-size:12px;">${row.automationOrderNumber || ''}</td>
-                    <td style="font-size:12px;">${row.receiptStatus || ''}</td>
+                    <td style="font-size:12px;">${receiptStatus}</td>
                     <td style="font-size:12px;">${row.orderStatus || ''}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.addedDate)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastGrnDate)}</td>
-                    <td style="font-size:12px;">${formatActivityTimeUk(row.lastReceivedDate)}</td>
+                    <td style="font-size:12px;">${row.operator || ''}</td>
+                    <td style="font-size:12px;">${row.totalItems ?? ''}</td>
+                    <td style="font-size:12px;">${row.location || row.warehouse || ''}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired || row.lastGrnDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded || row.addedDate)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate || row.lastReceivedDate)}</td>
                     <td style="font-size:12px;">${row.matchState || ''}</td>
                 `;
                 receivedBody.appendChild(tr);
             });
 
+            const allApiRows = _goodsInAllApiSamples || [];
+            allApiBody.innerHTML = '';
+            allApiRows.forEach((row) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-size:12px;">${row.grnOrderNumber || ''}</td>
+                    <td style="font-size:12px;">${row.statusRaw || ''}</td>
+                    <td style="font-size:12px;">${row.inferredStatus || ''}</td>
+                    <td style="font-size:12px;">${row.orderStatus || ''}</td>
+                    <td style="font-size:12px;">${row.operator || ''}</td>
+                    <td style="font-size:12px;">${row.totalItems ?? ''}</td>
+                    <td style="font-size:12px;">${row.location || ''}</td>
+                    <td style="font-size:12px;">${row.warehouse || ''}</td>
+                    <td style="font-size:12px;">${row.virtualWarehouse || ''}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateRequired)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.dateAdded)}</td>
+                    <td style="font-size:12px;">${formatActivityTimeUk(row.shipDate)}</td>
+                `;
+                allApiBody.appendChild(tr);
+            });
+
             awaitingWrap.style.display = awaitingRows.length ? 'block' : 'none';
             receivedWrap.style.display = receivedRows.length ? 'block' : 'none';
+            allApiWrap.style.display = allApiRows.length ? 'block' : 'none';
         }
 
         async function loadErasureReconciliation() {

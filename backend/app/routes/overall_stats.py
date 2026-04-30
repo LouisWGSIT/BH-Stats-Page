@@ -634,6 +634,145 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
 
         return out
 
+    def _build_erasure_crew_members(limit: int = 10) -> list[dict]:
+        try:
+            rows = db_module.leaderboard(scope="today", limit=limit) or []
+            out = []
+            for row in rows:
+                initials = str((row or {}).get("initials") or (row or {}).get("name") or "").strip()
+                count = int((row or {}).get("erasures") or (row or {}).get("count") or 0)
+                if initials and count > 0:
+                    out.append({"name": initials, "count": count})
+            return out
+        except Exception:
+            return []
+
+    def _get_erasure_live_done_and_trend() -> tuple[int, int]:
+        """Return (done_today, trend_pct_last_hour) from local erasure events."""
+        done_today = 0
+        trend_pct_hour = 0
+        try:
+            db_path = getattr(db_module, "DB_PATH", None)
+            if not db_path:
+                return done_today, trend_pct_hour
+
+            now_utc = datetime.now(UTC)
+            hour_window_start = now_utc - timedelta(hours=1)
+            prev_hour_window_start = now_utc - timedelta(hours=2)
+            today_key = _business_today().isoformat()
+
+            with sqlite3.connect(db_path, timeout=5.0) as conn:
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        """
+                        SELECT COUNT(1)
+                        FROM erasures
+                        WHERE event = 'success'
+                          AND date = ?
+                        """,
+                        (today_key,),
+                    )
+                    row = cur.fetchone()
+                    done_today = int(row[0] or 0) if row else 0
+
+                    cur.execute(
+                        """
+                        SELECT COUNT(1)
+                        FROM erasures
+                        WHERE event = 'success'
+                          AND ts >= ?
+                          AND ts < ?
+                        """,
+                        (
+                            hour_window_start.isoformat().replace("+00:00", "Z"),
+                            now_utc.isoformat().replace("+00:00", "Z"),
+                        ),
+                    )
+                    row = cur.fetchone()
+                    current_hour = int(row[0] or 0) if row else 0
+
+                    cur.execute(
+                        """
+                        SELECT COUNT(1)
+                        FROM erasures
+                        WHERE event = 'success'
+                          AND ts >= ?
+                          AND ts < ?
+                        """,
+                        (
+                            prev_hour_window_start.isoformat().replace("+00:00", "Z"),
+                            hour_window_start.isoformat().replace("+00:00", "Z"),
+                        ),
+                    )
+                    row = cur.fetchone()
+                    previous_hour = int(row[0] or 0) if row else 0
+                finally:
+                    cur.close()
+
+            if previous_hour > 0:
+                trend_pct_hour = int(round(((current_hour - previous_hour) / previous_hour) * 100))
+            elif current_hour > 0:
+                trend_pct_hour = 100
+            else:
+                trend_pct_hour = 0
+        except Exception:
+            pass
+
+        return max(0, done_today), trend_pct_hour
+
+    def _build_qa_crew_members(limit: int = 10) -> list[dict]:
+        def _to_initials(name_raw: str) -> str:
+            cleaned = " ".join(str(name_raw or "").strip().split())
+            if not cleaned:
+                return ""
+            parts = [p for p in cleaned.split(" ") if p]
+            if not parts:
+                return ""
+            if len(parts) == 1:
+                p = parts[0]
+                return (p[:2] if len(p) >= 2 else p).upper()
+            first = parts[0][:1]
+            last = parts[-1][:1]
+            return f"{first}{last}".upper()
+
+        try:
+            today = _business_today()
+            de_data = qa_export.get_de_qa_comparison(today, today) or {}
+            out = []
+            for uname, stats in de_data.items():
+                name_raw = str(uname or "").strip()
+                if not name_raw or name_raw.lower() == "(unassigned)":
+                    continue
+                count = int((stats or {}).get("total", 0) or 0)
+                if count <= 0:
+                    continue
+                initials = _to_initials(name_raw)
+                if not initials:
+                    continue
+                out.append({"name": initials, "count": count})
+            out.sort(key=lambda x: int(x.get("count", 0)), reverse=True)
+            return out[:limit]
+        except Exception:
+            return []
+
+    def _build_sorting_crew_members(limit: int = 10) -> list[dict]:
+        try:
+            daily = qa_export.get_daily_qa_data(_business_today()) or {}
+            out = []
+            for uname, stats in daily.items():
+                name_raw = str(uname or "").strip()
+                if not name_raw or name_raw.lower() == "(unassigned)":
+                    continue
+                count = int((stats or {}).get("total_scans", 0) or 0)
+                if count <= 0:
+                    continue
+                out.append({"name": name_raw, "count": count})
+            out.sort(key=lambda x: int(x.get("count", 0)), reverse=True)
+            return out[:limit]
+        except Exception:
+            return []
+
     def _build_spotlight_fallback_payload(reason: str) -> dict:
         return {
             "generatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -1302,22 +1441,28 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     {"label": "Completed IA", "value": 0},
                     {"label": "Ready for Erasure", "value": 0},
                 ],
+                "crewMembers": [],
             }
         if section_key == "erasure":
+            erased_today, erasure_trend_hour = _get_erasure_live_done_and_trend()
             return {
                 **base,
                 "sectionKey": "erasure",
                 "sectionName": "Erasure",
                 "targetQueue": 140,
                 "currentQueue": 0,
-                "trendPctHour": 0,
+                "trendPctHour": erasure_trend_hour,
                 "owner": "Erasure Team",
                 "queueLabel": "Data-Bearing Awaiting Erasure",
                 "subMetrics": [
+                    {"label": "Erased Today", "value": erased_today},
                     {"label": "Roller 1 Queue", "value": 0},
                     {"label": "Roller 2 Queue", "value": 0},
                     {"label": "Roller 3 Queue", "value": 0},
                 ],
+                "crewMembers": _build_erasure_crew_members(),
+                "isLive": True,
+                "source": "sqlite:erasures",
             }
         if section_key == "qa":
             qa_live = _compute_db_awaiting_qa(include_samples=False)
@@ -1350,6 +1495,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     {"label": "Non-DB Awaiting QA", "value": non_db_awaiting},
                     {"label": "Completed QA Today", "value": completed_today},
                 ],
+                "crewMembers": _build_qa_crew_members(),
                 "isLive": is_live,
                 "source": source,
             }
@@ -1438,6 +1584,7 @@ def create_overall_stats_router(*, qa_export_module, db_module, require_manager_
                     {"label": "Sorted Today", "value": max(0, sorted_today)},
                     {"label": "Sorting Output Last Hour", "value": max(0, sorting_output_last_hour)},
                 ],
+                "crewMembers": _build_sorting_crew_members(),
                 "isLive": is_live,
                 "source": source,
             }

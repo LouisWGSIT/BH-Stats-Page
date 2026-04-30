@@ -44,7 +44,7 @@
   };
 
   const scriptLoadState = Object.create(null);
-  const BUILD_TAG = '20260428-qa-throughput-time-window-fix';
+  const BUILD_TAG = '20260429-race-track-rank-fix-v1';
 
   function withBuildTag(src) {
     if (/^https?:\/\//i.test(src)) return src;
@@ -365,6 +365,7 @@
     ? window.CompetitionAnnouncements.init({
         getSpeedChallengeData: () => speedChallengeData,
         getRaceData: () => raceData,
+        isErasureDashboardActive: () => isErasureDashboardActive(),
         escapeHtml: (text) => escapeHtml(text),
       })
     : null;

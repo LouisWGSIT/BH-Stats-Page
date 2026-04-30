@@ -440,6 +440,22 @@ body {
   flex-shrink: 0;
 }
 
+.nav-arrow-label {
+  color: #bcd4ff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.45px;
+  min-width: 72px;
+  text-align: center;
+  white-space: nowrap;
+  text-transform: uppercase;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(46, 88, 160, 0.2);
+  border: 1px solid rgba(115, 162, 255, 0.28);
+}
+
 .nav-arrow {
   background: rgba(102, 126, 234, 0.15);
   border: 1px solid rgba(102, 126, 234, 0.3);
@@ -838,7 +854,7 @@ body {
 
 .summary-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   width: 100%;
   max-width: 280px;
@@ -851,9 +867,10 @@ body {
 
 .summary-item-left {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   text-align: left;
+  min-width: 0;
 }
 
 .summary-icon {
@@ -873,10 +890,27 @@ body {
   color: #ffffff;
 }
 
+.summary-lines {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-line {
+  font-size: 12px;
+  color: #c8d8eb;
+  line-height: 1.25;
+  white-space: normal;
+}
+
 .summary-value {
   font-size: 18px;
   font-weight: 700;
   color: #8cf04a;
+  margin-left: 8px;
+  text-align: right;
+  white-space: nowrap;
 }
 
 /* Custom Range Modal */
@@ -3993,6 +4027,14 @@ main.layout {
   min-height: 0;
 }
 
+:root {
+  --team-erasure: #67ea75;
+  --team-qa: #58b2ff;
+  --team-sorting: #ffab44;
+  --team-goods-in: #b079ff;
+  --team-ia: #ffd44f;
+}
+
 .overall-section-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -4260,7 +4302,7 @@ main.layout {
 
 .overall-bay-crew-icons {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -4268,17 +4310,33 @@ main.layout {
 .overall-bay-crew-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 5px;
-  padding: 2px 6px 2px 2px;
+  padding: 2px 10px 2px 2px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 calc((100% - 20px) / 5);
+  max-width: calc((100% - 20px) / 5);
+  min-width: 52px;
 }
 
 .overall-bay-crew-text {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   color: #dce9f7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  flex: 0 1 auto;
+  min-width: 2ch;
+  max-width: 4ch;
+  letter-spacing: 0.2px;
+}
+
+.overall-team-mascot--spotlight {
+  width: 42px;
+  height: 42px;
 }
 
 .overall-bay-watermark {
@@ -4291,27 +4349,27 @@ main.layout {
 
 .overall-trend-card--goods-in .overall-trend-head strong,
 .overall-race-lane--goods-in .lane-rank {
-  color: #76f0ca;
+  color: var(--team-goods-in);
 }
 
 .overall-trend-card--ia .overall-trend-head strong,
 .overall-race-lane--ia .lane-rank {
-  color: #a7b7ff;
+  color: var(--team-ia);
 }
 
 .overall-trend-card--erasure .overall-trend-head strong,
 .overall-race-lane--erasure .lane-rank {
-  color: #ff9ad0;
+  color: var(--team-erasure);
 }
 
 .overall-trend-card--qa .overall-trend-head strong,
 .overall-race-lane--qa .lane-rank {
-  color: #8cf04a;
+  color: var(--team-qa);
 }
 
 .overall-trend-card--sorting .overall-trend-head strong,
 .overall-race-lane--sorting .lane-rank {
-  color: #ffbf67;
+  color: var(--team-sorting);
 }
 
 .overall-visual-grid {
@@ -4581,9 +4639,15 @@ main.layout {
 .spotlight-hero {
   margin-top: 7px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 9px;
   align-items: center;
+}
+
+.spotlight-mascot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .spotlight-section-badge {
@@ -4845,23 +4909,23 @@ main.layout {
 }
 
 .overall-race-lane--goods-in .lane-fill {
-  background: linear-gradient(90deg, #5ce1a6, #1cc8a0);
+  background: linear-gradient(90deg, #c59dff, var(--team-goods-in));
 }
 
 .overall-race-lane--ia .lane-fill {
-  background: linear-gradient(90deg, #8fb4ff, #5e79ff);
+  background: linear-gradient(90deg, #ffe98a, var(--team-ia));
 }
 
 .overall-race-lane--erasure .lane-fill {
-  background: linear-gradient(90deg, #ffb44c, #ff45ba);
+  background: linear-gradient(90deg, #9cff8f, var(--team-erasure));
 }
 
 .overall-race-lane--qa .lane-fill {
-  background: linear-gradient(90deg, #8cf04a, #ff1ea3);
+  background: linear-gradient(90deg, #95d5ff, var(--team-qa));
 }
 
 .overall-race-lane--sorting .lane-fill {
-  background: linear-gradient(90deg, #ffd84d, #ff8e3c);
+  background: linear-gradient(90deg, #ffd07e, var(--team-sorting));
 }
 
 .lane-progress-dot {
@@ -4870,10 +4934,10 @@ main.layout {
   z-index: 2;
   width: 6px;
   height: 6px;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
   border-radius: 999px;
-  background: #8cf04a;
-  box-shadow: 0 0 8px rgba(140, 240, 74, 0.7);
+  background: #d8f7ff;
+  box-shadow: 0 0 8px rgba(155, 226, 255, 0.75);
 }
 
 .lane-value {
@@ -4885,15 +4949,60 @@ main.layout {
 
 .lane-car {
   position: absolute;
-  top: -5px;
+  top: 50%;
   z-index: 3;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
-  transform: rotate(90deg);
+  transform: translate(-50%, -50%) rotate(90deg);
+  margin-top: 0;
   transform-origin: center;
+  pointer-events: none;
+}
+
+.overall-team-mascot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.overall-team-mascot img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.overall-team-mascot--card,
+.overall-team-mascot--lane,
+.overall-team-mascot--crew {
+  width: 18px;
+  height: 18px;
+}
+
+.overall-team-mascot--corner {
+  width: 30px;
+  height: 30px;
+  opacity: 0.85;
+}
+
+.overall-team-mascot--fallback {
+  font-size: 10px;
+  font-weight: 900;
+  color: #eaf3ff;
+}
+
+.overall-card-mascot-corner {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
   pointer-events: none;
 }
 
@@ -5216,7 +5325,7 @@ main.layout {
   }
 
   .spotlight-hero {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     gap: 8px;
   }
 
@@ -5240,17 +5349,19 @@ main.layout {
   }
 
   .lane-car {
-    width: 26px;
-    height: 26px;
-    top: -5px;
+    width: 32px;
+    height: 32px;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(90deg);
   }
 }
 
 @media (max-height: 900px) {
   .lane-car {
-    width: 24px;
-    height: 24px;
-    top: -5px;
+    width: 30px;
+    height: 30px;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(90deg);
   }
 
   .overall-section-grid {

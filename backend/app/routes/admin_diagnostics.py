@@ -1,9 +1,12 @@
 from typing import Callable
 from datetime import UTC, datetime
 import os
+import json
+import sqlite3
 import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
+import html
 from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import APIRouter, HTTPException, Request
@@ -794,6 +797,11 @@ def create_admin_diagnostics_router(
         goods_in_auth_header = str(os.getenv("GOODS_IN_API_AUTH_HEADER", "Authorization")).strip() or "Authorization"
         goods_in_auth_scheme_raw = str(os.getenv("GOODS_IN_API_AUTH_SCHEME", "bearer")).strip().lower() or "bearer"
         goods_in_token_mode = str(os.getenv("GOODS_IN_API_TOKEN_MODE", "auto")).strip().lower() or "auto"
+        goods_in_site_filter_terms = [
+            t.strip().lower()
+            for t in str(os.getenv("GOODS_IN_API_SITE_FILTER_TERMS", "bh-goodsin,berry hill")).split(",")
+            if t and t.strip()
+        ]
         goods_in_auth_scheme_key = goods_in_auth_scheme_raw.replace(" ", "").replace("_", "").replace("-", "")
 
         if goods_in_auth_scheme_key in ("secrettoken", "token"):
@@ -851,7 +859,8 @@ def create_admin_diagnostics_router(
             mode_key = (mode or "").strip().lower()
             if mode_key == "xml":
                 xml_body = f"<traderapi><token>{xml_escape(goods_in_api_token)}</token></traderapi>".encode("utf-8")
-                req = urllib.request.Request(goods_in_api_url, data=xml_body, method="POST")
+                # Trader endpoint expects GET with XML payload body.
+                req = urllib.request.Request(goods_in_api_url, data=xml_body, method="GET")
                 req.add_header("Content-Type", "application/xml")
                 req.add_header("Accept", "application/xml, text/xml")
                 with urllib.request.urlopen(req, timeout=15) as resp:
@@ -863,6 +872,104 @@ def create_admin_diagnostics_router(
             req.add_header("Accept", "application/xml, text/xml")
             with urllib.request.urlopen(req, timeout=15) as resp:
                 return resp.read()
+
+        def _parse_goods_in_root(payload_bytes: bytes):
+            root = ET.fromstring(payload_bytes)
+            tag = str(getattr(root, "tag", "") or "").lower()
+            if tag.endswith("string"):
+                wrapped_text = (root.text or "").strip()
+                if wrapped_text:
+                    unwrapped = html.unescape(wrapped_text).strip()
+                    # Some responses are wrapped in quotes: "<grns>...</grns>"
+                    if (unwrapped.startswith('"') and unwrapped.endswith('"')) or (unwrapped.startswith("'") and unwrapped.endswith("'")):
+                        unwrapped = unwrapped[1:-1].strip()
+                    if "<grns" in unwrapped.lower():
+                        start_idx = unwrapped.lower().find("<grns")
+                        if start_idx > 0:
+                            unwrapped = unwrapped[start_idx:]
+                        return ET.fromstring(unwrapped)
+            return root
+
+        def _matches_site_filter(row: dict) -> bool:
+            if not goods_in_site_filter_terms:
+                return True
+            haystack = " ".join(
+                [
+                    str(row.get("location") or ""),
+                    str(row.get("warehouse") or ""),
+                    str(row.get("virtualWarehouse") or ""),
+                ]
+            ).lower()
+            if not haystack.strip():
+                return True
+            return any(term in haystack for term in goods_in_site_filter_terms)
+
+        def _open_snapshot_key() -> str:
+            safe_url = goods_in_api_url.lower().strip()
+            return f"goods_in_api_arrival_open::{safe_url}::{'|'.join(goods_in_site_filter_terms)}"
+
+        def _load_previous_open_orders(snapshot_key: str) -> set[str]:
+            prev_orders: set[str] = set()
+            db_conn = sqlite3.connect(db_module.DB_PATH)
+            try:
+                cur = db_conn.cursor()
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS goods_in_arrival_snapshots (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        snapshot_key TEXT NOT NULL,
+                        captured_at TEXT NOT NULL,
+                        open_orders_json TEXT NOT NULL
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    SELECT open_orders_json
+                    FROM goods_in_arrival_snapshots
+                    WHERE snapshot_key = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (snapshot_key,),
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    decoded = json.loads(row[0])
+                    if isinstance(decoded, list):
+                        prev_orders = {str(v).strip() for v in decoded if str(v).strip()}
+            finally:
+                db_conn.close()
+            return prev_orders
+
+        def _store_open_orders_snapshot(snapshot_key: str, open_orders: set[str]) -> None:
+            db_conn = sqlite3.connect(db_module.DB_PATH)
+            try:
+                cur = db_conn.cursor()
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS goods_in_arrival_snapshots (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        snapshot_key TEXT NOT NULL,
+                        captured_at TEXT NOT NULL,
+                        open_orders_json TEXT NOT NULL
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    INSERT INTO goods_in_arrival_snapshots(snapshot_key, captured_at, open_orders_json)
+                    VALUES (?, ?, ?)
+                    """,
+                    (
+                        snapshot_key,
+                        datetime.now(UTC).isoformat(),
+                        json.dumps(sorted(open_orders)),
+                    ),
+                )
+                db_conn.commit()
+            finally:
+                db_conn.close()
 
         if goods_in_enabled and goods_in_api_url and goods_in_api_token:
             try:
@@ -889,7 +996,7 @@ def create_admin_diagnostics_router(
                         raise last_err
                     raise RuntimeError("Goods In API returned empty payload")
 
-                root = ET.fromstring(payload)
+                root = _parse_goods_in_root(payload)
                 all_rows = []
                 for grn in root.findall(".//grn"):
                     order_number = (grn.findtext("order_number") or "").strip()
@@ -899,6 +1006,10 @@ def create_admin_diagnostics_router(
                     arrival_raw = (grn.findtext("arrival_date") or "").strip()
                     start_raw = (grn.findtext("start_time") or "").strip()
                     finish_raw = (grn.findtext("finish_time") or "").strip()
+                    status_raw = (grn.findtext("status") or grn.findtext("receipt_status") or "").strip()
+                    warehouse_raw = (grn.findtext("warehouse") or "").strip()
+                    location_raw = (grn.findtext("location") or "").strip()
+                    virtual_warehouse_raw = (grn.findtext("virtual_warehouse") or "").strip()
 
                     arrival_dt = _parse_goods_in_dt(arrival_raw)
                     start_dt = _parse_goods_in_dt(start_raw)
@@ -918,6 +1029,10 @@ def create_admin_diagnostics_router(
                             "startDt": start_dt,
                             "finishDt": finish_dt,
                             "eventDt": event_dt,
+                            "statusRaw": status_raw,
+                            "warehouse": warehouse_raw,
+                            "location": location_raw,
+                            "virtualWarehouse": virtual_warehouse_raw,
                         }
                     )
 
@@ -930,6 +1045,8 @@ def create_admin_diagnostics_router(
                         continue
                     if dt.timestamp() >= cutoff:
                         filtered_rows.append(row)
+
+                filtered_rows = [row for row in filtered_rows if _matches_site_filter(row)]
 
                 latest_by_order = {}
                 for row in filtered_rows:
@@ -949,8 +1066,20 @@ def create_admin_diagnostics_router(
                 latest_rows.sort(key=lambda r: (r.get("eventDt") or datetime.min.replace(tzinfo=UTC)), reverse=True)
 
                 today_date = datetime.now(UTC).date()
-                awaiting_rows = [r for r in latest_rows if not r.get("finishDt")]
+                awaiting_rows = []
+                for r in latest_rows:
+                    status_text = str(r.get("statusRaw") or "").strip().lower()
+                    if status_text:
+                        if status_text == "open":
+                            awaiting_rows.append(r)
+                    elif not r.get("finishDt"):
+                        awaiting_rows.append(r)
                 received_today_rows = [r for r in latest_rows if r.get("finishDt") and r.get("finishDt").date() == today_date]
+                open_order_numbers = {str(r.get("orderNumber") or "").strip() for r in awaiting_rows if str(r.get("orderNumber") or "").strip()}
+                snapshot_key = _open_snapshot_key()
+                prev_open_order_numbers = _load_previous_open_orders(snapshot_key)
+                inferred_received_since_last_snapshot = sorted(prev_open_order_numbers - open_order_numbers)
+                _store_open_orders_snapshot(snapshot_key, open_order_numbers)
 
                 awaiting_samples = []
                 for row in awaiting_rows[:limit]:
@@ -960,7 +1089,12 @@ def create_admin_diagnostics_router(
                             "automationOrderNumber": row.get("orderNumber") or "",
                             "lastGrnDate": _iso(row.get("arrivalDt") or row.get("startDt")),
                             "receiptStatus": "PENDING",
+                            "receiptStatusRaw": "",
                             "orderStatus": row.get("orderType") or None,
+                            "operator": row.get("operator") or "",
+                            "totalItems": row.get("totalItems"),
+                            "location": row.get("location") or "",
+                            "warehouse": row.get("warehouse") or "",
                             "dateAdded": _iso(row.get("startDt")),
                             "dateRequired": _iso(row.get("arrivalDt")),
                             "shipDate": _iso(row.get("finishDt")),
@@ -978,7 +1112,12 @@ def create_admin_diagnostics_router(
                             "lastGrnDate": _iso(row.get("arrivalDt") or row.get("startDt")),
                             "lastReceivedDate": _iso(row.get("finishDt")),
                             "receiptStatus": "RECEIVED",
+                            "receiptStatusRaw": "",
                             "orderStatus": row.get("orderType") or None,
+                            "operator": row.get("operator") or "",
+                            "totalItems": row.get("totalItems"),
+                            "location": row.get("location") or "",
+                            "warehouse": row.get("warehouse") or "",
                             "dateAdded": _iso(row.get("startDt")),
                             "dateRequired": _iso(row.get("arrivalDt")),
                             "shipDate": _iso(row.get("finishDt")),
@@ -990,6 +1129,35 @@ def create_admin_diagnostics_router(
                 total_orders = len(latest_rows)
                 awaiting_count = len(awaiting_rows)
                 matched_count = max(0, total_orders - awaiting_count)
+                location_counts: dict[str, int] = {}
+                warehouse_counts: dict[str, int] = {}
+                for row in latest_rows:
+                    loc_key = str(row.get("location") or "").strip() or "(blank)"
+                    wh_key = str(row.get("warehouse") or "").strip() or "(blank)"
+                    location_counts[loc_key] = int(location_counts.get(loc_key, 0)) + 1
+                    warehouse_counts[wh_key] = int(warehouse_counts.get(wh_key, 0)) + 1
+                top_locations = [{"value": k, "count": v} for k, v in sorted(location_counts.items(), key=lambda item: item[1], reverse=True)[:20]]
+                top_warehouses = [{"value": k, "count": v} for k, v in sorted(warehouse_counts.items(), key=lambda item: item[1], reverse=True)[:20]]
+                api_all_samples = []
+                for row in latest_rows[:limit]:
+                    status_text = str(row.get("statusRaw") or "").strip()
+                    inferred_status = "OPEN" if str(status_text).lower() == "open" else ("RECEIVED" if row.get("finishDt") else "UNKNOWN")
+                    api_all_samples.append(
+                        {
+                            "grnOrderNumber": row.get("orderNumber") or "",
+                            "statusRaw": status_text,
+                            "inferredStatus": inferred_status,
+                            "orderStatus": row.get("orderType") or None,
+                            "operator": row.get("operator") or "",
+                            "totalItems": row.get("totalItems"),
+                            "location": row.get("location") or "",
+                            "warehouse": row.get("warehouse") or "",
+                            "virtualWarehouse": row.get("virtualWarehouse") or "",
+                            "dateRequired": _iso(row.get("arrivalDt")),
+                            "dateAdded": _iso(row.get("startDt")),
+                            "shipDate": _iso(row.get("finishDt")),
+                        }
+                    )
 
                 return {
                     "summary": {
@@ -1009,10 +1177,16 @@ def create_admin_diagnostics_router(
                         "apiAuthScheme": goods_in_auth_scheme,
                         "sampleAwaitingCount": len(awaiting_samples),
                         "sampleReceivedTodayCount": len(received_today_samples),
+                        "siteFilterTerms": goods_in_site_filter_terms,
+                        "inferredReceivedSinceLastSnapshot": len(inferred_received_since_last_snapshot),
+                        "inferredReceivedSample": inferred_received_since_last_snapshot[:limit],
+                        "topLocations": top_locations,
+                        "topWarehouses": top_warehouses,
                         "generatedAt": datetime.now(UTC).isoformat(),
                     },
                     "awaitingSamples": awaiting_samples,
                     "receivedTodaySamples": received_today_samples,
+                    "apiAllSamples": api_all_samples,
                 }
             except urllib.error.HTTPError as exc:
                 err_snippet = ""
@@ -1028,8 +1202,8 @@ def create_admin_diagnostics_router(
                     api_fallback_error = f"Goods In API HTTP {exc.code}"
             except urllib.error.URLError:
                 api_fallback_error = "Goods In API unavailable"
-            except Exception:
-                api_fallback_error = "Goods In API parse failure"
+            except Exception as exc:
+                api_fallback_error = f"Goods In API parse failure: {exc}"
 
         conn = None
         try:

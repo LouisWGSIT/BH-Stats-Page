@@ -112,7 +112,9 @@
         return getSubMetric(section, [/completed ia/, /ready for erasure/]);
       }
       if (section.key === 'erasure') {
-        return getSubMetric(section, [/erased today/, /processed today/, /completed erasure/]);
+        const fromSubmetrics = getSubMetric(section, [/erased today/, /processed today/, /completed erasure/]);
+        const fromLiveRaceSource = getErasureTodayFromDashboard();
+        return Math.max(fromSubmetrics, fromLiveRaceSource);
       }
       if (section.key === 'qa') {
         return getSubMetric(section, [/completed qa today/, /qa complete/]);
@@ -166,6 +168,14 @@
       return `No active work right now.`;
     }
 
+    function getErasureTodayFromDashboard() {
+      const el = document.getElementById('totalTodayValue');
+      if (!el) return 0;
+      const raw = String(el.textContent || '').replace(/,/g, '').trim();
+      const parsed = parseInt(raw, 10);
+      return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+    }
+
     function getFallbackSpotlight() {
       return {
         goodsIn: { name: 'Unable to yet', count: 0 },
@@ -179,13 +189,31 @@
     function getSectionMeta(sectionKey) {
       const key = String(sectionKey || '');
       const map = {
-        goods_in: { label: 'Inbound', shortLabel: 'Goods In', icon: 'GI', accentClass: 'goods-in' },
-        ia: { label: 'Assessment', shortLabel: 'IA', icon: 'IA', accentClass: 'ia' },
-        erasure: { label: 'Data Erase', shortLabel: 'Erasure', icon: 'DE', accentClass: 'erasure' },
-        qa: { label: 'Quality', shortLabel: 'QA', icon: 'QA', accentClass: 'qa' },
-        sorting: { label: 'Dispatch', shortLabel: 'Sorting', icon: 'SO', accentClass: 'sorting' },
+        goods_in: { label: 'Inbound', shortLabel: 'Goods In', icon: 'GI', accentClass: 'goods-in', mascotName: 'Purpie', mascotSrc: 'assets/Purpie.png' },
+        ia: { label: 'Assessment', shortLabel: 'IA', icon: 'IA', accentClass: 'ia', mascotName: 'Yellie', mascotSrc: 'assets/Yellie.png' },
+        erasure: { label: 'Data Erase', shortLabel: 'Erasure', icon: 'DE', accentClass: 'erasure', mascotName: 'Greenie', mascotSrc: 'assets/Greenie.png' },
+        qa: { label: 'Quality', shortLabel: 'QA', icon: 'QA', accentClass: 'qa', mascotName: 'Bluie', mascotSrc: 'assets/Bluie.png' },
+        sorting: { label: 'Dispatch', shortLabel: 'Sorting', icon: 'SO', accentClass: 'sorting', mascotName: 'Orangie', mascotSrc: 'assets/Orangie.png' },
       };
-      return map[key] || { label: 'Operations', shortLabel: key || 'Section', icon: 'OP', accentClass: 'generic' };
+      return map[key] || { label: 'Operations', shortLabel: key || 'Section', icon: 'OP', accentClass: 'generic', mascotName: 'Ops', mascotSrc: '' };
+    }
+
+    function renderSectionMascot(meta, variant = 'card') {
+      const name = String(meta.mascotName || meta.shortLabel || '').trim();
+      const src = String(meta.mascotSrc || '').trim();
+      if (src) {
+        return `
+          <span class="overall-team-mascot overall-team-mascot--${variant} overall-team-mascot--${meta.accentClass}" title="${name}">
+            <img src="${src}" alt="${name}" />
+          </span>
+        `;
+      }
+      const initials = getMonogram(name || meta.shortLabel || meta.icon);
+      return `
+        <span class="overall-team-mascot overall-team-mascot--${variant} overall-team-mascot--${meta.accentClass} overall-team-mascot--fallback" title="${name}">
+          ${initials}
+        </span>
+      `;
     }
 
     function getSectionStateClass(section) {
@@ -202,7 +230,7 @@
       if (!cleaned || cleaned === '—' || cleaned.toLowerCase().includes('unable')) return '--';
       const parts = cleaned.split(/\s+/).filter(Boolean);
       if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-      return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+      return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
     }
 
     function getAvatarDataUri(initials) {
@@ -221,12 +249,22 @@
     }
 
     function getSectionCrew(section, meta) {
+      const liveCrewKeys = new Set(['erasure', 'qa', 'sorting']);
+      if (liveCrewKeys.has(section.key) && Array.isArray(section.crewMembers) && section.crewMembers.length) {
+        return section.crewMembers
+          .map((row) => ({
+            name: getMonogram(String((row && row.name) || '').trim()),
+            count: Number((row && row.count) || 0),
+          }))
+          .filter((row) => row.name && row.name !== '--')
+          .slice(0, 10);
+      }
       return [
-        getMonogram(section.owner || section.name),
-        getMonogram(meta.shortLabel),
-        getMonogram(meta.icon),
+        { name: getMonogram(section.owner || section.name), count: 0 },
+        { name: getMonogram(meta.shortLabel), count: 0 },
+        { name: getMonogram(meta.icon), count: 0 },
       ]
-        .filter((value) => value && value !== '--')
+        .filter((row) => row.name && row.name !== '--')
         .slice(0, 3);
     }
 
@@ -306,8 +344,8 @@
                   <div class="overall-bay-crew-icons">
                     ${crew.map((member) => `
                       <span class="overall-bay-crew-chip">
-                        ${renderPixelAvatar(member, 'overall-avatar--crew')}
-                        <span class="overall-bay-crew-text">${member}</span>
+                        ${renderPixelAvatar(getMonogram(member.name), 'overall-avatar--crew')}
+                        <span class="overall-bay-crew-text">${getMonogram(member.name)}</span>
                       </span>
                     `).join('')}
                   </div>
@@ -320,6 +358,7 @@
               <span class="trend ${trendClass}">${trendLabel(section.trend)} vs last hour</span>
             </div>
             <p class="overall-action">${activityText(section)}${(isAdminViewer && !section.isLive && sourceReason) ? ` (${sourceReason})` : ''}</p>
+            <div class="overall-card-mascot-corner" aria-hidden="true">${renderSectionMascot(meta, 'corner')}</div>
           </article>
         `;
       }).join('');
@@ -450,6 +489,9 @@
               <div class="spotlight-owner">${bestLive.section}</div>
               <div class="spotlight-score">${bestLive.count} actions today</div>
             </div>
+            <div class="spotlight-mascot" aria-hidden="true">
+              ${renderSectionMascot(bestMeta, 'spotlight')}
+            </div>
             <div class="spotlight-mini-metric">
               <strong>${sharePct}%</strong>
               <span>share</span>
@@ -474,14 +516,6 @@
       const raceEl = document.getElementById('overallRaceTrack');
       if (!raceEl) return;
       const MIN_VISIBLE_PROGRESS = 3;
-
-      function getErasureTodayFromDashboard() {
-        const el = document.getElementById('totalTodayValue');
-        if (!el) return 0;
-        const raw = String(el.textContent || '').replace(/,/g, '').trim();
-        const parsed = parseInt(raw, 10);
-        return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-      }
 
       function getRaceTrackDone(section) {
         // Erasure is sourced from the Erasure dashboard donut metric.
@@ -517,7 +551,11 @@
           done: getRaceTrackDone(s),
           progress: clamp(Math.round((getRaceTrackDone(s) / maxDone) * 100), 0, 100),
         }))
-        .sort((a, b) => b.progress - a.progress);
+        .sort((a, b) => {
+          const doneDelta = b.done - a.done;
+          if (doneDelta !== 0) return doneDelta;
+          return b.progress - a.progress;
+        });
       const totalDone = lanes.reduce((sum, lane) => sum + lane.done, 0);
       raceEl.innerHTML = `
         <div class="overall-race-meta">
@@ -534,12 +572,13 @@
               <div class="overall-race-lane overall-race-lane--${lane.meta.accentClass} ${index === 0 ? 'is-leading' : ''}">
                 <div class="lane-heading">
                   <span class="lane-rank">${index + 1}</span>
+                  ${renderSectionMascot(lane.meta, 'lane')}
                   <span class="lane-name">${lane.name}</span>
                 </div>
                 <div class="lane-track">
                   <span class="lane-fill" style="right:calc(100% - ${carLeftPct}%);"></span>
-                  <span class="lane-progress-dot" style="left:calc(${carLeftPct}% - 4px)"></span>
-                  <img class="lane-car" src="assets/F1Car.png" alt="" style="left:calc(${carLeftPct}% - 10px)" />
+                  <span class="lane-progress-dot" style="left:${carLeftPct}%"></span>
+                  <img class="lane-car" src="assets/F1Car.png" alt="" style="left:${carLeftPct}%" />
                 </div>
                 <span class="lane-value">${lane.done}</span>
               </div>
@@ -658,6 +697,7 @@
         source: section.source || 'mock',
         queryMs: Number.isFinite(Number(section.queryMs)) ? Number(section.queryMs) : null,
         sourceReason: section.sourceReason || '',
+        crewMembers: Array.isArray(section.crewMembers) ? section.crewMembers : [],
       };
     }
 
