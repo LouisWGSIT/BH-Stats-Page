@@ -24,7 +24,7 @@ from pathlib import Path
 import os
 from collections import defaultdict
 from contextlib import contextmanager
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 # SQLite transaction helper to ensure commits/rollbacks and proper closing
@@ -1236,7 +1236,25 @@ def get_speed_challenge_status(time_window: str = "am") -> Dict:
     from datetime import time as dt_time
 
     business_tz = os.getenv("OVERALL_BUSINESS_TZ", "Europe/London")
-    now = datetime.now(ZoneInfo(business_tz))
+    try:
+        now = datetime.now(ZoneInfo(business_tz))
+    except (ZoneInfoNotFoundError, ValueError):
+        # Fallback for hosts missing tzdata (some slim Linux / Python images).
+        # Keep endpoint alive and approximate UK time for challenge windows.
+        utc_now = datetime.now(UTC)
+        if business_tz == "Europe/London":
+            year = utc_now.year
+
+            def _last_sunday(month: int) -> int:
+                d = date(year, month, 31)
+                return d.day - ((d.weekday() + 1) % 7)
+
+            bst_start_utc = datetime(year, 3, _last_sunday(3), 1, 0, tzinfo=UTC)
+            bst_end_utc = datetime(year, 10, _last_sunday(10), 1, 0, tzinfo=UTC)
+            is_bst = bst_start_utc <= utc_now < bst_end_utc
+            now = utc_now + (timedelta(hours=1) if is_bst else timedelta(0))
+        else:
+            now = datetime.now()
     current_time = now.time()
     
     if time_window == "am":
@@ -1253,6 +1271,8 @@ def get_speed_challenge_status(time_window: str = "am") -> Dict:
     time_remaining_minutes = 0
     if is_active:
         end_datetime = datetime.combine(now.date(), end_time)
+        if now.tzinfo is not None:
+            end_datetime = end_datetime.replace(tzinfo=now.tzinfo)
         time_remaining_minutes = int((end_datetime - now).total_seconds() / 60)
     
     return {
