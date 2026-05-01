@@ -225,6 +225,9 @@
               }
 
               applyRolePermissions();
+              // Unlock immediately after successful credential validation so users
+              // never remain on a black screen if downstream initialization is delayed.
+              setAuthScreenLock(false);
               form.style.display = 'none';
               accessGranted.style.display = 'block';
 
@@ -410,9 +413,13 @@
 
     async function ensureAuthenticated() {
       setAuthScreenLock(true);
-      const isAuthenticated = await checkAuth();
-      if (!isAuthenticated) {
-        await waitForAuthToken();
+      try {
+        const isAuthenticated = await checkAuth();
+        if (!isAuthenticated) {
+          await waitForAuthToken();
+        }
+      } finally {
+        // Final safety release to avoid a stuck blackout state.
         setAuthScreenLock(false);
       }
       applyRolePermissions();

@@ -5,6 +5,9 @@
   if (authUiApi && typeof authUiApi.ensureAuthenticated === 'function') {
     await authUiApi.ensureAuthenticated();
   }
+  if (document && document.body) {
+    document.body.classList.remove('auth-screened');
+  }
 
   // Now proceed with dashboard initialization
   const cfg = await fetch('/config.json').then(r => r.json());
