@@ -182,7 +182,7 @@ def get_client_ips(request: Request) -> list:
     return ["0.0.0.0"]
 
 
-def get_role_from_request(*, request: Request, admin_password: str, manager_password: str, is_token_valid, load_tokens) -> str | None:
+def get_role_from_request(*, request: Request, admin_password: str, manager_password: str, viewer_password: str = "", is_token_valid=None, load_tokens=None) -> str | None:
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
@@ -190,7 +190,9 @@ def get_role_from_request(*, request: Request, admin_password: str, manager_pass
             return "admin"
         if hmac.compare_digest(token, manager_password):
             return "manager"
-        if is_token_valid(token):
+        if viewer_password and hmac.compare_digest(token, viewer_password):
+            return "viewer"
+        if is_token_valid and load_tokens and is_token_valid(token):
             tokens = load_tokens()
             return tokens.get(token, {}).get("role")
     return None
@@ -215,6 +217,7 @@ async def auth_middleware(
     dashboard_public: bool,
     admin_password: str,
     manager_password: str,
+    viewer_password: str = "",
     is_local_network_fn,
     is_token_valid_fn,
     load_tokens_fn,
@@ -225,6 +228,7 @@ async def auth_middleware(
     legacy_basic_auth_enabled: bool = False,
 ):
     client_ip = get_client_ip_fn(request)
+    strict_viewer_password = bool(str(viewer_password or "").strip())
 
     if request.url.path.startswith(("/styles.css", "/assets/", "/vendor/")):
         return await call_next(request)
@@ -235,7 +239,7 @@ async def auth_middleware(
     if request.url.path.startswith("/auth/"):
         return await call_next(request)
 
-    if is_local_network_fn(client_ip):
+    if is_local_network_fn(client_ip) and not strict_viewer_password:
         # Intentional policy: trusted network viewers can access non-admin routes
         # even if a remembered device token is missing.
         if not request.url.path.startswith("/admin"):
@@ -256,11 +260,12 @@ async def auth_middleware(
                 return JSONResponse(status_code=403, content={"detail": "Admin access required."})
             return await call_next(request)
 
-    try:
-        if dashboard_public and request.method == "GET" and request.url.path.startswith(("/metrics", "/analytics")):
-            return await call_next(request)
-    except Exception:
-        pass
+    if not strict_viewer_password:
+        try:
+            if dashboard_public and request.method == "GET" and request.url.path.startswith(("/metrics", "/analytics")):
+                return await call_next(request)
+        except Exception:
+            pass
 
     try:
         ingest_key = os.getenv('INGESTION_KEY')
@@ -278,6 +283,10 @@ async def auth_middleware(
         if hmac.compare_digest(token, admin_password):
             return await call_next(request)
         if hmac.compare_digest(token, manager_password):
+            if request.url.path.startswith("/admin"):
+                return JSONResponse(status_code=403, content={"detail": "Admin access required."})
+            return await call_next(request)
+        if strict_viewer_password and hmac.compare_digest(token, viewer_password):
             if request.url.path.startswith("/admin"):
                 return JSONResponse(status_code=403, content={"detail": "Admin access required."})
             return await call_next(request)

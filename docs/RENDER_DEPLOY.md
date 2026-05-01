@@ -11,7 +11,7 @@ Quick steps
    - `MARIADB_HOST`, `MARIADB_USER`, `MARIADB_PASSWORD`, `MARIADB_DB`, `MARIADB_PORT` (if needed)
    - `WEBHOOK_API_KEY` (for `/hooks/*` and `/hwid` endpoints)
    - `INGESTION_SECRET` (preferred) or `INGESTION_KEY` (legacy) for `/api/ingest/local-erasure`
-   - `DASHBOARD_ADMIN_PASSWORD`, `DASHBOARD_MANAGER_PASSWORD`
+   - `DASHBOARD_ADMIN_PASSWORD`, `DASHBOARD_MANAGER_PASSWORD`, `DASHBOARD_VIEWER_PASSWORD`
    - Other optional envs: `AUTO_BACKFILL`, `AUTO_BACKFILL_DAYS`, etc.
 3. Commit & push your changes; deploy on Render.
 4. After deployment, verify:

@@ -860,9 +860,12 @@
         <h2>Dashboard Access</h2>
         <p id="accessMessage">Checking access...</p>
         <form id="loginForm" style="display: none;">
-          <input type="password" id="passwordInput" placeholder="Enter password" autocomplete="off" />
+          <input type="password" id="passwordInput" placeholder="Enter password" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" />
+          <p id="tvInputHint" class="tv-input-hint">TV mode: you can use your remote to focus this field, or enter using the on-screen keypad below.</p>
+          <div id="tvKeypad" class="tv-keypad" role="group" aria-label="On-screen password keypad"></div>
           <div class="login-actions">
             <button type="submit" class="btn-primary">Access Dashboard</button>
+            <button type="button" id="clearPasswordBtn" class="btn-secondary">Clear</button>
             <button type="button" id="dismissLoginBtn" class="btn-secondary">Continue as Viewer</button>
           </div>
         </form>

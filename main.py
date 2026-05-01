@@ -221,6 +221,7 @@ async def fetch_blancco_device_details(job_id: str):
 LOCAL_NETWORKS = runtime_state.build_local_networks()
 MANAGER_PASSWORD = runtime_state.get_manager_password()
 ADMIN_PASSWORD = runtime_state.get_admin_password()
+VIEWER_PASSWORD = runtime_state.get_viewer_password()
 DASHBOARD_PUBLIC = runtime_state.get_dashboard_public_flag()
 
 # Device token storage (persistent across redeployments)
@@ -262,6 +263,7 @@ auth_binding_funcs = auth_bindings_module.create_auth_bindings(
     local_networks=LOCAL_NETWORKS,
     admin_password=ADMIN_PASSWORD,
     manager_password=MANAGER_PASSWORD,
+    viewer_password=VIEWER_PASSWORD,
     dashboard_public=DASHBOARD_PUBLIC,
     legacy_query_auth_enabled=runtime_state.is_legacy_query_auth_enabled(),
     legacy_basic_auth_enabled=runtime_state.is_legacy_basic_auth_enabled(),
@@ -363,6 +365,7 @@ router_wiring.register_routes(
     create_hwid_router=create_hwid_router,
     admin_password=ADMIN_PASSWORD,
     manager_password=MANAGER_PASSWORD,
+    viewer_password=VIEWER_PASSWORD,
     device_token_expiry_days=DEVICE_TOKEN_EXPIRY_DAYS,
     get_client_ip=get_client_ip,
     get_client_ips=get_client_ips,

@@ -35,6 +35,10 @@ def get_admin_password() -> str:
     return os.getenv("DASHBOARD_ADMIN_PASSWORD", "")
 
 
+def get_viewer_password() -> str:
+    return os.getenv("DASHBOARD_VIEWER_PASSWORD", "")
+
+
 def get_dashboard_public_flag() -> bool:
     return os.getenv("DASHBOARD_PUBLIC", "false").lower() in ("1", "true", "yes")
 

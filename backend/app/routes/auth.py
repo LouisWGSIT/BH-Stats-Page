@@ -1,7 +1,5 @@
 from datetime import UTC, datetime, timedelta
-import hashlib
 import hmac
-import secrets
 from typing import Callable
 
 from fastapi import APIRouter, HTTPException, Request
@@ -24,6 +22,7 @@ def create_auth_router(
     *,
     admin_password: str,
     manager_password: str,
+    viewer_password: str,
     device_token_expiry_days: int,
     get_client_ip: Callable[[Request], str],
     get_client_ips: Callable[[Request], list[str]],
@@ -45,8 +44,9 @@ def create_auth_router(
         is_tv_browser = "silk" in user_agent or "firetv" in user_agent or "aftt" in user_agent
 
         is_local = is_local_network(client_ip)
-        is_authenticated = is_local
-        role = "viewer" if is_local else None
+        strict_viewer_password = bool(str(viewer_password or "").strip())
+        is_authenticated = is_local and not strict_viewer_password
+        role = "viewer" if is_authenticated else None
 
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
@@ -56,6 +56,9 @@ def create_auth_router(
                 is_authenticated = True
             elif hmac.compare_digest(token, manager_password):
                 role = "manager"
+                is_authenticated = True
+            elif strict_viewer_password and hmac.compare_digest(token, viewer_password):
+                role = "viewer"
                 is_authenticated = True
             elif is_device_token_valid(token):
                 tokens = load_device_tokens()
@@ -73,52 +76,23 @@ def create_auth_router(
             f"Is TV: {is_tv_browser}, Role: {role}, X-Forwarded-For: {forwarded_for}"
         )
 
-        try:
-            auth_header = request.headers.get("Authorization", "")
-            if (is_local or is_tv_browser) and not auth_header.startswith("Bearer "):
-                ua = request.headers.get("User-Agent", "")[:512]
-                fingerprint = hashlib.sha256(f"{ua}:{client_ip}".encode()).hexdigest()
-                tokens = load_device_tokens()
-                found = None
-                for t, info in tokens.items():
-                    if info.get("fingerprint") == fingerprint and info.get("ephemeral"):
-                        found = t
-                        break
-                if found:
-                    touch_device_token(found, get_client_ips(request), ua)
-                else:
-                    anon_token = "ephemeral-" + secrets.token_urlsafe(12)
-                    tokens[anon_token] = {
-                        "created": _utc_now_iso(),
-                        "expiry": (datetime.now(UTC) + timedelta(hours=24)).isoformat().replace("+00:00", "Z"),
-                        "user_agent": ua,
-                        "client_ip": client_ip,
-                        "client_ips": get_client_ips(request),
-                        "last_client_ip": client_ip,
-                        "last_seen": _utc_now_iso(),
-                        "role": "viewer",
-                        "ephemeral": True,
-                        "fingerprint": fingerprint,
-                    }
-                    save_device_tokens(tokens)
-        except Exception:
-            pass
-
         return {
             "authenticated": is_authenticated,
             "role": role,
             "client_ip": client_ip,
             "is_tv_browser": is_tv_browser,
             "access_type": "local" if is_local else "external",
-            "message": "Local network access granted automatically" if is_local else "External access requires password",
+            "viewer_password_required": strict_viewer_password,
+            "message": "Viewer password required" if strict_viewer_password else ("Local network access granted automatically" if is_local else "External access requires password"),
         }
 
     @router.post("/auth/login")
     async def login(request: Request):
-        """Users can login with manager/admin password."""
+        """Users can login with admin, manager, or configured viewer password."""
         try:
             body = await request.json()
             password = body.get("password", "")
+            strict_viewer_password = bool(str(viewer_password or "").strip())
 
             forwarded_for = request.headers.get("X-Forwarded-For", "")
             if forwarded_for:
@@ -198,6 +172,30 @@ def create_auth_router(
                     "message": "Manager access granted",
                 }
 
+            if strict_viewer_password and hmac.compare_digest(password, viewer_password):
+                user_agent = request.headers.get("User-Agent", "Unknown")
+                device_token = generate_device_token(user_agent, client_ip)
+                tokens = load_device_tokens()
+                tokens[device_token] = {
+                    "created": _utc_now_iso(),
+                    "expiry": (datetime.now(UTC) + timedelta(days=device_token_expiry_days)).isoformat().replace("+00:00", "Z"),
+                    "user_agent": user_agent,
+                    "client_ip": client_ip,
+                    "client_ips": [client_ip],
+                    "last_client_ip": client_ip,
+                    "last_seen": _utc_now_iso(),
+                    "role": "viewer",
+                }
+                save_device_tokens(tokens)
+
+                return {
+                    "authenticated": True,
+                    "role": "viewer",
+                    "device_token": device_token,
+                    "token": device_token,
+                    "message": "Viewer access granted",
+                }
+
             raise HTTPException(status_code=401, detail="Invalid password")
         except HTTPException:
             raise
@@ -208,6 +206,8 @@ def create_auth_router(
     async def create_ephemeral_viewer(request: Request):
         """Create a short-lived viewer token for login modal dismiss flow."""
         try:
+            if str(viewer_password or "").strip():
+                raise HTTPException(status_code=403, detail="Viewer password is required")
             client_ip = get_client_ip(request)
             if not is_local_network(client_ip):
                 raise HTTPException(status_code=403, detail="Viewer token issuance is restricted to trusted networks")

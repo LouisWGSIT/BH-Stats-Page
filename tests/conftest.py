@@ -8,12 +8,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-def _load_main_with_test_env(tmp_db: Path):
+def _load_main_with_test_env(tmp_db: Path, viewer_password: str = ""):
     os.environ["STATS_DB_PATH"] = str(tmp_db)
     os.environ["INGESTION_KEY"] = "test-ingestion-key"
     os.environ["WEBHOOK_API_KEY"] = "test-webhook-key"
     os.environ["DASHBOARD_ADMIN_PASSWORD"] = "test-admin-pass"
     os.environ["DASHBOARD_MANAGER_PASSWORD"] = "test-manager-pass"
+    os.environ["DASHBOARD_VIEWER_PASSWORD"] = viewer_password
 
     if "database" in sys.modules:
         del sys.modules["database"]
@@ -44,6 +45,17 @@ def app_module(workspace_temp_dir):
 @pytest.fixture()
 def client(app_module):
     return TestClient(app_module.app)
+
+
+@pytest.fixture()
+def strict_viewer_app_module(workspace_temp_dir):
+    tmp_db = workspace_temp_dir / f"app_test_strict_viewer_{uuid.uuid4().hex}.db"
+    return _load_main_with_test_env(tmp_db, viewer_password="test-viewer-pass")
+
+
+@pytest.fixture()
+def strict_viewer_client(strict_viewer_app_module):
+    return TestClient(strict_viewer_app_module.app)
 
 
 @pytest.fixture()

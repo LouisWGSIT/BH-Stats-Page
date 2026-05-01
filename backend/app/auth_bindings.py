@@ -7,6 +7,7 @@ def create_auth_bindings(
     local_networks,
     admin_password: str,
     manager_password: str,
+    viewer_password: str,
     dashboard_public: bool,
     legacy_query_auth_enabled: bool = False,
     legacy_basic_auth_enabled: bool = False,
@@ -59,6 +60,7 @@ def create_auth_bindings(
             request=request,
             admin_password=admin_password,
             manager_password=manager_password,
+            viewer_password=viewer_password,
             is_token_valid=is_device_token_valid,
             load_tokens=load_device_tokens,
         )
@@ -76,6 +78,7 @@ def create_auth_bindings(
             dashboard_public=dashboard_public,
             admin_password=admin_password,
             manager_password=manager_password,
+            viewer_password=viewer_password,
             is_local_network_fn=is_local_network,
             is_token_valid_fn=is_device_token_valid,
             load_tokens_fn=load_device_tokens,

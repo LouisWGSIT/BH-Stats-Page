@@ -1114,6 +1114,13 @@ body {
   margin-top: 24px;
 }
 
+.login-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
 #passwordInput {
   padding: 12px 16px;
   border: 2px solid var(--ring-secondary);
@@ -1133,6 +1140,90 @@ body {
 
 #passwordInput::placeholder {
   color: rgba(255, 255, 255, 0.5);
+}
+
+#passwordInput:focus-visible,
+.tv-key:focus-visible,
+.login-actions button:focus-visible {
+  outline: 3px solid var(--ring-secondary);
+  outline-offset: 2px;
+}
+
+.tv-input-hint {
+  display: none;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #d8e4ef;
+}
+
+.tv-keypad {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.tv-keypad-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tv-key {
+  min-width: 42px;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tv-key:hover {
+  border-color: var(--ring-secondary);
+  background: rgba(140, 240, 74, 0.14);
+}
+
+.tv-key-action {
+  min-width: 112px;
+  font-size: 13px;
+}
+
+.tv-key-submit {
+  min-width: 180px;
+  background: rgba(255, 30, 163, 0.22);
+  border-color: rgba(255, 30, 163, 0.9);
+}
+
+@media (max-width: 640px), (max-height: 720px) {
+  .login-modal {
+    max-width: 94vw;
+    padding: 28px 20px;
+  }
+
+  .login-content h2 {
+    font-size: 24px;
+    margin-bottom: 12px;
+  }
+
+  #passwordInput {
+    font-size: 18px;
+    padding: 14px 16px;
+  }
+
+  .tv-key {
+    min-width: 48px;
+    min-height: 46px;
+    font-size: 15px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    min-height: 44px;
+  }
 }
 
 .btn-primary {

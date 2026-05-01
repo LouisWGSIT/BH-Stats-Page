@@ -25,6 +25,7 @@ def register_routes(
     create_hwid_router,
     admin_password,
     manager_password,
+    viewer_password,
     device_token_expiry_days,
     get_client_ip,
     get_client_ips,
@@ -62,6 +63,7 @@ def register_routes(
         create_auth_router(
             admin_password=admin_password,
             manager_password=manager_password,
+            viewer_password=viewer_password,
             device_token_expiry_days=device_token_expiry_days,
             get_client_ip=get_client_ip,
             get_client_ips=get_client_ips,

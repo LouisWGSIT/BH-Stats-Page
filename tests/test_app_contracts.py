@@ -222,6 +222,7 @@ def test_auth_status_with_manager_bearer(client):
     body = r.json()
     assert body["authenticated"] is True
     assert body["role"] == "manager"
+    assert body.get("viewer_password_required") is False
 
 
 def test_auth_status_external_tv_user_agent_not_auto_authenticated(client):
@@ -336,6 +337,36 @@ def test_ephemeral_viewer_token_rejected_for_external_ip(client):
         headers={"X-Forwarded-For": "82.163.130.162"},
         json={"name": "TV"},
     )
+    assert r.status_code == 403
+
+
+def test_strict_viewer_status_requires_password(strict_viewer_client):
+    r = strict_viewer_client.get("/auth/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["authenticated"] is False
+    assert body["viewer_password_required"] is True
+
+
+def test_strict_viewer_login_accepts_viewer_password(strict_viewer_client):
+    r = strict_viewer_client.post("/auth/login", json={"password": "test-viewer-pass"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["authenticated"] is True
+    assert body["role"] == "viewer"
+    assert body.get("token")
+
+
+def test_strict_viewer_password_allows_metrics_with_bearer(strict_viewer_client):
+    r = strict_viewer_client.get(
+        "/metrics/summary",
+        headers={"Authorization": "Bearer test-viewer-pass"},
+    )
+    assert r.status_code == 200
+
+
+def test_strict_viewer_blocks_ephemeral_token_issuance_on_local(strict_viewer_client):
+    r = strict_viewer_client.post("/auth/ephemeral-viewer", json={"name": "TV"})
     assert r.status_code == 403
 
 

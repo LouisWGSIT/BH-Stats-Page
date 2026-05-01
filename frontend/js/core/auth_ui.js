@@ -1,6 +1,121 @@
 // Auth modal flow and role-based UI controls for dashboard pages.
 (function () {
   function createApi() {
+    let loginContext = {
+      viewerPasswordRequired: false,
+      isTvBrowser: false,
+    };
+
+    function createTvKeypad(passwordInput, submitButton) {
+      const keypad = document.getElementById('tvKeypad');
+      const clearPasswordBtn = document.getElementById('clearPasswordBtn');
+      if (!keypad || !passwordInput) {
+        return;
+      }
+
+      keypad.innerHTML = '';
+
+      const rows = [
+        ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+        ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+        ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+        ['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
+      ];
+      const letterKeys = [];
+      let lowercaseMode = false;
+
+      function appendValue(value) {
+        passwordInput.value = (passwordInput.value || '') + value;
+        passwordInput.focus();
+      }
+
+      rows.forEach((rowValues) => {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'tv-keypad-row';
+
+        rowValues.forEach((value) => {
+          const key = document.createElement('button');
+          key.type = 'button';
+          key.className = 'tv-key';
+          key.textContent = value;
+          key.dataset.kind = /^[A-Z]$/.test(value) ? 'letter' : 'digit';
+          key.dataset.base = value;
+          key.addEventListener('click', () => {
+            const keyValue = key.dataset.value || key.textContent;
+            appendValue(keyValue);
+          });
+          if (key.dataset.kind === 'letter') {
+            letterKeys.push(key);
+          }
+          rowEl.appendChild(key);
+        });
+
+        keypad.appendChild(rowEl);
+      });
+
+      const controlsEl = document.createElement('div');
+      controlsEl.className = 'tv-keypad-row tv-keypad-controls';
+
+      const lowercaseKey = document.createElement('button');
+      lowercaseKey.type = 'button';
+      lowercaseKey.className = 'tv-key tv-key-action';
+      lowercaseKey.textContent = 'a-z';
+      lowercaseKey.addEventListener('click', () => {
+        lowercaseMode = !lowercaseMode;
+        lowercaseKey.textContent = lowercaseMode ? 'A-Z' : 'a-z';
+        letterKeys.forEach((letterKey) => {
+          const base = (letterKey.dataset.base || '').toUpperCase();
+          const next = lowercaseMode ? base.toLowerCase() : base;
+          letterKey.textContent = next;
+          letterKey.dataset.value = next;
+        });
+      });
+
+      const symbolKey = document.createElement('button');
+      symbolKey.type = 'button';
+      symbolKey.className = 'tv-key tv-key-action';
+      symbolKey.textContent = 'Symbol';
+      symbolKey.addEventListener('click', () => {
+        appendValue('-');
+      });
+
+      const backspaceKey = document.createElement('button');
+      backspaceKey.type = 'button';
+      backspaceKey.className = 'tv-key tv-key-action';
+      backspaceKey.textContent = 'Backspace';
+      backspaceKey.addEventListener('click', () => {
+        passwordInput.value = (passwordInput.value || '').slice(0, -1);
+        passwordInput.focus();
+      });
+
+      controlsEl.appendChild(lowercaseKey);
+      controlsEl.appendChild(symbolKey);
+      controlsEl.appendChild(backspaceKey);
+      keypad.appendChild(controlsEl);
+
+      if (clearPasswordBtn && !clearPasswordBtn.dataset.bound) {
+        clearPasswordBtn.dataset.bound = 'true';
+        clearPasswordBtn.addEventListener('click', () => {
+          passwordInput.value = '';
+          passwordInput.focus();
+        });
+      }
+
+      if (submitButton) {
+        const submitRow = document.createElement('div');
+        submitRow.className = 'tv-keypad-row';
+        const submitClone = document.createElement('button');
+        submitClone.type = 'button';
+        submitClone.className = 'tv-key tv-key-submit';
+        submitClone.textContent = 'Submit Password';
+        submitClone.addEventListener('click', () => {
+          submitButton.click();
+        });
+        submitRow.appendChild(submitClone);
+        keypad.appendChild(submitRow);
+      }
+    }
+
     function applyRolePermissions() {
       const userRole = sessionStorage.getItem('userRole') || 'viewer';
       const downloadBtn = document.getElementById('downloadBtn');
@@ -26,21 +141,49 @@
       }
     }
 
-    async function showLoginModal() {
+    async function showLoginModal(authStatus) {
+      if (authStatus && typeof authStatus === 'object') {
+        loginContext.viewerPasswordRequired = Boolean(authStatus.viewer_password_required);
+        loginContext.isTvBrowser = Boolean(authStatus.is_tv_browser);
+      }
+
       const modal = document.getElementById('loginModal');
       const form = document.getElementById('loginForm');
       const accessMsg = document.getElementById('accessMessage');
       const passwordInput = document.getElementById('passwordInput');
       const accessGranted = document.getElementById('accessGranted');
+      const dismissBtn = document.getElementById('dismissLoginBtn');
+      const clearPasswordBtn = document.getElementById('clearPasswordBtn');
+      const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+      const tvInputHint = document.getElementById('tvInputHint');
+      const tvKeypad = document.getElementById('tvKeypad');
 
       if (!modal || !form || !accessMsg || !passwordInput || !accessGranted) {
         return;
       }
 
       modal.classList.remove('hidden');
-      accessMsg.textContent = 'This dashboard is protected. External access requires a password.';
+      accessMsg.textContent = loginContext.viewerPasswordRequired
+        ? 'This dashboard is protected. Enter the viewer, manager, or admin password to continue.'
+        : 'This dashboard is protected. External access requires a password.';
+      accessMsg.style.color = 'var(--muted)';
       form.style.display = 'flex';
       accessGranted.style.display = 'none';
+
+      if (dismissBtn) {
+        dismissBtn.style.display = loginContext.viewerPasswordRequired ? 'none' : 'inline-flex';
+      }
+      if (clearPasswordBtn) {
+        clearPasswordBtn.style.display = 'inline-flex';
+      }
+      if (tvInputHint) {
+        tvInputHint.style.display = loginContext.isTvBrowser ? 'block' : 'none';
+      }
+      if (tvKeypad) {
+        tvKeypad.style.display = loginContext.isTvBrowser ? 'flex' : 'none';
+      }
+
+      createTvKeypad(passwordInput, submitBtn);
 
       if (!form.dataset.bound) {
         form.dataset.bound = 'true';
@@ -84,7 +227,9 @@
               setTimeout(() => {
                 passwordInput.style.borderColor = 'var(--ring-secondary)';
                 accessMsg.style.color = 'var(--muted)';
-                accessMsg.textContent = 'This dashboard is protected. External access requires a password.';
+                accessMsg.textContent = loginContext.viewerPasswordRequired
+                  ? 'This dashboard is protected. Enter the viewer, manager, or admin password to continue.'
+                  : 'This dashboard is protected. External access requires a password.';
               }, 2000);
             }
           } catch (err) {
@@ -95,11 +240,13 @@
         });
       }
 
-      const dismissBtn = document.getElementById('dismissLoginBtn');
       if (dismissBtn && !dismissBtn.dataset.bound) {
         dismissBtn.dataset.bound = 'true';
         dismissBtn.addEventListener('click', async (e) => {
           e.preventDefault();
+          if (loginContext.viewerPasswordRequired) {
+            return;
+          }
           sessionStorage.setItem('loginDismissed', '1');
           sessionStorage.setItem('userRole', 'viewer');
           applyRolePermissions();
@@ -138,7 +285,16 @@
         });
       }
 
-      passwordInput.focus();
+      if (loginContext.isTvBrowser) {
+        const firstTvKey = document.querySelector('#tvKeypad .tv-key');
+        if (firstTvKey) {
+          firstTvKey.focus();
+        } else {
+          passwordInput.focus();
+        }
+      } else {
+        passwordInput.focus();
+      }
     }
 
     async function checkAuth() {
@@ -172,6 +328,13 @@
         const authRes = await fetch('/auth/status');
         const authData = await authRes.json();
 
+        loginContext.viewerPasswordRequired = Boolean(authData.viewer_password_required);
+        loginContext.isTvBrowser = Boolean(authData.is_tv_browser);
+
+        if (loginContext.viewerPasswordRequired) {
+          sessionStorage.removeItem('loginDismissed');
+        }
+
         if (authData.role) {
           sessionStorage.setItem('userRole', authData.role);
         }
@@ -183,17 +346,17 @@
           return true;
         }
 
-        if (sessionStorage.getItem('loginDismissed')) {
+        if (!loginContext.viewerPasswordRequired && sessionStorage.getItem('loginDismissed')) {
           sessionStorage.setItem('userRole', 'viewer');
           applyRolePermissions();
           return true;
         }
 
-        await showLoginModal();
+        await showLoginModal(authData);
         return false;
       } catch (err) {
         console.error('Auth check failed:', err);
-        if (sessionStorage.getItem('loginDismissed')) {
+        if (!loginContext.viewerPasswordRequired && sessionStorage.getItem('loginDismissed')) {
           sessionStorage.setItem('userRole', 'viewer');
           applyRolePermissions();
           return true;
