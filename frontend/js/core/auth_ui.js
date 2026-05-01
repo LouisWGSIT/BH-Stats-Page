@@ -6,6 +6,17 @@
       isTvBrowser: false,
     };
 
+    function setAuthScreenLock(isLocked) {
+      if (!document || !document.body) {
+        return;
+      }
+      if (isLocked) {
+        document.body.classList.add('auth-screened');
+      } else {
+        document.body.classList.remove('auth-screened');
+      }
+    }
+
     function createTvKeypad(passwordInput, submitButton) {
       const keypad = document.getElementById('tvKeypad');
       const clearPasswordBtn = document.getElementById('clearPasswordBtn');
@@ -142,6 +153,7 @@
     }
 
     async function showLoginModal(authStatus) {
+      setAuthScreenLock(true);
       if (authStatus && typeof authStatus === 'object') {
         loginContext.viewerPasswordRequired = Boolean(authStatus.viewer_password_required);
         loginContext.isTvBrowser = Boolean(authStatus.is_tv_browser);
@@ -218,6 +230,7 @@
 
               setTimeout(() => {
                 modal.classList.add('hidden');
+                setAuthScreenLock(false);
               }, 1000);
             } else {
               passwordInput.style.borderColor = '#f44336';
@@ -317,6 +330,7 @@
                 if (window.DashboardAuth && window.DashboardAuth.setupAuthHeaders) {
                   window.DashboardAuth.setupAuthHeaders(existingToken);
                 }
+                setAuthScreenLock(false);
                 return true;
               }
             }
@@ -343,12 +357,14 @@
           if (authData.role === 'viewer') {
             sessionStorage.setItem('userRole', 'viewer');
           }
+          setAuthScreenLock(false);
           return true;
         }
 
         if (!loginContext.viewerPasswordRequired && sessionStorage.getItem('loginDismissed')) {
           sessionStorage.setItem('userRole', 'viewer');
           applyRolePermissions();
+          setAuthScreenLock(false);
           return true;
         }
 
@@ -359,6 +375,7 @@
         if (!loginContext.viewerPasswordRequired && sessionStorage.getItem('loginDismissed')) {
           sessionStorage.setItem('userRole', 'viewer');
           applyRolePermissions();
+          setAuthScreenLock(false);
           return true;
         }
         await showLoginModal();
@@ -392,9 +409,11 @@
     }
 
     async function ensureAuthenticated() {
+      setAuthScreenLock(true);
       const isAuthenticated = await checkAuth();
       if (!isAuthenticated) {
         await waitForAuthToken();
+        setAuthScreenLock(false);
       }
       applyRolePermissions();
       bindUpgradeIcon();

@@ -799,6 +799,11 @@ body {
   transform: translateZ(0);
 }
 
+.modal.auth-gate {
+  background: rgba(0, 0, 0, 0.995) !important;
+  backdrop-filter: none !important;
+}
+
 .modal.hidden {
   display: none !important;
 }
